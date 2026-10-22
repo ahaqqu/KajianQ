@@ -26,8 +26,9 @@ import { CHAT_SERVING_ROLES } from "./chat-wiring";
  * Trap cases: the `cheap` chain carries a keyed free-tier tail, so the flag must keep
  * personal-data calls on the paid head; a `freeTier: false` row with `personalDataAllowed:
  * false` is still disallowed (the rule keys on personal data, not price); an unkeyed
- * candidate is not a violation. The same walk runs over the `ollama` profile's overrides,
- * so a profile cannot reintroduce a free-tier head or drop a serving role's paid candidate.
+ * candidate is not a violation. Every profile the config declares is walked the same
+ * way, plus the identity `default` profile, so no profile can reintroduce a free-tier
+ * head or drop a serving role's paid candidate.
  */
 
 type VendorRow = { freeTier: boolean; personalDataAllowed: boolean };
@@ -44,6 +45,9 @@ const MODELS = JSON.parse(
 };
 
 const SERVING_ROLES = CHAT_SERVING_ROLES;
+
+/** Every profile the guard must judge: the identity profile plus each declared override set. */
+const PROFILES = [...new Set(["default", ...Object.keys(MODELS.profiles ?? {})])];
 
 /**
  * The env-name set every serving role is keyed with in a fully-configured deployment:
@@ -66,8 +70,8 @@ const DEPLOYED_KEYS = new Set([
 
 const config = loadProviderConfig();
 
-/** A role's effective chain under a profile: the override when it has one. */
-function effectiveChain(profile: string, role: string): string[] {
+/** A role's chain as the file declares it under a profile: the override when there is one. */
+function fileChain(profile: string, role: string): string[] {
   return MODELS.profiles?.[profile]?.[role] ?? MODELS.roles[role]?.chain ?? [];
 }
 
@@ -117,7 +121,11 @@ describe("serving personal-data precondition (ADR-0043 gap, #181)", () => {
   });
 });
 
-describe("serving personal-data precondition — the ollama profile (ADR-0059)", () => {
+describe("serving personal-data precondition — every declared profile (ADR-0059)", () => {
+  it("declares the switchable profile this change ships", () => {
+    expect(Object.keys(MODELS.profiles ?? {})).toContain("ollama");
+  });
+
   it("registers the new vendor row as paid, personal-data-allowed and deployment-keyed", () => {
     const row = MODELS.vendors["ollama-cloud"];
     expect(row, "ollama-cloud is missing from models.json").toBeDefined();
@@ -128,10 +136,38 @@ describe("serving personal-data precondition — the ollama profile (ADR-0059)",
     expect(DEPLOYED_KEYS.has(row!.apiKeyEnv)).toBe(true);
   });
 
-  it("keeps every chat serving role on a keyed personal-data-allowed candidate under the profile", () => {
+  it("keeps every chat serving role on a keyed personal-data-allowed candidate under every profile", () => {
+    // `ProfilesSchema` accepts any name, so the walk is generic rather than pinned to
+    // the profiles that exist today: a new profile that re-heads a serving role on a
+    // free-tier or unkeyed vendor must fail this guard, and the failure names the
+    // profile and role.
     const failures: string[] = [];
-    for (const role of SERVING_ROLES) {
-      if (allowedCandidates(effectiveChain("ollama", role)).length === 0) failures.push(role);
+    for (const profile of PROFILES) {
+      const parsed = loadProviderConfig(profile);
+      for (const role of SERVING_ROLES) {
+        const chain = parsed.roles[role]?.chain ?? [];
+        if (allowedCandidates(chain).length === 0) {
+          failures.push(`profile "${profile}" role "${role}" (chain: ${chain.join(", ")})`);
+        }
+      }
+    }
+    expect(failures).toEqual([]);
+  });
+
+  it("keeps every serving role's chain head off a free-tier vendor under every profile", () => {
+    // Defense in depth: a free-tier CHAIN HEAD on a serving role is one dropped flag
+    // away from personal data riding the free tier.
+    const failures: string[] = [];
+    for (const profile of PROFILES) {
+      const parsed = loadProviderConfig(profile);
+      for (const role of SERVING_ROLES) {
+        const head = parsed.roles[role]?.chain[0];
+        if (head === undefined) continue;
+        const row = MODELS.vendors[head.slice(0, head.indexOf(":"))];
+        if (row?.freeTier === true && row.personalDataAllowed === false) {
+          failures.push(`profile "${profile}" role "${role}" head ${head}`);
+        }
+      }
     }
     expect(failures).toEqual([]);
   });
@@ -146,11 +182,12 @@ describe("serving personal-data precondition — the ollama profile (ADR-0059)",
       "reviewer",
       "reviewer-live",
     ]);
+    const parsed = loadProviderConfig("ollama");
     for (const role of SERVING_ROLES) {
       if (role === "cheap" || role === "generator" || role === "reviewer") continue;
-      expect(effectiveChain("ollama", role), role).toEqual(MODELS.roles[role]?.chain);
+      expect(parsed.roles[role]?.chain, role).toEqual(MODELS.roles[role]?.chain);
     }
-    const cheap = effectiveChain("ollama", "cheap");
+    const cheap = parsed.roles.cheap?.chain ?? [];
     const headVendor = cheap[0]!.slice(0, cheap[0]!.indexOf(":"));
     const tailVendor = cheap.at(-1)!.slice(0, cheap.at(-1)!.indexOf(":"));
     expect(MODELS.vendors[headVendor]?.personalDataAllowed).toBe(true);
@@ -158,12 +195,16 @@ describe("serving personal-data precondition — the ollama profile (ADR-0059)",
     expect(MODELS.vendors[tailVendor]?.personalDataAllowed).toBe(false);
   });
 
-  it("the wiring parses the profile into the same chains the file declares", () => {
+  it("the wiring parses every profile into the same chains the file declares", () => {
     // `loadProviderConfig(profile)` is what `createProvidersFromEnv` resolves against;
     // the file walk above and the parsed config must not describe different chains.
-    const profileConfig = loadProviderConfig("ollama");
-    for (const role of SERVING_ROLES) {
-      expect(profileConfig.roles[role]?.chain, role).toEqual(effectiveChain("ollama", role));
+    for (const profile of PROFILES) {
+      const parsed = loadProviderConfig(profile);
+      for (const role of SERVING_ROLES) {
+        expect(parsed.roles[role]?.chain, `profile "${profile}" role "${role}"`).toEqual(
+          fileChain(profile, role),
+        );
+      }
     }
   });
 });

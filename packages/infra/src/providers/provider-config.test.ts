@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
+import * as v from "valibot";
 import {
   loadProviderConfig,
   parseCandidateKey,
@@ -94,14 +95,49 @@ describe("provider config", () => {
     expect(parsed.profiles?.alt?.cheap).toEqual(["test:m-embed"]);
   });
 
+  it("rejects a non-empty `default` profile instead of silently ignoring it", () => {
+    // `default` is the base `roles` block, which the loader returns before it
+    // consults `profiles`: an entry there would validate and then never apply,
+    // so it is a fault rather than a second way to say "no overrides".
+    const base = {
+      vendors: { test: testVendor },
+      roles: { cheap: { chain: ["test:m-chat"] } },
+    };
+    expect(() =>
+      parseProviderConfig({ ...base, profiles: { default: { cheap: ["test:m-embed"] } } }),
+    ).toThrow(ProviderConfigError);
+    expect(() =>
+      parseProviderConfig({ ...base, profiles: { default: { cheap: ["test:m-embed"] } } }),
+    ).toThrow(/profile "default" must be empty/);
+    // An explicitly empty `default` says the same thing as omitting it.
+    expect(parseProviderConfig({ ...base, profiles: { default: {} } }).profiles?.default).toEqual(
+      {},
+    );
+    // The checked-in config does not declare the name it may only leave empty.
+    expect(Object.keys(loadProviderConfig().profiles ?? {})).not.toContain("default");
+  });
+
   it("reports every config fault as the typed ProviderConfigError", () => {
     // The composition root distinguishes a misconfigured deployment from a code
-    // defect on this type; the base schema's faults are not a second error class.
+    // defect on this type; a schema fault arrives as the same class, with
+    // valibot's error preserved as the cause.
     expect(() => parseCandidateKey("no-colon")).toThrow(ProviderConfigError);
     expect(() =>
       parseProviderConfig({ vendors: { test: testVendor }, roles: { cheap: { chain: [] } } }),
     ).toThrow(ProviderConfigError);
     expect(() => resolveChain(loadProviderConfig(), "no-such-role")).toThrow(ProviderConfigError);
+
+    let schemaFault: unknown;
+    try {
+      parseProviderConfig({
+        vendors: { test: { ...testVendor, protocol: "bogus" } },
+        roles: { cheap: { chain: ["test:m-chat"] } },
+      });
+    } catch (err) {
+      schemaFault = err;
+    }
+    expect(schemaFault).toBeInstanceOf(ProviderConfigError);
+    expect((schemaFault as ProviderConfigError).cause).toBeInstanceOf(v.ValiError);
   });
 
   it("resolveChain returns candidates in chain order", () => {

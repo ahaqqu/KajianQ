@@ -11,6 +11,10 @@
  * that fails its call exits non-zero. NOTE: the role drill intentionally makes
  * real (billable) API calls when keys are present.
  *
+ * The chains are the deployment's: `PROVIDER_PROFILE` selects the same profile
+ * the API serves, and an unknown value fails here naming it (an operator tool
+ * must not report the default chains while production serves another).
+ *
  * Also drills the cheap-tier fallback chain (spec §3.4): the first cheap
  * candidate is forced to fail (synthetic 429) and the chain must answer
  * with the second candidate's model id. The drill is fully synthetic — it
@@ -19,7 +23,7 @@
 import { Effect } from "effect";
 import { loadProviderConfig, parseCandidateKey, resolveRole } from "../src/index";
 
-const config = loadProviderConfig();
+const config = loadProviderConfig(process.env.PROVIDER_PROFILE);
 
 const SMOKED_ROLES = [
   { role: "generator", call: "generate" },

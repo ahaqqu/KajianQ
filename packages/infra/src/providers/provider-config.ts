@@ -10,14 +10,15 @@ import modelsJson from "./models.json";
  */
 
 /**
- * A config fault discovered at wiring time: a malformed chain, a dangling
- * candidate, or an unknown profile. Typed so the composition root can tell
- * "this deployment is misconfigured" from a code defect; no config fault
- * degrades to a silent default.
+ * A config fault discovered at wiring time: a schema mismatch, a malformed
+ * chain, a dangling candidate, a non-empty `default` profile, or an unknown
+ * profile. Every fault is this one class so the composition root can tell
+ * "this deployment is misconfigured" from a code defect; a schema fault keeps
+ * valibot's error as `cause`.
  */
 export class ProviderConfigError extends Error {
-  constructor(message: string) {
-    super(message);
+  constructor(message: string, options?: ErrorOptions) {
+    super(message, options);
     this.name = "ProviderConfigError";
   }
 }
@@ -49,7 +50,9 @@ const VendorSchema = v.object({
 /**
  * A named role-chain override set: the profile name selects it, and each entry
  * replaces one declared role's chain. A profile may not invent a role, and its
- * candidates are validated exactly like the base chains.
+ * candidates are validated exactly like the base chains. The reserved `default`
+ * entry must be empty: that name is the base `roles` block, which the loader
+ * returns untouched.
  */
 const ProfilesSchema = v.record(v.string(), v.record(v.string(), v.array(v.string())));
 
@@ -110,14 +113,38 @@ function assertChainResolvable(
   }
 }
 
+/** The implicit profile: the `roles` block exactly, with no overrides. */
+export const DEFAULT_PROFILE = "default";
+
 /**
- * Validate a raw provider config object. Throws on the first structural
- * problem (unknown protocol, bad URL, dangling chain candidate, an override of
- * a role that does not exist) — a wrong config must fail at wiring time, never
- * degrade to a silent default.
+ * Validate a raw provider config object. Throws on the first config fault: a
+ * schema mismatch, an unknown protocol, a bad URL, a dangling chain candidate,
+ * an override of a role that does not exist, or a non-empty `default` profile
+ * — a wrong config must fail at wiring time, never degrade to a silent default.
+ *
+ * Every fault leaves here as a `ProviderConfigError`; valibot's error rides
+ * along as the `cause` of a schema failure so its issues stay readable.
  */
 export function parseProviderConfig(raw: unknown): ProviderConfig {
-  const config = v.parse(ProviderConfigSchema, raw);
+  let config: ProviderConfig;
+  try {
+    config = v.parse(ProviderConfigSchema, raw);
+  } catch (err) {
+    if (err instanceof v.ValiError) {
+      throw new ProviderConfigError(`provider config: ${err.message}`, { cause: err });
+    }
+    throw err;
+  }
+
+  // `default` is the base `roles` block, which `applyProfile` returns before
+  // consulting `profiles`: a non-empty entry here would validate and then be
+  // ignored, so it is a fault rather than a second way to say "no overrides".
+  const defaultOverrides = config.profiles?.[DEFAULT_PROFILE];
+  if (defaultOverrides !== undefined && Object.keys(defaultOverrides).length > 0) {
+    throw new ProviderConfigError(
+      `provider config: profile "${DEFAULT_PROFILE}" must be empty — the default profile is the base roles block; declare overrides under a named profile`,
+    );
+  }
 
   for (const [role, { chain }] of Object.entries(config.roles)) {
     assertChainResolvable(config, `role "${role}"`, chain);
@@ -135,9 +162,6 @@ export function parseProviderConfig(raw: unknown): ProviderConfig {
   return config;
 }
 
-/** The implicit profile: the `roles` block exactly, with no overrides. */
-export const DEFAULT_PROFILE = "default";
-
 let checkedIn: ProviderConfig | undefined;
 const profileCache = new Map<string, ProviderConfig>();
 
@@ -150,8 +174,9 @@ function checkedInConfig(): ProviderConfig {
 /**
  * Apply a profile's overrides to the base config. The default profile is the
  * base config itself, so `default` and an absent selection are the same chain
- * set; a name the config does not declare throws a `ProviderConfigError`
- * listing the known profiles.
+ * set; no override set can exist there because `parseProviderConfig` rejects a
+ * non-empty one. A name the config does not declare throws a
+ * `ProviderConfigError` listing the known profiles.
  */
 function applyProfile(config: ProviderConfig, profile: string): ProviderConfig {
   if (profile === DEFAULT_PROFILE) return config;
