@@ -199,7 +199,12 @@ export function TracePanel({
   );
 }
 
-/** One technical-layer passage: display title (or id) plus its fused score. */
+/**
+ * One technical-layer passage: display title (or id) plus its scores. The list
+ * is in retrieval order, which is the reranked order when a rerank applied, so
+ * the rerank score is rendered beside the fused score — the fused number alone
+ * would not explain the order it appears in.
+ */
 function ChunkRow({
   chunk,
   locale,
@@ -218,6 +223,14 @@ function ChunkRow({
           className="ml-2 font-mono text-[11px] text-muted-foreground"
         >
           {t(locale, "traceScoreLabel")} {score.format(chunk.score)}
+        </span>
+      )}
+      {chunk.rerankScore !== undefined && (
+        <span
+          data-testid="trace-rerank-score"
+          className="ml-2 font-mono text-[11px] text-muted-foreground"
+        >
+          {t(locale, "traceRerankScoreLabel")} {score.format(chunk.rerankScore)}
         </span>
       )}
     </li>

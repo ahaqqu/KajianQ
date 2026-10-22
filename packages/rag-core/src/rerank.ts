@@ -1,9 +1,8 @@
-import { Effect } from "effect";
+import { Cause, Effect } from "effect";
 import type { Chunk, Retriever } from "./pipeline";
 import { RunContext, type RunContextService } from "./context";
 import type { ChoiceQuestion, Decider, DecisionAnswer, DecisionSpec } from "./decider";
 import {
-  isCancellation,
   recordRerank,
   recordRerankAttemptCosts,
   recordRerankCall,
@@ -14,28 +13,20 @@ import {
  * The decision-model rerank decorator (ADR-0042's seam applied to retrieval):
  * one `Choice` question over the fused candidates, reordered by the returned
  * probability distribution before the assembler spends the context budget on
- * them.
+ * them. It is a `Retriever` decorator, not a new stage, so the runner, the
+ * trace sink and the stage interfaces do not change; the question's wording is
+ * the caller's, and this module names no source, language or citation.
  *
- * It is a `Retriever` decorator, not a new stage, so the runner, the trace sink
- * and the stage interfaces do not change: the wrapped retriever produces the
- * fused candidates exactly as before, and this wrapper reorders them. The
- * question's wording is the CALLER's — the domain pack passes the
- * language-neutral instruction its multilingual gate benchmarked — so this
- * module names no source, language or citation; it carries an opaque
- * `DecisionSpec` to the seam.
- *
- * The fused tracks' chunks are the ones with no `origin` label (the engine's
- * documented fused marker); a chunk another path added keeps its label and its
- * place after the fused block. Every probability, fused score and rank lands on
+ * The fused block is the chunks with no `origin` label; a labelled chunk keeps
+ * the position the wrapped retriever gave it, and the reranked fused chunks
+ * fill the remaining slots. Every probability, fused score and rank lands on
  * the trace's `rerank` event, and the spend on a sibling `llm_call`, so the
  * run's trace total stays the sum of its recorded calls.
  *
- * Fail-open: a vendor failure (a defect included), an unusable answer, an
- * answer contradicting its own distribution, or a candidate list too short to
- * rank leaves the fused order exactly as it was, with a `preserved` event
- * naming why. The failure this prevents is the reverse: a missing or
- * nonsensical answer read as a ranking, silently reordering the evidence a
- * grounding answer is built from.
+ * Fail-open: a vendor failure or thrown defect, an unreadable answer, an answer
+ * contradicting its own distribution, or a candidate list too short to rank
+ * leaves the fused order exactly as it was, with a `preserved` event naming the
+ * rule that refused it. Cancellation is re-raised, never read as a failure.
  */
 
 /** The one question id the rerank request uses. */
@@ -49,8 +40,17 @@ export function rerankCandidateKey(index: number): string {
   return `c${index}`;
 }
 
-/** Why a rerank read left the fused order untouched. */
-export type RerankPreserveReason = "malformed_answer" | "ambiguous_answer";
+/** Why the fused order stood; each value is one rule, documented on the
+ * contract's `reason` field. */
+export type RerankPreserveReason =
+  | "too_few_candidates"
+  | "vendor_failure"
+  | "thrown"
+  | "non_choice"
+  | "missing_probability"
+  | "choice_outside_options"
+  | "out_of_range_choice"
+  | "choice_not_argmax";
 
 /** A usable distribution, or the reason the answer was unusable. */
 export type RerankRead =
@@ -100,38 +100,45 @@ export function planRerank(input: {
 /**
  * Read the vendor's distribution through the seam's typed union. The answer is
  * untrusted wire data: every candidate needs a finite probability in 0..1, the
- * named choice must be one of the options, and it must be (one of) the
- * distribution's maxima — an answer that contradicts its own distribution is
- * ambiguous, never silently resolved in the distribution's favour.
+ * named choice must be an offered candidate key, and it must be a positive
+ * maximum of the distribution it came with.
+ *
+ * The argmax rule is not redundant with the ranking: the committed decision
+ * bench scores the named choice, not the distribution, so an answer whose two
+ * outputs disagree has no ranking this module can defend. Preserve it with
+ * `choice_not_argmax`, never resolve it in the distribution's favour.
  */
 export function readRerankAnswer(answer: DecisionAnswer | undefined, count: number): RerankRead {
   if (answer === undefined || answer.type !== "choice") {
-    return { kind: "preserved", reason: "malformed_answer" };
+    return { kind: "preserved", reason: "non_choice" };
   }
   const raw: unknown = answer.probabilities;
   if (raw === null || typeof raw !== "object") {
-    return { kind: "preserved", reason: "malformed_answer" };
+    return { kind: "preserved", reason: "missing_probability" };
   }
   const record = raw as Record<string, unknown>;
   const probabilities: number[] = [];
   for (let index = 0; index < count; index += 1) {
     const value = record[rerankCandidateKey(index)];
     if (typeof value !== "number" || !Number.isFinite(value) || value < 0 || value > 1) {
-      return { kind: "preserved", reason: "malformed_answer" };
+      return { kind: "preserved", reason: "missing_probability" };
     }
     probabilities.push(value);
   }
   const choice: unknown = answer.choice;
   const match = typeof choice === "string" ? /^c(\d+)$/.exec(choice) : null;
-  const chosenIndex = match?.[1] === undefined ? null : Number(match[1]);
-  if (chosenIndex === null || chosenIndex >= count) {
-    return { kind: "preserved", reason: "ambiguous_answer" };
+  if (match?.[1] === undefined) {
+    return { kind: "preserved", reason: "choice_outside_options" };
+  }
+  const chosenIndex = Number(match[1]);
+  if (chosenIndex >= count) {
+    return { kind: "preserved", reason: "out_of_range_choice" };
   }
   const max = Math.max(...probabilities);
   // A distribution with no mass names no winner; an answer whose pick is not a
   // maximum contradicts the distribution it came with.
   if (max <= 0 || probabilities[chosenIndex] !== max) {
-    return { kind: "preserved", reason: "ambiguous_answer" };
+    return { kind: "preserved", reason: "choice_not_argmax" };
   }
   return { kind: "applied", probabilities };
 }
@@ -161,13 +168,13 @@ export type RerankOptions = {
   decider: Decider;
   /** The domain pack's language-neutral Choice instruction (opaque here). */
   instructions: string;
-  /** The `rerank`/`llm_call` purpose label; defaults to `rerank`. */
-  purpose?: string;
 };
 
 /**
- * Wrap a retriever in the decision-model rerank. The wrapped list's fused
- * block is reordered; caller-labelled chunks follow it in their own order.
+ * Wrap a retriever in the decision-model rerank. Only the fused block is
+ * reordered: every chunk that carries an `origin` label keeps the position the
+ * wrapped retriever gave it, and the reranked fused chunks fill the remaining
+ * slots.
  */
 export function createRerankedRetriever<TFilters extends Record<string, unknown>>(
   inner: Retriever<TFilters>,
@@ -183,7 +190,6 @@ export function createRerankedRetriever<TFilters extends Record<string, unknown>
           chunks,
           decider: options.decider,
           instructions: options.instructions,
-          purpose: options.purpose ?? RERANK_PURPOSE,
           run,
         });
       }),
@@ -191,24 +197,23 @@ export function createRerankedRetriever<TFilters extends Record<string, unknown>
 }
 
 /**
- * Run the screen over one retrieval result, recording its trace events. Total
+ * Run the rerank over one retrieval result, recording its trace events. Total
  * in the failure sense: the returned effect never fails, so the wrapped
- * retriever's error channel is exactly the inner retriever's.
+ * retriever's error channel is exactly the inner retriever's. Cancellation is
+ * re-raised rather than caught.
  */
 function rerankCandidates(input: {
   query: string;
   chunks: readonly Chunk[];
   decider: Decider;
   instructions: string;
-  purpose: string;
   run: Pick<RunContextService, "now" | "record">;
 }): Effect.Effect<readonly Chunk[]> {
   const fused = input.chunks.filter((candidate) => candidate.origin === undefined);
-  const others = input.chunks.filter((candidate) => candidate.origin !== undefined);
   if (fused.length < 2) {
-    recordRerank(input.run, input.purpose, {
+    recordRerank(input.run, RERANK_PURPOSE, {
       outcome: "preserved",
-      reason: fused.length === 0 ? "no_candidates" : "single_candidate",
+      reason: "too_few_candidates",
       items: rerankItems(fused),
     });
     return Effect.succeed(input.chunks);
@@ -230,10 +235,10 @@ function rerankCandidates(input: {
     Effect.matchEffect({
       onSuccess: (result) =>
         Effect.sync(() => {
-          recordRerankCall(input.run, input.purpose, result.cost);
+          recordRerankCall(input.run, RERANK_PURPOSE, result.cost);
           const read = readRerankAnswer(result.answers[RERANK_QUESTION_KEY], fused.length);
           if (read.kind === "preserved") {
-            recordRerank(input.run, input.purpose, {
+            recordRerank(input.run, RERANK_PURPOSE, {
               outcome: "preserved",
               reason: read.reason,
               items: rerankItems(fused),
@@ -241,7 +246,7 @@ function rerankCandidates(input: {
             return input.chunks;
           }
           const { order, rankAfter } = rankCandidates(read.probabilities);
-          recordRerank(input.run, input.purpose, {
+          recordRerank(input.run, RERANK_PURPOSE, {
             outcome: "applied",
             items: rerankItems(fused, read.probabilities, rankAfter),
           });
@@ -249,23 +254,44 @@ function rerankCandidates(input: {
             const candidate = fused[index];
             const probability = read.probabilities[index];
             if (candidate === undefined || probability === undefined) {
-              throw new Error("rerank: ranked position outside the candidate list");
+              throw new Error("rerank: ranked position outside the fused block");
             }
             return { ...candidate, rerankScore: probability };
           });
-          return [...reranked, ...others];
+          // Fill only the fused slots: a labelled chunk keeps its own position.
+          const out: Chunk[] = [];
+          let next = 0;
+          for (const candidate of input.chunks) {
+            if (candidate.origin !== undefined) {
+              out.push(candidate);
+              continue;
+            }
+            const ranked = reranked[next];
+            if (ranked === undefined)
+              throw new Error("rerank: fused slot outside the reranked block");
+            out.push(ranked);
+            next += 1;
+          }
+          return out;
         }),
       onFailure: (cause) => {
         // Cancellation is not a vendor failure: a cancelled run stays cancelled.
         if (isCancellation(cause)) return Effect.interrupt;
-        recordRerankAttemptCosts(input.run, input.purpose, cause);
-        recordRerank(input.run, input.purpose, {
+        recordRerankAttemptCosts(input.run, RERANK_PURPOSE, cause);
+        recordRerank(input.run, RERANK_PURPOSE, {
           outcome: "preserved",
-          reason: "vendor_failure",
+          // A typed failure came through the seam's channel; anything else is
+          // a defect the sandbox caught. The trace names which.
+          reason: Cause.hasFails(cause) ? "vendor_failure" : "thrown",
           items: rerankItems(fused),
         });
         return Effect.succeed(input.chunks);
       },
     }),
   );
+}
+
+/** True when a sandboxed cause is a cancellation only — never fail open on it. */
+function isCancellation(cause: Parameters<typeof Cause.squash>[0]): boolean {
+  return Cause.hasInterruptsOnly(cause);
 }

@@ -19,6 +19,7 @@ function traceOf(
     score?: number;
     rankDense?: number;
     rankSparse?: number;
+    rerankScore?: number;
     origin?: string;
   }[],
   extra: Trace["events"] = [],
@@ -229,6 +230,25 @@ describe("deriveTraceFrame — the technical layer", () => {
       { id: "c1", source: "Al-Muwatta" },
       { id: "c7", source: "QS. 1" },
     ]);
+  });
+
+  it("projects a chunk ref's rerankScore beside the fused score (A5)", () => {
+    // The list is in reranked order, so the number that explains the order must
+    // reach the panel: the fused score alone would contradict it.
+    const frame = derive(
+      traceOf([
+        { id: "c2", score: 0.031, rerankScore: 0.71 },
+        { id: "c1", score: 0.03, rerankScore: 0.08 },
+      ]),
+      [chunkRow("c1", "Al-Baqarah"), chunkRow("c2", "Al-Muwatta")],
+    );
+    expect(frame.technical.chunks).toEqual([
+      { id: "c2", source: "Al-Muwatta", score: 0.031, rerankScore: 0.71 },
+      { id: "c1", source: "Al-Baqarah", score: 0.03, rerankScore: 0.08 },
+    ]);
+    // The top layer stays plain language: no score, no rerank probability.
+    expect(frame.sources.map((source) => source.id)).toEqual(["c2", "c1"]);
+    expect(v.safeParse(ChatTraceFrameSchema, frame).success).toBe(true);
   });
 
   it("derives a pre-change frame (no `origin` anywhere) that still parses against the contract", () => {

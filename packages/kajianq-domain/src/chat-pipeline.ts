@@ -115,7 +115,7 @@ export function runChatPipeline(
   query: { text: string; filters?: import("./filters").KajianQFilters },
   config: RunConfig<import("./filters").KajianQFilters> = {},
   options: RunOptions = {},
-): Effect.Effect<Answer, import("@app/rag-core").StageError> {
+): Effect.Effect<Answer, StageError> {
   const stages = buildChatStages(deps);
   // Follow-up context rides `Query.history` (ADR-0018), attached here rather than on the
   // deps, so one deps object serves a session while each question carries its own window.

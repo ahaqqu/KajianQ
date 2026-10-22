@@ -1,10 +1,5 @@
 import { createRerankedRetriever, type Decider, type Retriever } from "@app/rag-core";
-import {
-  createKajianQRetriever,
-  type RetrieverEmbedder,
-  type RetrieverStore,
-  type StoreBridge,
-} from "./chat-retriever";
+import { createKajianQRetriever, type KajianQRetrieverDeps } from "./chat-retriever";
 import { RERANK_INSTRUCTIONS } from "./decision-bench-prompts";
 import type { KajianQFilters } from "./filters";
 
@@ -15,7 +10,7 @@ import type { KajianQFilters } from "./filters";
  * The rerank decorator is engine-level and takes its wording from this pack —
  * the same language-neutral `Choice` instruction the multilingual decision
  * gate benchmarked — so the retrieval stage stays domain-typed here while the
- * screen itself never learns what a hadith or an ayah is.
+ * rerank itself never learns what a hadith or an ayah is.
  *
  * #169 (the relevance screen) composes as an INNER decorator: the screen runs
  * first, the rerank orders its survivors. The order is the point of the seam —
@@ -24,37 +19,27 @@ import type { KajianQFilters } from "./filters";
  */
 export type { RetrieverEmbedder, RetrieverStore, StoreBridge } from "./chat-retriever";
 
-export type ChatRetrieverDeps = {
-  store: RetrieverStore;
-  embedder: RetrieverEmbedder;
-  bridge: StoreBridge;
-  /** Per-track hits per sub-query; absent = the retriever's default. */
-  limit?: number;
-  /** ADR-0045's shared surah-read budget; absent = the domain default. */
-  scopeExpansionCap?: number;
-  /** The citation-label lookup's budget; absent = the domain default. */
-  labelLookupCap?: number;
+/**
+ * The retriever's own deps extended with the rerank seam. Derived rather than
+ * restated so a knob added to the retriever reaches this composition too — a
+ * hand-copied subset is how a config field silently stops being forwarded.
+ */
+export type ChatRetrieverDeps = KajianQRetrieverDeps & {
   /**
-   * The decision-model serving role's rerank screen. Null = the vendor's key
-   * is not bound, so the fused order stands and no call is made — the same
+   * The decision-model serving role's rerank. Null = the vendor's key is not
+   * bound, so the fused order stands and no call is made — the same
    * key-governed posture as the reviewer pre-gate, with no separate toggle.
    */
   rerankDecider: Decider | null;
 };
 
 export function createChatRetriever(deps: ChatRetrieverDeps): Retriever<KajianQFilters> {
-  const retriever = createKajianQRetriever({
-    store: deps.store,
-    embedder: deps.embedder,
-    bridge: deps.bridge,
-    ...(deps.limit !== undefined ? { limit: deps.limit } : {}),
-    ...(deps.scopeExpansionCap !== undefined ? { scopeExpansionCap: deps.scopeExpansionCap } : {}),
-    ...(deps.labelLookupCap !== undefined ? { labelLookupCap: deps.labelLookupCap } : {}),
-  });
-  return deps.rerankDecider === null
+  const { rerankDecider, ...retrieverDeps } = deps;
+  const retriever = createKajianQRetriever(retrieverDeps);
+  return rerankDecider === null
     ? retriever
     : createRerankedRetriever(retriever, {
-        decider: deps.rerankDecider,
+        decider: rerankDecider,
         instructions: RERANK_INSTRUCTIONS,
       });
 }

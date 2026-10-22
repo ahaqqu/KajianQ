@@ -1,4 +1,4 @@
-import { Effect } from "effect";
+import { Cause, Effect } from "effect";
 import { describe, expect, it } from "vite-plus/test";
 import { totalCostMicroUsd, type CostRecord, type TraceEvent } from "@app/contracts";
 import type { ChoiceAnswer, DecisionAnswer, DecisionSpec, Decider } from "./decider";
@@ -148,21 +148,27 @@ describe("createRerankedRetriever — the ranking it applies", () => {
     expect(out.map((c) => c.rerankScore)).toEqual([0.5, 0.5, 0.5]);
   });
 
-  it("reorders only the fused block; a caller-labelled chunk follows it unscored", async () => {
+  it("keeps a caller-labelled chunk in its own position, filling only the fused slots", async () => {
     const input: readonly Chunk[] = [
       { id: "a", text: "alpha", score: 0.9 },
       { id: "scope", text: "added by a deterministic arm", origin: "scope_expansion" },
       { id: "b", text: "bravo", score: 0.5 },
+      { id: "label", text: "added by the citation arm", origin: "citation_lookup" },
+      { id: "c", text: "charlie", score: 0.1 },
     ];
-    const { decider, specs } = answering(choice([0.1, 0.9], "c1"));
+    const { decider, specs } = answering(choice([0.1, 0.9, 0.5], "c1"));
     const { chunks: out } = await run(reranker(decider, { retrieve: () => Effect.succeed(input) }));
 
-    expect(specs[0]?.state).toEqual({ query: routed.sourceText, candidates: ["alpha", "bravo"] });
-    expect(out.map((c) => c.id)).toEqual(["b", "a", "scope"]);
-    expect(out[0]?.rerankScore).toBe(0.9);
-    expect(out[1]?.rerankScore).toBe(0.1);
-    expect(out[2]?.rerankScore).toBeUndefined();
-    expect(out[2]?.origin).toBe("scope_expansion");
+    expect(specs[0]?.state).toEqual({
+      query: routed.sourceText,
+      candidates: ["alpha", "bravo", "charlie"],
+    });
+    // The labelled chunks hold positions 1 and 3; the fused slots fill with the
+    // reranked order (bravo, charlie, alpha).
+    expect(out.map((c) => c.id)).toEqual(["b", "scope", "c", "label", "a"]);
+    expect(out.map((c) => c.rerankScore)).toEqual([0.9, undefined, 0.5, undefined, 0.1]);
+    expect(out[1]?.origin).toBe("scope_expansion");
+    expect(out[3]?.origin).toBe("citation_lookup");
   });
 });
 
@@ -203,28 +209,49 @@ describe("createRerankedRetriever — fail-open", () => {
     expect(out).toEqual(chunks);
     expect(rerankEvent(events).detail).toMatchObject({
       outcome: "preserved",
-      reason: "vendor_failure",
+      reason: "thrown",
     });
   });
 
-  it("keeps the fused order when the named choice contradicts the distribution", async () => {
+  it("keeps the fused order when the named choice is not the distribution's maximum", async () => {
     // c0 holds the mass but c1 is named: an answer that disagrees with itself.
     const { decider } = answering(choice([0.9, 0.1, 0], "c1"));
     const { chunks: out, events } = await run(reranker(decider));
     expect(out).toEqual(chunks);
     expect(rerankEvent(events).detail).toMatchObject({
       outcome: "preserved",
-      reason: "ambiguous_answer",
+      reason: "choice_not_argmax",
     });
   });
 
-  it("keeps the fused order when the choice is outside the offered candidates", async () => {
+  it("keeps the fused order when the distribution carries no mass at all", async () => {
+    // No option holds probability: the named choice names no winner.
+    const { decider } = answering(choice([0, 0, 0], "c0"));
+    const { chunks: out, events } = await run(reranker(decider));
+    expect(out).toEqual(chunks);
+    expect(rerankEvent(events).detail).toMatchObject({
+      outcome: "preserved",
+      reason: "choice_not_argmax",
+    });
+  });
+
+  it("keeps the fused order when the choice index is out of range", async () => {
     const { decider } = answering(choice([0.5, 0.5, 0], "c9"));
     const { chunks: out, events } = await run(reranker(decider));
     expect(out).toEqual(chunks);
     expect(rerankEvent(events).detail).toMatchObject({
       outcome: "preserved",
-      reason: "ambiguous_answer",
+      reason: "out_of_range_choice",
+    });
+  });
+
+  it("keeps the fused order when the choice is not one of the offered option keys", async () => {
+    const { decider } = answering(choice([0.5, 0.5, 0], "best"));
+    const { chunks: out, events } = await run(reranker(decider));
+    expect(out).toEqual(chunks);
+    expect(rerankEvent(events).detail).toMatchObject({
+      outcome: "preserved",
+      reason: "choice_outside_options",
     });
   });
 
@@ -239,7 +266,17 @@ describe("createRerankedRetriever — fail-open", () => {
     expect(out).toEqual(chunks);
     expect(rerankEvent(events).detail).toMatchObject({
       outcome: "preserved",
-      reason: "malformed_answer",
+      reason: "missing_probability",
+    });
+  });
+
+  it("keeps the fused order when a probability is outside 0..1", async () => {
+    const { decider } = answering(choice([1.5, -0.1, 0], "c0"));
+    const { chunks: out, events } = await run(reranker(decider));
+    expect(out).toEqual(chunks);
+    expect(rerankEvent(events).detail).toMatchObject({
+      outcome: "preserved",
+      reason: "missing_probability",
     });
   });
 
@@ -249,7 +286,7 @@ describe("createRerankedRetriever — fail-open", () => {
     expect(out).toEqual(chunks);
     expect(rerankEvent(events).detail).toMatchObject({
       outcome: "preserved",
-      reason: "malformed_answer",
+      reason: "non_choice",
     });
   });
 
@@ -266,7 +303,8 @@ describe("createRerankedRetriever — fail-open", () => {
     expect(none.chunks).toEqual([]);
     expect(rerankEvent(none.events).detail).toMatchObject({
       outcome: "preserved",
-      reason: "no_candidates",
+      reason: "too_few_candidates",
+      items: [],
     });
 
     const single = await run(
@@ -275,10 +313,34 @@ describe("createRerankedRetriever — fail-open", () => {
     expect(single.chunks).toHaveLength(1);
     expect(rerankEvent(single.events).detail).toMatchObject({
       outcome: "preserved",
-      reason: "single_candidate",
+      reason: "too_few_candidates",
     });
+    // The reason is one value for both cases; the recorded items say which.
+    expect(rerankEvent(single.events).detail.items).toHaveLength(1);
 
     expect(specs).toEqual([]);
     expect(single.events.filter((e) => e.kind === "llm_call")).toEqual([]);
+  });
+
+  it("re-raises a cancellation instead of failing open, recording no verdict", async () => {
+    const decider: Decider = {
+      modelId: "test-decider",
+      decide: () => Effect.interrupt,
+    };
+    const events: TraceEvent[] = [];
+    const exit = await Effect.runPromiseExit(
+      Effect.scoped(
+        Effect.provideService(reranker(decider).retrieve(routed), RunContext, {
+          config: {},
+          now: () => 7,
+          record: (event) => events.push(event),
+        }),
+      ),
+    );
+
+    // A cancelled run must stay cancelled: no preserved verdict, no chunk list.
+    expect(exit._tag).toBe("Failure");
+    expect(exit._tag === "Failure" && Cause.hasInterruptsOnly(exit.cause)).toBe(true);
+    expect(events).toEqual([]);
   });
 });

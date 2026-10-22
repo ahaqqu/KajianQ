@@ -191,15 +191,15 @@ export const ChatCitationsFrameSchema = v.object({
 export type ChatCitationsFrame = v.InferOutput<typeof ChatCitationsFrameSchema>;
 
 /**
- * One chunk reference in the user-facing Trace frame. The `technical` layer
- * carries the retrieval provenance verbatim from the persisted trace's
- * `retrieval` events (fused score, both channel ranks, the chunk's `origin`
- * label); the top "sources consulted" layer reuses the same shape with those
- * fields absent, so the panel's two layers read one contract.
+ * One chunk reference in the user-facing Trace frame: the persisted
+ * `retrieval` event's provenance (fused score, both channel ranks, the
+ * reranker's score, the opaque `origin` label) plus the server-joined display
+ * title. The top "sources consulted" layer reuses the shape with those fields
+ * absent.
  *
- * `source` is the cited work's display title, joined server-side by chunk id; a
- * missing row renders by id, never a fabricated title. `origin` is the trace's
- * opaque caller label — why a chunk no fused track produced is present.
+ * `source` is joined by chunk id — a missing row renders by id, never a
+ * fabricated title. `rerankScore` sits beside `score` because the panel lists
+ * the reranked order, and the fused number alone would no longer explain it.
  */
 export const ChatTraceChunkSchema = v.object({
   id: v.pipe(v.string(), v.minLength(1)),
@@ -207,6 +207,7 @@ export const ChatTraceChunkSchema = v.object({
   score: v.optional(v.number()),
   rankDense: v.optional(v.number()),
   rankSparse: v.optional(v.number()),
+  rerankScore: v.optional(v.pipe(v.number(), v.minValue(0), v.maxValue(1))),
   origin: v.optional(v.pipe(v.string(), v.minLength(1))),
 });
 

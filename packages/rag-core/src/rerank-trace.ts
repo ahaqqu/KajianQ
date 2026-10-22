@@ -45,11 +45,6 @@ export function recordRerank(
   });
 }
 
-/** True when a sandboxed cause is a cancellation only — never fail open on it. */
-export function isCancellation(cause: Parameters<typeof Cause.squash>[0]): boolean {
-  return Cause.hasInterruptsOnly(cause);
-}
-
 /**
  * Record every attempt cost a failed decision call carries — a retry or
  * fallback that reached the vendor spent real tokens even though it failed.
