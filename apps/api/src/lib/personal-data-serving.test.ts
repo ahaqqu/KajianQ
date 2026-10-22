@@ -23,9 +23,11 @@ import { CHAT_SERVING_ROLES } from "./chat-wiring";
  *      never a silent route to the free tier; the test walks the real `models.json`, so
  *      such an edit fails HERE. The `decision` role is in scope (it sends personal data).
  *
- * Trap cases: the `cheap` chain head IS a free-tier vendor, so the flag must push calls to the
- * paid tail; a `freeTier: false` row with `personalDataAllowed: false` is still disallowed (the
- * rule keys on personal data, not price); an unkeyed candidate is not a violation.
+ * Trap cases: the `cheap` chain carries a keyed free-tier tail, so the flag must keep
+ * personal-data calls on the paid head; a `freeTier: false` row with `personalDataAllowed:
+ * false` is still disallowed (the rule keys on personal data, not price); an unkeyed
+ * candidate is not a violation. The same walk runs over the `ollama` profile's overrides,
+ * so a profile cannot reintroduce a free-tier head or drop a serving role's paid candidate.
  */
 
 type VendorRow = { freeTier: boolean; personalDataAllowed: boolean };
@@ -38,6 +40,7 @@ const MODELS = JSON.parse(
 ) as {
   vendors: Record<string, VendorRow & { apiKeyEnv: string }>;
   roles: Record<string, { chain: string[] }>;
+  profiles?: Record<string, Record<string, string[]>>;
 };
 
 const SERVING_ROLES = CHAT_SERVING_ROLES;
@@ -52,12 +55,30 @@ const DEPLOYED_KEYS = new Set([
   "GEMINI_PAID_API_KEY",
   "DEEPSEEK_API_KEY",
   "DASHSCOPE_API_KEY",
+  // The switchable chat vendor's key: optional in the default profile, but a profile that
+  // routes a serving role to this row must still carry a paid, personal-data-allowed
+  // candidate when the key is bound (ADR-0059).
+  "OLLAMA_API_KEY",
   // The decision vendor's key: optional in serving, but when keyed this guard must judge
   // the candidate it would wire.
   "JEV_API_KEY",
 ]);
 
 const config = loadProviderConfig();
+
+/** A role's effective chain under a profile: the override when it has one. */
+function effectiveChain(profile: string, role: string): string[] {
+  return MODELS.profiles?.[profile]?.[role] ?? MODELS.roles[role]?.chain ?? [];
+}
+
+/** The keyed, personal-data-allowed candidates in a chain. */
+function allowedCandidates(chain: string[]): string[] {
+  return chain.filter((key) => {
+    const vendor = key.slice(0, key.indexOf(":"));
+    const row = MODELS.vendors[vendor];
+    return row !== undefined && DEPLOYED_KEYS.has(row.apiKeyEnv) && row.personalDataAllowed;
+  });
+}
 
 describe("serving personal-data precondition (ADR-0043 gap, #181)", () => {
   it("every chat serving role has at least one keyed candidate that allows personal data", () => {
@@ -66,12 +87,7 @@ describe("serving personal-data precondition (ADR-0043 gap, #181)", () => {
     // is down, so it must fail in CI at the config edit, not at runtime.
     const failures: string[] = [];
     for (const role of SERVING_ROLES) {
-      const allowed = (MODELS.roles[role]?.chain ?? []).filter((key) => {
-        const vendor = key.slice(0, key.indexOf(":"));
-        const row = MODELS.vendors[vendor];
-        return row !== undefined && DEPLOYED_KEYS.has(row.apiKeyEnv) && row.personalDataAllowed;
-      });
-      if (allowed.length === 0) failures.push(role);
+      if (allowedCandidates(MODELS.roles[role]?.chain ?? []).length === 0) failures.push(role);
     }
     expect(failures).toEqual([]);
   });
@@ -97,6 +113,57 @@ describe("serving personal-data precondition (ADR-0043 gap, #181)", () => {
         { role, freeTier: row?.freeTier ?? false, personalDataAllowed: row?.personalDataAllowed },
         role,
       ).not.toEqual({ role, freeTier: true, personalDataAllowed: false });
+    }
+  });
+});
+
+describe("serving personal-data precondition — the ollama profile (ADR-0059)", () => {
+  it("registers the new vendor row as paid, personal-data-allowed and deployment-keyed", () => {
+    const row = MODELS.vendors["ollama-cloud"];
+    expect(row, "ollama-cloud is missing from models.json").toBeDefined();
+    expect(row!.freeTier).toBe(false);
+    expect(row!.personalDataAllowed).toBe(true);
+    // A row this guard judges must be one a configured deployment can key — otherwise
+    // the walk below would pass by filtering the candidate out, not by clearing it.
+    expect(DEPLOYED_KEYS.has(row!.apiKeyEnv)).toBe(true);
+  });
+
+  it("keeps every chat serving role on a keyed personal-data-allowed candidate under the profile", () => {
+    const failures: string[] = [];
+    for (const role of SERVING_ROLES) {
+      if (allowedCandidates(effectiveChain("ollama", role)).length === 0) failures.push(role);
+    }
+    expect(failures).toEqual([]);
+  });
+
+  it("overrides exactly the four serving roles and keeps the cheap free-tier tail", () => {
+    // The profile is a chain-set switch, not a vendor-only rewrite: the roles it does
+    // not name must stay exactly the base chains, and the free-tier tail must stay in
+    // the cheap chain so the personal-data filter's trap case remains wired.
+    expect(Object.keys(MODELS.profiles?.["ollama"] ?? {}).sort()).toEqual([
+      "cheap",
+      "generator",
+      "reviewer",
+      "reviewer-live",
+    ]);
+    for (const role of SERVING_ROLES) {
+      if (role === "cheap" || role === "generator" || role === "reviewer") continue;
+      expect(effectiveChain("ollama", role), role).toEqual(MODELS.roles[role]?.chain);
+    }
+    const cheap = effectiveChain("ollama", "cheap");
+    const headVendor = cheap[0]!.slice(0, cheap[0]!.indexOf(":"));
+    const tailVendor = cheap.at(-1)!.slice(0, cheap.at(-1)!.indexOf(":"));
+    expect(MODELS.vendors[headVendor]?.personalDataAllowed).toBe(true);
+    expect(MODELS.vendors[tailVendor]?.freeTier).toBe(true);
+    expect(MODELS.vendors[tailVendor]?.personalDataAllowed).toBe(false);
+  });
+
+  it("the wiring parses the profile into the same chains the file declares", () => {
+    // `loadProviderConfig(profile)` is what `createProvidersFromEnv` resolves against;
+    // the file walk above and the parsed config must not describe different chains.
+    const profileConfig = loadProviderConfig("ollama");
+    for (const role of SERVING_ROLES) {
+      expect(profileConfig.roles[role]?.chain, role).toEqual(effectiveChain("ollama", role));
     }
   });
 });

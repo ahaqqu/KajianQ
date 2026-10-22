@@ -30,10 +30,21 @@ export type AppBindings = {
   GEMINI_PAID_API_KEY?: string;
   DASHSCOPE_API_KEY?: string;
   DEEPSEEK_API_KEY?: string;
+  /** The switchable chat vendor's key: required only by a profile that routes a
+   * serving role to its row. With such a profile selected and this key absent, the
+   * role fails with a typed provider error naming this variable — never a silent
+   * route to another vendor. */
+  OLLAMA_API_KEY?: string;
   /** The decision vendor's key: binds the reviewer pre-gate. Optional — an absent key
    * leaves the reviewer unchanged, because the pre-gate only ever removes spend
    * (fail-open). */
   JEV_API_KEY?: string;
+  /** The named provider profile from `models.json`'s `profiles` block. Absent,
+   * empty, or `default` = the checked-in default chains, so unsetting this variable
+   * is the rollback. Any other value must name a declared profile; an unknown name
+   * is a typed config failure when the chat wiring builds (at boot the provider
+   * posture report fails the process), never a silent default. */
+  PROVIDER_PROFILE?: string;
   /** The scope-expansion budget both triggers share — the surah the question names
    * and the short surah a retrieved verse completes — as a non-negative integer
    * string. Absent = the domain default; `0` disables both. Config, never a secret,

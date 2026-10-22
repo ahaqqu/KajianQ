@@ -135,6 +135,28 @@ export const SUB_PROCESSORS: readonly SubProcessor[] = [
     verdict: "permitted",
   },
   {
+    id: "ollama-cloud",
+    name: "Ollama",
+    status: "current",
+    role: {
+      // The switchable row: selected only by the `ollama` provider profile. The default
+      // chains (and the rollback) head the same roles with DeepSeek, so the row states
+      // the condition rather than claiming unconditional traffic.
+      id: "LLM: vendor obrolan yang dapat dipilih — rantai generator, reviewer, reviewer-live, dan murah saat profil penyedia `ollama` dipilih; profil default (dan rollback) memakai DeepSeek untuk peran yang sama.",
+      en: "LLM: the switchable chat vendor — the generator, reviewer, reviewer-live and cheap chains when the `ollama` provider profile is selected; the default profile (and the rollback) serves those roles with DeepSeek.",
+    },
+    personalData: {
+      id: "Pertanyaan obrolan + konteks yang tersusun; sub-kueri pengguna saat peran murah dilayani.",
+      en: "Chat question + assembled context; the user's sub-queries when the cheap role is served.",
+    },
+    tier: "paid",
+    verdict: "permitted",
+    note: {
+      id: "Ketentuan nol-retensi, tidak pernah dicatat, dan tidak untuk pelatihan — **tidak ada DPA yang ditandatangani di berkas**. Pemilik menerima basis itu (ADR-0059); ini bukan klaim DPA. Hanya aktif bila profil `ollama` dipilih.",
+      en: "Zero-retention, never-logged, never-trained terms — **no signed DPA is on file**. The owner accepted that basis (ADR-0059); this is not a DPA claim. Only active when the `ollama` profile is selected.",
+    },
+  },
+  {
     id: "alibaba",
     name: "Alibaba (Qwen / DashScope)",
     status: "no-serving-role",
@@ -170,10 +192,11 @@ export const SUB_PROCESSORS: readonly SubProcessor[] = [
   },
 ];
 
-/** The register rule the notice states above the table (ADR-0043 decision 3). */
+/** The register rule the notice states above the table (ADR-0043 decision 3, with
+ * the recorded exception of ADR-0059). */
 export const REGISTER_RULE: Localized = {
-  id: "Aturan register: data pribadi tidak pernah lewat tingkat gratis sebuah vendor — ketentuan tingkat gratis dapat mengizinkan masukannya dipakai di luar penyediaan layanan. Sebuah vendor hanya boleh membawa data pribadi pada ketentuan berbayar dengan perjanjian pemrosesan. Kolom tingkat dan putusan di bawah adalah kolom kepatuhan, bukan catatan biaya.",
-  en: "The register's rule: personal data never rides a vendor's free tier — a free tier's terms may permit using the input beyond providing the service. A vendor may carry personal data only on paid terms under a processing agreement. The tier and verdict columns below are compliance fields, not cost notes.",
+  id: "Aturan register: data pribadi tidak pernah lewat tingkat gratis sebuah vendor — ketentuan tingkat gratis dapat mengizinkan masukannya dipakai di luar penyediaan layanan. Sebuah vendor membawa data pribadi pada ketentuan berbayar dengan perjanjian pemrosesan, kecuali satu pengecualian yang tercatat: Ollama Cloud pada ketentuan nol-retensi/tanpa-pelatihan, tanpa DPA di berkas, yang diterima pemilik (ADR-0059). Kolom tingkat dan putusan di bawah adalah kolom kepatuhan, bukan catatan biaya.",
+  en: "The register's rule: personal data never rides a vendor's free tier — a free tier's terms may permit using the input beyond providing the service. A vendor carries personal data on paid terms under a processing agreement, except for one recorded exception: Ollama Cloud on its zero-retention/no-training terms, with no DPA on file, accepted by the owner (ADR-0059). The tier and verdict columns below are compliance fields, not cost notes.",
 };
 
 /** Where the register stands, stated rather than implied. */

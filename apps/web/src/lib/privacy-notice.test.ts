@@ -138,6 +138,7 @@ const CATALOG_IDS: Record<string, string> = {
   gemini: "gemini",
   "gemini-paid": "gemini-paid",
   deepseek: "deepseek",
+  "ollama-cloud": "ollama-cloud",
   alibaba: "qwen",
   typesafe: "typesafe",
 };

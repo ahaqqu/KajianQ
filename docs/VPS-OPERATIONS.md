@@ -323,12 +323,24 @@ carries that value on the workflow path.
 entry's, which reads the same `DATABASE_URL`). Its keys mirror
 `apps/api/src/lib/server.ts`'s `PASSTHROUGH_KEYS` exactly — a test
 (`tests/scripts/vps-hardening.test.mjs`) keeps the two in sync. Two keys are
-chat-path preconditions rather than optional: `DEEPSEEK_API_KEY` (the
-generator/router chain head **and** the reviewer, per the 2026-09-21
-same-vendor owner decision; ADR-0044 decision 7) and `GEMINI_PAID_API_KEY` (the embedder head). Without
-them the reviewer or embedder stage fails with a typed error while `/v1/health`
-and anonymous minting stay green — so the deploy's smokes alone do not prove
-they are present.
+chat-path preconditions rather than optional under the default profile:
+`DEEPSEEK_API_KEY` (the generator/router chain head **and** the reviewer, per
+the 2026-09-21 same-vendor owner decision; ADR-0044 decision 7) and
+`GEMINI_PAID_API_KEY` (the embedder head). Without them the reviewer or
+embedder stage fails with a typed error while `/v1/health` and anonymous
+minting stay green — so the deploy's smokes alone do not prove they are present.
+
+**The switchable chat profile (ADR-0059).** `PROVIDER_PROFILE` selects a named
+chain set from `models.json`; absent or `default` is the DeepSeek mix above.
+With `PROVIDER_PROFILE=ollama`, the generator, reviewer, reviewer-live and
+cheap chains re-head on Ollama Cloud and `OLLAMA_API_KEY` becomes the
+precondition in place of `DEEPSEEK_API_KEY` for those roles (the embedder still
+needs `GEMINI_PAID_API_KEY`). A missing `OLLAMA_API_KEY` under that profile
+fails each call with a typed error naming it — never a silent route back to
+DeepSeek. Switch with `sudoedit /etc/kajianq/api.env` plus
+`sudo systemctl restart kajianq-api`; roll back by removing the
+`PROVIDER_PROFILE` line and restarting. Confirm which vendor answered from the
+answer trace's model identity.
 
 `KAJIANQ_WEB_ROOT=/srv/kajianq/web` is load-bearing. The unit's
 `WorkingDirectory` is `/srv/kajianq/api`, so the code's inline default, the

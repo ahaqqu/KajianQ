@@ -3,6 +3,7 @@ import {
   loadProviderConfig,
   parseCandidateKey,
   parseProviderConfig,
+  ProviderConfigError,
   resolveChain,
 } from "./provider-config";
 import { testVendor } from "./test-fixtures";
@@ -65,6 +66,42 @@ describe("provider config", () => {
     ).toThrow(/empty chain/);
     expect(() => parseCandidateKey("no-colon")).toThrow(/malformed candidate key/);
     expect(() => parseCandidateKey("vendoronly:")).toThrow(/malformed candidate key/);
+  });
+
+  it("validates a profile's override chains and roles at load time", () => {
+    // A profile is data like the base chains: a dangling candidate or an override
+    // of a role that does not exist is a config fault, whether or not the profile
+    // is the one this deployment selects.
+    const base = {
+      vendors: { test: testVendor },
+      roles: { cheap: { chain: ["test:m-chat"] } },
+    };
+    expect(() =>
+      parseProviderConfig({ ...base, profiles: { alt: { cheap: ["test:missing"] } } }),
+    ).toThrow(/profile "alt" role "cheap" references unknown model "missing"/);
+    expect(() => parseProviderConfig({ ...base, profiles: { alt: { cheap: [] } } })).toThrow(
+      /profile "alt" role "cheap" has an empty chain/,
+    );
+    expect(() =>
+      parseProviderConfig({ ...base, profiles: { alt: { unknownRole: ["test:m-chat"] } } }),
+    ).toThrow(/profile "alt" overrides unknown role "unknownRole"/);
+    // A valid profile parses and stays separable from the base roles.
+    const parsed = parseProviderConfig({
+      ...base,
+      profiles: { alt: { cheap: ["test:m-embed"] } },
+    });
+    expect(parsed.roles.cheap?.chain).toEqual(["test:m-chat"]);
+    expect(parsed.profiles?.alt?.cheap).toEqual(["test:m-embed"]);
+  });
+
+  it("reports every config fault as the typed ProviderConfigError", () => {
+    // The composition root distinguishes a misconfigured deployment from a code
+    // defect on this type; the base schema's faults are not a second error class.
+    expect(() => parseCandidateKey("no-colon")).toThrow(ProviderConfigError);
+    expect(() =>
+      parseProviderConfig({ vendors: { test: testVendor }, roles: { cheap: { chain: [] } } }),
+    ).toThrow(ProviderConfigError);
+    expect(() => resolveChain(loadProviderConfig(), "no-such-role")).toThrow(ProviderConfigError);
   });
 
   it("resolveChain returns candidates in chain order", () => {
