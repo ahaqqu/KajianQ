@@ -76,6 +76,24 @@ central promise into a check. D3 next, because it is cheap and measured. D4 last
 for the identity class behind a flag, because it is the only one that changes the latency
 envelope a user feels.
 
+## If you do not rule: what I will and will not do
+
+Silence is not a decision, so this is the default I will act on, chosen to be the least
+presumptuous option that still makes progress:
+
+- **D2 — proceed, as a measurement only.** Quote fidelity enters the eval harness as a scored
+  field computed from the chunks an answer cites. It gates nothing, changes no answer, and
+  gives the module the caller the Definition of Done requires. A gate would wait for your word.
+- **D1 — hold.** Evidence units change what the gate accepts, which changes what the product
+  promises. The three proposals stay proposals until a curator signs them.
+- **D3 — hold.** Six queries per question change the cost and latency of every answer.
+- **D4 — hold.** The tool loop changes the latency a user feels.
+- **#638 and #639 — hold.** Both are religious-classification and product-scope rulings; the
+  numbers I posted bound their consequences, they do not choose.
+
+Anything that would merge to `main`, re-embed the corpus, or alter what a user is told to
+trust waits for an explicit decision.
+
 ## What remains unbuilt until you choose
 
 The pipeline integration of all four, the corpus-wide label prefix (E1 measured 4/9 → 7/9 on
