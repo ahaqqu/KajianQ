@@ -28,6 +28,8 @@ The rewrite must address all four. A better embedder alone addresses none of the
 | [`answer-attribution.md`](answer-attribution.md)                     | how to define traceability so it can be checked: evidence units, equivalence relations, quote fidelity, a gate that stays strict                      |
 | [`agentic-probe.md`](agentic-probe.md)                               | our own measured probe: a tool-using model reaching evidence that single-shot retrieval misses, and where it fails                                    |
 | [`proposal-v2.md`](proposal-v2.md)                                   | the proposed architecture, the experiments that would falsify it, cost and risk                                                                       |
+| [`experiments.md`](experiments.md)                                   | E1–E10: what we measured, including two probes whose first run measured the harness rather than the system                                            |
+| [`decision-brief.md`](decision-brief.md)                             | one page: the five settled facts, the four decisions, the recommended order, and what each one buys                                                   |
 | [`../../research/agentic-probe.py`](../../research/agentic-probe.py) | the probe harness, so the measurement can be repeated                                                                                                 |
 
 ## Method
@@ -43,7 +45,11 @@ The rewrite must address all four. A better embedder alone addresses none of the
 
 ## Status
 
-Research complete for the two questions that blocked the design, and the first
-experiment has run — it killed the expensive half of the plan (generated contextual
-headers) and left a cheap half standing (the address and name in the embedded text).
-Implementation is not started; `proposal-v2.md` orders what remains.
+Ten experiments have run. Three artefacts exist as tested code and none is wired into the
+pipeline: quote fidelity, multi-shape query expansion, and evidence units. The expensive
+half of the original plan — generated contextual headers — was falsified and dropped; the
+address-and-name label prefix survived on Quran but has not been measured on hadith, where it
+would mean re-embedding 42k rows of a paid corpus.
+
+`decision-brief.md` is the ask: four decisions, in the order the measurements support. Nothing
+here is binding until the owner accepts it and it becomes an ADR.
