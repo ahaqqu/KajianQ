@@ -145,3 +145,49 @@ changed number, a swapped name) — the words are still in the passage. That cla
 to the model tier and is what the swap test in [`answer-attribution.md`](answer-attribution.md)
 §7 measures. The two tiers are complementary: this one has no false accepts on the
 "wrong chunk" and "paraphrase" classes and costs nothing.
+
+## E4 — The swap test: may a model checker hold a gate seat? (2026-10)
+
+**Question.** [`answer-attribution.md`](answer-attribution.md) §7 sets the rule: if a cheap
+model checker accepts a wrong-address or a minimally-edited quote, it cannot gate claim
+support. This is the measurement.
+
+**Setup.** Six claims, each with four quotes, all drawn from real corpus rows
+(`research/evidence-swap-test.py`, `deepseek-chat`, temperature 0):
+
+- **true** — a window around the claim's keyword inside the cited row;
+- **parallel** — a window from the same report under another chain or an adjacent verse;
+- **wrong-address** — a window from a passage on another topic;
+- **adversarial** — the true quote with one meaning-flipping edit, applied only where the
+  edit provably changes the text (a negated verb, a swapped _haram/halal_, `Tidak ada` → `Ada`).
+
+**The first run was invalid and is worth recording.** Its quotes started at the isnad and
+never reached the matn, so the "true" condition was accepted only 2 of 6 times — the matrix
+measured my construction, not the checker. A swap test must assert that each _true_ quote
+actually supports its claim, and that each adversarial edit actually changed the text.
+
+**Result** (corrected construction): 24 checks.
+
+| condition     | accepted | wanted |
+| ------------- | -------: | ------ |
+| true          |  **6/6** | accept |
+| parallel      |      5/6 | accept |
+| wrong-address |  **0/6** | reject |
+| adversarial   |  **1/6** | reject |
+
+**Decision.** The rule fires: the checker false-accepted one adversarial quote — `Tidak ada
+sesuatu pun yang serupa dengan-Nya` edited to `Ada sesuatu pun yang serupa dengan-Nya`,
+judged as supporting _"Allah tidak menyerupai makhluk-Nya"_. A negation flip is the classic
+weakness, and one false accept is enough. **The model checker does not gate claim support;
+it is a diagnostic.** The gate rests on `quoteFidelity` plus curated units, exactly as the
+contract anticipated.
+
+**What it is nevertheless good for.** It rejected every wrong-address quote (6/6) and
+accepted every genuine one — a useful _alert_ for answers whose support is doubtful, and a
+plausible acceptance test for parallel evidence (5/6; the single rejection is a quote that
+genuinely does not state the claimed reward, so the checker was right). It must never be
+the thing that lets an answer through.
+
+**Caveats.** One model, one prompt, six claims, one draw each. The negation class is known
+hard for English checkers and has no Arabic/Indonesian evaluation; the single failure here
+is consistent with the ~80% attribution ceiling reported for fine-tuned models.
