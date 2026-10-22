@@ -196,9 +196,8 @@ export function failureLines(failed, questions) {
  * `reportAddressMisses` is the reported-not-gated line: the smoke sets it because its
  * sample cannot decide the full set, and the misses are read from the run's own scored
  * outcomes — never a caller-supplied list — with the sample named as the line's scope.
- * Its denominator is the measured set — the scored rows carrying `citationAddressRecall`,
- * the same set as its misses and the mean above it; `eval:run`, which gates on the
- * dimension, omits the switch.
+ * Its denominator is the measured set — the scored rows carrying `citationAddressRecall`;
+ * `eval:run`, which gates on that dimension, omits the switch.
  */
 export function printSummary(
   prefix,
@@ -209,6 +208,7 @@ export function printSummary(
   const skipped = result.results.filter((x) => x.skipped === true);
   const failed = scored.filter((x) => x.passed !== true);
   const addressMeasured = scored.filter(hasAddressRecall);
+  const quoteMeasured = scored.filter((x) => x.quoteFidelity !== undefined);
   const addressMisses = addressMeasured
     .filter((x) => x.citationAddressRecall < 1)
     .map((x) => x.questionId);
@@ -231,6 +231,7 @@ export function printSummary(
           ]
         : []),
       `  mean citation validity: ${mean(scored.map((x) => x.citationValidity))?.toFixed(3) ?? "n/a"}`,
+      `  mean quote fidelity: ${mean(quoteMeasured.map((x) => x.quoteFidelity))?.toFixed(3) ?? "n/a"} (${quoteMeasured.length} of ${scored.length} answers quoted)`,
       `  cost: ${(costMicroUsd / 1e6).toFixed(6)} USD  budget exceeded: ${result.budgetExceeded}`,
       ...expansionLines(scored),
       ...failureLines(failed, questions),

@@ -64,7 +64,13 @@ export type TraceEventLike = {
  * labels the SERVER grounded against the persisted trace, never the rest of the
  * frame (Arabic, translation, badges). */
 export type CitationFrameLike = {
-  citations: readonly { label: string }[];
+  citations: readonly {
+    label: string;
+    /** The Arabic original of the cited chunk, when the frame carries it. */
+    arabic?: string;
+    /** The Indonesian translation of the cited chunk, when the frame carries it. */
+    translation?: string;
+  }[];
 };
 
 /** The chat-citation grammar the harness scores citation validity with, injected by

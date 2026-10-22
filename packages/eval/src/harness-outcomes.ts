@@ -1,6 +1,7 @@
 import type { EvalResultOutcome, GoldenQuestion } from "@app/contracts";
 import { StoreError } from "@app/rag-core";
-import type { ChunkRefLike, TraceEventLike } from "./harness-types";
+import type { ChunkRefLike, CitationFrameLike, TraceEventLike } from "./harness-types";
+import { auditQuotes } from "./quote-fidelity";
 import { sourceTypeRecall } from "./scorers";
 
 /** Per-question outcome helpers, split out of `harness.ts` to respect the agentic
@@ -143,4 +144,27 @@ export function skippedOutcome(question: GoldenQuestion, err: unknown): EvalResu
     skipped: true,
     notes: [`skipped: ${err instanceof Error ? err.message : String(err)}`],
   };
+}
+
+/**
+ * Quote fidelity for one answer, from the text the citations frame carries.
+ *
+ * Omitted — never scored 0 — when the answer quotes nothing or the frame carries no cited text:
+ * neither state says anything about whether the evidence checks out, and a 0 would read as a
+ * failed claim. Verifies existence, not attribution: a span found in any cited chunk counts.
+ */
+export function quoteFidelityOutcome(
+  answerText: string,
+  frame: CitationFrameLike | null | undefined,
+): { quoteFidelity?: number } {
+  const citedTexts = (frame?.citations ?? []).flatMap((citation) => {
+    const text = [citation.translation, citation.arabic].filter(
+      (part): part is string => typeof part === "string" && part.length > 0,
+    );
+    return text.map((part) => ({ label: citation.label, text: part }));
+  });
+  const quotes = auditQuotes(answerText, citedTexts);
+  return quotes.quoted > 0 && citedTexts.length > 0
+    ? { quoteFidelity: quotes.verified / quotes.quoted }
+    : {};
 }

@@ -91,12 +91,26 @@ export function parseCitationsFrame(data: string): CitationFrameLike | null {
   try {
     const parsed = JSON.parse(data) as { citations?: unknown };
     if (!Array.isArray(parsed.citations)) return null;
-    const labels: string[] = [];
+    const citations: Array<{ label: string; arabic?: string; translation?: string }> = [];
     for (const entry of parsed.citations) {
-      const label = (entry as { label?: unknown } | null)?.label;
-      if (typeof label === "string" && label !== "") labels.push(label);
+      const record = entry as { label?: unknown; arabic?: unknown; translation?: unknown } | null;
+      const label = record?.label;
+      if (typeof label !== "string" || label === "") continue;
+      // The chunk's text travels with the citation (ADR-0040) and is what quote fidelity is
+      // measured against; a frame without it leaves the metric unmeasured, never failed.
+      const arabic =
+        typeof record?.arabic === "string" && record.arabic !== "" ? record.arabic : undefined;
+      const translation =
+        typeof record?.translation === "string" && record.translation !== ""
+          ? record.translation
+          : undefined;
+      citations.push({
+        label,
+        ...(arabic !== undefined ? { arabic } : {}),
+        ...(translation !== undefined ? { translation } : {}),
+      });
     }
-    return { citations: labels.map((label) => ({ label })) };
+    return { citations };
   } catch {
     console.warn(`eval: malformed SSE citations payload: ${data.slice(0, 200)}`);
     return null;

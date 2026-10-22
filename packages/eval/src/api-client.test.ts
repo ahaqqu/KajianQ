@@ -79,9 +79,10 @@ describe("consumeSseToText", () => {
     expect(result.text).toBe("y");
   });
 
-  it("captures the citations frame's grounded labels (ADR-0040)", async () => {
+  it("captures the citations frame's grounded labels and their text (ADR-0040)", async () => {
     // The wire order is meta → deltas → citations → trace → done; the scorer
-    // reads these labels in preference to re-parsing the answer text.
+    // reads these labels in preference to re-parsing the answer text, and the
+    // text travels with them because quote fidelity is measured against it.
     const { body } = sseResponse([
       'event: meta\ndata: {"messageId":"m1","traceId":"t1"}\n\n',
       "event: delta\ndata: the answer cites \n\n",
@@ -92,7 +93,7 @@ describe("consumeSseToText", () => {
     ]);
     const result = await consumeSseToText(body);
     expect(result.text).toBe("the answer cites alpha");
-    expect(result.citations).toEqual({ citations: [{ label: "alpha" }] });
+    expect(result.citations).toEqual({ citations: [{ label: "alpha", arabic: "x" }] });
   });
 
   it("leaves citations null when the frame is absent", async () => {
