@@ -36,14 +36,14 @@ Over-refusal becomes its own reported axis. This is the change that makes the ga
 measure trust rather than curation taste — and it can land **before** any model or
 corpus change, which is why it is Phase 0.
 
-### 2. The corpus carries the question's vocabulary
+### 2. The corpus carries its own address and name
 
-Each row's embedded text is prefixed with its canonical address and 60–100 tokens of
-chunk-specific context written in the vocabulary an Indonesian lay question would use
-(what this passage teaches, its theme, its collection and book). Both tracks are
-re-embedded. The evidence for this and its falsification condition are in
-[`retrieval-evidence.md`](retrieval-evidence.md) §10: it is the _chunk-specific_ variant,
-not the generic label already measured.
+Each row's embedded text is prefixed with its canonical address and its surah (Quran) or
+collection and book (hadith). **No generated context line**: the experiment measured both
+and the generic label won — top-10 4/9 → 7/9, with three rows moving from rank 14–101 to
+1–3 — while the generated line never beat it. See [`experiments.md`](experiments.md). The
+prefix is derived deterministically at ingest time, so it costs no vendor call and no
+curation.
 
 ### 3. The query is rewritten before it is embedded
 
@@ -82,14 +82,14 @@ loop works; it is also the most expensive and least reversible change, so it goe
 
 ## Phases, each with a stop condition
 
-| phase | change                                                                          | cost                   | stop / falsify                                                                      |
-| ----- | ------------------------------------------------------------------------------- | ---------------------- | ----------------------------------------------------------------------------------- |
-| **0** | evidence units, quote fidelity, gate split; re-score the current 21 rows        | days, $0               | none — this is the honest baseline; every later phase is judged on it               |
-| **1** | contextual headers on the **Quran subset** (6,236 rows), V0/V1/V2 comparison    | ≈ $1–2                 | stop if V2 does not put `42:11` in the top 100 and beat V1's top-10 by ≥3 questions |
-| **2** | query rewrite + address-hypothesis candidates                                   | one cheap call/query   | stop if neither moves the rank trajectory of the named rows                         |
-| **3** | extend headers to hadith (36k rows)                                             | ≈ $3–6                 | stop if top-10 recall on the Golden Set does not improve                            |
-| **4** | bounded tool loop behind a flag                                                 | +3–6 calls/query       | adopt only if Phases 1–3 leave a measured gap                                       |
-| **5** | tier-1 checker swap test (true / parallel / wrong-address / adversarial quotes) | one forward pass/claim | if it false-accepts any wrong-address quote, it is a diagnostic, not a gate         |
+| phase  | change                                                                                  | cost                   | stop / falsify                                                                |
+| ------ | --------------------------------------------------------------------------------------- | ---------------------- | ----------------------------------------------------------------------------- |
+| **0**  | evidence units, quote fidelity, gate split; re-score the current 21 rows                | days, $0               | none — this is the honest baseline; every later phase is judged on it         |
+| **1**  | ~~generated contextual headers~~ — **ran, falsified**: the generic label beat them      | ≈$0.8, unmetered       | [`experiments.md`](experiments.md); the re-embed-with-headers plan is dropped |
+| **1b** | label prefix (address + surah/book) in the embedded text, hadith included, then measure | one re-embed pass      | stop if hadith top-10 recall does not improve over today                      |
+| **2**  | query rewrite + address-hypothesis candidates                                           | one cheap call/query   | stop if neither moves the rank trajectory of the named rows                   |
+| **4**  | bounded tool loop behind a flag                                                         | +3–6 calls/query       | adopt only if Phases 1b–2 leave a measured gap                                |
+| **5**  | tier-1 checker swap test (true / parallel / wrong-address / adversarial quotes)         | one forward pass/claim | if it false-accepts any wrong-address quote, it is a diagnostic, not a gate   |
 
 ## Cost envelope
 
@@ -101,9 +101,10 @@ corpus surgery without snapshots.
 
 ## Risks and mitigations
 
-- **Corpus surgery risks the paid asset.** Contextual headers are a re-ingest: pre- and
+- **Corpus surgery risks the paid asset.** Any re-embed is still a re-ingest: pre- and
   post-ingest snapshots with manifest verification (ADR-0038) bracket every run, and the
-  old rows stay readable until the new snapshot is verified.
+  old rows stay readable until the new snapshot is verified. The label prefix is small
+  enough to be re-derivable, which is exactly why it is preferred over generated text.
 - **A unit map can drift and silently pass rows.** Enforce member-existence against the
   snapshot, render every accepted equivalence in the trace, and audit the map — the
   contract is only as honest as the curation behind it.

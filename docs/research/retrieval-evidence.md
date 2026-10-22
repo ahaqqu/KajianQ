@@ -134,23 +134,24 @@ Constraints: one VPS, Postgres + pgvector, offline ingestion, hosted APIs allowe
   was worse).
 - Whether a generator reliably names the right verse is empirical, and it gates option 2.
 
-## 10. The first experiment, and its falsification
+## 10. The experiment, and what it returned
 
-Build three text variants for every row in a scratch table, embedding each with the
-**same** `gemini-embedding-001` track:
+The first experiment was run on the Quran subset — three variants of the embedded text
+(today's text, the generic address+surah label, and a generated chunk-specific context
+line), ranked against nine questions that require a verse. Full table and caveats in
+[`experiments.md`](experiments.md).
 
-- **V0** today's text;
-- **V1** generic chapter label (already measured: 12/18 top-10, mean rank 13.4);
-- **V2** canonical address + 60–100 tokens of chunk-specific context generated once from
-  the parent, written in the vocabulary an Indonesian question would use.
+The result changed the plan:
 
-Measure the exact rank of `QS. 42:11` and `QS. 1:1` for their own questions, and top-10
-recall on the Golden Set.
+- **The generic label is the win.** Putting the address and surah name in the embedded
+  text lifted top-10 from 4/9 to 7/9 and moved three questions from rank 14–101 to 1–3.
+  It is deterministic, free, and reversible.
+- **The generated context line did not beat it** (7/9, worse rank on five of nine rows).
+  The hypothesis that chunk-specific context closes the gap is **falsified for this
+  corpus**, and the re-embed-with-headers plan is dropped.
+- **Neither touches the identity class.** `QS. 42:11` never enters the top 100 in any
+  variant; only reformulation found it (see [`agentic-probe.md`](agentic-probe.md)).
 
-**Falsified if** V2 does not (i) move 42:11 inside the top 100 **and** (ii) beat V1's
-top-10 count by at least three questions. If it is falsified, representation is not the
-lever for this corpus and the next money goes to option 2 alone.
-
-With ~21 questions, a two-question difference is noise: the held-out set is a regression
-guardrail, and the decision statistic is the deterministic rank trajectory of the named
-rows.
+So the ranked options above narrow: option 1 becomes "label, do not re-embed", option 2
+(the verified address hypothesis) carries the identity class alone, and option 3–7 stay
+where they were.

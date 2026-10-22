@@ -43,7 +43,7 @@ The rewrite must address all four. A better embedder alone addresses none of the
 
 ## Status
 
-Research complete for the two questions that blocked the design: how to represent the
-corpus so the needed evidence is reachable, and how to check an answer's traceability
-without loosening trust. Implementation is not started; `proposal-v2.md` orders the
-experiments.
+Research complete for the two questions that blocked the design, and the first
+experiment has run — it killed the expensive half of the plan (generated contextual
+headers) and left a cheap half standing (the address and name in the embedded text).
+Implementation is not started; `proposal-v2.md` orders what remains.
