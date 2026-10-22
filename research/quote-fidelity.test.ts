@@ -104,3 +104,15 @@ describe("quotedSpans", () => {
     expect(quotedSpans('kata "ini" saja')).toEqual([]);
   });
 });
+
+describe("normalise — Indonesian orthography", () => {
+  it("treats a spaced and an unspaced divine epithet as the same words", () => {
+    expect(normalise("Yang Maha Perkasa")).toBe(normalise("Yang Mahaperkasa"));
+    expect(
+      quoteIsFaithful(
+        "Maha Perkasa lagi Mahabijaksana",
+        "Dialah Yang Mahaperkasa lagi Mahabijaksana.",
+      ),
+    ).toBe(true);
+  });
+});

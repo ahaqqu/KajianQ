@@ -98,15 +98,17 @@ for (const row of rows) {
       rowFaithful += 1;
       continue;
     }
-    if (
+    if (target === undefined) {
+      // No marker, no citation claim: the words may be the question's own terms.
+      unattributed += 1;
+    } else if (
       row.passages.some(
         (passage) =>
           quoteIsFaithful(span.quote, passage.text) ||
           quoteIsFaithful(span.quote, sourceText(passage.address)),
       )
     ) {
-      if (target === undefined) unattributed += 1;
-      else misattributed += 1;
+      misattributed += 1;
     } else {
       fabricated += 1;
     }

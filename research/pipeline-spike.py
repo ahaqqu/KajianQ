@@ -96,6 +96,17 @@ def one_question(question: str) -> dict:
     passages = [by_address[address] for address in chosen if address in by_address]
     if len(passages) < 3:
         passages = pool[:5]
+    # Re-read the chosen rows in full: the union stage carries excerpts for ranking, but an
+    # answer must see the whole chunk, and the checker must judge against it.
+    for passage in passages:
+        predicate = rewrite.locate(passage["address"])
+        if predicate is None:
+            continue
+        full = rewrite.sql(
+            f"""select regexp_replace(text_id, E'[\\n\\r\\t]+', ' ', 'g')
+                from doc_children where {predicate} limit 1""")
+        if full and full[0][0]:
+            passage["text"] = full[0][0]
 
     listing = "\n".join(f"[{i + 1}] {candidate['address']} — {candidate['text'][:700]}"
                         for i, candidate in enumerate(passages))

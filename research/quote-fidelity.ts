@@ -28,13 +28,17 @@ const ELLIPSIS = /\.\.\.|…/u;
  * punctuation and case — so a faithful quote is never rejected over orthography.
  */
 export function normalise(text: string): string {
-  return text
-    .replace(DIACRITICS, "")
-    .replace(/[أإآىةؤئ]/gu, (character) => FOLD[character] ?? character)
-    .toLowerCase()
-    .replace(/[^\p{L}\p{N}\u0600-\u06FF ]+/gu, " ")
-    .replace(/\s+/gu, " ")
-    .trim();
+  return (
+    text
+      .replace(DIACRITICS, "")
+      .replace(/[أإآىةؤئ]/gu, (character) => FOLD[character] ?? character)
+      .toLowerCase()
+      // Indonesian writes the divine epithets both ways: "Maha Perkasa" and "Mahaperkasa".
+      .replace(/\bmaha\s+/gu, "maha")
+      .replace(/[^\p{L}\p{N}\u0600-\u06FF ]+/gu, " ")
+      .replace(/\s+/gu, " ")
+      .trim()
+  );
 }
 
 /**
