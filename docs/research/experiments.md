@@ -327,3 +327,40 @@ E10's mechanism is implemented as [`research/query-expansion.ts`](../../research
 `unionCandidates` unions by row id while keeping the shape that surfaced each row first, so
 the trace can show which query produced a hit. Tests run with
 `bun test research/query-expansion.test.ts`. It is a research artefact, not a pipeline stage.
+
+## E11 — Given the evidence, does the answer quote it honestly? (2026-10)
+
+**Setup.** Nine questions, each answered over five passages: the required row plus four
+near neighbours (the gold passaged ranked first in the prompt, the distractors chosen by
+embedding similarity, and the addresses shown as `neighbour-n` so the model cannot simply
+repeat the gold address). The instruction is product-shaped: answer in Indonesian, quote a
+short phrase per claim, cite `[n]`, add nothing from outside. The quotations are then checked
+by the deterministic checker in `research/quote-fidelity.ts`
+(`research/answer-generation-probe.py`, `research/answer-fidelity-report.ts`).
+
+**Result.** 27 quoted spans across nine answers: **26 faithful to the passage they point at,
+1 unattributed (words present, no marker), 0 misattributed, 0 fabricated.** Every answer used
+the gold passage at least once, and none named an address that was not in its context.
+
+**The first report said four quotes were fabricated, and that was wrong.** The quote
+extractor paired a _closing_ straight quote with the next _opening_ one, so it sliced
+`…" [2] dan "…` into a span no passage can contain. Typographic quotes are unambiguous and are
+now taken first; the remaining straight quotes are split by parity, and spans under eight
+characters are skipped as emphasis or quoted terms rather than checked. Four tests pin the
+behaviour, including the adjacent-quote case. A gate that invents failures is as damaging as
+one that misses them, and this one would have refused honest answers.
+
+**Behaviour worth more than the number.** Two of the nine refused: `gs-v0-012` said the source
+does not explain the meanings of _ar-Rahman_ and _ar-Rahim_ (the required row is `QS. 1:1`,
+which merely names them), and `gs-v0-017` said the sources do not state the ruling on praying
+in gold — while the required passage does say gold is _haram_ for men. Both refusals are
+textually defensible and require a one-step inference to answer. The Golden Set counts both as
+failures, so this is a **calibration** problem — the system is punished for a correct refusal
+and rewarded for an inference it was not asked to make explicit.
+
+**Consequence for the gate.** Fidelity alone would pass an empty answer: it checks that
+whatever is quoted is real, not that the requirement was covered. A gate therefore needs both
+`quoteFidelity` and `unitRecall`, which is the split `answer-attribution.md` describes.
+
+**Caveat.** Passages were capped at 700 characters, which truncated the two longest hadith
+rows (1,034 and 772 characters); both still answered and cited. The other seven were complete.

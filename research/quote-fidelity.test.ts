@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { checkAnswer, normalise, quoteIsFaithful } from "./quote-fidelity";
+import { checkAnswer, normalise, quoteIsFaithful, quotedSpans } from "./quote-fidelity";
 
 const HADITH =
   "Telah menceritakan kepada kami [Malik] dari [Nafi] dari [Ibnu Umar] bahwa Rasulullah " +
@@ -80,5 +80,27 @@ describe("checkAnswer", () => {
         reason: "no-citations",
       },
     ]);
+  });
+});
+
+describe("quotedSpans", () => {
+  it("does not pair a closing straight quote with the next opening one", () => {
+    const spans = quotedSpans('Ia berkata "kalimat pertama" [1] dan "kalimat kedua" [2].');
+    expect(spans.map((span) => span.quote)).toEqual(["kalimat pertama", "kalimat kedua"]);
+  });
+
+  it("reads typographic quotes and straight quotes in the same answer", () => {
+    const spans = quotedSpans('Teks “kalimat pertama” [1] lalu "kalimat kedua" [2].');
+    expect(spans.map((span) => span.quote)).toEqual(["kalimat pertama", "kalimat kedua"]);
+  });
+
+  it("keeps the end offset at the closing mark so a [n] marker can be attached", () => {
+    const answer = 'Lihat "teks kutipan" [3].';
+    const [span] = quotedSpans(answer);
+    expect(answer.slice(span.end).trimStart().startsWith("[3]")).toBe(true);
+  });
+
+  it("skips emphasis-length spans instead of checking them", () => {
+    expect(quotedSpans('kata "ini" saja')).toEqual([]);
   });
 });
