@@ -1,0 +1,44 @@
+{
+  "id": "equivalence-proposals-v0",
+  "note": "Proposed evidence units for the three rows #627 D1 asks about. Every member is a corpus row whose text was read; every canonical is the address the Golden Set requires. Status is 'proposed': a curator signs or rejects each unit, and nothing here is a finding about which narration is authoritative.",
+  "units": [
+    {
+      "unitId": "unit.zakat-obligation",
+      "kind": "hadith",
+      "canonical": { "label": "HR. Bukhari no. 1395", "address": "HR. Bukhari no. 1395" },
+      "members": [
+        { "label": "HR. Bukhari no. 1395", "address": "HR. Bukhari no. 1395" },
+        { "label": "HR. Abu Dawud no. 1584", "address": "HR. Abu Dawud no. 1584" }
+      ],
+      "relation": "same-transmission",
+      "evidence": "One isnad: Ahmad bin Hanbal -> Waki' -> Zakariya bin Ishaq -> Yahya bin Abdullah bin Shayfiy -> Abu Ma'bad -> Ibn Abbas. Two collections carry the same transmission of the Mu'adz zakat report.",
+      "status": "proposed"
+    },
+    {
+      "unitId": "unit.gold-and-silk",
+      "kind": "hadith",
+      "canonical": { "label": "HR. Nasai no. 5144", "address": "HR. Nasai no. 5144" },
+      "members": [
+        { "label": "HR. Nasai no. 5144", "address": "HR. Nasai no. 5144" },
+        { "label": "HR. Ibnu Majah no. 3597", "address": "HR. Ibnu Majah no. 3597" }
+      ],
+      "relation": "same-matn-different-chain",
+      "evidence": "Different companions and chains (Ali bin Abu Thalib; Abdullah bin Amru) but a near-identical matn: 'these two things are forbidden to the men of my community', of gold and silk. Equivalence is a curation judgement, not a chain fact.",
+      "status": "proposed"
+    },
+    {
+      "unitId": "unit.joining-prayers-while-travelling",
+      "kind": "hadith",
+      "canonical": { "label": "HR. Bukhari no. 1108", "address": "HR. Bukhari no. 1108" },
+      "members": [
+        { "label": "HR. Bukhari no. 1108", "address": "HR. Bukhari no. 1108" },
+        { "label": "HR. Nasai no. 598", "address": "HR. Nasai no. 598" },
+        { "label": "HR. Malik no. 326", "address": "HR. Malik no. 326" }
+      ],
+      "relation": "same-ruling-different-reports",
+      "evidence": "Three narrations of one permission: Bukhari 1108 (Salim from his father), Nasai 598 (Nafi' from Ibn Umar), Malik 326 (Abu Hurairah, the Tabuk journey). A unit may hold these only if the requirement is the ruling rather than the narration.",
+      "status": "proposed",
+      "requiresDecision": "Does the Golden Set require the ruling or the report?"
+    }
+  ]
+}

@@ -59,6 +59,12 @@ An unmapped label remains its own singleton (fail-closed). Every accepted equiva
 (`address-identical` vs `curated-identity`), so a reader can see that the answer cited a
 parallel narration rather than the canonical address.
 
+Three of these are written out as a machine-readable proposal a curator can sign or reject
+(`research/equivalence-proposals.json`, pinned by `research/equivalence-proposals.test.ts`):
+every unit validates, every canonical is an address the fixture requires, and each carries the
+relation and the evidence for it. The file is a proposal, not a finding — it says which rows
+were read and which chains compared, not which narration is authoritative.
+
 Worked examples from the corpus, verified, showing why the relations must stay distinct:
 
 - **Same transmission, two collections.** `Bukhari 1395` and `Abu Dawud 1584` carry one isnad
