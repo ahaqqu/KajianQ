@@ -364,3 +364,47 @@ whatever is quoted is real, not that the requirement was covered. A gate therefo
 
 **Caveat.** Passages were capped at 700 characters, which truncated the two longest hadith
 rows (1,034 and 772 characters); both still answered and cited. The other seven were complete.
+
+## E12 — End-to-end spike over the whole Golden Set (2026-10)
+
+**Setup.** Every question goes through the four stages this notebook argues for: six queries in
+three shapes, retrieval and union per query, rerank to five passages, then an answer in
+Indonesian that quotes and cites each claim. The answers are checked against the full corpus
+text (not the prompt excerpt) by the deterministic checker
+(`research/pipeline-spike.py`, `research/spike-report.ts`). Eighteen of the twenty-one
+questions carry a required citation; three do not and are excluded from the ratio.
+
+**Result.**
+
+|                                               |                                                            |
+| --------------------------------------------- | ---------------------------------------------------------: |
+| required row among the five selected passages |                                                   **9/18** |
+| answers that hedge ("the sources do not say") |                                                       7/18 |
+| **uncovered but answered confidently**        |                                                   **5/18** |
+| covered and still hedged                      |                                                       3/18 |
+| quoted spans                                  |                                                         73 |
+| — attached to a `[n]` marker                  |                                                         69 |
+| — faithful to the passage they cite           |                                                  **68/69** |
+| — a paraphrase dressed as a quotation         |                                                          1 |
+| — unattached to any marker                    | 4 (2 exist in a passage, 2 quote the question's own words) |
+
+**The one bad cited quote is the gate working.** The answer wrote _"berkumur-kumur dan
+beristinsyaq … tiga kali cidukan"_; the source says _"berkumur-kumur, lalu memasukkan air ke
+hidung dari satu cedukan telapak tangannya"_. The technical term was substituted inside
+quotation marks — precisely the class of claim a reader cannot check, and the checker caught it
+without a model in the loop.
+
+**The important number is the 5/18.** Five answers were confident and quoted faithfully from
+passages that were not the required evidence. Their quotes are real, so fidelity passes them;
+their claims are unsupported, so fidelity must never be the only gate. This is the empirical
+case for pairing `quoteFidelity` with `unitRecall` that E11 predicted.
+
+**And the 3/18 in the other direction.** Three answers hedged although the required passage
+was among the five — the same over-refusal E11 saw on 012 and 017, now visible at pipeline level.
+The system is conservative about evidence it has and careless about evidence it lacks, which is
+the opposite of what a trust product needs.
+
+**Caveats.** This is a spike: it calls the corpus directly, writes no trace, and its prompt saw
+400-character excerpts of each passage, so it is indicative of the architecture rather than a
+release measurement. Retrieval coverage at selection (9/18) matches what E7 measured for a
+reranker over a union (7/17), which is the consistency check that makes the number believable.

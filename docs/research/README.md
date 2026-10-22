@@ -45,8 +45,12 @@ The rewrite must address all four. A better embedder alone addresses none of the
 
 ## Status
 
-Ten experiments have run. Three artefacts exist as tested code and none is wired into the
-pipeline: quote fidelity, multi-shape query expansion, and evidence units. The expensive
+Twelve experiments have run, the last one end-to-end over the whole Golden Set: the proposed
+architecture selects the required evidence for 9 of 18 questions, quotes it faithfully in
+68 of 69 cited spans, hedges when the evidence is missing — and answers confidently without
+the required evidence in five cases, which is why the gate needs coverage as well as fidelity.
+Three artefacts exist as tested code and none is wired into the pipeline: quote fidelity,
+multi-shape query expansion, and evidence units. The expensive
 half of the original plan — generated contextual headers — was falsified and dropped; the
 address-and-name label prefix survived on Quran but has not been measured on hadith, where it
 would mean re-embedding 42k rows of a paid corpus.
