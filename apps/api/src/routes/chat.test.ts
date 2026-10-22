@@ -96,6 +96,7 @@ vi.mock("../lib/chat-wiring", async (importOriginal) => {
           // The reviewer is non-optional; the stub passes, so the validator is what is probed.
           reviewerProvider: counting("reviewer", providers.reviewerProvider, spendCalls),
           reviewerDecider: providers.reviewerDecider,
+          rerankDecider: providers.rerankDecider,
           embedder: counting("embedder", providers.embedder, spendCalls),
           store,
           bridge: runStoreEffect,

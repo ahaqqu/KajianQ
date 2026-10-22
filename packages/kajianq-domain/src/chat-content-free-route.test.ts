@@ -151,6 +151,7 @@ function harness(options: { generatorText?: string; decliner?: Decliner<KajianQF
             generatorProvider,
             reviewerProvider,
             reviewerDecider: null,
+            rerankDecider: null,
             embedder,
             store: spyStore as never,
             bridge: (effect: never) => Effect.runPromise(effect),

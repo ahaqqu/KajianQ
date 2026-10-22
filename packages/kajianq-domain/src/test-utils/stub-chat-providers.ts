@@ -52,7 +52,34 @@ export type StubChatProviderOverrides = {
   /** Wire the reviewer's decision-model pre-gate with this call's micro-USD.
    * Absent = no decider, the unkeyed-decision-vendor environment. */
   pregateMicroUsd?: number;
+  /** Wire the retrieval rerank with this call's micro-USD. Absent = no decider;
+   * the stub answers a Choice question with a uniform distribution over the
+   * offered candidates, so the rerank applies and keeps the fused order. */
+  rerankMicroUsd?: number;
 };
+
+/** A decision answer per question: Noul always clears; Choice gets a uniform
+ * distribution whose pick is a (tied) maximum, so the read is usable. */
+function stubAnswers(
+  spec: import("@app/rag-core").DecisionSpec,
+): Record<string, import("@app/rag-core").DecisionAnswer> {
+  return Object.fromEntries(
+    Object.entries(spec.questions).map(([key, question]) => {
+      if (question.type !== "choice") return [key, { type: "noul" as const, noul: 1 }];
+      const keys = Object.keys(question.criteria);
+      const probability = keys.length > 0 ? 1 / keys.length : 0;
+      return [
+        key,
+        {
+          type: "choice" as const,
+          choice: keys[0] ?? "",
+          probabilities: Object.fromEntries(keys.map((option) => [option, probability])),
+          confidence: 1,
+        },
+      ];
+    }),
+  );
+}
 
 export function createStubChatProviders(overrides: StubChatProviderOverrides = {}): {
   routerProvider: RouterProvider;
@@ -60,11 +87,12 @@ export function createStubChatProviders(overrides: StubChatProviderOverrides = {
   reviewerProvider: ReviewerProvider;
   embedder: RetrieverEmbedder;
   /**
-   * The reviewer pre-gate is unwired by default: the stub models an
+   * The decision-model screens are unwired by default: the stub models an
    * environment where the decision vendor's key is absent, so pipeline tests
-   * that do not opt in exercise the reviewer path without it.
+   * that do not opt in exercise today's paths without them.
    */
   reviewerDecider: import("@app/rag-core").Decider | null;
+  rerankDecider: import("@app/rag-core").Decider | null;
 } {
   const answerText = overrides.answerText ?? "Jawaban berdasar konteks.";
   const deltas = overrides.streamDeltas ?? [answerText];
@@ -139,6 +167,17 @@ export function createStubChatProviders(overrides: StubChatProviderOverrides = {
                   ]),
                 ),
                 cost: cost("stub-decider", overrides.pregateMicroUsd as number),
+              }),
+          },
+    rerankDecider:
+      overrides.rerankMicroUsd === undefined
+        ? null
+        : {
+            modelId: "stub-decider",
+            decide: (spec) =>
+              Effect.succeed({
+                answers: stubAnswers(spec),
+                cost: cost("stub-decider", overrides.rerankMicroUsd as number),
               }),
           },
   };

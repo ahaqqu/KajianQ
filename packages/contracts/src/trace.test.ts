@@ -178,12 +178,27 @@ describe("trace contract", () => {
         },
         at: 7,
       },
-      { stage: "generator", kind: "refusal", reason: "insufficient evidence", at: 8 },
+      {
+        // The retrieval rerank's ranking: both scores per candidate and the
+        // rank each landed on; the call's spend rides the sibling `llm_call`.
+        stage: "retriever",
+        kind: "rerank",
+        detail: {
+          purpose: "rerank",
+          outcome: "applied",
+          items: [
+            { index: 0, key: "chunk-a", fusedScore: 0.03, rerankScore: 0.1, rankAfter: 1 },
+            { index: 1, key: "chunk-b", fusedScore: 0.02, rerankScore: 0.9, rankAfter: 0 },
+          ],
+        },
+        at: 8,
+      },
+      { stage: "generator", kind: "refusal", reason: "insufficient evidence", at: 9 },
     ];
     const trace = parseTrace({ id: "t", createdAt: 0, events });
     // The kinds are named, not just counted: a count cannot tell "both variants
     // are in the union" from "one replaced the other".
-    expect(trace.events).toHaveLength(13);
+    expect(trace.events).toHaveLength(14);
     expect(trace.events.map((event) => event.kind)).toEqual([
       "intent",
       "subquery",
@@ -197,6 +212,7 @@ describe("trace contract", () => {
       "review",
       "product_rules",
       "decision",
+      "rerank",
       "refusal",
     ]);
   });

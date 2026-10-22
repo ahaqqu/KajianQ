@@ -50,14 +50,16 @@ export type ChatProviders = {
   router: Provider;
   generator: Provider;
   reviewer: Provider | null;
-  /** The reviewer's decision-model pre-gate; null when no decision candidate is
-   * keyed — bound key = active, with no enable flag. */
+  /** The decision-model serving role — the reviewer's citation pre-gate and the
+   * retrieval rerank share it; null when no decision candidate is keyed. Bound
+   * key = active, with no enable flag. */
   decider: Decider | null;
   embedder: Provider;
   missingKeys: readonly string[];
   /** Decision candidates the personal-data posture excluded: a vendor that forbids
-   * personal data may never carry the pre-gate's claim spans, and the filter runs
-   * before the key check, so an unkeyed candidate lands here too. */
+   * personal data may never carry the pre-gate's claim spans or the rerank's
+   * question, and the filter runs before the key check, so an unkeyed candidate
+   * lands here too. */
   ineligibleKeys: readonly string[];
 };
 
@@ -181,6 +183,9 @@ export function buildChatWiring(env: Record<string, string | undefined>): ChatWi
       generatorProvider: providers.generator,
       reviewerProvider: providers.reviewer,
       reviewerDecider: providers.decider,
+      // One serving role, two adoptions: the retrieval rerank consumes the same
+      // keyed decider as the reviewer pre-gate (ADR-0042).
+      rerankDecider: providers.decider,
       embedder: providers.embedder,
       store,
       bridge: storeBridge(store),

@@ -32,6 +32,14 @@ export type Chunk = {
   rankDense?: number;
   rankSparse?: number;
   /**
+   * The reranker's score for this chunk when a rerank pass ran and applied —
+   * an engine-generic 0..1 ordering score, recorded BESIDE `score` so the
+   * fused score survives. A consumer that orders evidence (the assembler)
+   * prefers it over `score`; absent means the fused order stands for this
+   * chunk. The engine never assigns it; the rerank decorator does.
+   */
+  rerankScore?: number;
+  /**
    * Why this chunk is in the retrieved set, as a caller-chosen opaque label
    * (ADR-0045). Absent means the retriever's fused tracks produced it; a
    * retriever that adds chunks by another path labels them so the Trace can

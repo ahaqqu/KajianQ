@@ -34,6 +34,18 @@ export {
 } from "./provider";
 export { runPipeline, type PipelineStages, type RunOptions } from "./run";
 export {
+  RERANK_PURPOSE,
+  RERANK_QUESTION_KEY,
+  createRerankedRetriever,
+  planRerank,
+  rankCandidates,
+  readRerankAnswer,
+  rerankCandidateKey,
+  type RerankOptions,
+  type RerankPreserveReason,
+  type RerankRead,
+} from "./rerank";
+export {
   type ChoiceAnswer,
   type ChoiceQuestion,
   type DecisionAnswer,

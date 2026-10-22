@@ -12,7 +12,12 @@ import {
   type Decliner,
 } from "@app/rag-core";
 import { createKajianQRouter, type RouterProvider } from "./chat-router";
-import { createKajianQRetriever, type RetrieverEmbedder, type StoreBridge } from "./chat-retriever";
+import {
+  createChatRetriever,
+  type ChatRetrieverDeps,
+  type RetrieverEmbedder,
+  type StoreBridge,
+} from "./chat-retrieval-stages";
 import { createChatTailStages, type GeneratorProvider, type ReviewerProvider } from "./chat-stages";
 
 /**
@@ -30,6 +35,10 @@ export type ChatPipelineDeps = {
    * bound, in which case the reviewer runs without it. Required, not optional — a wiring
    * that forgets it would lose the pre-gate silently, so it must fail to compile. */
   reviewerDecider: Decider | null;
+  /** The retrieval rerank's decision model — the same serving role's candidate, and the
+   * same posture: null = no key bound, so the fused order stands. Required for the same
+   * reason as `reviewerDecider`: a wiring that drops it loses the rerank silently. */
+  rerankDecider: Decider | null;
   embedder: RetrieverEmbedder;
   store: Pick<
     import("@app/infra").RagStore,
@@ -66,10 +75,13 @@ export function buildChatStages(
   deps: ChatPipelineDeps,
 ): PipelineStages<import("./filters").KajianQFilters> {
   const router = createKajianQRouter(deps.routerProvider);
-  const retriever = createKajianQRetriever({
-    store: deps.store as Parameters<typeof createKajianQRetriever>[0]["store"],
+  const retriever = createChatRetriever({
+    // The store seam's shape is the retriever's own narrow read set; the
+    // composition root holds the wider store.
+    store: deps.store as ChatRetrieverDeps["store"],
     embedder: deps.embedder,
     bridge: deps.bridge,
+    rerankDecider: deps.rerankDecider,
     ...(deps.retrieverLimit !== undefined ? { limit: deps.retrieverLimit } : {}),
     ...(deps.scopeExpansionCap !== undefined ? { scopeExpansionCap: deps.scopeExpansionCap } : {}),
     ...(deps.labelLookupCap !== undefined ? { labelLookupCap: deps.labelLookupCap } : {}),

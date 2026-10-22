@@ -80,6 +80,17 @@ function renderHistory(history: readonly { role: string; content: string }[]): s
   ].join("\n");
 }
 
+/**
+ * The ordering authority inside a presentation slot: a reranked chunk's
+ * decision-model score when a rerank applied, else the fused score. A chunk
+ * with neither (a deterministic expansion) sorts last in its slot, as before.
+ * The fused score is never overwritten — the trace carries both — so this is
+ * the one place the rerank order reaches the generator's context.
+ */
+function orderScore(chunk: Chunk): number {
+  return chunk.rerankScore ?? chunk.score ?? 0;
+}
+
 export function createKajianQAssembler(): Assembler<KajianQFilters> {
   return {
     assemble: (routed: RoutedQuery<KajianQFilters>, chunks: readonly Chunk[]) =>
@@ -87,7 +98,7 @@ export function createKajianQAssembler(): Assembler<KajianQFilters> {
         "assembler",
         Effect.sync(() => {
           const ordered = [...chunks].sort(
-            (a, b) => presentationRank(a) - presentationRank(b) || (b.score ?? 0) - (a.score ?? 0),
+            (a, b) => presentationRank(a) - presentationRank(b) || orderScore(b) - orderScore(a),
           );
           const context = ordered.map(renderEvidenceChunk).join("\n\n");
           const history = historyOf(routed);
