@@ -157,7 +157,9 @@ describe("createRerankedRetriever — the ranking it applies", () => {
       { id: "c", text: "charlie", score: 0.1 },
     ];
     const { decider, specs } = answering(choice([0.1, 0.9, 0.5], "c1"));
-    const { chunks: out } = await run(reranker(decider, { retrieve: () => Effect.succeed(input) }));
+    const { chunks: out, events } = await run(
+      reranker(decider, { retrieve: () => Effect.succeed(input) }),
+    );
 
     expect(specs[0]?.state).toEqual({
       query: routed.sourceText,
@@ -169,6 +171,15 @@ describe("createRerankedRetriever — the ranking it applies", () => {
     expect(out.map((c) => c.rerankScore)).toEqual([0.9, undefined, 0.5, undefined, 0.1]);
     expect(out[1]?.origin).toBe("scope_expansion");
     expect(out[3]?.origin).toBe("citation_lookup");
+
+    // `rankAfter` is the rank within the fused block, not the assembled index:
+    // charlie sits at assembled index 2 but holds fused rank 1, and alpha sits
+    // at 4 but holds fused rank 2. The labelled chunks are not part of the block.
+    expect(rerankEvent(events).detail.items).toEqual([
+      { index: 0, key: "a", fusedScore: 0.9, rerankScore: 0.1, rankAfter: 2 },
+      { index: 1, key: "b", fusedScore: 0.5, rerankScore: 0.9, rankAfter: 0 },
+      { index: 2, key: "c", fusedScore: 0.1, rerankScore: 0.5, rankAfter: 1 },
+    ]);
   });
 });
 
