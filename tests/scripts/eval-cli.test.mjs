@@ -294,30 +294,66 @@ describe("printSummary (#290, #340)", () => {
     expect(printed).not.toMatch(/^ {2}(failed|skipped): /m);
   });
 
-  it("names the smoke's reported-but-not-gated address misses as tracked debt", () => {
+  it("derives the reported address misses from the run's own scores", () => {
+    const missed = scoredOutcome("gs-v0-003", { citationAddressRecall: 0 });
+    const printed = printedSummary(
+      {
+        passed: 1,
+        failed: 1,
+        skipped: 0,
+        budgetExceeded: false,
+        results: [scored, missed],
+      },
+      FIXTURE,
+      { reportAddressMisses: true },
+    );
+    expect(printed).toContain(
+      "  address recall: reported, not gated — address misses in this sample (1 of 2 scored): gs-v0-003; the sample decides this line, not a full-set debt list",
+    );
+    // The address mean still prints above it: the dimension is reported in full.
+    expect(printed).toContain("  mean citation-address recall: 0.500");
+  });
+
+  it("says the sample produced no address miss instead of naming a stale list", () => {
+    const printed = printedSummary(
+      { passed: 1, failed: 0, skipped: 0, budgetExceeded: false, results: [scored] },
+      FIXTURE,
+      { reportAddressMisses: true },
+    );
+    expect(printed).toContain(
+      "  address recall: reported, not gated — address misses in this sample (0 of 1 scored): none; the sample decides this line, not a full-set debt list",
+    );
+  });
+
+  it("counts only scored rows in the sample's address-debt line", () => {
     const printed = printedSummary(
       {
         passed: 1,
         failed: 0,
-        skipped: 0,
+        skipped: 1,
         budgetExceeded: false,
-        results: [scored],
+        results: [scored, skipped],
       },
       FIXTURE,
-      { trackedAddressMisses: ["gs-v0-006", "gs-v0-016"] },
+      { reportAddressMisses: true },
     );
-    expect(printed).toContain(
-      "  address recall: reported, not gated — tracked retrieval debt: gs-v0-006, gs-v0-016",
+    // A skipped row's zeroed address dimension is a skip, not an address miss; the
+    // line's denominator is the scored sample, so it cannot inflate the debt.
+    const addressLine = printed
+      .split("\n")
+      .find((line) => line.includes("address misses in this sample"));
+    expect(addressLine).toBe(
+      "  address recall: reported, not gated — address misses in this sample (0 of 1 scored): none; the sample decides this line, not a full-set debt list",
     );
-    // The address mean still prints above it: the dimension is reported in full.
-    expect(printed).toContain("  mean citation-address recall: 1.000");
-    // A caller that gates on the dimension (eval:run) prints no debt line.
+  });
+
+  it("prints no address-debt line for a caller that gates on the dimension", () => {
     expect(
       printedSummary(
         { passed: 1, failed: 0, skipped: 0, budgetExceeded: false, results: [scored] },
         FIXTURE,
       ),
-    ).not.toContain("tracked retrieval debt");
+    ).not.toContain("address recall: reported, not gated");
   });
 
   it("names the label lookup when it carried a label-only question (B1)", () => {

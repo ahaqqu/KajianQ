@@ -189,18 +189,22 @@ export function failureLines(failed, questions) {
 /**
  * `costMicroUsd` is the settled figure: the ledger's record when it exists, else the live
  * budget — the ledger is authoritative once the row is written. `questions` is required.
- * `trackedAddressMisses` is the caller's reported-not-gated line: the smoke names the
- * known retrieval misses it does not gate on; `eval:run`, which gates on the address
- * dimension, omits it.
+ * `reportAddressMisses` is the reported-not-gated line: the smoke sets it because its
+ * sample cannot decide the full set, and the misses are read from the run's own scored
+ * outcomes — never a caller-supplied list — with the sample named as the line's scope.
+ * `eval:run`, which gates on the address dimension, omits it.
  */
 export function printSummary(
   prefix,
-  { runId, questionCount, result, costMicroUsd, questions, trackedAddressMisses },
+  { runId, questionCount, result, costMicroUsd, questions, reportAddressMisses },
 ) {
   requireFixture(questions, "printSummary");
   const scored = result.results.filter((x) => x.skipped !== true);
   const skipped = result.results.filter((x) => x.skipped === true);
   const failed = scored.filter((x) => x.passed !== true);
+  const addressMisses = scored
+    .filter((x) => x.citationAddressRecall !== undefined && x.citationAddressRecall < 1)
+    .map((x) => x.questionId);
   console.log(
     [
       "",
@@ -214,11 +218,15 @@ export function printSummary(
             .map((x) => x.citationAddressRecall),
         )?.toFixed(3) ?? "n/a"
       }`,
-      ...(trackedAddressMisses === undefined
-        ? []
-        : [
-            `  address recall: reported, not gated — tracked retrieval debt: ${trackedAddressMisses.join(", ")}`,
-          ]),
+      ...(reportAddressMisses === true
+        ? [
+            `  address recall: reported, not gated — address misses in this sample (${
+              addressMisses.length
+            } of ${scored.length} scored): ${
+              addressMisses.length === 0 ? "none" : addressMisses.join(", ")
+            }; the sample decides this line, not a full-set debt list`,
+          ]
+        : []),
       `  mean citation validity: ${mean(scored.map((x) => x.citationValidity))?.toFixed(3) ?? "n/a"}`,
       `  cost: ${(costMicroUsd / 1e6).toFixed(6)} USD  budget exceeded: ${result.budgetExceeded}`,
       ...expansionLines(scored),

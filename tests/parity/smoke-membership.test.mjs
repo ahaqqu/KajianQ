@@ -6,7 +6,6 @@ import {
   SmokeSubsetError,
 } from "../../packages/eval/src/smoke-subset";
 import {
-  ADDRESS_RECALL_TRACKED_MISSES,
   SMOKE_COVERAGE_TAGS,
   SMOKE_HELD_OUT_IDS,
 } from "../../packages/kajianq-domain/src/taxonomy";
@@ -111,12 +110,13 @@ describe("the staged smoke subset's default membership", () => {
     for (const id of SMOKE_HELD_OUT_IDS) expect(DEFAULT_IDS).not.toContain(id);
   });
 
-  it("keeps the reported address debt pointing at real fixture questions", () => {
-    const ids = new Set(FIXTURE.questions.map((q) => q.id));
-    for (const id of ADDRESS_RECALL_TRACKED_MISSES) expect(ids.has(id), id).toBe(true);
-    // The debt is reported by the smoke but never held out of QA: every id stays
-    // in the full set the release run and QA ask.
-    expect(ADDRESS_RECALL_TRACKED_MISSES.length).toBeGreaterThan(0);
+  it("carries no hand-maintained address-debt list in the domain vocabulary", async () => {
+    // The smoke prints the misses its own run scored, so the domain pack has no
+    // list a fixture or a recorded run could leave behind. The absence is the
+    // pin: a reintroduced list is a second copy that outlives the run it claims
+    // to describe.
+    const taxonomy = await import("../../packages/kajianq-domain/src/taxonomy");
+    expect(Object.hasOwn(taxonomy, "ADDRESS_RECALL_TRACKED_MISSES")).toBe(false);
   });
 
   it("reddens when the fixture no longer carries a held-out case", () => {
