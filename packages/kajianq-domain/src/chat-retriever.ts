@@ -92,18 +92,17 @@ export type KajianQRetrieverDeps = {
   embedder: RetrieverEmbedder;
   bridge: StoreBridge;
   /** Per-track hits per sub-query (spec §3.7 smoke keeps this small). */
-  limit?: number;
-  /** Budget cap for ADR-0045's surah reads — the surah the question names and a
-   * retrieved verse's short surah share it, the named read first; `0` disables both. */
-  scopeExpansionCap?: number;
-  /** ADR-0049's neighbourhood expansion: ordinals per side and total chunks added,
-   * defaulting to `DEFAULT_NEIGHBOUR_RADIUS` / `DEFAULT_NEIGHBOUR_CAP`; `0` on
-   * **either** disables it. */
-  neighbourRadius?: number;
-  neighbourCap?: number;
+  limit?: number | undefined;
+  /** Budget cap for ADR-0045's surah reads — the surah the question names and a retrieved
+   * verse's short surah share it, the named read first; `0` disables both. */
+  scopeExpansionCap?: number | undefined;
+  /** ADR-0049's neighbourhood expansion: ordinals per side and chunks added, defaulting to
+   * `DEFAULT_NEIGHBOUR_RADIUS` / `DEFAULT_NEIGHBOUR_CAP`; `0` on **either** disables it. */
+  neighbourRadius?: number | undefined;
+  neighbourCap?: number | undefined;
   /** Budget cap for the citation-label lookup over the labels a question names,
    * defaulting to `DEFAULT_LABEL_LOOKUP_CAP`; `0` disables it. */
-  labelLookupCap?: number;
+  labelLookupCap?: number | undefined;
 };
 
 export function createKajianQRetriever(deps: KajianQRetrieverDeps): Retriever<KajianQFilters> {

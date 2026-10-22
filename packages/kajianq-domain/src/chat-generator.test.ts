@@ -642,6 +642,7 @@ describe("runChatPipeline — end-to-end trace", () => {
           store: store as never,
           bridge: (e) => Effect.runPromise(e as never),
           language: "id",
+          retrieval: {},
         },
         { text: "Apa itu Ayat Kursi?" },
       ) as never,

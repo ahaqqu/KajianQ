@@ -14,6 +14,7 @@ import {
 import { createKajianQRouter, type RouterProvider } from "./chat-router";
 import {
   createChatRetriever,
+  type ChatRetrievalTuning,
   type ChatRetrieverDeps,
   type RetrieverEmbedder,
   type StoreBridge,
@@ -49,14 +50,14 @@ export type ChatPipelineDeps = {
   >;
   bridge: StoreBridge;
   language: import("./chat-prompts").ChatLanguage;
-  retrieverLimit?: number;
-  /** ADR-0045 surah-read budget: at most this many children of a surah join the fused
-   * hits — the surah the question names and a retrieved verse's short surah share it;
-   * absent = the domain default, set from deployment config at the composition root so
-   * the cost of a scoped query is a knob, not a literal. */
-  scopeExpansionCap?: number;
-  /** The citation-label lookup's budget; absent = the domain default, `0` disables it. */
-  labelLookupCap?: number;
+  /**
+   * The retriever's knobs, required: the serving composition root states every one it
+   * reads (its own bag is `Required`), and an `undefined` value means the retriever's own
+   * default. Omission there is a compile error, so a binding cannot be dropped by leaving
+   * the key out, and `buildChatStages` forwards the object whole — no list of forwarded
+   * names can fall behind the retriever's options.
+   */
+  retrieval: ChatRetrievalTuning;
   /** Skip the reviewer LLM call (eval refusal cases, budget-capped runs). */
   skipReviewer?: boolean;
   /** The run's decline seam. Absent = the domain's own content-free decline, so a route the
@@ -82,9 +83,9 @@ export function buildChatStages(
     embedder: deps.embedder,
     bridge: deps.bridge,
     rerankDecider: deps.rerankDecider,
-    ...(deps.retrieverLimit !== undefined ? { limit: deps.retrieverLimit } : {}),
-    ...(deps.scopeExpansionCap !== undefined ? { scopeExpansionCap: deps.scopeExpansionCap } : {}),
-    ...(deps.labelLookupCap !== undefined ? { labelLookupCap: deps.labelLookupCap } : {}),
+    // The retriever's own knobs, forwarded whole: a knob added to the retriever arrives
+    // here by construction, and none can be left behind by a missing line.
+    ...deps.retrieval,
   });
   const tail = createChatTailStages({
     generatorProvider: deps.generatorProvider,

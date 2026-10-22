@@ -142,6 +142,36 @@ export type ChatWiring = {
 };
 
 /**
+ * `T` with every key `Shape` does not declare turned into `never`: the exactness check an
+ * object literal's excess-property check does not give once a spread introduces the key.
+ */
+type NoExtraKeys<T, Shape> = T & Record<Exclude<keyof T, keyof Shape>, never>;
+
+/**
+ * The retriever knobs serving must state. `Required` drops each optionality while keeping
+ * `| undefined` — a stated value meaning the retriever's own default — so every knob the
+ * deps carry, and any the retriever gains, is a compile error here when dropped by leaving
+ * the key out, while a box that binds none of them still runs the defaults.
+ */
+type ServingRetrieval = Required<ChatWiring["pipeline"]["retrieval"]>;
+
+/** The serving retrieval bag, exact: a key `ServingRetrieval` does not declare, including
+ * one a spread smuggles in, must not compile beside a bag no stage reads. */
+function servingRetrieval<T extends ServingRetrieval>(
+  bag: NoExtraKeys<T, ServingRetrieval>,
+): ServingRetrieval {
+  return bag;
+}
+
+/** The pipeline bag, exact for the same reason: a key the pipeline deps do not declare must
+ * not arrive through a spread and sit there configured-looking and unread. */
+function pipelineBag<T extends ChatWiring["pipeline"]>(
+  deps: NoExtraKeys<T, ChatWiring["pipeline"]>,
+): ChatWiring["pipeline"] {
+  return deps;
+}
+
+/**
  * The store-only wiring the auth and feedback routes need: a store plus its bridge,
  * with no provider roles resolved. Session minting and self-deletion must not be
  * gated on an unrelated LLM role — a rotated reviewer key would take down minting
@@ -173,12 +203,22 @@ export function buildChatWiring(env: Record<string, string | undefined>): ChatWi
     );
   }
   const store = createRagStoreFromEnv(env);
-  const scopeExpansionCap = parseScopeExpansionCap(env["SCOPE_EXPANSION_CAP"]);
-  const neighbourRadius = parseNeighbourRadius(env["NEIGHBOUR_EXPANSION_RADIUS"]);
-  const neighbourCap = parseNeighbourCap(env["NEIGHBOUR_EXPANSION_CAP"]);
-  const labelLookupCap = parseLabelLookupCap(env["LABEL_LOOKUP_CAP"]);
+  // Every retriever knob, stated at once: `undefined` is the retriever's own default, so a
+  // box that binds none of them behaves as it always did, while `0` is a real value (it
+  // disables its arm) and a negative or malformed value never reaches the deps — the
+  // parsers raise a typed config failure instead.
+  const retrieval = servingRetrieval({
+    // The deps type carries `limit`, but serving binds no variable to it: stating
+    // `undefined` keeps the bag exact — every knob is stated, and an absent binding is the
+    // retriever's own default rather than a key the composition root forgot.
+    limit: undefined,
+    scopeExpansionCap: parseScopeExpansionCap(env["SCOPE_EXPANSION_CAP"]),
+    neighbourRadius: parseNeighbourRadius(env["NEIGHBOUR_EXPANSION_RADIUS"]),
+    neighbourCap: parseNeighbourCap(env["NEIGHBOUR_EXPANSION_CAP"]),
+    labelLookupCap: parseLabelLookupCap(env["LABEL_LOOKUP_CAP"]),
+  });
   return {
-    pipeline: {
+    pipeline: pipelineBag({
       routerProvider: providers.router,
       generatorProvider: providers.generator,
       reviewerProvider: providers.reviewer,
@@ -189,18 +229,8 @@ export function buildChatWiring(env: Record<string, string | undefined>): ChatWi
       embedder: providers.embedder,
       store,
       bridge: storeBridge(store),
-      // Absent = the domain default: the per-query expansion budget is a
-      // deployment choice, not a code literal.
-      ...(scopeExpansionCap !== undefined ? { scopeExpansionCap } : {}),
-      // The same posture for the retrieved-verse neighbourhood window: `0` on
-      // either knob turns it off, and a negative value never reaches this object
-      // because the parsers above reject it as a typed config failure.
-      ...(neighbourRadius !== undefined ? { neighbourRadius } : {}),
-      ...(neighbourCap !== undefined ? { neighbourCap } : {}),
-      // The citation-label lookup's budget: absent = the domain default, `0` turns
-      // the arm off, and a malformed value never reaches this object.
-      ...(labelLookupCap !== undefined ? { labelLookupCap } : {}),
-    },
+      retrieval,
+    }),
     fullStore: store,
     runStore: storeBridge(store),
   };
