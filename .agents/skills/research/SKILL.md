@@ -22,7 +22,10 @@ A research brief is one screen, written before the first search, and it changes 
   book and a number fail because the address is not in any retrievable text". A claim can be
   killed; a topic cannot.
 - **The kill condition.** The observation that would refute the claim, stated in advance. If you
-  cannot name one, the claim is not a hypothesis yet.
+  cannot name one, the claim is not a hypothesis yet — and then do not start measuring: name the
+  observation that would surprise you, or narrow the claim until one exists. When neither is
+  possible the claim is not ready: return the brief to the manager with the claim restated as a
+  hypothesis and what is missing. A brief that cannot fail cannot end.
 - **The decision it unblocks**, by name: the ticket, the gate, the approach choice.
 - **What evidence settles it** — a measurement on this corpus, a document that states a
   guarantee, or a prototype that behaves one way under a test.
@@ -30,7 +33,13 @@ A research brief is one screen, written before the first search, and it changes 
   when stopping is cheap, not when it is expensive.
 - **The deliverable**: a decision brief with recommendations, not a pile of findings.
 
-Write the brief down. A brief held in the head drifts toward whatever was easy to measure.
+**The artifact contract.** The brief, the experiment log and any prototype are committed on the
+`research/<slug>` branch at the paths the dispatch names: the manager's task text names the brief's
+file, the log's file, the prototype directory and, for a bug, where the failing test lives. This
+skill does not choose them — it cannot invent repository structure, and two researchers left to
+their own layout produce two branches the manager cannot read. Commit the brief before the first
+experiment and append to the log as each experiment ends; a result that lives only in the final
+report is not retrievable next month.
 
 ## 2. Separate what is reported from what you measured
 
@@ -79,7 +88,7 @@ and move to the next shape rather than fitting the one that nearly worked.
 ## 5. Keep an experiment log with stable IDs
 
 The log is the spine of the eventual brief, and negative results are its most reusable part. One
-entry per experiment, appended, never rewritten:
+entry per experiment, appended to the file the dispatch named, never rewritten:
 
 ```text
 E<n> — <one-line question>

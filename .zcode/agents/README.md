@@ -61,7 +61,10 @@ state surface.
 ## Implementer-class operating rules
 
 The implementer-class roles follow the phase-boundary discipline from the
-`guided-implementation` skill. Each role file is **self-contained**: it
+`guided-implementation` skill. The `researcher` is implementer-class for this
+contract — phase boundaries, budget handoff, stuck-report, workspace
+isolation — but its completion criterion is a pushed research branch rather
+than a PR (Dispatch authorization). Each role file is **self-contained**: it
 carries the full operating contract inline — phase boundaries, budget
 handoff, stuck-report format, workspace isolation, dispatch authorization —
 so a dispatched agent never needs a second file read. This section documents
@@ -118,7 +121,14 @@ branches mid-run and corrupts each other's diffs. Therefore:
   The fixer is the exception: it attaches the existing worktree
   (`.worktrees/<slug>`) or adds one from the existing branch
   (`git worktree add .worktrees/<slug> agent/<slug>` — no `-b`), because it
-  takes over a branch that already exists.
+  takes over a branch that already exists. The `researcher` is the exception on
+  both the branch and the path: it works in `.worktrees/research-<slug>` on
+  `research/<slug>` (`git worktree add .worktrees/research-<slug> -b
+  research/<slug> origin/main`), because `.worktrees/<slug>` is the
+  implementer's path for the same ticket. It removes its own tree before
+  reporting done, once the branch is pushed — the branch is the artifact, and
+  the sweep keeps an unmerged branch with no merged PR by design (see
+  `scripts/worktree-cleanup.mjs`).
 - Lock the worktree as soon as it exists, with a reason naming your role and
   ticket (`git worktree lock .worktrees/<slug> --reason "<role> #<issue>"`), and
   unlock it (`git worktree unlock .worktrees/<slug>`) before reporting done: a
@@ -137,7 +147,8 @@ branches mid-run and corrupts each other's diffs. Therefore:
   work. Cleanup is the manager's duty, not yours.
 - Before **any** `git` state-changing operation (commit, push, branch,
   checkout), verify with `git branch --show-current` that you are on your
-  dispatch's branch (`agent/<slug>`) inside your worktree. Exception: the
+  dispatch's branch (`agent/<slug>`, or `research/<slug>` for the researcher)
+  inside your worktree. Exception: the
   one-time
   `git worktree add` setup itself runs from the shared checkout — it creates
   a new worktree without switching its branch or touching its uncommitted
