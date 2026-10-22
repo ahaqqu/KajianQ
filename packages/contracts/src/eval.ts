@@ -1,4 +1,5 @@
 import * as v from "valibot";
+import { EvalResultOutcomeSchema, ExpectedBehaviorSchema } from "./eval-outcome";
 import { CostRecordSchema, type CostRecord } from "./trace";
 
 /**
@@ -27,8 +28,6 @@ export const GoldenSourceSchema = v.pipe(v.string(), v.minLength(1));
 export const GoldenCitationSchema = v.pipe(v.string(), v.minLength(1));
 
 /** The behavior the harness expects from the pipeline for this question. */
-export const ExpectedBehaviorSchema = v.picklist(["answer", "refuse"]);
-
 export const GoldenQuestionSchema = v.object({
   /** Stable question id within the set (e.g. "gs-v0-001"). */
   id: v.pipe(v.string(), v.minLength(1)),
@@ -82,6 +81,13 @@ export type EvalResultOutcome = {
   citationAddressRecall?: number | undefined;
   /** Fraction of required citations present in the answer (0..1). */
   citationValidity: number;
+  /**
+   * Quote fidelity: the fraction of the answer's quoted spans that appear, in order, in at
+   * least one chunk the answer cites (0..1). Absent when the answer quoted nothing — a refusal
+   * that quotes nothing has no fidelity to measure, and must not read as verified evidence.
+   * Verifies existence, not attribution: a span found in any cited chunk counts.
+   */
+  quoteFidelity?: number | undefined;
   /** Whether the scorer saw a refusal (a trace `refusal` event or refusal text). */
   refused: boolean;
   /**
@@ -122,81 +128,7 @@ export type EvalResultOutcome = {
   notes?: string[] | undefined;
 };
 
-/**
- * The persisted form, which also reads rows written under the metrics' earlier
- * names (`retrievalRecall`, `fusedOnlyRetrievalRecall`): the ledger keeps every
- * run readable, and an old run simply carries no address-recall measurement.
- */
-const EvalResultOutcomeInputSchema = v.object({
-  questionId: v.pipe(v.string(), v.minLength(1)),
-  expectedBehavior: ExpectedBehaviorSchema,
-  passed: v.boolean(),
-  sourceTypeRecall: v.optional(v.pipe(v.number(), v.minValue(0), v.maxValue(1))),
-  /** The pre-rename name for `sourceTypeRecall`. */
-  retrievalRecall: v.optional(v.pipe(v.number(), v.minValue(0), v.maxValue(1))),
-  citationAddressRecall: v.optional(v.pipe(v.number(), v.minValue(0), v.maxValue(1))),
-  citationValidity: v.pipe(v.number(), v.minValue(0), v.maxValue(1)),
-  refused: v.boolean(),
-  skipped: v.optional(v.boolean()),
-  expansion: v.optional(
-    v.object({
-      chunks: v.pipe(v.number(), v.integer(), v.minValue(0)),
-      fusedOnlySourceTypeRecall: v.optional(v.pipe(v.number(), v.minValue(0), v.maxValue(1))),
-      /** The pre-rename name for `fusedOnlySourceTypeRecall`. */
-      fusedOnlyRetrievalRecall: v.optional(v.pipe(v.number(), v.minValue(0), v.maxValue(1))),
-      /** The citation-label lookup's contribution (ADR-0058). */
-      lookup: v.optional(
-        v.object({
-          returned: v.pipe(v.number(), v.integer(), v.minValue(0)),
-          missing: v.pipe(v.number(), v.integer(), v.minValue(0)),
-          dropped: v.pipe(v.number(), v.integer(), v.minValue(0)),
-          truncated: v.boolean(),
-          carriedSourceTypes: v.array(v.pipe(v.string(), v.minLength(1))),
-        }),
-      ),
-    }),
-  ),
-  notes: v.optional(v.array(v.pipe(v.string(), v.minLength(1)))),
-});
-
-/** The per-question result verdict; parses both the current and the legacy field names. */
-export const EvalResultOutcomeSchema = v.pipe(
-  EvalResultOutcomeInputSchema,
-  v.check(
-    (outcome) =>
-      (outcome.sourceTypeRecall !== undefined || outcome.retrievalRecall !== undefined) &&
-      (outcome.expansion === undefined ||
-        outcome.expansion.fusedOnlySourceTypeRecall !== undefined ||
-        outcome.expansion.fusedOnlyRetrievalRecall !== undefined),
-    "an outcome must carry sourceTypeRecall (or its legacy retrievalRecall), and an expansion block must carry fusedOnlySourceTypeRecall (or its legacy name)",
-  ),
-  v.transform((input): EvalResultOutcome => {
-    const expansion = input.expansion;
-    return {
-      questionId: input.questionId,
-      expectedBehavior: input.expectedBehavior,
-      passed: input.passed,
-      sourceTypeRecall: (input.sourceTypeRecall ?? input.retrievalRecall)!,
-      ...(input.citationAddressRecall !== undefined
-        ? { citationAddressRecall: input.citationAddressRecall }
-        : {}),
-      citationValidity: input.citationValidity,
-      refused: input.refused,
-      ...(input.skipped !== undefined ? { skipped: input.skipped } : {}),
-      ...(expansion !== undefined
-        ? {
-            expansion: {
-              chunks: expansion.chunks,
-              fusedOnlySourceTypeRecall: (expansion.fusedOnlySourceTypeRecall ??
-                expansion.fusedOnlyRetrievalRecall)!,
-              ...(expansion.lookup !== undefined ? { lookup: expansion.lookup } : {}),
-            },
-          }
-        : {}),
-      ...(input.notes !== undefined ? { notes: input.notes } : {}),
-    };
-  }),
-);
+export { EvalResultOutcomeSchema, ExpectedBehaviorSchema } from "./eval-outcome";
 
 /**
  * The aggregate report of one harness run (kajianq-traceability rule 4: eval
@@ -223,6 +155,12 @@ export type EvalRunReport = {
   meanCitationAddressRecall?: number | null | undefined;
   /** Mean citation validity over scored questions (null when none scored). */
   meanCitationValidity: number | null;
+  /**
+   * Mean quote fidelity over the answers that quoted something (0..1), or null when none did.
+   * Per-question scores live in `results`; an answer that quoted nothing is excluded rather
+   * than counted as perfect.
+   */
+  meanQuoteFidelity?: number | null | undefined;
   /** Total spend (harness + pipeline traces triggered), in micro-USD. */
   costMicroUsd: number;
   /** True when the run aborted early because the budget cap was hit. */
@@ -252,6 +190,7 @@ const EvalRunReportInputSchema = v.object({
     v.nullable(v.pipe(v.number(), v.minValue(0), v.maxValue(1))),
   ),
   meanCitationValidity: v.nullable(v.pipe(v.number(), v.minValue(0), v.maxValue(1))),
+  meanQuoteFidelity: v.optional(v.nullable(v.pipe(v.number(), v.minValue(0), v.maxValue(1)))),
   costMicroUsd: v.pipe(v.number(), v.integer(), v.minValue(0)),
   budgetExceeded: v.boolean(),
   results: v.array(EvalResultOutcomeSchema),
@@ -285,6 +224,9 @@ export const EvalRunReportSchema = v.pipe(
       ? { meanCitationAddressRecall: input.meanCitationAddressRecall }
       : {}),
     meanCitationValidity: input.meanCitationValidity,
+    ...(input.meanQuoteFidelity !== undefined
+      ? { meanQuoteFidelity: input.meanQuoteFidelity }
+      : {}),
     costMicroUsd: input.costMicroUsd,
     budgetExceeded: input.budgetExceeded,
     results: [...input.results],

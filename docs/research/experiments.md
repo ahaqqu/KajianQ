@@ -414,3 +414,26 @@ were its own.
 **Caveats.** This is a spike: it calls the corpus directly, writes no trace, and has no gate.
 The hedged count needs care — in `012` and `017` the evidence supports a one-step inference the
 model declines to make, which the Golden Set counts as failure.
+
+## E13 — The fidelity measurement ships as an eval field (2026-10)
+
+The first artefact to leave the notebook and enter the product surface, as the least presumptuous
+form available: **measured, not gating**.
+
+- `packages/eval/src/quote-fidelity.ts` audits an answer's quoted spans against the text of the
+  chunks it cites: typographic quotes first, straight quotes split by parity, spans under eight
+  characters skipped as emphasis, ellipsis split before normalisation, diacritics and orthographic
+  variants folded, and the Indonesian space inside a divine epithet folded.
+- `scoreQuestion` writes `quoteFidelity` per question and `buildReport` averages it as
+  `meanQuoteFidelity`. Both are **optional**: the field is absent when the answer quoted nothing,
+  and absent again when the citations frame carries no chunk text — neither state says anything
+  about whether the evidence checks out, and scoring them 0 or 1 would say something false.
+- The eval transport now keeps each citation's `arabic`/`translation` from the SSE frame, which is
+  what the audit is measured against; the frame already carried it, the parser was dropping it.
+
+Eleven scorer tests, six wiring and report tests, and the full gate set green — including the
+engine-boundary scan, which rejected the first draft for naming the corpus's script and source
+type inside an engine package. That rejection was correct: the check is generic text work, and
+the package must not learn what a hadith is.
+
+No gate uses the number yet. Adopting it as a gate is decision D2.

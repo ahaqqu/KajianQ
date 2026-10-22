@@ -49,8 +49,10 @@ Twelve experiments have run, the last one end-to-end over the whole Golden Set: 
 architecture selects the required evidence for 9 of 18 questions, quotes it faithfully in
 68 of 69 cited spans, hedges when the evidence is missing — and answers confidently without
 the required evidence in five cases, which is why the gate needs coverage as well as fidelity.
-Three artefacts exist as tested code and none is wired into the pipeline: quote fidelity,
-multi-shape query expansion, and evidence units. The expensive
+Three artefacts exist as tested code: quote fidelity, multi-shape query expansion, and evidence
+units. **Quote fidelity is now measured in the eval harness** — per question and as a run mean,
+with no gate on it — because a measurement changes nothing a user sees; the other two are not
+wired. The expensive
 half of the original plan — generated contextual headers — was falsified and dropped; the
 address-and-name label prefix survived on Quran but has not been measured on hadith, where it
 would mean re-embedding 42k rows of a paid corpus.
