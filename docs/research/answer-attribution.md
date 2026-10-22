@@ -59,6 +59,20 @@ An unmapped label remains its own singleton (fail-closed). Every accepted equiva
 (`address-identical` vs `curated-identity`), so a reader can see that the answer cited a
 parallel narration rather than the canonical address.
 
+Worked examples from the corpus, verified, showing why the relations must stay distinct:
+
+- **Same transmission, two collections.** `Bukhari 1395` and `Abu Dawud 1584` carry one isnad
+  (Ahmad bin Hanbal → Waki' → Zakariya bin Ishaq → Yahya bin Abdullah bin Shayfiy → Abu Ma'bad →
+  Ibn Abbas). Calling the second a member of the first's unit is a statement about the corpus.
+- **Different chain, near-identical matn.** `Nasai 5144` (Ali) and `Ibnu Majah 3597` (Abdullah bin
+  Amru) report the same saying about gold and silk in almost the same words. Equivalence is a
+  curation judgement, not a chain fact.
+- **Same ruling, different report.** `Bukhari 1108` (Salim from his father), `Nasai 598` (Nafi'
+  from Ibn Umar) and `Malik 326` (Abu Hurairah, the Tabuk journey) all permit joining prayers
+  while travelling, and are three narrations, not one. A unit may hold them only if the
+  requirement is the ruling rather than the narration — which changes what the Golden Set asks,
+  so it is not a curatorial detail.
+
 Implemented as [`research/evidence-units.ts`](../../research/evidence-units.ts) with eleven
 tests: address-grammar folding (case, punctuation, verse ranges, `no. 3756.2` → `no. 3756`),
 unit validation (canonical must be a member, no address in two units of the same question),
