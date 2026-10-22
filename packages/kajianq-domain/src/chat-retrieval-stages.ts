@@ -33,6 +33,19 @@ export type ChatRetrieverDeps = KajianQRetrieverDeps & {
   rerankDecider: Decider | null;
 };
 
+/**
+ * The retriever's configurable surface: its options without the seams and the rerank
+ * role it is injected with. Derived, never restated — the serving composition root sets
+ * every knob from one object and forwards that object whole, so a knob the retriever
+ * gains is reachable without a new line, and a knob it stops reading stops type-checking
+ * at the call site instead of vanishing into a spread. Each knob is a number or an
+ * explicit `undefined`, which is a stated absence: the retriever's own default applies.
+ */
+export type ChatRetrievalTuning = Omit<
+  ChatRetrieverDeps,
+  "store" | "embedder" | "bridge" | "rerankDecider"
+>;
+
 export function createChatRetriever(deps: ChatRetrieverDeps): Retriever<KajianQFilters> {
   const { rerankDecider, ...retrieverDeps } = deps;
   const retriever = createKajianQRetriever(retrieverDeps);

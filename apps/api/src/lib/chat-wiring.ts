@@ -141,6 +141,21 @@ export type ChatWiring = {
   runStore: StoreBridge;
 };
 
+/** The retriever knobs the serving deps carry, as the domain types them. */
+type RetrievalTuning = ChatWiring["pipeline"]["retrieval"];
+
+/**
+ * The retriever knobs serving must state. Required, and a value may be `undefined` — a
+ * stated value meaning the retriever's own default — so a box that binds nothing runs the
+ * defaults while an operator's value cannot leave the deps object by omission. Each field
+ * is typed by the retriever's own option, so a knob the retriever stops reading fails to
+ * compile here instead of riding a spread into nothing.
+ */
+type ServingRetrieval = RetrievalTuning & {
+  neighbourRadius: RetrievalTuning["neighbourRadius"];
+  neighbourCap: RetrievalTuning["neighbourCap"];
+};
+
 /**
  * The store-only wiring the auth and feedback routes need: a store plus its bridge,
  * with no provider roles resolved. Session minting and self-deletion must not be
@@ -173,10 +188,16 @@ export function buildChatWiring(env: Record<string, string | undefined>): ChatWi
     );
   }
   const store = createRagStoreFromEnv(env);
-  const scopeExpansionCap = parseScopeExpansionCap(env["SCOPE_EXPANSION_CAP"]);
-  const neighbourRadius = parseNeighbourRadius(env["NEIGHBOUR_EXPANSION_RADIUS"]);
-  const neighbourCap = parseNeighbourCap(env["NEIGHBOUR_EXPANSION_CAP"]);
-  const labelLookupCap = parseLabelLookupCap(env["LABEL_LOOKUP_CAP"]);
+  // Every retriever knob the deployment can set, stated at once: `undefined` is the
+  // retriever's own default, so a box that binds none of them behaves as it always did,
+  // while `0` is a real value (it disables its arm) and a negative or malformed value
+  // never reaches the deps — the parsers raise a typed config failure instead.
+  const retrieval: ServingRetrieval = {
+    scopeExpansionCap: parseScopeExpansionCap(env["SCOPE_EXPANSION_CAP"]),
+    neighbourRadius: parseNeighbourRadius(env["NEIGHBOUR_EXPANSION_RADIUS"]),
+    neighbourCap: parseNeighbourCap(env["NEIGHBOUR_EXPANSION_CAP"]),
+    labelLookupCap: parseLabelLookupCap(env["LABEL_LOOKUP_CAP"]),
+  };
   return {
     pipeline: {
       routerProvider: providers.router,
@@ -189,17 +210,7 @@ export function buildChatWiring(env: Record<string, string | undefined>): ChatWi
       embedder: providers.embedder,
       store,
       bridge: storeBridge(store),
-      // Absent = the domain default: the per-query expansion budget is a
-      // deployment choice, not a code literal.
-      ...(scopeExpansionCap !== undefined ? { scopeExpansionCap } : {}),
-      // The same posture for the retrieved-verse neighbourhood window: `0` on
-      // either knob turns it off, and a negative value never reaches this object
-      // because the parsers above reject it as a typed config failure.
-      ...(neighbourRadius !== undefined ? { neighbourRadius } : {}),
-      ...(neighbourCap !== undefined ? { neighbourCap } : {}),
-      // The citation-label lookup's budget: absent = the domain default, `0` turns
-      // the arm off, and a malformed value never reaches this object.
-      ...(labelLookupCap !== undefined ? { labelLookupCap } : {}),
+      retrieval,
     },
     fullStore: store,
     runStore: storeBridge(store),

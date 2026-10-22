@@ -382,7 +382,7 @@ function pipelineDeps(
     store,
     bridge: (effect) => Effect.runPromise(effect),
     language: "id",
-    retrieverLimit: 2,
+    retrieval: { limit: 2 },
     generatorProvider: capturedProvider,
   };
 }
@@ -550,8 +550,9 @@ describe("citation-label lookup — delivered answer", () => {
 
   it("honours the pipeline's configured lookup cap (0 disables the arm through the wiring)", async () => {
     const { store, ids } = await bukhariBook();
+    const deps = pipelineDeps(store, { answerText: "Jawaban." });
     const answer = await runChatPipelinePromise(
-      { ...pipelineDeps(store, { answerText: "Jawaban." }), labelLookupCap: 0 },
+      { ...deps, retrieval: { ...deps.retrieval, labelLookupCap: 0 } },
       { text: QUESTION_4697 },
     );
 

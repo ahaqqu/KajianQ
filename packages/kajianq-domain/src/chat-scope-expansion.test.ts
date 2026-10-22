@@ -440,7 +440,7 @@ describe("the expansion on the persisted answer trace", () => {
           bridge: (e) => Effect.runPromise(e as never),
           language: "en",
           // A fused set that misses Al-Fatihah entirely, so the expansion is visibly what adds it.
-          retrieverLimit: 1,
+          retrieval: { limit: 1 },
         },
         { text: GS_V0_015 },
       ) as never,
@@ -621,7 +621,7 @@ describe("the completion on the persisted answer trace", () => {
           store: store as never,
           bridge: (e) => Effect.runPromise(e as never),
           language: "en",
-          retrieverLimit: 1,
+          retrieval: { limit: 1 },
         },
         { text: ASMAUL_HUSNA },
       ) as never,

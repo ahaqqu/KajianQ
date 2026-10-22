@@ -91,12 +91,16 @@ describe("parseScopeExpansionCap — ADR-0045's budget knob", () => {
     }
   });
 
-  it("wires the configured cap into the pipeline and omits it when unset", () => {
+  it("wires the configured cap into the pipeline and states it absent when unset", () => {
     const keyed = { DATABASE_URL: "postgres://x", DEEPSEEK_API_KEY: "k" };
-    expect(buildChatWiring({ ...keyed, SCOPE_EXPANSION_CAP: "7" }).pipeline).toMatchObject({
+    expect(
+      buildChatWiring({ ...keyed, SCOPE_EXPANSION_CAP: "7" }).pipeline.retrieval,
+    ).toMatchObject({
       scopeExpansionCap: 7,
     });
-    expect(buildChatWiring(keyed).pipeline).not.toHaveProperty("scopeExpansionCap");
+    // Unset is a stated `undefined`, not a dropped key: the retriever's `??` default is
+    // what applies, so an unconfigured box is unchanged.
+    expect(buildChatWiring(keyed).pipeline.retrieval.scopeExpansionCap).toBeUndefined();
   });
 
   it("reports a malformed cap as a typed config failure", () => {
@@ -125,20 +129,20 @@ describe("parseScopeExpansionCap — ADR-0045's budget knob", () => {
     }
   });
 
-  it("wires the configured neighbourhood window into the pipeline and omits it when unset", () => {
+  it("wires the configured neighbourhood window into the pipeline and states it absent when unset", () => {
     const keyed = { DATABASE_URL: "postgres://x", DEEPSEEK_API_KEY: "k" };
     expect(
       buildChatWiring({
         ...keyed,
         NEIGHBOUR_EXPANSION_RADIUS: "2",
         NEIGHBOUR_EXPANSION_CAP: "6",
-      }).pipeline,
+      }).pipeline.retrieval,
     ).toMatchObject({ neighbourRadius: 2, neighbourCap: 6 });
-    // Unset = the domain's own defaults stand, so the wiring passes nothing and
-    // the retriever's `?? DEFAULT_…` is what applies.
-    const pipeline = buildChatWiring(keyed).pipeline;
-    expect(pipeline).not.toHaveProperty("neighbourRadius");
-    expect(pipeline).not.toHaveProperty("neighbourCap");
+    // Unset means the retriever's own `?? DEFAULT_…` applies; the deps still state the
+    // absent value, so the knob reaches the retriever and cannot vanish by omission.
+    const retrieval = buildChatWiring(keyed).pipeline.retrieval;
+    expect(retrieval.neighbourRadius).toBeUndefined();
+    expect(retrieval.neighbourCap).toBeUndefined();
   });
 
   it("parses ADR-0058's label-lookup cap with the same rule and wires it", () => {
@@ -151,10 +155,10 @@ describe("parseScopeExpansionCap — ADR-0045's budget knob", () => {
       expect(() => parseLabelLookupCap(bad)).toThrow(/LABEL_LOOKUP_CAP/);
     }
     const keyed = { DATABASE_URL: "postgres://x", DEEPSEEK_API_KEY: "k" };
-    expect(buildChatWiring({ ...keyed, LABEL_LOOKUP_CAP: "5" }).pipeline).toMatchObject({
+    expect(buildChatWiring({ ...keyed, LABEL_LOOKUP_CAP: "5" }).pipeline.retrieval).toMatchObject({
       labelLookupCap: 5,
     });
-    expect(buildChatWiring(keyed).pipeline).not.toHaveProperty("labelLookupCap");
+    expect(buildChatWiring(keyed).pipeline.retrieval.labelLookupCap).toBeUndefined();
   });
 });
 
