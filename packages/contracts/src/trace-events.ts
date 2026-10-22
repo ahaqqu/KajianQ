@@ -107,12 +107,17 @@ export const TraceEventSchema = v.variant("kind", [
     detail: v.object({
       key: v.pipe(v.string(), v.minLength(1)),
       value: v.pipe(v.string(), v.minLength(1)),
-      /** Children added; the configured cap; whether the scope held more children
-       * than the cap read from the window's start. A child the caller already
-       * held is read but not added, and does not raise the flag. */
+      /** Children added; the configured cap; whether the budget this read was given
+       * stopped children the caller did not already hold. A child already held is
+       * read but not added, and does not raise the flag. `remaining` is the budget
+       * this read was given — the completion shares the configured cap with the
+       * named read, which spends first — and a completion target that budget never
+       * reached adds nothing, raises the flag, and names its `skipped` reason. */
       returned: v.pipe(v.number(), v.integer(), v.minValue(0)),
       cap: v.pipe(v.number(), v.integer(), v.minValue(0)),
+      remaining: v.optional(v.pipe(v.number(), v.integer(), v.minValue(0))),
       truncated: v.boolean(),
+      skipped: v.optional(v.picklist(["budget"])),
     }),
     cost: v.optional(CostRecordSchema),
     at: v.pipe(v.number(), v.integer()),

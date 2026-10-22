@@ -50,7 +50,8 @@ function parseBoundedKnob(raw: string | undefined, name: string): number | undef
   return value;
 }
 
-/** `SCOPE_EXPANSION_CAP`: children of a named surah the scope expansion may add. */
+/** `SCOPE_EXPANSION_CAP`: children the surah reads may add — the surah the question
+ * names and a retrieved verse's short surah share the budget. */
 export function parseScopeExpansionCap(raw: string | undefined): number | undefined {
   return parseBoundedKnob(raw, "SCOPE_EXPANSION_CAP");
 }

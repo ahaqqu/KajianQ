@@ -5,7 +5,7 @@ import { quranChildOrdinal, surahSourceKey } from "./quran-source";
 import { detectSurahReference } from "./surah-reference";
 
 /**
- * Surah-reference scoped expansion (ADR-0045) — the retrieval half.
+ * Surah scoped expansion (ADR-0045) — the retrieval half.
  *
  * When a question names a surah (or a verse inside one), the fused dense
  * retrieval may carry no part of that surah at all — a whole-surah
@@ -13,7 +13,8 @@ import { detectSurahReference } from "./surah-reference";
  * paraphrase flips even the reachable verses in and out. So the named surah's
  * children are retrieved **deterministically** — a direct bounded read of the
  * surah parent's children, no embedding, no LLM — and added alongside the
- * fused hits.
+ * fused hits. {@link expandRetrievedSurahScope} is the same read on its second
+ * trigger: a retrieved verse whose surah fits the budget.
  *
  * Two properties are load-bearing:
  *
@@ -38,10 +39,10 @@ export const SCOPE_KEY_SURAH = "surah";
 export const SCOPE_EXPANSION_ORIGIN = "scope_expansion";
 
 /**
- * Default expansion budget: at most this many of the named surah's children.
- * 12 retrieves a short surah whole (Al-Fatihah, 7 verses) and gives a long one
- * (Al-Baqarah, 286) its deterministic window from the reference, while staying
- * small against the fused set (`limit` hits per track per sub-query) so
+ * Default expansion budget: at most this many of a surah's children, across both
+ * triggers. 12 retrieves a short surah whole (Al-Fatihah, 7 verses) and gives a
+ * long one (Al-Baqarah, 286) its deterministic window from the reference, while
+ * staying small against the fused set (`limit` hits per track per sub-query) so
  * expansion can never become the bulk of the prompt. Configured at the
  * composition root (apps/api reads `SCOPE_EXPANSION_CAP`); this is the default
  * when unset.
@@ -67,17 +68,31 @@ export type ScopeChildRow = {
 /** Runs one store Effect to a promise (the composition-root bridge). */
 export type ScopeBridge = <A>(effect: Effect.Effect<A, StoreError>) => Promise<A>;
 
+/**
+ * One scope read's trace detail — the shape the typed `scope_expansion` event
+ * carries, shared by the named-reference read and the retrieved-surah
+ * completion (ADR-0045).
+ */
+export type ScopeDetail = {
+  key: string;
+  value: string;
+  returned: number;
+  /** The configured cap; the one budget both triggers share. */
+  cap: number;
+  /** The budget this read was given — a completion records what the named read
+   * left of the cap. */
+  remaining?: number;
+  truncated: boolean;
+  /** Set on a completion target the shared budget never reached: no read ran and
+   * `returned` is zero. */
+  skipped?: "budget";
+};
+
 /** What the expansion contributed, plus the trace detail describing it. */
 export type ScopeExpansion = {
   chunks: readonly Chunk[];
   /** Null when the question named no scope — nothing to record. */
-  scope: {
-    key: string;
-    value: string;
-    returned: number;
-    cap: number;
-    truncated: boolean;
-  } | null;
+  scope: ScopeDetail | null;
 };
 
 /**

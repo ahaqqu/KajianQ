@@ -235,7 +235,8 @@ describe("retrieved-verse neighbourhood expansion", () => {
       routed("Apa yang dimaksud dengan ayat yang agung?", ["ayat agung"]),
     );
 
-    // The fused hit is 2:255; no scope expansion runs, because the question names no surah.
+    // The fused hit is 2:255; no scope expansion runs, because the question names no
+    // surah and 2:255's surah — 286 verses — is longer than the read's budget.
     expect(labelsOf(chunks.filter((c) => c.origin === undefined))).toEqual(["QS. 2:255"]);
     // Its OWN neighbours arrive: a parent-scoped opening read would have produced
     // 2:1..2:3 instead, which is what pins the anchor.

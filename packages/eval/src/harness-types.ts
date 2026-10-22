@@ -45,7 +45,9 @@ export type TraceEventLike = {
     value?: string;
     returned?: number;
     cap?: number;
+    remaining?: number;
     truncated?: boolean;
+    skipped?: string;
     /** The `citation_lookup` event's resolved labels. */
     labels?: string[];
     /** The `citation_lookup` event's labels no stored row carried. */

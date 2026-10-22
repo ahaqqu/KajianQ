@@ -4,6 +4,7 @@ import { RunContext, type Chunk, type RoutedQuery } from "@app/rag-core";
 import { createKajianQRetriever } from "./chat-retriever";
 import { runChatPipeline } from "./chat-pipeline";
 import { DEFAULT_SCOPE_EXPANSION_CAP, SCOPE_EXPANSION_ORIGIN } from "./chat-scope-expansion";
+import { RETRIEVED_SCOPE_KEY } from "./chat-surah-completion";
 import type { KajianQFilters } from "./filters";
 import { surahSourceKey } from "./quran-source";
 import { createMemoryRagStore } from "./test-utils/memory-rag-store";
@@ -162,7 +163,7 @@ function labels(chunks: readonly Chunk[]): string[] {
     .sort();
 }
 
-describe("surah-reference scoped expansion", () => {
+describe("surah scoped expansion", () => {
   it("adds the named surah's children alongside the fused hits", async () => {
     const { store, hadithId } = await corpus();
     const { retrieve } = harness(store);
@@ -405,8 +406,9 @@ describe("evidence for #241 — expansion is independent of router paraphrase", 
   });
 
   it("does not expand when only the sub-queries name a surah (C2's asymmetric negative)", async () => {
-    // The question names no surah, so no scope may be read even though a sub-query
-    // names one loudly — a sub-query-keyed implementation cannot pass this.
+    // The question names no surah and the fused set holds no verse, so neither
+    // trigger may read even though a sub-query names one loudly — a
+    // sub-query-keyed implementation cannot pass this.
     const { store } = await corpus();
     const { retrieve, events, reads } = harness(store);
     const chunks = await retrieve(
@@ -464,5 +466,179 @@ describe("the expansion on the persisted answer trace", () => {
     );
     expect(expansionRefs).toHaveLength(7);
     expect(expansionRefs.every((c) => c.id !== "")).toBe(true);
+  });
+});
+
+/**
+ * Short-surah completion — ADR-0045's second trigger. A fused verse of a surah
+ * that fits the budget pulls that surah's remaining children from the opening,
+ * which is where the verse that answers the question can sit; a long surah, a
+ * spent budget or a disabled cap adds nothing.
+ */
+
+async function seedRetrievedVerse(
+  store: ReturnType<typeof createMemoryRagStore>,
+  surah: number,
+  ayahCount: number,
+  retrievedAyah: number,
+): Promise<void> {
+  const parentId = await Effect.runPromise(
+    store.insertDocParent({
+      sourceKey: surahSourceKey(surah),
+      title: `QS. ${surah}`,
+      metadata: { sourceType: "quran", surah },
+    }),
+  );
+  await Effect.runPromise(
+    store.insertDocChildren(
+      Array.from({ length: ayahCount }, (_, i) => ({
+        parentId,
+        textRaw: `ar-${surah}:${i + 1}`,
+        textAr: `ar-${surah}:${i + 1}`,
+        textId: `id-${surah}:${i + 1}`,
+        citation: { sourceType: "quran", surah, ayah: i + 1 },
+        // One verse carries the query's vector, so fusion returns it; the rest of
+        // the surah is far from the query and never competes.
+        embeddingPrimary: i + 1 === retrievedAyah ? HADITH_VEC : QURAN_VEC,
+        embeddingFallback: i + 1 === retrievedAyah ? HADITH_VEC : QURAN_VEC,
+        ordinal: i,
+        metadata: {
+          sourceType: "quran",
+          surah,
+          ayah: i + 1,
+          citation: `QS. ${surah}:${i + 1}`,
+        },
+      })),
+    ),
+  );
+}
+
+// The recorded-run question whose required verse is the Basmalah the fused tracks
+// never returned: it names no surah, so only the completion trigger can add it.
+const ASMAUL_HUSNA = "Apa makna asmaul husna Ar-Rahman dan Ar-Rahim?";
+
+describe("short-surah completion", () => {
+  it("adds the opening verse of the short surah a fused verse belongs to", async () => {
+    const store = createMemoryRagStore();
+    await seedRetrievedVerse(store, 1, 7, 3);
+    const { retrieve, events, reads } = harness(store);
+    const chunks = await retrieve(routed(ASMAUL_HUSNA, ["makna ar-rahman dan ar-rahim"]));
+
+    // The fused tracks returned the surah's third verse and nothing of the rest.
+    expect(labels(chunks)).toEqual(
+      expect.arrayContaining(["QS. 1:1", "QS. 1:2", "QS. 1:3", "QS. 1:4", "QS. 1:7"]),
+    );
+    const completion = chunks.filter((c) => c.origin === SCOPE_EXPANSION_ORIGIN);
+    expect(labels(completion)).toEqual([
+      "QS. 1:1",
+      "QS. 1:2",
+      "QS. 1:4",
+      "QS. 1:5",
+      "QS. 1:6",
+      "QS. 1:7",
+    ]);
+    expect(reads.count).toBe(1);
+    expect(reads.lastFromOrdinal).toBeUndefined();
+    expect(events.filter((e) => e.kind === "scope_expansion")).toEqual([
+      {
+        stage: "retriever",
+        kind: "scope_expansion",
+        detail: {
+          key: RETRIEVED_SCOPE_KEY,
+          value: "1",
+          returned: 6,
+          cap: DEFAULT_SCOPE_EXPANSION_CAP,
+          remaining: DEFAULT_SCOPE_EXPANSION_CAP,
+          truncated: false,
+        },
+        at: 1,
+      },
+    ]);
+  });
+
+  it("leaves a retrieved long surah alone (no read, no event)", async () => {
+    const store = createMemoryRagStore();
+    await seedRetrievedVerse(store, 2, 286, 255);
+    const { retrieve, events, reads } = harness(store);
+    const chunks = await retrieve(routed(ASMAUL_HUSNA, ["makna asmaul husna"]));
+
+    expect(chunks.every((c) => c.origin !== SCOPE_EXPANSION_ORIGIN)).toBe(true);
+    expect(events.filter((e) => e.kind === "scope_expansion")).toHaveLength(0);
+    expect(reads.count).toBe(0);
+  });
+
+  it("spends what the named read left and completes the verse before the named one", async () => {
+    const store = createMemoryRagStore();
+    await seedRetrievedVerse(store, 1, 7, 3);
+    const { retrieve, events } = harness(store);
+    const chunks = await retrieve(routed("Apa makna QS. 1:3?", ["makna ayat"]));
+
+    const scopeEvents = events.filter((e) => e.kind === "scope_expansion") as {
+      detail: { key: string; value: string; returned: number; cap: number };
+    }[];
+    expect(scopeEvents.map((e) => e.detail)).toEqual([
+      {
+        key: "surah",
+        value: "1:3",
+        returned: 4,
+        cap: DEFAULT_SCOPE_EXPANSION_CAP,
+        truncated: false,
+      },
+      {
+        key: RETRIEVED_SCOPE_KEY,
+        value: "1",
+        returned: 2,
+        cap: DEFAULT_SCOPE_EXPANSION_CAP,
+        remaining: DEFAULT_SCOPE_EXPANSION_CAP - 4,
+        truncated: false,
+      },
+    ]);
+    expect(labels(chunks)).toEqual(
+      expect.arrayContaining(["QS. 1:1", "QS. 1:2", "QS. 1:3", "QS. 1:4", "QS. 1:7"]),
+    );
+  });
+
+  it("issues no completion read when the cap disables the surah reads", async () => {
+    const store = createMemoryRagStore();
+    await seedRetrievedVerse(store, 1, 7, 3);
+    const { retrieve, events, reads } = harness(store, 0);
+    const chunks = await retrieve(routed(ASMAUL_HUSNA, ["makna ar-rahman dan ar-rahim"]));
+
+    expect(chunks.every((c) => c.origin !== SCOPE_EXPANSION_ORIGIN)).toBe(true);
+    expect(events.filter((e) => e.kind === "scope_expansion")).toHaveLength(0);
+    expect(reads.count).toBe(0);
+  });
+});
+
+describe("the completion on the persisted answer trace", () => {
+  it("puts the completion's chunks on the retrieval event, under its own scope key", async () => {
+    const store = createMemoryRagStore();
+    await seedRetrievedVerse(store, 1, 7, 3);
+    const answer = await Effect.runPromise(
+      runChatPipeline(
+        {
+          ...createStubChatProviders({ answerText: "Jawaban berdasar konteks." }),
+          store: store as never,
+          bridge: (e) => Effect.runPromise(e as never),
+          language: "en",
+          retrieverLimit: 1,
+        },
+        { text: ASMAUL_HUSNA },
+      ) as never,
+    );
+    const trace = (answer as { trace: { events: Recorded[] } }).trace;
+    const retrieval = trace.events.find((e) => e.kind === "retrieval") as
+      | { detail: { chunks: { id: string; origin?: string }[] } }
+      | undefined;
+    const refs = retrieval?.detail.chunks ?? [];
+    // The fused verse plus its surah's six other verses, all on the trace.
+    expect(refs).toHaveLength(7);
+    expect(refs.filter((c) => c.origin === SCOPE_EXPANSION_ORIGIN)).toHaveLength(6);
+    const completion = trace.events.filter(
+      (e) =>
+        e.kind === "scope_expansion" &&
+        (e.detail as { key?: string } | undefined)?.key === RETRIEVED_SCOPE_KEY,
+    );
+    expect(completion).toHaveLength(1);
   });
 });

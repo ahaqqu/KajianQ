@@ -2,7 +2,13 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vite-plus/test";
 import { citationAddressRecall, sourceTypeRecall } from "../../packages/eval/src/scorers";
-import { addressesNamedBy, normalizeCitationLabel } from "../../packages/kajianq-domain/src/index";
+import {
+  addressesNamedBy,
+  DEFAULT_SCOPE_EXPANSION_CAP,
+  normalizeCitationLabel,
+  SURAH_AYAH_COUNTS,
+} from "../../packages/kajianq-domain/src/index";
+import { shortSurahsAmong } from "../../packages/kajianq-domain/src/chat-surah-completion";
 
 /**
  * Address recall measured on the recorded full-set run whose retrieval is
@@ -111,5 +117,64 @@ describe("recorded run — the two retrieval metrics", () => {
       "gs-v0-013",
       "gs-v0-017",
     ]);
+  });
+
+  it("reads 0.750 once the short-surah completion is applied to the recorded set", () => {
+    // An address-union MODEL of the recorded set, not a live-run prediction: the
+    // target surahs come from the recorded labels and the read is the corpus's own
+    // surah rows, capped by the configured budget. A live run completes before the
+    // neighbourhood arm, so a completion chunk can become an anchor the recorded
+    // run never had and the arm can then add an address the completion alone did
+    // not (the gs-v0-009 shape); the model also ignores the named read's spend
+    // inside the shared cap, because the fixture carries no origins. The one row
+    // this metric moves names no reference and is not truncated, so its union is
+    // identical either way — the 0.750 is the recorded set's, not a live promise.
+    const completed = REPLAY.map((row) => {
+      const verses = row.retrieved.flatMap((entry, index) => {
+        const match = /^QS\. (\d+):(\d+)$/.exec(entry.label ?? "");
+        if (match === null) return [];
+        return [
+          {
+            id: `c${index}`,
+            text: "",
+            metadata: { sourceType: "quran", surah: Number(match[1]) },
+          },
+        ];
+      });
+      const added = [];
+      const held = new Set(row.retrieved.map((entry) => entry.label));
+      for (const surah of shortSurahsAmong(verses, DEFAULT_SCOPE_EXPANSION_CAP)) {
+        const count = SURAH_AYAH_COUNTS[surah - 1] ?? 0;
+        for (let ayah = 1; ayah <= count && added.length < DEFAULT_SCOPE_EXPANSION_CAP; ayah += 1) {
+          const label = `QS. ${surah}:${ayah}`;
+          if (!held.has(label)) added.push(label);
+        }
+      }
+      const refs = [...refsOf(row), ...added.map((_, index) => ({ id: `a${index}` }))];
+      const labelOf = (id) =>
+        id.startsWith("a")
+          ? added[Number(id.slice(1))]
+          : (row.retrieved[Number(id.slice(1))]?.label ?? undefined);
+      const recall = citationAddressRecall(
+        requiredById.get(row.questionId),
+        refs,
+        labelOf,
+        GRAMMAR,
+      );
+      return { questionId: row.questionId, recall };
+    });
+    expect(mean(completed.map((row) => row.recall))).toBeCloseTo(0.75, 3);
+    expect(completed.filter((row) => row.recall < 1).map((row) => row.questionId)).toEqual([
+      "gs-v0-006",
+      "gs-v0-007",
+      "gs-v0-008",
+      "gs-v0-011",
+      "gs-v0-016",
+    ]);
+    // Exactly one recorded row moves: the Basmalah its own surah's opening holds.
+    const moved = completed.filter(
+      (row, index) => (row.recall === 1) !== (addressRecallOf(REPLAY[index]) === 1),
+    );
+    expect(moved.map((row) => row.questionId)).toEqual(["gs-v0-012"]);
   });
 });
