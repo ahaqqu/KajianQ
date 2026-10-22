@@ -111,3 +111,37 @@ Per-question, the six measured failures split three ways:
 **Caveats.** One model, one prompt, one draw at temperature 0 per question; a second model
 or a few samples could raise recall. The hit rate is measured against the _curator's_ choice,
 so a "miss" can mean a defensible alternative address, as 008 shows.
+
+## E3 — The deterministic quote-fidelity check (2026-10)
+
+**Question.** Can a citation be verified without a model — "these characters are in the
+passage you cited" rather than "the model says it used it"?
+
+**Setup.** Six real rows (three hadith, three verses) and five kinds of quoted span:
+verbatim, elided with an ellipsis, Arabic with diacritics stripped, a paraphrase (the
+words reversed), and a span lifted from a **different** chunk. Normalisation folds
+diacritics, alef/ya/ta-marbuta variants, punctuation and case
+(`research/quote-fidelity-check.py`).
+
+**Result.** 29 cases, **0 mismatches**.
+
+| case                            | accepted |
+| ------------------------------- | -------- |
+| verbatim                        | 6/6      |
+| elided (`…` between fragments)  | 6/6      |
+| Arabic with diacritics stripped | 5/5      |
+| paraphrase                      | **0/6**  |
+| quote from another chunk        | **0/6**  |
+
+**The bug the first run caught.** Normalising before splitting on the ellipsis erases the
+ellipsis and turns an elided quote into one contiguous string no chunk contains — five of
+six legitimate elided quotes were falsely rejected. The fix is ordering: split the raw
+quote on `…`, normalise the fragments, then require each fragment in order. Any
+implementation of this check must be tested with an elided quote, or it will fail honest
+answers.
+
+**What it does not do.** It cannot catch a minimal adversarial edit (a negation, a
+changed number, a swapped name) — the words are still in the passage. That class belongs
+to the model tier and is what the swap test in [`answer-attribution.md`](answer-attribution.md)
+§7 measures. The two tiers are complementary: this one has no false accepts on the
+"wrong chunk" and "paraphrase" classes and costs nothing.
