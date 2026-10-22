@@ -277,3 +277,47 @@ system it is measuring.
 **Caveats.** One reranker model and prompt, excerpts capped at 400 characters centred on the
 matn, n=17. The excerpt cap alone could explain part of the gap, and the union may be hurt
 by pool size (the smallest pool, 003's, is the one that regressed).
+
+## E8 — Hypothetical passage (HyDE): a different shape, a different reach (2026-10)
+
+**Setup.** One call per question writes "the passage that would answer this", in the voice of
+a Quran or hadith translation, with no address; the passage itself is embedded and ranked
+(`research/hyde-probe.py`).
+
+**Result.** Top-10 **10/17**, top-50 **14/17** — against 6/17 and 12/17 for the user's wording,
+and 12/17 / 12/17 for E6's four topic rewrites. The profile is different rather than better:
+it cracks rows no wording reached, 006 (rank 10 → **1**), 021 (27,587 → **41**), 011 (11 → **1**),
+015 (101 → 36); and it loses 007 (230 → 582) and 008 (144 → 751).
+
+## E9 — Quote-shaped passage: the verse's own words, without its address (2026-10)
+
+**Setup.** One call per question writes the literal Indonesian rendering of the verse or
+hadith it believes answers the question — text only, never an address — and that text is the
+query (`research/quote-hyde-probe.py`).
+
+**Result.** Top-10 9/17, top-50 12/17, with the same wide spread: 006 falls to rank 96 and
+013 to 1,024, while **007 lands at rank 23** — the only query shape that reaches it, and the
+counterpart of E2, where the model could not name `QS. 42:11` but can supply its words.
+
+## E10 — The union of three query shapes (2026-10)
+
+| candidate set                 |    top-10 |    top-50 |
+| ----------------------------- | --------: | --------: |
+| the user's wording            |      6/17 |     12/17 |
+| four topic rewrites (E6)      |     12/17 |     12/17 |
+| hypothetical passage (E8)     |     10/17 |     14/17 |
+| quoted passage (E9)           |      9/17 |     12/17 |
+| **all three shapes together** | **13/17** | **15/17** |
+
+The three shapes fail on different rows, which is the whole point: 007 is reachable only by
+quoting the passage, 006 and 021 only by the hypothetical passage, 015 best by the quoted
+one. Six cheap calls per question turn 6/17 into 13/17 top-10 and 15/17 top-50.
+
+**What remains outside every shape:** 008 (best rank 144 — and its sibling `5027` is an
+equally valid answer, so this is a contract failure, not a reach failure) and 016 (best 61,
+just outside the cut). Nothing on the query side reaches them, and 016 is the row the
+address hypothesis also missed.
+
+**Caveat that keeps this honest.** Fifteen of seventeen at top-50 is _candidate availability_,
+not answers. E7 measured that a reranker converts about half of such a pool, and the
+conversion is where a product is lost or won.

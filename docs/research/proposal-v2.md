@@ -47,9 +47,11 @@ curation.
 
 ### 3. The question is expanded into several queries, not rewritten into one
 
-One call returns **four differently-worded** queries; each is retrieved and the candidate
-lists are unioned before reranking. The original question is always one of the inputs and
-is never replaced; every query is traced.
+Six cheap queries per question, in three shapes that fail on different rows: four
+differently-worded topic queries, one hypothetical answer passage, and one quotation of the
+passage the model believes answers the question (text only, never an address). Each is
+retrieved and the candidate lists are unioned before reranking; the original question is
+always an input and every query is traced.
 
 Measured (`experiments.md` E5/E6): a single rewrite is a lottery — top-10 6/17 → 7/17, with
 013 displaced from rank 12 to 1,375. Four rewrites lift the _oracle_ top-10 to **12/17**,
