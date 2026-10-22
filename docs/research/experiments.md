@@ -321,3 +321,9 @@ address hypothesis also missed.
 **Caveat that keeps this honest.** Fifteen of seventeen at top-50 is _candidate availability_,
 not answers. E7 measured that a reranker converts about half of such a pool, and the
 conversion is where a product is lost or won.
+
+E10's mechanism is implemented as [`research/query-expansion.ts`](../../research/query-expansion.ts):
+`queriesFor` fixes the deterministic query order with the user's question first, and
+`unionCandidates` unions by row id while keeping the shape that surfaced each row first, so
+the trace can show which query produced a hit. Tests run with
+`bun test research/query-expansion.test.ts`. It is a research artefact, not a pipeline stage.
