@@ -99,9 +99,11 @@ describe("the dimension map is exhaustive over the filter type", () => {
 /**
  * The filter map's contract with the corpus, executed rather than described:
  * run the same two ingesters production runs over the repo's real-source
- * fixtures and collect every metadata key they write. The pin is one-directional
- * on purpose — ingestion writes keys that are not filters (`surah`, `collection`,
- * `citation`, …), while every FILTER_DIMENSIONS entry must be a key that exists.
+ * fixtures and collect every metadata key they write. The forward pin is
+ * one-directional on purpose — ingestion writes keys that are not filters
+ * (`surah`, `collection`, `citation`, …), while every FILTER_DIMENSIONS entry
+ * must be a key that exists. The retired set has its own reverse guard below,
+ * so ingestion starting to write one of those keys is also a deliberate change.
  */
 const FIXTURES = resolve(import.meta.dirname, "fixtures");
 const readFixture = (relative: string) => readFile(resolve(FIXTURES, relative), "utf8");
@@ -146,7 +148,7 @@ async function ingestedMetadataKeys(): Promise<Set<string>> {
 }
 
 describe("the filter map is pinned to the metadata ingestion writes", () => {
-  it("binds only keys both the Quran and hadith ingesters actually write", async () => {
+  it("binds only keys the production ingesters actually write", async () => {
     const written = await ingestedMetadataKeys();
     for (const [dimension, key] of Object.entries(FILTER_DIMENSIONS)) {
       expect(
