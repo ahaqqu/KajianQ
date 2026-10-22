@@ -120,6 +120,22 @@ describe("failureLines (#340)", () => {
     ]);
   });
 
+  it("leaves the address arm out for a scored row the metric never measured", () => {
+    // The field is optional for a row persisted before the metric: `undefined` is
+    // "never measured", so it must not add an address arm to the failure line.
+    const legacy = {
+      questionId: "gs-v0-015",
+      expectedBehavior: "answer",
+      passed: false,
+      sourceTypeRecall: 1,
+      citationValidity: 0,
+      refused: false,
+    };
+    expect(failureLines([legacy], FIXTURE)).toEqual([
+      "  failed: gs-v0-015 citationValidity=0.000 (required QS. 1:2, present 0/1)",
+    ]);
+  });
+
   it("names the behavior rule a refusal of an answer question missed", () => {
     expect(failureLines([scoredOutcome("gs-v0-003", { refused: true })], FIXTURE)).toEqual([
       "  failed: gs-v0-003 behavior=over-refusal (expected an answer, the answer was refused)",
@@ -308,10 +324,42 @@ describe("printSummary (#290, #340)", () => {
       { reportAddressMisses: true },
     );
     expect(printed).toContain(
-      "  address recall: reported, not gated — address misses in this sample (1 of 2 scored): gs-v0-003; the sample decides this line, not a full-set debt list",
+      "  address recall: reported, not gated — address misses in this sample (1 of 2 measured): gs-v0-003; the sample decides this line, not a full-set debt list",
     );
     // The address mean still prints above it: the dimension is reported in full.
     expect(printed).toContain("  mean citation-address recall: 0.500");
+  });
+
+  it("pins the reporting caller's whole block, line for line", () => {
+    // The block, not only the derived line: what a `reportAddressMisses: true`
+    // caller prints is exactly these rows, so a second line — a hand-written list
+    // rendered beside the derived one, whatever its source or name — fails here.
+    // A list threaded through a *different option* cannot fail this test (the test
+    // never passes it), which is why the smoke's call site pins its whole input
+    // set in `eval-staging-harness.test.mjs`.
+    const missed = scoredOutcome("gs-v0-003", { citationAddressRecall: 0 });
+    const printed = printedSummary(
+      {
+        passed: 1,
+        failed: 1,
+        skipped: 0,
+        budgetExceeded: false,
+        results: [scored, missed],
+      },
+      FIXTURE,
+      { reportAddressMisses: true },
+    );
+    expect(printed.split("\n")).toEqual([
+      "",
+      "eval:smoke summary — run run-1",
+      "  questions: 2  passed: 1  failed: 1  skipped: 0",
+      "  mean source-type recall: 1.000",
+      "  mean citation-address recall: 0.500",
+      "  address recall: reported, not gated — address misses in this sample (1 of 2 measured): gs-v0-003; the sample decides this line, not a full-set debt list",
+      "  mean citation validity: 1.000",
+      "  cost: 0.000025 USD  budget exceeded: false",
+      "  failed: gs-v0-003 citationAddressRecall=0.000 (required HR. Bukhari no. 191, retrieved 0/1)",
+    ]);
   });
 
   it("says the sample produced no address miss instead of naming a stale list", () => {
@@ -321,7 +369,7 @@ describe("printSummary (#290, #340)", () => {
       { reportAddressMisses: true },
     );
     expect(printed).toContain(
-      "  address recall: reported, not gated — address misses in this sample (0 of 1 scored): none; the sample decides this line, not a full-set debt list",
+      "  address recall: reported, not gated — address misses in this sample (0 of 1 measured): none; the sample decides this line, not a full-set debt list",
     );
   });
 
@@ -338,12 +386,44 @@ describe("printSummary (#290, #340)", () => {
       { reportAddressMisses: true },
     );
     // A skipped row's zeroed address dimension is a skip, not an address miss; the
-    // line's denominator is the scored sample, so it cannot inflate the debt.
+    // line's denominator is the measured sample, so it cannot inflate the debt.
     const addressLine = printed
       .split("\n")
       .find((line) => line.includes("address misses in this sample"));
     expect(addressLine).toBe(
-      "  address recall: reported, not gated — address misses in this sample (0 of 1 scored): none; the sample decides this line, not a full-set debt list",
+      "  address recall: reported, not gated — address misses in this sample (0 of 1 measured): none; the sample decides this line, not a full-set debt list",
+    );
+  });
+
+  it("never prints a wider denominator than the address mean above it", () => {
+    // A row persisted before the metric carries no `citationAddressRecall`: it is
+    // scored, so it reaches this function, but it was never measured. The
+    // denominator must be the measured set, not every scored row, or the line
+    // would read "1 of 3" under a mean computed over two.
+    const unmeasuredLegacy = {
+      questionId: "gs-v0-015",
+      passed: true,
+      expectedBehavior: "answer",
+      sourceTypeRecall: 1,
+      citationValidity: 1,
+      refused: false,
+    };
+    const missed = scoredOutcome("gs-v0-003", { citationAddressRecall: 0 });
+    const printed = printedSummary(
+      {
+        passed: 2,
+        failed: 1,
+        skipped: 0,
+        budgetExceeded: false,
+        results: [scored, unmeasuredLegacy, missed],
+      },
+      FIXTURE,
+      { reportAddressMisses: true },
+    );
+    const lines = printed.split("\n");
+    expect(lines).toContain("  mean citation-address recall: 0.500");
+    expect(lines).toContain(
+      "  address recall: reported, not gated — address misses in this sample (1 of 2 measured): gs-v0-003; the sample decides this line, not a full-set debt list",
     );
   });
 

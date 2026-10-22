@@ -110,11 +110,16 @@ describe("the staged smoke subset's default membership", () => {
     for (const id of SMOKE_HELD_OUT_IDS) expect(DEFAULT_IDS).not.toContain(id);
   });
 
-  it("carries no hand-maintained address-debt list in the domain vocabulary", async () => {
-    // The smoke prints the misses its own run scored, so the domain pack has no
-    // list a fixture or a recorded run could leave behind. The absence is the
-    // pin: a reintroduced list is a second copy that outlives the run it claims
-    // to describe.
+  it("keeps the deleted address-debt constant's name out of the domain vocabulary", async () => {
+    // This pins one name, not the whole invariant, and says so: the smoke prints
+    // the misses its own run scored, so the constant's name stays deleted. A list
+    // reintroduced under a different name passes this check. The invariant is
+    // pinned where the line is produced: `eval-cli.test.mjs` fixes the whole
+    // reporting block, and `eval-staging-harness.test.mjs` fixes the smoke's
+    // summary-call inputs, so a hand list carried through an argument fails there
+    // whatever it is called. A list smuggled inside `result` or the fixture, or
+    // printed beside the summary rather than through it, would still escape both
+    // pins: they check the call's inputs and the block, not the data in them.
     const taxonomy = await import("../../packages/kajianq-domain/src/taxonomy");
     expect(Object.hasOwn(taxonomy, "ADDRESS_RECALL_TRACKED_MISSES")).toBe(false);
   });

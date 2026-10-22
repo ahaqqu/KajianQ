@@ -279,5 +279,27 @@ describe("the smoke's coverage wiring", () => {
     expect(smoke).not.toContain("ADDRESS_RECALL_TRACKED_MISSES");
     expect(smoke).not.toMatch(/trackedAddressMisses\s*:/);
     expect(run).not.toContain("gateAddressRecall");
+
+    // The summary call's inputs, pinned whole. A hand list can only reach the
+    // printed line through an argument, so the exact option set is the pin —
+    // whatever a list or its option would be named — and a spread would carry
+    // keys past the list. `reportAddressMisses: true` is the only reporting input.
+    expect(smoke.match(/printSummary\(/g)).toHaveLength(1);
+    const summaryCall = /printSummary\("eval:smoke",\s*\{([\s\S]*?)\n\}\);/.exec(smoke);
+    expect(summaryCall).not.toBeNull();
+    const summaryInputs = (summaryCall?.[1] ?? "")
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line !== "" && !line.startsWith("//"));
+    expect(summaryInputs.map((entry) => entry.split(":")[0].replace(/,$/, ""))).toEqual([
+      "runId",
+      "questionCount",
+      "result",
+      "costMicroUsd",
+      "questions",
+      "reportAddressMisses",
+    ]);
+    expect(summaryInputs).toContain("reportAddressMisses: true,");
+    expect(summaryCall?.[1]).not.toContain("...");
   });
 });

@@ -54,6 +54,10 @@ export function loadFixture(prefix, config, { assertV0 = false } = {}) {
 
 export const mean = (xs) => (xs.length === 0 ? null : xs.reduce((a, b) => a + b, 0) / xs.length);
 
+// A row persisted before the metric has no `citationAddressRecall`; `undefined` is
+// "never measured", so it is neither a miss nor a denominator row.
+const hasAddressRecall = (x) => x.citationAddressRecall !== undefined;
+
 /**
  * Questions whose retrieval used a deterministic path print the fused-only
  * source-type recall beside the reported one: the scorer reads chunk refs and
@@ -148,7 +152,7 @@ export function failureLines(failed, questions) {
             : `sourceTypeRecall=${x.sourceTypeRecall.toFixed(3)}`,
         );
       }
-      if (x.citationAddressRecall !== undefined && x.citationAddressRecall < 1) {
+      if (hasAddressRecall(x) && x.citationAddressRecall < 1) {
         const required = question?.requiredCitations ?? [];
         const surfaced = Math.round(x.citationAddressRecall * required.length);
         rules.push(
@@ -192,7 +196,9 @@ export function failureLines(failed, questions) {
  * `reportAddressMisses` is the reported-not-gated line: the smoke sets it because its
  * sample cannot decide the full set, and the misses are read from the run's own scored
  * outcomes — never a caller-supplied list — with the sample named as the line's scope.
- * `eval:run`, which gates on the address dimension, omits it.
+ * Its denominator is the measured set — the scored rows carrying `citationAddressRecall`,
+ * the same set as its misses and the mean above it; `eval:run`, which gates on the
+ * dimension, omits the switch.
  */
 export function printSummary(
   prefix,
@@ -202,8 +208,9 @@ export function printSummary(
   const scored = result.results.filter((x) => x.skipped !== true);
   const skipped = result.results.filter((x) => x.skipped === true);
   const failed = scored.filter((x) => x.passed !== true);
-  const addressMisses = scored
-    .filter((x) => x.citationAddressRecall !== undefined && x.citationAddressRecall < 1)
+  const addressMeasured = scored.filter(hasAddressRecall);
+  const addressMisses = addressMeasured
+    .filter((x) => x.citationAddressRecall < 1)
     .map((x) => x.questionId);
   console.log(
     [
@@ -212,17 +219,13 @@ export function printSummary(
       `  questions: ${questionCount}  passed: ${result.passed}  failed: ${result.failed}  skipped: ${result.skipped}`,
       `  mean source-type recall: ${mean(scored.map((x) => x.sourceTypeRecall))?.toFixed(3) ?? "n/a"}`,
       `  mean citation-address recall: ${
-        mean(
-          scored
-            .filter((x) => x.citationAddressRecall !== undefined)
-            .map((x) => x.citationAddressRecall),
-        )?.toFixed(3) ?? "n/a"
+        mean(addressMeasured.map((x) => x.citationAddressRecall))?.toFixed(3) ?? "n/a"
       }`,
       ...(reportAddressMisses === true
         ? [
             `  address recall: reported, not gated — address misses in this sample (${
               addressMisses.length
-            } of ${scored.length} scored): ${
+            } of ${addressMeasured.length} measured): ${
               addressMisses.length === 0 ? "none" : addressMisses.join(", ")
             }; the sample decides this line, not a full-set debt list`,
           ]
