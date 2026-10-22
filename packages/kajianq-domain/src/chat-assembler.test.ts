@@ -197,4 +197,13 @@ describe("the presentation order", () => {
     const chunks = [chunkOf("q-low", "quran", 1), chunkOf("q-high", "quran", 5)];
     expect(assemble(chunks).chunks.map((c) => c.id)).toEqual(["q-high", "q-low"]);
   });
+
+  it("prefers a chunk's rerank score over its fused score inside a slot", () => {
+    const byFusion = { ...chunkOf("fused-first", "hadith", 9), rerankScore: 0.1 };
+    const byRerank = { ...chunkOf("reranked-first", "hadith", 1), rerankScore: 0.9 };
+    expect(assemble([byFusion, byRerank]).chunks.map((c) => c.id)).toEqual([
+      "reranked-first",
+      "fused-first",
+    ]);
+  });
 });

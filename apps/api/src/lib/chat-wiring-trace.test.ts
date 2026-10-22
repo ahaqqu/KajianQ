@@ -47,6 +47,7 @@ const PROVIDER_COST_MICRO_USD = {
   generator: 2,
   reviewer: 1,
   pregate: 6,
+  rerank: 6,
   embed: 11,
 } as const;
 
@@ -105,6 +106,8 @@ function wiredDeps(
       providers.reviewerDecider === null
         ? null
         : watch("pregate", providers.reviewerDecider, calls),
+    rerankDecider:
+      providers.rerankDecider === null ? null : watch("rerank", providers.rerankDecider, calls),
     embedder: watch("embed", providers.embedder, calls),
     store,
     bridge: runStoreEffect,
@@ -244,5 +247,72 @@ describe("buildChatWiring — the embed call's cost rides the answer trace", () 
       PROVIDER_COST_MICRO_USD.router + PROVIDER_COST_MICRO_USD.embed,
     );
     expect(totalCostMicroUsd(trace)).toBe(12);
+  });
+});
+
+describe("buildChatWiring — the rerank's decision call rides the answer trace", () => {
+  it("records both scores on the rerank event and sums the call into the trace", async () => {
+    const store = createMemoryRagStore();
+    const parentId = await runStoreEffect(
+      store.insertDocParent({ sourceKey: "quran/2", title: "Al-Baqarah", metadata: {} }),
+    );
+    for (const [ordinal, ayah] of [255, 256].entries()) {
+      await runStoreEffect(
+        store.insertDocChild({
+          parentId,
+          textRaw: ARABIC,
+          textAr: ARABIC,
+          textId: TRANSLATION,
+          citation: { sourceType: "quran", surah: 2, ayah },
+          embeddingPrimary: [1, 0, 0],
+          ordinal,
+          metadata: { sourceType: "quran", citation: `QS. 2:${ayah}` },
+        } as never),
+      );
+    }
+    const calls: string[] = [];
+    const answer = await runChatPipelinePromise(
+      wiredDeps(store, calls, {
+        answerText: `Jawaban ${CITATION}: Allah Mahahidup.`,
+        embedCost: {
+          tokensIn: 3,
+          tokensOut: 0,
+          latencyMs: 7,
+          costMicroUsd: PROVIDER_COST_MICRO_USD.embed,
+          estimated: true,
+        },
+        pregateMicroUsd: PROVIDER_COST_MICRO_USD.pregate,
+        rerankMicroUsd: PROVIDER_COST_MICRO_USD.rerank,
+      }),
+      { text: "Apa itu Ayat Kursi?" },
+    );
+
+    // The retriever embeds, then ranks the fused survivors before the
+    // assembler; the pre-gate still clears the citation, so no paid reviewer.
+    expect([...new Set(calls.map((call) => call.split(".")[0]))]).toEqual([
+      "router",
+      "embed",
+      "rerank",
+      "generator",
+      "pregate",
+    ]);
+    expect(totalCostMicroUsd(answer.trace)).toBe(spentMicroUsd(calls));
+
+    const rerank = answer.trace.events.find((event) => event.kind === "rerank");
+    expect(rerank).toBeDefined();
+    if (rerank?.kind !== "rerank") throw new Error("unreachable");
+    expect(rerank.detail.outcome).toBe("applied");
+    expect(rerank.detail.items).toHaveLength(2);
+    for (const item of rerank.detail.items) {
+      // Both scores are recorded: the fused order's score and the decision
+      // model's probability, with the rank each candidate landed on.
+      expect(item.fusedScore).toBeTypeOf("number");
+      expect(item.rerankScore).toBeTypeOf("number");
+      expect(item.rankAfter).toBeTypeOf("number");
+    }
+    const call = answer.trace.events.find(
+      (event) => event.kind === "llm_call" && event.detail?.purpose === "rerank",
+    );
+    expect(call?.cost?.costMicroUsd).toBe(PROVIDER_COST_MICRO_USD.rerank);
   });
 });

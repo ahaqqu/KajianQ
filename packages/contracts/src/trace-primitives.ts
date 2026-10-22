@@ -58,6 +58,14 @@ export const ChunkRefSchema = v.object({
   score: v.optional(v.number()),
   rankDense: v.optional(v.number()),
   rankSparse: v.optional(v.number()),
+  /**
+   * The reranker's score for this chunk when a rerank pass ran and applied —
+   * 0..1, the decision model's per-candidate probability. Recorded BESIDE
+   * `score` (the fused score) rather than replacing it, so a trace reader can
+   * compare the two and tune the rerank from the trace alone; absent means no
+   * rerank reordered this chunk.
+   */
+  rerankScore: v.optional(v.pipe(v.number(), v.minValue(0), v.maxValue(1))),
   /** Why this chunk is in the set: an opaque caller label (ADR-0045).
    * Absent = the fused tracks produced it, so older traces stay readable. */
   origin: v.optional(v.pipe(v.string(), v.minLength(1))),

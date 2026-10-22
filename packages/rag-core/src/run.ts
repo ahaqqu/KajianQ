@@ -1,5 +1,5 @@
 import { Effect } from "effect";
-import { parseTrace, type Trace, type TraceEvent } from "@app/contracts";
+import { parseTrace, type ChunkRef, type Trace, type TraceEvent } from "@app/contracts";
 import { RunContext, type RunConfig, type RunContextService } from "./context";
 
 export type { RunConfig };
@@ -274,25 +274,12 @@ function parseTraceSafe(trace: unknown): Trace | undefined {
 }
 
 /** Project a Chunk into the retrieval event's typed chunk reference. */
-function toChunkRef(chunk: Chunk): {
-  id: string;
-  score?: number;
-  rankDense?: number;
-  rankSparse?: number;
-  origin?: string;
-} {
-  const ref: {
-    id: string;
-    score?: number;
-    rankDense?: number;
-    rankSparse?: number;
-    origin?: string;
-  } = {
-    id: chunk.id,
-  };
+function toChunkRef(chunk: Chunk): ChunkRef {
+  const ref: ChunkRef = { id: chunk.id };
   if (chunk.score !== undefined) ref.score = chunk.score;
   if (chunk.rankDense !== undefined) ref.rankDense = chunk.rankDense;
   if (chunk.rankSparse !== undefined) ref.rankSparse = chunk.rankSparse;
+  if (chunk.rerankScore !== undefined) ref.rerankScore = chunk.rerankScore;
   if (chunk.origin !== undefined) ref.origin = chunk.origin;
   return ref;
 }

@@ -33,6 +33,7 @@ export {
   type StreamHandle,
 } from "./provider";
 export { runPipeline, type PipelineStages, type RunOptions } from "./run";
+export { createRerankedRetriever, type RerankOptions } from "./rerank";
 export {
   type ChoiceAnswer,
   type ChoiceQuestion,

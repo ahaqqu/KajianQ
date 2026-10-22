@@ -32,10 +32,21 @@ export type Chunk = {
   rankDense?: number;
   rankSparse?: number;
   /**
+   * The reranker's score for this chunk when a rerank pass ran and applied —
+   * an engine-generic 0..1 ordering score, recorded BESIDE `score` so the
+   * fused score survives. A consumer that orders evidence (the assembler)
+   * prefers it over `score`; absent means the fused order stands for this
+   * chunk. The engine never assigns it; the rerank decorator does.
+   */
+  rerankScore?: number;
+  /**
    * Why this chunk is in the retrieved set, as a caller-chosen opaque label
    * (ADR-0045). Absent means the retriever's fused tracks produced it; a
    * retriever that adds chunks by another path labels them so the Trace can
-   * tell the two apart. The engine never interprets the label.
+   * tell the two apart. A reordering decorator treats this field as the fused
+   * marker: only the unlabelled block is reordered, and a labelled chunk keeps
+   * the position the wrapped retriever gave it. Outside the reorder the engine
+   * never interprets the label.
    */
   origin?: string;
   metadata?: Record<string, unknown>;
@@ -153,7 +164,12 @@ export interface Router<TFilters extends Record<string, unknown> = DefaultFilter
   route(query: Query<TFilters>): StageEffect<Routing<TFilters>>;
 }
 
-/** Retriever: hybrid search over the store, fused and scored. */
+/**
+ * Retriever: hybrid search over the store, fused and scored. A decorator that
+ * reorders (the decision-model rerank) may reorder only the fused block — the
+ * chunks without an `origin` label — and returns every labelled chunk in the
+ * position it held, so a downstream stage sees the same set in the same slots.
+ */
 export interface Retriever<TFilters extends Record<string, unknown> = DefaultFilters> {
   retrieve(routed: RoutedQuery<TFilters>): StageEffect<readonly Chunk[]>;
 }

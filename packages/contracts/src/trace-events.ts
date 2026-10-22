@@ -1,6 +1,7 @@
 import * as v from "valibot";
 import { ChunkRefSchema, CostRecordSchema, StageSchema } from "./trace-primitives";
 import { productRulesEventSchema } from "./trace-product-rules";
+import { rerankEventSchema } from "./trace-rerank";
 import { sourceRoutingEventSchema } from "./trace-source-routing";
 
 /**
@@ -252,6 +253,8 @@ export const TraceEventSchema = v.variant("kind", [
     cost: v.optional(CostRecordSchema),
     at: v.pipe(v.number(), v.integer()),
   }),
+  /** The decision-model reorder of retrieval candidates; owner `./trace-rerank`. */
+  rerankEventSchema,
   v.object({
     /**
      * The answer slot the DELIVERED text occupies, not the stage that wrote the

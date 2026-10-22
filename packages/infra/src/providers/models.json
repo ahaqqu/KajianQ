@@ -120,7 +120,7 @@
       }
     },
     "typesafe": {
-      "$comment": "ADR-0042: TypeSafe AI 'System One' decision endpoint \u2014 typed structured questions (Choice/Score/Noul) over a state, priced on input tokens only (output free). Not a chat or embedding vendor: it backs the `decision` serving role (the reviewer pre-gate) and the bench-only `decision-candidates` role.",
+      "$comment": "ADR-0042: TypeSafe AI 'System One' decision endpoint \u2014 typed structured questions (Choice/Score/Noul) over a state, priced on input tokens only (output free). Not a chat or embedding vendor: it backs the `decision` serving role (the reviewer pre-gate and the retrieval rerank) and the bench-only `decision-candidates` role.",
       "baseUrl": "https://api.typesafe.ai/v1",
       "apiKeyEnv": "JEV_API_KEY",
       "protocol": "systemone",
@@ -171,7 +171,7 @@
       "chain": ["typesafe:jev-1.13.0"]
     },
     "decision": {
-      "$comment": "The decision-model SERVING role (ADR-0042 adoption): the reviewer pre-gate's pinned decision model \u2014 the model the committed multilingual gate report adopted. Separate from the bench-only `decision-candidates` role so a re-bench can add challengers without changing what serves. Always active wherever JEV_API_KEY is bound (recorded as the ADR-0042 consequence); absent key = the pre-gate is not wired and the reviewer behaves as it did before adoption \u2014 no enable/disable flag exists. Batched: one call per answer, input-priced, ~$0.0001 per screen at the pinned $0.042/MTok.",
+      "$comment": "The decision-model SERVING role (ADR-0042 adoption): the pinned decision model behind the reviewer pre-gate and the retrieval rerank \u2014 the model the committed multilingual gate report adopted. Separate from the bench-only `decision-candidates` role so a re-bench can add challengers without changing what serves. Always active wherever JEV_API_KEY is bound (recorded as the ADR-0042 consequence); absent key = neither adoption is wired and the reviewer and retrieval behave as they did before adoption \u2014 no enable/disable flag exists. Batched: one call per answer for the pre-gate, one per retrieval whose fused set has two or more candidates for the rerank, input-priced.",
       "chain": ["typesafe:jev-1.13.0"]
     }
   },
