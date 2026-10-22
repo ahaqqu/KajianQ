@@ -51,10 +51,11 @@ export type ChatPipelineDeps = {
   bridge: StoreBridge;
   language: import("./chat-prompts").ChatLanguage;
   /**
-   * The retriever's knobs, required: the composition root states the value it read, and
-   * an `undefined` value means the retriever's own default. Omission is a compile error,
-   * so a binding cannot be dropped by leaving the key out, and `buildChatStages` forwards
-   * the object whole — no list of forwarded names can fall behind the retriever's options.
+   * The retriever's knobs, required: the serving composition root states every one it
+   * reads (its own bag is `Required`), and an `undefined` value means the retriever's own
+   * default. Omission there is a compile error, so a binding cannot be dropped by leaving
+   * the key out, and `buildChatStages` forwards the object whole — no list of forwarded
+   * names can fall behind the retriever's options.
    */
   retrieval: ChatRetrievalTuning;
   /** Skip the reviewer LLM call (eval refusal cases, budget-capped runs). */

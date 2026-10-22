@@ -141,20 +141,35 @@ export type ChatWiring = {
   runStore: StoreBridge;
 };
 
-/** The retriever knobs the serving deps carry, as the domain types them. */
-type RetrievalTuning = ChatWiring["pipeline"]["retrieval"];
+/**
+ * `T` with every key `Shape` does not declare turned into `never`: the exactness check an
+ * object literal's excess-property check does not give once a spread introduces the key.
+ */
+type NoExtraKeys<T, Shape> = T & Record<Exclude<keyof T, keyof Shape>, never>;
 
 /**
- * The retriever knobs serving must state. Required, and a value may be `undefined` — a
- * stated value meaning the retriever's own default — so a box that binds nothing runs the
- * defaults while an operator's value cannot leave the deps object by omission. Each field
- * is typed by the retriever's own option, so a knob the retriever stops reading fails to
- * compile here instead of riding a spread into nothing.
+ * The retriever knobs serving must state. `Required` drops each optionality while keeping
+ * `| undefined` — a stated value meaning the retriever's own default — so every knob the
+ * deps carry, and any the retriever gains, is a compile error here when dropped by leaving
+ * the key out, while a box that binds none of them still runs the defaults.
  */
-type ServingRetrieval = RetrievalTuning & {
-  neighbourRadius: RetrievalTuning["neighbourRadius"];
-  neighbourCap: RetrievalTuning["neighbourCap"];
-};
+type ServingRetrieval = Required<ChatWiring["pipeline"]["retrieval"]>;
+
+/** The serving retrieval bag, exact: a key `ServingRetrieval` does not declare, including
+ * one a spread smuggles in, must not compile beside a bag no stage reads. */
+function servingRetrieval<T extends ServingRetrieval>(
+  bag: NoExtraKeys<T, ServingRetrieval>,
+): ServingRetrieval {
+  return bag;
+}
+
+/** The pipeline bag, exact for the same reason: a key the pipeline deps do not declare must
+ * not arrive through a spread and sit there configured-looking and unread. */
+function pipelineBag<T extends ChatWiring["pipeline"]>(
+  deps: NoExtraKeys<T, ChatWiring["pipeline"]>,
+): ChatWiring["pipeline"] {
+  return deps;
+}
 
 /**
  * The store-only wiring the auth and feedback routes need: a store plus its bridge,
@@ -188,18 +203,22 @@ export function buildChatWiring(env: Record<string, string | undefined>): ChatWi
     );
   }
   const store = createRagStoreFromEnv(env);
-  // Every retriever knob the deployment can set, stated at once: `undefined` is the
-  // retriever's own default, so a box that binds none of them behaves as it always did,
-  // while `0` is a real value (it disables its arm) and a negative or malformed value
-  // never reaches the deps — the parsers raise a typed config failure instead.
-  const retrieval: ServingRetrieval = {
+  // Every retriever knob, stated at once: `undefined` is the retriever's own default, so a
+  // box that binds none of them behaves as it always did, while `0` is a real value (it
+  // disables its arm) and a negative or malformed value never reaches the deps — the
+  // parsers raise a typed config failure instead.
+  const retrieval = servingRetrieval({
+    // The deps type carries `limit`, but serving binds no variable to it: stating
+    // `undefined` keeps the bag exact — every knob is stated, and an absent binding is the
+    // retriever's own default rather than a key the composition root forgot.
+    limit: undefined,
     scopeExpansionCap: parseScopeExpansionCap(env["SCOPE_EXPANSION_CAP"]),
     neighbourRadius: parseNeighbourRadius(env["NEIGHBOUR_EXPANSION_RADIUS"]),
     neighbourCap: parseNeighbourCap(env["NEIGHBOUR_EXPANSION_CAP"]),
     labelLookupCap: parseLabelLookupCap(env["LABEL_LOOKUP_CAP"]),
-  };
+  });
   return {
-    pipeline: {
+    pipeline: pipelineBag({
       routerProvider: providers.router,
       generatorProvider: providers.generator,
       reviewerProvider: providers.reviewer,
@@ -211,7 +230,7 @@ export function buildChatWiring(env: Record<string, string | undefined>): ChatWi
       store,
       bridge: storeBridge(store),
       retrieval,
-    },
+    }),
     fullStore: store,
     runStore: storeBridge(store),
   };

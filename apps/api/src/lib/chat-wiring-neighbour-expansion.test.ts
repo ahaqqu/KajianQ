@@ -12,17 +12,27 @@ import { createStubChatProviders } from "@app/kajianq-domain/test-utils/stub-cha
 import { buildChatWiring } from "./chat-wiring";
 
 /**
- * INTEGRATION TEST — the neighbourhood window an operator configures arrives at the
- * retriever through the real serving composition root (`buildChatWiring` →
- * `buildChatStages` → `createChatRetriever`).
+ * INTEGRATION TEST — every retriever tunable the pipeline deps carry is driven through
+ * the real serving composition root (`buildChatWiring` → `buildChatStages` →
+ * `createChatRetriever`) and asserted where it acts: the bounded store read's options,
+ * the typed expansion event, or the assembled evidence the generator is shown — never on
+ * the deps object's shape.
  *
- * The value is asserted where it acts — the bounded store read's options, the typed
- * `neighbour_expansion` event, and the evidence the generator is shown — never on the
- * deps object's shape. A deps object carrying a key no stage reads is precisely the
- * failure this pins: it looks configured and widens nothing.
+ * The probe table below is keyed by `ChatPipelineDeps["retrieval"]`, so a tunable the
+ * retriever gains does not compile here until it has a binding (or a stated reason it has
+ * none) and an assertion that its configured value reaches the arm it feeds. A deps object
+ * carrying a key no stage reads is precisely the failure this catches: it looks
+ * configured and widens nothing.
  */
 
 const KEYED_ENV = { DATABASE_URL: "postgres://x", DEEPSEEK_API_KEY: "k" };
+
+/** A question naming no surah and no citation label: only the neighbour arm runs. */
+const PLAIN_QUESTION = "Apa yang dimaksud dengan ayat yang agung?";
+
+/** A question naming the seeded verse: the scope, citation and neighbour arms all run, so
+ * a probe can tell which arm a knob reached. */
+const CITED_QUESTION = "Apa yang dimaksud dengan QS. 2:255?";
 
 /** The stub embedder's query vector: the one verse seeded with it is the fused hit. */
 const HIT_VEC = [1, 0, 0];
@@ -32,7 +42,7 @@ type Store = ReturnType<typeof createMemoryRagStore>;
 /**
  * Seed Al-Baqarah with a single embedded verse (2:255). Every other verse is stored
  * without an embedding, so the fused search returns the anchor alone and every other
- * verse in the context arrived through the expansion under test. 286 verses exceed the
+ * verse in the context arrived through an expansion under test. 286 verses exceed the
  * scope read's budget, so no surah completion competes with it.
  */
 async function seedSurah(store: Store): Promise<void> {
@@ -75,10 +85,20 @@ function neighbourCitationsIn(context: string): string[] {
 }
 
 type Run = {
+  /** Every similarity read the two tracks issued, with the depth it asked for. */
+  searches: { limit: number }[];
+  /** Every bounded surah read the scope arm issued, with the budget it was given. */
+  scopeReads: { limit: number }[];
+  /** Every exact-label read the citation arm issued, with the budget it was given. */
+  citationReads: { limit: number }[];
   /** Every bounded neighbourhood read the retriever issued, with its options. */
-  reads: { anchors: readonly string[]; radius: number; limit: number }[];
+  neighbourReads: { anchors: readonly string[]; radius: number; limit: number }[];
   /** The assembled context the generator was shown. */
   context: string;
+  /** The cap each typed scope event recorded. */
+  scopeCaps: number[];
+  /** The cap the typed citation event recorded, when the arm ran. */
+  citationCap: number | undefined;
   /** The typed neighbourhood event, when the expansion ran. */
   detail:
     | {
@@ -93,20 +113,35 @@ type Run = {
 
 /**
  * The serving wiring with its provider seams replaced by the domain's stubs and its
- * store by a seeded memory store that records the neighbourhood read. Everything else
- * — the knobs included — is `buildChatWiring`'s own.
+ * store by a seeded memory store that records every bounded read. Everything else — the
+ * knobs included — is `buildChatWiring`'s own.
  */
-async function runWith(env: Record<string, string | undefined>): Promise<Run> {
+async function runWith(
+  env: Record<string, string | undefined>,
+  question: string = PLAIN_QUESTION,
+): Promise<Run> {
   const store = createMemoryRagStore();
   await seedSurah(store);
-  const reads: Run["reads"] = [];
-  const storeSpy = {
+  const searches: Run["searches"] = [];
+  const scopeReads: Run["scopeReads"] = [];
+  const citationReads: Run["citationReads"] = [];
+  const neighbourReads: Run["neighbourReads"] = [];
+  const storeSpy: Store = {
     ...store,
-    listDocChildNeighboursByChildIds(
-      anchors: readonly string[],
-      opts: { radius: number; limit: number },
-    ) {
-      reads.push({ anchors: [...anchors], radius: opts.radius, limit: opts.limit });
+    similaritySearch(track, vector, opts) {
+      searches.push({ limit: opts.limit });
+      return store.similaritySearch(track, vector, opts);
+    },
+    listDocChildrenByParentSourceKey(parentSourceKey, opts) {
+      scopeReads.push({ limit: opts.limit });
+      return store.listDocChildrenByParentSourceKey(parentSourceKey, opts);
+    },
+    findDocChildrenByMetadata(match, opts) {
+      citationReads.push({ limit: opts.limit });
+      return store.findDocChildrenByMetadata(match, opts);
+    },
+    listDocChildNeighboursByChildIds(anchors, opts) {
+      neighbourReads.push({ anchors: [...anchors], radius: opts.radius, limit: opts.limit });
       return store.listDocChildNeighboursByChildIds(anchors, opts);
     },
   };
@@ -131,15 +166,20 @@ async function runWith(env: Record<string, string | undefined>): Promise<Run> {
     bridge: runStoreEffect,
     language: "id",
   };
-  const answer = await runChatPipelinePromise(deps, {
-    text: "Apa yang dimaksud dengan ayat yang agung?",
-  });
+  const answer = await runChatPipelinePromise(deps, { text: question });
   const userTurn = turns[0]?.find((turn) => turn.role === "user")?.content;
   if (userTurn === undefined) throw new Error("the generator was never shown a context");
   const event = answer.trace.events.find((entry) => entry.kind === "neighbour_expansion");
   return {
-    reads,
+    searches,
+    scopeReads,
+    citationReads,
+    neighbourReads,
     context: userTurn,
+    scopeCaps: answer.trace.events
+      .filter((entry) => entry.kind === "scope_expansion")
+      .map((entry) => entry.detail.cap),
+    citationCap: answer.trace.events.find((entry) => entry.kind === "citation_lookup")?.detail.cap,
     detail:
       event === undefined ? undefined : { ...event.detail, anchors: [...event.detail.anchors] },
   };
@@ -150,8 +190,8 @@ describe("buildChatWiring — the configured neighbourhood window reaches the re
     const run = await runWith({ NEIGHBOUR_EXPANSION_RADIUS: "3" });
 
     // The retriever's own bounded read carries the operator's radius...
-    expect(run.reads).toHaveLength(1);
-    expect(run.reads[0]?.radius).toBe(3);
+    expect(run.neighbourReads).toHaveLength(1);
+    expect(run.neighbourReads[0]?.radius).toBe(3);
     // ...so three ordinals on each side of 2:255 reach the generator, not one.
     expect(run.detail).toMatchObject({ radius: 3, cap: DEFAULT_NEIGHBOUR_CAP, returned: 6 });
     expect(neighbourCitationsIn(run.context)).toEqual([
@@ -171,7 +211,7 @@ describe("buildChatWiring — the configured neighbourhood window reaches the re
     // dedup may drop (the one anchor already in context) + one proof row. The read
     // answers in the store's order — the anchor's window by ascending ordinal — so the
     // cap keeps the window's first rows.
-    expect(run.reads[0]).toMatchObject({ radius: 3, limit: 2 + 1 + 1 });
+    expect(run.neighbourReads[0]).toMatchObject({ radius: 3, limit: 2 + 1 + 1 });
     expect(run.detail).toMatchObject({ radius: 3, cap: 2, returned: 2, truncated: true });
     expect(neighbourCitationsIn(run.context)).toEqual(["QS. 2:252", "QS. 2:253"]);
   });
@@ -181,7 +221,7 @@ describe("buildChatWiring — the configured neighbourhood window reaches the re
 
     // Unset = the retriever's documented defaults: one ordinal each side, twelve chunks
     // at most.
-    expect(unset.reads[0]).toMatchObject({
+    expect(unset.neighbourReads[0]).toMatchObject({
       radius: DEFAULT_NEIGHBOUR_RADIUS,
       limit: DEFAULT_NEIGHBOUR_CAP + 1 + 1,
     });
@@ -200,7 +240,7 @@ describe("buildChatWiring — the configured neighbourhood window reaches the re
       NEIGHBOUR_EXPANSION_RADIUS: String(DEFAULT_NEIGHBOUR_RADIUS),
       NEIGHBOUR_EXPANSION_CAP: String(DEFAULT_NEIGHBOUR_CAP),
     });
-    expect(explicit.reads).toEqual(unset.reads);
+    expect(explicit.neighbourReads).toEqual(unset.neighbourReads);
     expect(explicit.detail).toEqual(unset.detail);
     expect(explicit.context).toBe(unset.context);
   });
@@ -210,8 +250,83 @@ describe("buildChatWiring — the configured neighbourhood window reaches the re
 
     // `0` is a configured value, not an absent one: it must reach the retriever as zero
     // and turn the expansion off, so the context holds the fused hit alone.
-    expect(run.reads).toEqual([]);
+    expect(run.neighbourReads).toEqual([]);
     expect(run.detail).toBeUndefined();
     expect(neighbourCitationsIn(run.context)).toEqual([]);
+  });
+});
+
+type TunableProbe = {
+  /** The environment binding the composition root parses this knob from; `null` when
+   * serving binds none and states the retriever's own default instead. */
+  binding: { name: string; value: string } | null;
+  /** The question that drives the arm this knob feeds. */
+  question: string;
+  /** Asserts the knob's value reached the read or the event it bounds. */
+  assert: (run: Run) => void;
+};
+
+/**
+ * Every retriever tunable the serving deps carry, each driven to a distinctive value and
+ * asserted where it acts. Keyed by the deps type: a knob the retriever gains, or a field
+ * the `retrieval` deps gain, does not compile until this table states where it is bound
+ * (or why it is not) and proves the value reaches its arm.
+ */
+const TUNABLES: Record<keyof Required<ChatPipelineDeps["retrieval"]>, TunableProbe> = {
+  limit: {
+    // Serving binds no variable to `limit`: it states `undefined`, the retriever's own
+    // default, so the probe pins that stated absence to the depth of the search it bounds.
+    binding: null,
+    question: PLAIN_QUESTION,
+    assert: (run) => {
+      expect(run.searches.length).toBeGreaterThan(0);
+      expect(new Set(run.searches.map((search) => search.limit))).toEqual(new Set([10]));
+    },
+  },
+  scopeExpansionCap: {
+    binding: { name: "SCOPE_EXPANSION_CAP", value: "4" },
+    question: CITED_QUESTION,
+    assert: (run) => {
+      // The scope read asks for the cap plus one proof row.
+      expect(run.scopeReads.map((read) => read.limit)).toEqual([5]);
+      expect(run.scopeCaps).toEqual([4]);
+    },
+  },
+  neighbourRadius: {
+    binding: { name: "NEIGHBOUR_EXPANSION_RADIUS", value: "2" },
+    question: PLAIN_QUESTION,
+    assert: (run) => {
+      expect(run.neighbourReads.map((read) => read.radius)).toEqual([2]);
+      expect(run.detail).toMatchObject({ radius: 2 });
+    },
+  },
+  neighbourCap: {
+    binding: { name: "NEIGHBOUR_EXPANSION_CAP", value: "5" },
+    question: PLAIN_QUESTION,
+    assert: (run) => {
+      // The read asks for the cap, plus a slot per row the dedup can drop (the fused
+      // anchor), plus one proof row.
+      expect(run.neighbourReads.map((read) => read.limit)).toEqual([5 + 1 + 1]);
+      expect(run.detail).toMatchObject({ cap: 5 });
+    },
+  },
+  labelLookupCap: {
+    binding: { name: "LABEL_LOOKUP_CAP", value: "3" },
+    question: CITED_QUESTION,
+    assert: (run) => {
+      // The label read asks for the cap plus one proof row.
+      expect(run.citationReads.map((read) => read.limit)).toEqual([4]);
+      expect(run.citationCap).toBe(3);
+    },
+  },
+};
+
+describe("buildChatWiring — every configured retriever tunable reaches its arm", () => {
+  it.each(Object.entries(TUNABLES))("forwards %s", async (knob, tunable) => {
+    const run = await runWith(
+      tunable.binding === null ? {} : { [tunable.binding.name]: tunable.binding.value },
+      tunable.question,
+    );
+    tunable.assert(run);
   });
 });
