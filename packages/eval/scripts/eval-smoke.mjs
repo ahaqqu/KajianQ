@@ -121,6 +121,7 @@ const result = await evalpkg.runGoldenSet(selection.set, {
   citationOf: harness.citationOf,
   refusalMarkers: harness.refusalMarkers,
   citationGrammar: harness.citationGrammar,
+  quoteEquivalences: harness.quoteEquivalences,
   citationIdentity: harness.citationIdentity,
   expansionOrigin: harness.expansionOrigin,
   // The deployed smoke REPORTS citation-address recall but does not gate on it.

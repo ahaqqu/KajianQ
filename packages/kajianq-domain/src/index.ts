@@ -247,6 +247,8 @@ export {
   // route's `traceRefused` and the eval harness.
   type RefusalTrigger,
 } from "./chat-reviewer";
+// Eval quote fidelity: language-specific equivalences injected at the eval root.
+export { QUOTE_EQUIVALENCES } from "./chat-quote-equivalences";
 export {
   applyProductRules,
   dhaifWarning,

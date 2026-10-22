@@ -60,6 +60,7 @@ export type {
   CitationFrameLike,
   CitationGrammar,
   CitationIdentity,
+  QuoteEquivalence,
   RetrievalLike,
   TraceEventLike,
 } from "./harness-types";

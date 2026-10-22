@@ -304,6 +304,7 @@ describe("printSummary (#290, #340)", () => {
       "  mean source-type recall: 1.000",
       "  mean citation-address recall: 1.000",
       "  mean citation validity: 1.000",
+      "  mean quote fidelity: n/a (0 of 2 answers measured)",
       "  cost: 0.000025 USD  budget exceeded: false",
       "  deterministic: q3 — scope chunks 5; fused-only source-type recall 1.000 (reported 1.000)",
     ]);
@@ -357,6 +358,7 @@ describe("printSummary (#290, #340)", () => {
       "  mean citation-address recall: 0.500",
       "  address recall: reported, not gated — address misses in this sample (1 of 2 measured): gs-v0-003; the sample decides this line, not a full-set debt list",
       "  mean citation validity: 1.000",
+      "  mean quote fidelity: n/a (0 of 2 answers measured)",
       "  cost: 0.000025 USD  budget exceeded: false",
       "  failed: gs-v0-003 citationAddressRecall=0.000 (required HR. Bukhari no. 191, retrieved 0/1)",
     ]);
@@ -498,11 +500,29 @@ describe("printSummary (#290, #340)", () => {
       "  mean source-type recall: 1.000",
       "  mean citation-address recall: 1.000",
       "  mean citation validity: 0.667",
+      "  mean quote fidelity: n/a (0 of 3 answers measured)",
       "  cost: 0.000025 USD  budget exceeded: false",
       "  deterministic: q4 — scope chunks 5; fused-only source-type recall 1.000 (reported 1.000)",
       "  failed: q3 citationValidity=0.000",
       "  skipped: q2 — transport down",
     ]);
+  });
+
+  it("averages quote fidelity over the answers that quoted, not over all of them", () => {
+    const faithful = { ...scored, questionId: "q1", quoteFidelity: 1 };
+    const paraphrased = { ...scored, questionId: "q2", quoteFidelity: 0 };
+    const silent = { ...scored, questionId: "q4" };
+    const printed = printedSummary(
+      {
+        passed: 3,
+        failed: 0,
+        skipped: 0,
+        budgetExceeded: false,
+        results: [faithful, paraphrased, silent],
+      },
+      FIXTURE,
+    );
+    expect(printed).toContain("  mean quote fidelity: 0.500 (2 of 3 answers measured)");
   });
 
   it("distinguishes a scored failure from a skip: one line each, never the other's label", () => {

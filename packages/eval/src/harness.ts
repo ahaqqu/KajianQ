@@ -1,21 +1,17 @@
 import type { EvalResultOutcome, EvalRunReport, GoldenQuestion, GoldenSet } from "@app/contracts";
 import { Budget, BudgetExceededError } from "./budget";
-import { expansionProvenance, ledgerFailureNote, skippedOutcome } from "./harness-outcomes";
-import {
-  behaviorAccepted,
-  citationAddressRecall,
-  citationValidity,
-  detectRefusal,
-  groundedAnswer,
-  sourceTypeRecall,
-} from "./scorers";
+import { ledgerFailureNote, skippedOutcome } from "./harness-outcomes";
+import { scoreQuestion } from "./harness-score";
 import type {
   CitationFrameLike,
   CitationGrammar,
   CitationIdentity,
   CostRecordLike,
+  QuoteEquivalence,
   TraceEventLike,
 } from "./harness-types";
+
+export { scoreQuestion } from "./harness-score";
 
 /** EvalHarness: run a Golden Set against a chat target, score each question
  * deterministically, persist per-run results, and cap cost. Transport-agnostic:
@@ -92,6 +88,10 @@ export type HarnessDeps = {
    * lookup added (ADR-0058). Supplying it makes the provenance block record a
    * label-only question's lookup contribution; the engine never names the label. */
   lookupOrigin?: string;
+  /** Language- or corpus-specific quote equivalences, supplied by the composition
+   * root and applied after the scorer's generic fold, so the engine ships no language
+   * policy. Omitted, quotes are compared under the generic fold alone. */
+  quoteEquivalences?: readonly QuoteEquivalence[];
   label?: string;
   now?: () => number;
 };
@@ -188,70 +188,6 @@ export async function runGoldenSet(set: GoldenSet, deps: HarnessDeps): Promise<H
   return { runId, passed, failed, skipped, budgetExceeded, results };
 }
 
-/** Score one question from its answer text, trace events, and the citations frame
- * when the transport carried one. A question passes only when behaviour, both
- * recall dimensions and citation validity are all complete — the address dimension
- * excepted when the run gates only on the others (`gateAddressRecall: false`). The
- * trap rule's residual lives in `behaviorAccepted`. */
-export function scoreQuestion(
-  question: GoldenQuestion,
-  answerText: string,
-  events: readonly TraceEventLike[],
-  deps: Pick<
-    HarnessDeps,
-    | "sourceTypeOf"
-    | "citationOf"
-    | "refusalMarkers"
-    | "citationGrammar"
-    | "citationIdentity"
-    | "expansionOrigin"
-    | "gateAddressRecall"
-    | "lookupOrigin"
-  >,
-  frame?: CitationFrameLike | null,
-): EvalResultOutcome {
-  const retrieval = events.filter((e) => e.kind === "retrieval").at(-1);
-  const chunks = retrieval?.detail?.chunks ?? [];
-  const sourceTypes = sourceTypeRecall(question.expectedSourceTypes, chunks, deps.sourceTypeOf);
-  const addressRecall = citationAddressRecall(
-    question.requiredCitations,
-    chunks,
-    deps.citationOf,
-    deps.citationGrammar,
-  );
-  const citations = citationValidity(question.requiredCitations, answerText, {
-    frame,
-    events,
-    ...(deps.citationGrammar !== undefined ? { grammar: deps.citationGrammar } : {}),
-    ...(deps.citationIdentity !== undefined ? { identity: deps.citationIdentity } : {}),
-  });
-  const refused = detectRefusal(events, answerText, deps.refusalMarkers ?? []);
-  const grounded = groundedAnswer({ frame, events });
-  const correct = behaviorAccepted(question.expectedBehavior, refused, grounded);
-  const passed =
-    correct &&
-    citations === 1 &&
-    sourceTypes === 1 &&
-    (deps.gateAddressRecall === false || addressRecall === 1);
-  return {
-    questionId: question.id,
-    expectedBehavior: question.expectedBehavior,
-    passed,
-    sourceTypeRecall: sourceTypes,
-    citationAddressRecall: addressRecall,
-    citationValidity: citations,
-    refused,
-    ...expansionProvenance({
-      expectedSourceTypes: question.expectedSourceTypes,
-      chunks,
-      events,
-      sourceTypeOf: deps.sourceTypeOf,
-      ...(deps.expansionOrigin !== undefined ? { expansionOrigin: deps.expansionOrigin } : {}),
-      ...(deps.lookupOrigin !== undefined ? { lookupOrigin: deps.lookupOrigin } : {}),
-    }),
-  };
-}
-
 /** The persisted `eval_runs.report` payload (shared with the CLI). */
 export type BuildReportRun = {
   runId: string;
@@ -272,6 +208,9 @@ export type BuildReportRun = {
 export function buildReport(set: GoldenSet, run: BuildReportRun): EvalRunReport {
   const mean = (xs: readonly number[]): number | null =>
     xs.length === 0 ? null : xs.reduce((a, b) => a + b, 0) / xs.length;
+  const quoteFidelity = run.scored.flatMap((r) =>
+    r.quoteFidelity === undefined ? [] : [r.quoteFidelity],
+  );
   return {
     runId: run.runId,
     setId: set.id,
@@ -290,6 +229,10 @@ export function buildReport(set: GoldenSet, run: BuildReportRun): EvalRunReport 
       ),
     ),
     meanCitationValidity: mean(run.scored.map((r) => r.citationValidity)),
+    meanQuoteFidelity: mean(quoteFidelity),
+    // The mean's denominator, so a perfect mean over two answers cannot read as one over
+    // a hundred; absent when no answer was measured, like the mean's own null.
+    ...(quoteFidelity.length > 0 ? { quoteFidelityMeasured: quoteFidelity.length } : {}),
     costMicroUsd: run.costMicroUsd,
     budgetExceeded: run.budgetExceeded,
     results: [...run.results],
