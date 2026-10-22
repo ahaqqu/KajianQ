@@ -45,12 +45,17 @@ and the generic label won — top-10 4/9 → 7/9, with three rows moving from ra
 prefix is derived deterministically at ingest time, so it costs no vendor call and no
 curation.
 
-### 3. The query is rewritten before it is embedded
+### 3. The question is expanded into several queries, not rewritten into one
 
-A cheap call restates the question in the corpus's vocabulary — the reformulation the
-probe measured moving `QS. 42:11` from rank 5,352 to third of five. The rewrite is traced
-as its own stage; the original question is never replaced, and both queries may be
-retrieved.
+One call returns **four differently-worded** queries; each is retrieved and the candidate
+lists are unioned before reranking. The original question is always one of the inputs and
+is never replaced; every query is traced.
+
+Measured (`experiments.md` E5/E6): a single rewrite is a lottery — top-10 6/17 → 7/17, with
+013 displaced from rank 12 to 1,375. Four rewrites lift the _oracle_ top-10 to **12/17**,
+because query diversity, not query cleverness, is what moves the row into reach. The oracle
+bound is not a result: it presumes a reranker that can choose among the four candidate
+lists, which the LLM decider has not been measured on.
 
 ### 4. Candidate addresses are hypotheses, verified by a read
 

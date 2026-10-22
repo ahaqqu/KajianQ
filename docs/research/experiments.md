@@ -197,3 +197,45 @@ with the positive and negative cases as tests (`bun test research/quote-fidelity
 verbatim, elided and diacritics-stripped quotes are faithful; a paraphrase, a span from
 another chunk, and an empty quote are not. It is a research artefact — the integration into
 the eval gate belongs to the Phase 0 change.
+
+## E5 — One rewrite call: does it beat the user's own wording? (2026-10)
+
+**Setup.** Seventeen questions with a required citation; one `deepseek-chat` call rewrites
+each question into a single short search query in corpus vocabulary; the rewritten query is
+embedded and the rank of the required row is measured over its own source type
+(`research/query-rewrite-probe.py`).
+
+**Result.** A wash at the aggregate, and erratic per row: top-10 **6/17 before, 7/17
+after**; top-50 12/17 before, 11/17 after. It helped 007 (498 → 338), 011 (11 → 4), 012
+(93 → 46), 014 (23 → 2), 017 (22 → 19); it hurt 013 (12 → **1375**), 016 (32 → 171), 006
+(10 → 24), 008 (176 → 256), 015 (101 → 119).
+
+**Reading.** A single rewrite is a lottery: the model sometimes lands on the passage's own
+vocabulary and sometimes drifts to a topical paraphrase that ranks far worse. That is
+consistent with the literature's coverage/correctness trade-off, and it means one rewrite
+call is not a deployable fix on its own.
+
+## E6 — Four rewrites and the union: the oracle bound (2026-10)
+
+**Setup.** Same seventeen questions; one call returns four deliberately different queries
+(classical terms, plain Indonesian, likely subject, a quotable phrase); each is embedded and
+ranked independently (`research/multi-query-probe.py`). Reported is the best rank any of the
+four achieves — the bound for a retriever that unions the four candidate lists and reranks
+them.
+
+**Result.** Top-10 **12/17**, top-50 12/17 — against 6/17 for the user's wording and 7/17
+for a single rewrite. The spread per question is enormous: 013 ranges over ranks 8, 17, 45,
+78; 007 stays at 230–463; 021 never moves below 22,510 in any wording.
+
+**What it establishes.**
+
+1. **Query diversity, not query cleverness, is the lever.** Four differently-worded queries
+   put the required row inside some query's top 10 for twelve questions, where one rewrite
+   could do it for seven. The cost is four rewrites plus four embeddings per question —
+   cents — and the candidate union is what a reranker would then have to order.
+2. **The bound is not a result.** Twelve of seventeen is what a _perfect_ chooser among four
+   candidate lists would get. Realising it needs a reranker that prefers the right candidate,
+   and the existing LLM decider has never been measured on this candidate shape.
+3. **Some rows stay out of reach.** 007 (230–463) and 021 (22,510+) are not found by any
+   wording — evidence that a vocabulary lever alone does not close the identity class, which
+   is what the tool loop and the verified address hypothesis exist to cover.
