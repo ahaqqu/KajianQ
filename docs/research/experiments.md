@@ -68,3 +68,46 @@ cheap model, ~1.9M prompt and ~0.3M completion tokens by the prompt/response len
 **Caveats.** One embedding model, one corpus language track, nine questions. Ranks are
 deterministic, but the top-10 comparison at n=9 cannot separate a one-question difference
 from noise; the rank trajectories of 005/014/015 are the durable part.
+
+## E2 — Can a model name the canonical address before retrieval? (2026-10)
+
+**Question.** The identity class needs an address that similarity cannot score. Can a cheap
+call simply _name_ it, so a deterministic read can confirm it?
+
+**Setup.** All 21 Golden Set questions, asked with no retrieval context for up to five
+candidate addresses in the corpus's own forms (`QS. s:a`, `HR. collection no. N`); 18 of the
+21 carry a required citation. Every proposal was then checked against the corpus for
+existence (`research/address-hypothesis-probe.py`, `deepseek-chat`, temperature 0).
+
+**Result.**
+
+| measure                                   |        value |
+| ----------------------------------------- | -----------: |
+| questions with a required citation        |           18 |
+| required address among the five proposals | **11 (61%)** |
+| required address as the first proposal    |  **9 (50%)** |
+| proposals made                            |           93 |
+| proposals that exist in the corpus        | **80 (86%)** |
+
+Per-question, the six measured failures split three ways:
+
+- **named exactly** — 006 (`Bukhari 1108`, second proposal) and 012 (`QS. 1:1`, first).
+  The hypothesis path would recover evidence that retrieval misses.
+- **named a different, also-valid address** — 008 (`Bukhari 5027` instead of 5026; both are
+  about the merit of the Quran). This is the contract problem again, not a model error.
+- **not named** — 007 (`QS. 42:11` absent; the model offered 2:255, 112:1, 59:22), 016
+  (`Bukhari 8` rather than 1395), 017 (unrelated rulings).
+
+**What it establishes.**
+
+1. A model can carry a large share of the identity class — but **not all of it**: 7 of 18
+   required addresses were never proposed, and half the questions miss the first guess.
+   The address hypothesis therefore complements query reformulation (which found 42:11 via
+   search) rather than replacing it.
+2. **Verification is mandatory, not ceremonial**: 13 of 93 proposals (14%) do not exist in
+   the corpus. Without the deterministic read they would enter the candidate set as
+   fabricated evidence — exactly the failure the product must never ship.
+
+**Caveats.** One model, one prompt, one draw at temperature 0 per question; a second model
+or a few samples could raise recall. The hit rate is measured against the _curator's_ choice,
+so a "miss" can mean a defensible alternative address, as 008 shows.

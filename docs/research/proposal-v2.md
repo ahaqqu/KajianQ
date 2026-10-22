@@ -57,9 +57,12 @@ retrieved.
 A cheap call may propose addresses (`QS. 42:11`, `HR. Bukhari no. 1108`). The domain pack
 parses them, a deterministic read confirms existence, and the row enters the candidate
 set **ranked below fused hits** and cited only if its fetched text supports a sentence.
-A proposal that does not exist is dropped and traced; a proposal that exists but does
-not support the answer never becomes a citation. This is ADR-0058's mechanism generalised
-from "the user wrote a label" to "a model guessed one".
+
+Measured (`experiments.md` E2): the model names the required address in **11 of 18**
+questions (9 as its first proposal), and **14% of its proposals do not exist**. So this
+stage carries most of the identity class but never all of it — it complements query
+reformulation rather than replacing it — and the existence read is mandatory, not
+ceremonial.
 
 Why this is not model-memory-as-evidence: the model supplies a _pointer_, the corpus
 supplies the _text_, and the answer cites the text. The pointer is checkable; the text is
