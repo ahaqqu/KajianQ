@@ -5,13 +5,14 @@ workflow dispatches. Each role is a defined subagent whose file carries its
 operating persona, frontmatter, and completion criterion. The `reviewer`
 applies the `code-review` skill end-to-end, runs both thermo passes itself when the diff touches code, and posts findings via `thermos-with-comments` at thermos depth.
 
-| Role                  | File                    | Purpose                                                                                              |
-| --------------------- | ----------------------- | ---------------------------------------------------------------------------------------------------- |
-| implementer (default) | `implementer.md`        | regular guided implementation, end-to-end to a green PR                                              |
-| senior-implementer    | `senior-implementer.md` | hard / `model:high` tickets — correctness/trust invariants that fail silently; also writes the tests |
-| fixer                 | `fixer.md`              | owns review feedback: accepts/rejects each itemized finding, applies accepted fixes, keeps CI green  |
-| reviewer              | `reviewer.md`           | applies `code-review` end-to-end, running both thermos passes itself when the diff touches code      |
-| qa                    | `qa.md`                 | adversarial staging verification of a merged change — verdict with per-probe evidence; no worktree   |
+| Role                  | File                    | Purpose                                                                                                 |
+| --------------------- | ----------------------- | ------------------------------------------------------------------------------------------------------- |
+| implementer (default) | `implementer.md`        | regular guided implementation, end-to-end to a green PR                                                 |
+| senior-implementer    | `senior-implementer.md` | hard / `model:high` tickets — correctness/trust invariants that fail silently; also writes the tests    |
+| researcher            | `researcher.md`         | deep research when the mechanism is unknown: brief, measured prototypes, experiment log, decision brief |
+| fixer                 | `fixer.md`              | owns review feedback: accepts/rejects each itemized finding, applies accepted fixes, keeps CI green     |
+| reviewer              | `reviewer.md`           | applies `code-review` end-to-end, running both thermos passes itself when the diff touches code         |
+| qa                    | `qa.md`                 | adversarial staging verification of a merged change — verdict with per-probe evidence; no worktree      |
 
 The manager is the session agent itself — it has no role file.
 
@@ -60,7 +61,10 @@ state surface.
 ## Implementer-class operating rules
 
 The implementer-class roles follow the phase-boundary discipline from the
-`guided-implementation` skill. Each role file is **self-contained**: it
+`guided-implementation` skill. The `researcher` is implementer-class for this
+contract — phase boundaries, budget handoff, stuck-report, workspace
+isolation — but its completion criterion is a pushed research branch rather
+than a PR (Dispatch authorization). Each role file is **self-contained**: it
 carries the full operating contract inline — phase boundaries, budget
 handoff, stuck-report format, workspace isolation, dispatch authorization —
 so a dispatched agent never needs a second file read. This section documents
@@ -101,8 +105,9 @@ reports a **stuck-report** to the manager, containing exactly:
 
 The receiver must be able to act on this without re-deriving the history.
 **Never fake done:** the completion criterion is unchanged — a PR must exist
-and all its checks must be green. A stuck-report never substitutes for that
-evidence; escalate instead.
+and all its checks must be green (for the researcher: the pushed
+`research/<slug>` branch with its committed artifacts). A stuck-report never
+substitutes for that evidence; escalate instead.
 
 ### Workspace isolation (canonical)
 
@@ -117,7 +122,14 @@ branches mid-run and corrupts each other's diffs. Therefore:
   The fixer is the exception: it attaches the existing worktree
   (`.worktrees/<slug>`) or adds one from the existing branch
   (`git worktree add .worktrees/<slug> agent/<slug>` — no `-b`), because it
-  takes over a branch that already exists.
+  takes over a branch that already exists. The `researcher` is the exception on
+  both the branch and the path: it works in `.worktrees/research-<slug>` on
+  `research/<slug>` (`git worktree add .worktrees/research-<slug> -b
+  research/<slug> origin/main`), because `.worktrees/<slug>` is the
+  implementer's path for the same ticket. It removes its own tree before
+  reporting done, once the branch is pushed — the branch is the artifact, and
+  the sweep keeps an unmerged branch with no merged PR by design (see
+  `scripts/worktree-cleanup.mjs`).
 - Lock the worktree as soon as it exists, with a reason naming your role and
   ticket (`git worktree lock .worktrees/<slug> --reason "<role> #<issue>"`), and
   unlock it (`git worktree unlock .worktrees/<slug>`) before reporting done: a
@@ -133,10 +145,13 @@ branches mid-run and corrupts each other's diffs. Therefore:
   adapter). Never use `.wt/` either — `.worktrees/` is the one in-repo
   convention, it is committed to `.gitignore`, and `bun run worktree:clean`
   (run from the main checkout) owns removal, keeping any branch with unmerged
-  work. Cleanup is the manager's duty, not yours.
+  work. Cleanup is the manager's duty, not yours — except the researcher's own
+  worktree, which the researcher removes itself before reporting done, once
+  the branch is pushed (Workspace isolation, above).
 - Before **any** `git` state-changing operation (commit, push, branch,
   checkout), verify with `git branch --show-current` that you are on your
-  dispatch's branch (`agent/<slug>`) inside your worktree. Exception: the
+  dispatch's branch (`agent/<slug>`, or `research/<slug>` for the researcher)
+  inside your worktree. Exception: the
   one-time
   `git worktree add` setup itself runs from the shared checkout — it creates
   a new worktree without switching its branch or touching its uncommitted
@@ -150,7 +165,10 @@ branches mid-run and corrupts each other's diffs. Therefore:
 
 Implementer-class roles are explicitly authorized to commit, push, and open a
 pull request for the assigned task. Never merge it — the manager verifies CI
-and asks the owner before merging.
+and asks the owner before merging. The `researcher` is the exception in the
+other direction: it may commit and push its `research/<slug>` branch and opens
+no pull request — a research result reaches production only through a decision
+the manager takes and an implementer executes.
 
 ### Context budgets (defaults)
 

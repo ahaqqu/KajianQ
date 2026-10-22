@@ -14,7 +14,7 @@ import { spawnSync } from "node:child_process";
  * rewritten or truncated role body.
  *
  * Neither list is left hand-synced without a check: the roles come from the
- * script's own allowlist, so a future fifth role is pinned automatically, and
+ * script's own allowlist, so a new role is pinned automatically, and
  * the section constant below is asserted equal to the table in the header
  * comment, so the comment the DSH adapter calls canonical cannot drift away
  * from what the emission is checked against.
@@ -64,9 +64,16 @@ function documentedSections() {
 }
 
 /** The role allowlist from the script source, so this suite follows the
- * script's own authority instead of duplicating it. */
-function rolesFromScriptSource() {
-  const match = SCRIPT_SOURCE.match(/const ROLES = new Set\(\[([^\]]*)\]\)/);
+ * script's own authority instead of duplicating it. The delimiter is the
+ * array's own closing `])`, which cannot occur inside a well-formed quoted
+ * role name, so the capture cannot end early on a role entry. The guarantee is
+ * per-entry, not per-list: a `])` inside a comment in the array truncates the
+ * capture at that point. The throw below is therefore the loud failure for the
+ * case the pattern can detect — a declaration with no closing delimiter at
+ * all, which produces no match rather than a prefix of the list parsed as the
+ * whole of it — not a proof that every malformed list fails to parse. */
+function rolesFromSource(source = SCRIPT_SOURCE) {
+  const match = source.match(/const ROLES = new Set\(\[([^\]]*)\]\)/);
   if (!match) {
     throw new Error(
       "cannot read the role allowlist from scripts/dsh-dispatch-prompt.mjs: " +
@@ -76,12 +83,20 @@ function rolesFromScriptSource() {
   return [...match[1].matchAll(/"([^"]+)"/g)].map((m) => m[1]);
 }
 
-const ROLES = rolesFromScriptSource();
+const ROLES = rolesFromSource();
 
 function stripFrontmatter(text) {
   const fm = text.match(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/);
   return (fm ? text.slice(fm[0].length) : text).trim();
 }
+
+describe("role allowlist parsing", () => {
+  it("throws instead of parsing a prefix when the declaration is malformed", () => {
+    expect(() => rolesFromSource('const ROLES = new Set(["implementer", "reviewer"]')).toThrow(
+      /cannot read the role allowlist/,
+    );
+  });
+});
 
 describe("dsh:prompt — documented section list", () => {
   it("matches the section table in the script's header comment", () => {
