@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vite-plus/test";
-import { totalCostMicroUsd, type Trace } from "@app/contracts";
+import { CALLER_PRIORITY_K, totalCostMicroUsd, type Trace } from "@app/contracts";
 import { runChatPipelinePromise, runStoreEffect, type ChatPipelineDeps } from "@app/kajianq-domain";
 import { createMemoryRagStore } from "@app/kajianq-domain/test-utils/memory-rag-store";
 import { createStubChatProviders } from "@app/kajianq-domain/test-utils/stub-chat-providers";
@@ -256,7 +256,11 @@ describe("buildChatWiring — the rerank's decision call rides the answer trace"
     const parentId = await runStoreEffect(
       store.insertDocParent({ sourceKey: "quran/2", title: "Al-Baqarah", metadata: {} }),
     );
-    for (const [ordinal, ayah] of [255, 256].entries()) {
+    // The caller's own query's leading hits are guaranteed into the context and
+    // kept out of the rerank (ADR-0062), so the fixture must leave the rerank a
+    // fused block of at least two candidates beyond that bound.
+    const ayahs = Array.from({ length: CALLER_PRIORITY_K + 2 }, (_, i) => 255 + i);
+    for (const [ordinal, ayah] of ayahs.entries()) {
       await runStoreEffect(
         store.insertDocChild({
           parentId,

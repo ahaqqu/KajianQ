@@ -2,6 +2,7 @@ import { fc, test as fcTest } from "@fast-check/vitest";
 import { describe, expect, it } from "vite-plus/test";
 import * as v from "valibot";
 import {
+  CALLER_PRIORITY_K,
   SEARCH_HITS_TRACE_LIMIT,
   TraceSchema,
   parseTrace,
@@ -126,6 +127,14 @@ describe("trace contract", () => {
         at: 3,
       },
       {
+        // The caller's own query's leading rows, guaranteed past fusion: the
+        // bound, the ids, and how many the returned set already held.
+        stage: "retriever",
+        kind: "caller_priority",
+        detail: { k: 3, ids: ["c1", "c2"], alreadyPresent: ["c1"] },
+        at: 3,
+      },
+      {
         // Filter relaxation: an inferred filter that matched nothing was dropped
         // and the search retried without it.
         stage: "retriever",
@@ -231,14 +240,15 @@ describe("trace contract", () => {
     const trace = parseTrace({ id: "t", createdAt: 0, events });
     // The kinds are named, not just counted: a count cannot tell "both variants
     // are in the union" from "one replaced the other", and the union is closed at
-    // sixteen, so a variant missing here is a variant the fixture never proved.
-    expect(trace.events).toHaveLength(16);
+    // seventeen, so a variant missing here is a variant the fixture never proved.
+    expect(trace.events).toHaveLength(17);
     expect(trace.events.map((event) => event.kind)).toEqual([
       "intent",
       "subquery",
       "source_routing",
       "retrieval",
       "search_hits",
+      "caller_priority",
       "filter_relaxed",
       "scope_expansion",
       "neighbour_expansion",
@@ -761,5 +771,52 @@ describe("the search_hits event", () => {
       v.safeParse(TraceSchema, { ...base, events: [searchEvent({ hits: 0, topHits: [] })] })
         .success,
     ).toBe(false);
+  });
+});
+
+/**
+ * The caller-priority record: the caller's own query's leading rows, which the
+ * retriever guarantees into the context past fusion. Its bound is the
+ * contract's, so a producer cannot write more guaranteed ids than the decision
+ * allows, and `alreadyPresent` must be a subset of `ids` — a record naming a row
+ * it did not guarantee describes a run that never happened.
+ */
+describe("the caller_priority event", () => {
+  const base = { id: "d2c3b4a5-6f70-4a8b-9c0d-e1f2a3b4c5d6", createdAt: 0 };
+  const priorityEvent = (detail: unknown) => ({
+    stage: "retriever",
+    kind: "caller_priority",
+    detail,
+    at: 1,
+  });
+
+  it("carries the bound, the guaranteed ids, and the already-present subset", () => {
+    const trace = parseTrace({
+      ...base,
+      events: [priorityEvent({ k: CALLER_PRIORITY_K, ids: ["c1", "c2"], alreadyPresent: ["c1"] })],
+    });
+    expect(trace.events[0]).toMatchObject({
+      kind: "caller_priority",
+      detail: { k: CALLER_PRIORITY_K, ids: ["c1", "c2"], alreadyPresent: ["c1"] },
+    });
+  });
+
+  it("refuses more guaranteed ids than the bound allows, and an id outside the set", () => {
+    const tooMany = Array.from({ length: CALLER_PRIORITY_K + 1 }, (_, i) => `c${i}`);
+    for (const detail of [
+      { k: CALLER_PRIORITY_K, ids: tooMany, alreadyPresent: [] },
+      { k: CALLER_PRIORITY_K, ids: ["c1"], alreadyPresent: ["c2"] },
+    ]) {
+      expect(v.safeParse(TraceSchema, { ...base, events: [priorityEvent(detail)] }).success).toBe(
+        false,
+      );
+    }
+    // A caller search that returned nothing is a first-class record.
+    expect(
+      v.safeParse(TraceSchema, {
+        ...base,
+        events: [priorityEvent({ k: CALLER_PRIORITY_K, ids: [], alreadyPresent: [] })],
+      }).success,
+    ).toBe(true);
   });
 });

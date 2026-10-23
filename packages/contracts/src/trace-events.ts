@@ -1,7 +1,11 @@
 import * as v from "valibot";
 import { ChunkRefSchema, CostRecordSchema, StageSchema } from "./trace-primitives";
 import { productRulesEventSchema } from "./trace-product-rules";
-import { rerankEventSchema, searchHitsEventSchema } from "./trace-retriever";
+import {
+  callerPriorityEventSchema,
+  rerankEventSchema,
+  searchHitsEventSchema,
+} from "./trace-retriever";
 import { sourceRoutingEventSchema } from "./trace-source-routing";
 
 /**
@@ -58,6 +62,9 @@ export const TraceEventSchema = v.variant("kind", [
   /** One raw per-sub-query × track search, beside the fused `retrieval` event;
    * owner `./trace-retriever`. */
   searchHitsEventSchema,
+  /** The caller's own query's leading hits, guaranteed past fusion;
+   * owner `./trace-retriever`. */
+  callerPriorityEventSchema,
   v.object({
     stage: v.literal("assembler"),
     kind: v.literal("assembly"),

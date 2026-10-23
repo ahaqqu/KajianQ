@@ -21,14 +21,14 @@ import {
   expandVerseNeighbours,
   createFilterRelaxation,
   filterEntries,
-  storeFilters,
+  guaranteeCallerPriority,
   hierarchyBonus,
+  isCallerSubQuery,
   lookupCitationLabels,
   rrfFuse,
   SEARCH_HITS_TRACE_LIMIT,
-  type NeighbourChildRow,
+  storeFilters,
   type RetrieverStore,
-  type ScopeChildRow,
   type TrackHit,
 } from "./chat-retriever-parts";
 import { withTextLayers } from "./chunk-text-layers";
@@ -80,6 +80,10 @@ export function createKajianQRetriever(deps: KajianQRetrieverDeps): Retriever<Ka
         Effect.gen(function* () {
           if (routed.subQueries.length === 0) return [];
           const run = yield* RunContext;
+          // The caller's own list is watched as it is searched: its top hits are a
+          // priority angle (ADR-0062) the fusion vote cannot outrank on its own.
+          const callerIndex = routed.subQueries.findIndex(isCallerSubQuery);
+          const callerLists: TrackHit[][] = [];
           const embedded = yield* deps.embedder
             .embed({ texts: routed.subQueries.map((q) => q.text), personalData: true })
             .pipe(Effect.mapError((cause) => ({ cause })));
@@ -179,29 +183,18 @@ export function createKajianQRetriever(deps: KajianQRetrieverDeps): Retriever<Ka
                 },
                 at: run.now(),
               });
-              for (const hit of hits) {
-                lists.push([
-                  {
-                    chunk: {
-                      id: hit.child.id,
-                      text:
-                        track === "primary"
-                          ? hit.child.textAr
-                          : (hit.child.textId ?? hit.child.textAr),
-                      // The two text layers ride the chunk metadata — the store's text
-                      // columns are their only source — and `withTextLayers` owns the
-                      // merge for both retrieval paths, so they cannot drift.
-                      metadata: withTextLayers(
-                        hit.child.metadata,
-                        hit.child.textAr,
-                        hit.child.textId,
-                      ),
-                      rankDense: hit.rankDense,
-                    },
-                    rank: hit.rankDense,
-                  },
-                ]);
-              }
+              const list: TrackHit[] = hits.map((hit) => ({
+                chunk: {
+                  id: hit.child.id,
+                  text:
+                    track === "primary" ? hit.child.textAr : (hit.child.textId ?? hit.child.textAr),
+                  metadata: withTextLayers(hit.child.metadata, hit.child.textAr, hit.child.textId),
+                  rankDense: hit.rankDense,
+                },
+                rank: hit.rankDense,
+              }));
+              lists.push(list);
+              if (i === callerIndex) callerLists.push(list);
             }
           }
           // The hierarchy bonuses are the spec's; the Principle bonus applies only on an
@@ -285,7 +278,19 @@ export function createKajianQRetriever(deps: KajianQRetrieverDeps): Retriever<Ka
               at: run.now(),
             });
           }
-          return [...inContext, ...neighbours.chunks];
+          const returned = [...inContext, ...neighbours.chunks];
+          // The caller's own query is a priority angle (ADR-0062): its leading hits
+          // lead the returned set under their own label, which the rerank respects.
+          const priority = guaranteeCallerPriority({ callerLists, returned });
+          if (priority.detail !== null) {
+            run.record({
+              stage: "retriever",
+              kind: "caller_priority",
+              detail: priority.detail,
+              at: run.now(),
+            });
+          }
+          return priority.chunks;
         }),
       ),
   };

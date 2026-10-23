@@ -85,3 +85,12 @@ export type ChunkRef = v.InferOutput<typeof ChunkRefSchema>;
  * value with it (a longer list fails the parse) rather than truncate silently.
  */
 export const SEARCH_HITS_TRACE_LIMIT = 10;
+
+/**
+ * How many of the caller's own leading dense hits the caller-priority guarantee
+ * carries into the context. Small on purpose: these are the caller's strongest
+ * rows, not a second fused block, and every one of them is kept out of the
+ * rerank's reorder. The schema refuses a `caller_priority` record naming more,
+ * so the bound is the contract's, not a writer's convention.
+ */
+export const CALLER_PRIORITY_K = 3;
