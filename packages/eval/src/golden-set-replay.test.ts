@@ -82,6 +82,11 @@ const { gating: GATE_IDENTITY, reported: REPORTED_IDENTITY } = curatedIdentityRe
  * The ids the Golden Set has retired since this run was recorded. A recorded row
  * the head set no longer carries keeps the requirement it was scored against; any
  * other missing id is a fixture defect, not history.
+ *
+ * Kept per file rather than exported from the domain pack: each assertion fails
+ * closed on its own, a shared constant would let one edit retire an id in every
+ * consumer at once, and a test-only export would enter the product for no runtime
+ * caller.
  */
 const RETIRED_IDS = new Set(["gs-v0-007"]);
 
