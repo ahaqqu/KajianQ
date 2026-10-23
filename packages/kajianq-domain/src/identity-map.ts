@@ -17,9 +17,15 @@ export type IdentityMapStatus = "v0-draft" | "canonical";
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
-/** The map's top-level object, or a failure naming what arrived instead. */
-export function requireRecord(value: unknown, where: string): Record<string, unknown> {
-  if (!isRecord(value)) throw new IdentityMapError(`${where} must be an object`);
+/** The map's own object or one entry, or a failure naming what arrived instead.
+ * `separator` is `":"` at the map call site and empty for an entry, so each
+ * failure keeps the shape its reader expects. */
+export function requireRecord(
+  value: unknown,
+  where: string,
+  separator = "",
+): Record<string, unknown> {
+  if (!isRecord(value)) throw new IdentityMapError(`${where}${separator} must be an object`);
   return value;
 }
 

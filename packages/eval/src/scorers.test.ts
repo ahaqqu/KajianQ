@@ -18,7 +18,7 @@ import type {
   CitationIdentity,
   TraceEventLike,
 } from "./harness-types";
-import { CitationAlternativesScopeError } from "./citation-alternatives";
+import { CitationAlternativesScopeError, requireAlternativesScope } from "./index";
 import { CitationGrammarError } from "./citation-grammar";
 import { CitationIdentityError } from "./citation-identity";
 import { identitySatisfiedCitationAddressRecall } from "./scorers-address";
@@ -1182,11 +1182,14 @@ describe("the opt-in any-of alternative set (D3)", () => {
         alternatives: ["label-1"],
       }),
     ).toThrow(CitationAlternativesScopeError);
-    // Guarded before the empty-required short-circuit: a set with no requirement is
-    // as mis-shaped as one with two.
+    // Guarded before the empty-required short-circuit at every entry: a set with
+    // no requirement is as mis-shaped as one with two.
     expect(() =>
       citationAddressRecall([], [], () => undefined, { alternatives: ["label-1"] }),
     ).toThrow(CitationAlternativesScopeError);
+    expect(() => citationValidity([], "", { alternatives: ["label-1"] })).toThrow(
+      CitationAlternativesScopeError,
+    );
     // The engine's own entry refuses it too: a hand-built question cannot smuggle a
     // widening set past the schema.
     expect(() =>
@@ -1202,6 +1205,38 @@ describe("the opt-in any-of alternative set (D3)", () => {
         { sourceTypeOf: () => undefined, citationOf: () => undefined, refusalMarkers: [] },
       ),
     ).toThrow(CitationAlternativesScopeError);
+    expect(() =>
+      scoreQuestion(
+        {
+          ...question,
+          id: "gs-test-empty",
+          requiredCitations: [],
+          citationAlternatives: ["label-1"],
+        },
+        "",
+        [],
+        { sourceTypeOf: () => undefined, citationOf: () => undefined, refusalMarkers: [] },
+      ),
+    ).toThrow(CitationAlternativesScopeError);
+  });
+
+  it("keeps a legitimate empty-required row at 1 when no set arrives to bind", () => {
+    // The guard fires only on the set: an empty requirement list with no
+    // alternatives still short-circuits to the same 1 it always scored.
+    expect(citationValidity([], "anything")).toBe(1);
+    expect(citationValidity([], "", { frame: frame("label-1") })).toBe(1);
+    expect(citationValidity([], "anything", { frame: frame() })).toBe(1);
+  });
+
+  it("is catchable through the package barrel, with its kind and name", () => {
+    try {
+      requireAlternativesScope(["req-1", "req-2"], ["label-1"]);
+      expect.unreachable("the scope guard accepted a widening set");
+    } catch (error) {
+      expect(error).toBeInstanceOf(CitationAlternativesScopeError);
+      expect((error as CitationAlternativesScopeError).kind).toBe("citation_alternatives_scope");
+      expect((error as Error).name).toBe("CitationAlternativesScopeError");
+    }
   });
 });
 

@@ -201,11 +201,12 @@ export function citationValidity(
     alternatives?: readonly string[];
   },
 ): number {
-  // Guarded before the empty-required early return, so an unwired grammar or a
-  // malformed identity resolver fails even on a question whose citations are
-  // trivially satisfied.
+  // Every guard runs before the empty-required early return, so an unwired
+  // grammar, a malformed identity resolver or a set the row cannot bound fails
+  // loudly even on a question whose citations are trivially satisfied.
   if (evidence?.grammar !== undefined) requireCitationGrammar(evidence.grammar);
   if (evidence?.identity !== undefined) requireCitationIdentity(evidence.identity);
+  requireAlternativesScope(requiredCitations, evidence?.alternatives ?? []);
   if (requiredCitations.length === 0) return 1;
   const present = citationLabelsPresent({
     required: requiredCitations,

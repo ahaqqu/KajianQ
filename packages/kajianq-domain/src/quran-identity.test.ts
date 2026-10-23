@@ -164,7 +164,13 @@ describe("parseQuranIdentitySet", () => {
   });
 
   it("rejects a malformed map or status", () => {
-    expect(() => parseQuranIdentitySet(null)).toThrow(IdentityMapError);
+    // The map-level failure names the map with a colon; the entry-level failure
+    // names its path without one. Both texts are pinned so a refactor cannot
+    // drift the message a caller reads.
+    expect(() => parseQuranIdentitySet(null)).toThrow(/^quran identity set: must be an object$/);
+    expect(() => parseQuranIdentitySet({ ...valid, pairs: [null] })).toThrow(
+      /^quran identity set: pairs\[0\] must be an object$/,
+    );
     expect(() => parseQuranIdentitySet({ ...valid, status: "draft" })).toThrow(/status must be/);
     expect(() => parseQuranIdentitySet({ ...valid, pairs: [] })).toThrow(/pairs must be/);
   });

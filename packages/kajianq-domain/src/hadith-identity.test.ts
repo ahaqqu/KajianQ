@@ -231,6 +231,15 @@ describe("parseHadithIdentitySet", () => {
     expect(parseHadithIdentitySet(valid).groups).toHaveLength(1);
   });
 
+  it("rejects a malformed map or one of its groups", () => {
+    // The map-level failure names the map with a colon; the entry-level failure
+    // names its path without one.
+    expect(() => parseHadithIdentitySet(null)).toThrow(/^matn identity set: must be an object$/);
+    expect(() => parseHadithIdentitySet({ ...valid, groups: [null] })).toThrow(
+      /^matn identity set: groups\[0\] must be an object$/,
+    );
+  });
+
   it("rejects a group that does not state its relation", () => {
     const withoutRelation = { ...group, relation: undefined };
     expect(() => parseHadithIdentitySet({ ...valid, groups: [withoutRelation] })).toThrow(

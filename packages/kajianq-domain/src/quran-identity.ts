@@ -66,7 +66,7 @@ export function parseQuranIdentitySet(
   input: unknown,
   source = "quran identity set",
 ): QuranIdentitySet {
-  const record = requireRecord(input, source);
+  const record = requireRecord(input, source, ":");
   const id = requiredString(record["id"], "id", source);
   const status = requiredStatus(record["status"], source);
   const entries = requiredEntries(record, "pairs", source);

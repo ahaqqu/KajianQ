@@ -110,7 +110,7 @@ export function parseHadithIdentitySet(
   input: unknown,
   source = "matn identity set",
 ): HadithIdentitySet {
-  const record = requireRecord(input, source);
+  const record = requireRecord(input, source, ":");
   const id = requiredString(record["id"], "id", source);
   const status = requiredStatus(record["status"], source);
   const entries = requiredEntries(record, "groups", source);
