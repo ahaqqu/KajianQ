@@ -80,6 +80,21 @@ function compareChunkIds(a: string, b: string): number {
 }
 
 /**
+ * A search's hits in ascending dense rank, ties broken by chunk id — the order
+ * the `search_hits` trace record carries. The store's array order is no
+ * contract (only `rankDense` states which row ranked where), so a record that
+ * took the reply's position for the rank would present the wrong rows as the
+ * leading ones while fusion — which sums ranks, not positions — stayed silent.
+ */
+export function compareHitsByDenseRank(
+  a: { child: { id: string }; rankDense: number },
+  b: { child: { id: string }; rankDense: number },
+): number {
+  if (a.rankDense !== b.rankDense) return a.rankDense - b.rankDense;
+  return compareChunkIds(a.child.id, b.child.id);
+}
+
+/**
  * Hierarchy bonus from a chunk's opaque metadata (spec §3.3 item 4 magnitudes).
  *
  * Four bonuses are properties of the chunk — Quran, the two trustworthy hadith

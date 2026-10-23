@@ -74,3 +74,14 @@ export const ChunkRefSchema = v.object({
 
 /** The persisted trace's retrieval ref shape (the one owner). */
 export type ChunkRef = v.InferOutput<typeof ChunkRefSchema>;
+
+/**
+ * The most chunk ids one search's trace record can carry. It is the retriever's
+ * default per-track search size, and therefore the whole list a serving search
+ * returns: a store's `limit` bounds `hits`, and the writer records every row it
+ * returned, so no row the search saw is absent from its record by truncation.
+ * The schema refuses a longer list, so the bound is the contract's, not a
+ * writer's convention; a search configured with a larger `limit` must move this
+ * value with it (a longer list fails the parse) rather than truncate silently.
+ */
+export const SEARCH_HITS_TRACE_LIMIT = 10;

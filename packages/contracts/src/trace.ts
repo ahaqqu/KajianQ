@@ -9,6 +9,7 @@ import { TraceEventSchema } from "./trace-events";
 export {
   ChunkRefSchema,
   CostRecordSchema,
+  SEARCH_HITS_TRACE_LIMIT,
   StageSchema,
   type ChunkRef,
   type CostRecord,

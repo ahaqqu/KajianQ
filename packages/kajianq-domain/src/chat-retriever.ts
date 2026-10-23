@@ -15,6 +15,7 @@ import {
   DEFAULT_NEIGHBOUR_CAP,
   DEFAULT_NEIGHBOUR_RADIUS,
   DEFAULT_SCOPE_EXPANSION_CAP,
+  compareHitsByDenseRank,
   expandRetrievedSurahScope,
   expandSurahScope,
   expandVerseNeighbours,
@@ -24,6 +25,7 @@ import {
   hierarchyBonus,
   lookupCitationLabels,
   rrfFuse,
+  SEARCH_HITS_TRACE_LIMIT,
   type NeighbourChildRow,
   type RetrieverStore,
   type ScopeChildRow,
@@ -54,7 +56,8 @@ export type KajianQRetrieverDeps = {
   store: RetrieverStore;
   embedder: RetrieverEmbedder;
   bridge: StoreBridge;
-  /** Per-track hits per sub-query (spec §3.7 smoke keeps this small). */
+  /** Per-track hits per sub-query (spec §3.7 smoke keeps this small), defaulting
+   * to `SEARCH_HITS_TRACE_LIMIT` — the largest list the trace record carries whole. */
   limit?: number | undefined;
   /** Budget cap for ADR-0045's surah reads — the surah the question names and a retrieved
    * verse's short surah share it, the named read first; `0` disables both. */
@@ -69,7 +72,7 @@ export type KajianQRetrieverDeps = {
 };
 
 export function createKajianQRetriever(deps: KajianQRetrieverDeps): Retriever<KajianQFilters> {
-  const limit = deps.limit ?? 10;
+  const limit = deps.limit ?? SEARCH_HITS_TRACE_LIMIT;
   return {
     retrieve: (routed: RoutedQuery<KajianQFilters>) =>
       toStageError(
@@ -103,8 +106,9 @@ export function createKajianQRetriever(deps: KajianQRetrieverDeps): Retriever<Ka
           const relaxation = createFilterRelaxation(intended);
           const lists: TrackHit[][] = [];
           for (let i = 0; i < routed.subQueries.length; i += 1) {
+            const sub = routed.subQueries[i];
             const vector = embedded.vectors[i];
-            if (!vector) continue;
+            if (!sub || !vector) continue;
             for (const track of ["primary", "fallback"] as const) {
               const search = (withFilters: Record<string, string[]>) =>
                 Effect.tryPromise({
@@ -155,6 +159,26 @@ export function createKajianQRetriever(deps: KajianQRetrieverDeps): Retriever<Ka
               }
               // Whatever this search concluded, it is the run's one diagnosis.
               relaxation.settle();
+              // The raw list this search returned, beside the fused `retrieval` event:
+              // the fused set cannot say whether a row was never returned or was
+              // dropped after the search, and `filter_relaxed` records only probes.
+              // Every returned id is recorded — ids and dense ranks only, the text
+              // already rides the fused event — in dense-rank order rather than the
+              // adapter's array order, which the store seam does not promise.
+              run.record({
+                stage: "retriever",
+                kind: "search_hits",
+                detail: {
+                  ...(sub.role !== undefined ? { role: sub.role } : {}),
+                  ...(sub.origin !== undefined ? { origin: sub.origin } : {}),
+                  track,
+                  hits: hits.length,
+                  topHits: [...hits]
+                    .sort(compareHitsByDenseRank)
+                    .map((hit) => ({ id: hit.child.id, rankDense: hit.rankDense })),
+                },
+                at: run.now(),
+              });
               for (const hit of hits) {
                 lists.push([
                   {

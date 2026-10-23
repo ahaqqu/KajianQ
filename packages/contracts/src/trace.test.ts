@@ -1,7 +1,13 @@
 import { fc, test as fcTest } from "@fast-check/vitest";
 import { describe, expect, it } from "vite-plus/test";
 import * as v from "valibot";
-import { TraceSchema, parseTrace, totalCostMicroUsd, type TraceEvent } from "./trace";
+import {
+  SEARCH_HITS_TRACE_LIMIT,
+  TraceSchema,
+  parseTrace,
+  totalCostMicroUsd,
+  type TraceEvent,
+} from "./trace";
 
 const costArb = fc.record({
   modelId: fc.string({ minLength: 1 }),
@@ -87,10 +93,35 @@ describe("trace contract", () => {
       },
       { stage: "router", kind: "subquery", detail: { text: "sub" }, at: 2 },
       {
+        // The routing decision: the sources selected and the filter record the
+        // searches ran with, both opaque labels the domain pack named.
+        stage: "router",
+        kind: "source_routing",
+        detail: { sources: ["src_a"], filters: {} },
+        at: 2,
+      },
+      {
         stage: "retriever",
         kind: "retrieval",
         detail: {
           chunks: [{ id: "c1", score: 0.5, rankDense: 1, rankSparse: 2, origin: "expansion" }],
+        },
+        at: 3,
+      },
+      {
+        // One raw per-sub-query × track search: the sub-query's identity (never
+        // its text), the track, the full hit count, and the rows it returned.
+        stage: "retriever",
+        kind: "search_hits",
+        detail: {
+          role: "factual",
+          origin: "rule",
+          track: "primary",
+          hits: 7,
+          topHits: [
+            { id: "c1", rankDense: 1 },
+            { id: "c2", rankDense: 2 },
+          ],
         },
         at: 3,
       },
@@ -199,12 +230,15 @@ describe("trace contract", () => {
     ];
     const trace = parseTrace({ id: "t", createdAt: 0, events });
     // The kinds are named, not just counted: a count cannot tell "both variants
-    // are in the union" from "one replaced the other".
-    expect(trace.events).toHaveLength(14);
+    // are in the union" from "one replaced the other", and the union is closed at
+    // sixteen, so a variant missing here is a variant the fixture never proved.
+    expect(trace.events).toHaveLength(16);
     expect(trace.events.map((event) => event.kind)).toEqual([
       "intent",
       "subquery",
+      "source_routing",
       "retrieval",
+      "search_hits",
       "filter_relaxed",
       "scope_expansion",
       "neighbour_expansion",
@@ -587,5 +621,145 @@ describe("the filter_relaxed event after probing replaced the whole-set drop", (
       ],
     });
     expect(trace.events).toHaveLength(2);
+  });
+});
+
+/**
+ * The per-search record: one event per sub-query × track search, carrying the
+ * raw list the search returned before fusion. It is the trace's only way to
+ * tell "the search never saw the row" from "the row was dropped after the
+ * search", so its identity fields, its zero case and its bound are contract.
+ */
+describe("the search_hits event", () => {
+  const base = { id: "d2c3b4a5-6f70-4a8b-9c0d-e1f2a3b4c5d6", createdAt: 0 };
+  const searchEvent = (detail: unknown) => ({
+    stage: "retriever",
+    kind: "search_hits",
+    detail,
+    at: 1,
+  });
+
+  it("carries the sub-query's identity, the track, the count, and the top ranks", () => {
+    const trace = parseTrace({
+      ...base,
+      events: [
+        searchEvent({
+          role: "factual",
+          origin: "rule",
+          track: "primary",
+          hits: 10,
+          topHits: [
+            { id: "c1", rankDense: 1 },
+            { id: "c2", rankDense: 2 },
+          ],
+        }),
+      ],
+    });
+    expect(trace.events[0]).toMatchObject({
+      kind: "search_hits",
+      detail: {
+        role: "factual",
+        origin: "rule",
+        track: "primary",
+        hits: 10,
+        topHits: [
+          { id: "c1", rankDense: 1 },
+          { id: "c2", rankDense: 2 },
+        ],
+      },
+    });
+  });
+
+  it("records a zero-hit search as an empty list, not as a missing event", () => {
+    // A search that returned nothing IS a result; an absent event would be
+    // indistinguishable from a search that never ran.
+    const trace = parseTrace({
+      ...base,
+      events: [searchEvent({ track: "fallback", hits: 0, topHits: [] })],
+    });
+    expect(trace.events[0]).toMatchObject({ detail: { hits: 0, topHits: [] } });
+  });
+
+  it("bounds the list to the store's per-search limit", () => {
+    // The limit is the contract's, not a writer's convention: a full default-size
+    // search parses, one id more is refused, so no producer can grow the event
+    // past the list a serving search can return.
+    expect(SEARCH_HITS_TRACE_LIMIT).toBe(10);
+    const tooMany = Array.from({ length: SEARCH_HITS_TRACE_LIMIT + 1 }, (_, i) => ({
+      id: `c${i}`,
+      rankDense: i + 1,
+    }));
+    expect(
+      v.safeParse(TraceSchema, {
+        ...base,
+        events: [searchEvent({ track: "primary", hits: tooMany.length, topHits: tooMany })],
+      }).success,
+    ).toBe(false);
+    // Inclusive: the complete list of a full-size search is representable.
+    expect(
+      v.safeParse(TraceSchema, {
+        ...base,
+        events: [
+          searchEvent({
+            track: "primary",
+            hits: SEARCH_HITS_TRACE_LIMIT,
+            topHits: tooMany.slice(0, SEARCH_HITS_TRACE_LIMIT),
+          }),
+        ],
+      }).success,
+    ).toBe(true);
+  });
+
+  it("refuses a list that claims more rows than the search returned", () => {
+    // `hits` and `topHits` are one record: a zero count with rows, or a list
+    // longer than the count, describes a search that never happened. The pairing
+    // is what makes "returned nothing" and "returned these rows" distinguishable.
+    for (const detail of [
+      { track: "primary", hits: 0, topHits: [{ id: "c1", rankDense: 1 }] },
+      {
+        track: "primary",
+        hits: 1,
+        topHits: [
+          { id: "c1", rankDense: 1 },
+          { id: "c2", rankDense: 2 },
+        ],
+      },
+    ]) {
+      expect(v.safeParse(TraceSchema, { ...base, events: [searchEvent(detail)] }).success).toBe(
+        false,
+      );
+    }
+    // A shorter list within the count stays readable (a bounded sample).
+    expect(
+      v.safeParse(TraceSchema, {
+        ...base,
+        events: [searchEvent({ track: "primary", hits: 3, topHits: [{ id: "c1", rankDense: 1 }] })],
+      }).success,
+    ).toBe(true);
+  });
+
+  it("refuses a dense rank that is not a positive integer", () => {
+    for (const rankDense of [0, -1, 1.5, "1"]) {
+      expect(
+        v.safeParse(TraceSchema, {
+          ...base,
+          events: [searchEvent({ track: "primary", hits: 1, topHits: [{ id: "c1", rankDense }] })],
+        }).success,
+        String(rankDense),
+      ).toBe(false);
+    }
+  });
+
+  it("refuses a negative hit count or a missing track", () => {
+    expect(
+      v.safeParse(TraceSchema, {
+        ...base,
+        events: [searchEvent({ track: "primary", hits: -1, topHits: [] })],
+      }).success,
+    ).toBe(false);
+    expect(
+      v.safeParse(TraceSchema, { ...base, events: [searchEvent({ hits: 0, topHits: [] })] })
+        .success,
+    ).toBe(false);
   });
 });
