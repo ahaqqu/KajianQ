@@ -62,9 +62,7 @@ export const TraceEventSchema = v.variant("kind", [
   /** One raw per-sub-query × track search, beside the fused `retrieval` event;
    * owner `./trace-retriever`. */
   searchHitsEventSchema,
-  /** The caller's own query's leading hits, guaranteed past fusion;
-   * owner `./trace-retriever`. */
-  callerPriorityEventSchema,
+  callerPriorityEventSchema, // owner: ./trace-retriever
   v.object({
     stage: v.literal("assembler"),
     kind: v.literal("assembly"),

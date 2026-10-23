@@ -15,7 +15,6 @@ import {
   type RetrieverStore,
   type TrackHit,
 } from "./chat-retriever-parts";
-import type { KajianQFilters } from "./filters";
 import { routedQuery } from "./test-utils/routed-query";
 
 /**
