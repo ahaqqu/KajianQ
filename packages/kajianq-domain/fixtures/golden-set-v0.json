@@ -58,15 +58,6 @@
       "tags": ["fikih", "hadith"]
     },
     {
-      "id": "gs-v0-007",
-      "question": "Apa itu sifat wajib bagi Allah dalam aqidah Ahlus Sunnah?",
-      "language": "id",
-      "expectedSourceTypes": ["quran"],
-      "requiredCitations": ["QS. 42:11"],
-      "expectedBehavior": "answer",
-      "tags": ["aqidah", "quran"]
-    },
-    {
       "id": "gs-v0-008",
       "question": "Hadits apa yang menyebutkan keutamaan membaca Al-Quran?",
       "language": "id",
@@ -195,6 +186,15 @@
       "requiredCitations": ["HR. Bukhari no. 191"],
       "expectedBehavior": "answer",
       "tags": ["hadith"]
+    },
+    {
+      "id": "gs-v0-022",
+      "question": "Siapa yang harus diutamakan: istri atau ibu?",
+      "language": "id",
+      "expectedSourceTypes": ["hadith"],
+      "requiredCitations": ["HR. Bukhari no. 5971"],
+      "expectedBehavior": "answer",
+      "tags": ["adab", "hadith"]
     }
   ]
 }
