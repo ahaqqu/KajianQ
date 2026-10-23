@@ -1,4 +1,6 @@
+import type { MetadataFilterValue } from "@app/infra";
 import { FILTER_DIMENSIONS, type KajianQFilters } from "./filters";
+import { sahihFilterExpansion } from "./sahihayn";
 
 /**
  * The domain→store filter mapping — Smart Router stage 3 (spec §3.3 item 3:
@@ -6,9 +8,9 @@ import { FILTER_DIMENSIONS, type KajianQFilters } from "./filters";
  *
  * **The invariant this module owns** (the reason it exists as its own file):
  * *the routing decision the trace publishes and the filter record the store
- * receives are the same object, and a dimension the store cannot express fails
- * the run loudly instead of being dropped.* Two silent failures are ruled out
- * by construction rather than by care:
+ * receives are the same decision, and a dimension the store cannot express
+ * fails the run loudly instead of being dropped.* Two silent failures are ruled
+ * out by construction rather than by care:
  *
  * 1. **A dimension with no store key.** `FILTER_DIMENSIONS` is an exhaustive
  *    `Record<keyof KajianQFilters, …>`: adding a dimension to the filter type
@@ -17,18 +19,19 @@ import { FILTER_DIMENSIONS, type KajianQFilters } from "./filters";
  *    decide "search the Quran, for the yusr lens" and the search runs over the
  *    whole corpus with no error, no trace entry, and no gate that notices — the
  *    failure this invariant forbids.
- * 2. **A key the store cannot express.** The store seam takes
- *    `Record<string, string | readonly string[]>`
- *    (`RagStore.similaritySearch`) and compiles it to
- *    `metadata->>$key = ANY($key::text[])`. Anything else — a number, a nested
- *    object, a retired or invented dimension name (the spec's `source_type`
- *    snake_case spelling is the realistic near-miss) — is rejected here with a
- *    typed {@link FilterNotExpressibleError} that the retriever surfaces as its
- *    stage failure. A silently-ignored filter is an answer to a different
- *    question than the router decided to answer.
+ * 2. **A key the store cannot express.** The store seam takes string values,
+ *    string sets, or a set with the derived case a value carries
+ *    ({@link MetadataFilterMatch}, `RagStore.similaritySearch`). Anything else —
+ *    a number, a nested object, a retired or invented dimension name (the
+ *    spec's `source_type` snake_case spelling is the realistic near-miss) — is
+ *    rejected here with a typed {@link FilterNotExpressibleError} that the
+ *    retriever surfaces as its stage failure. A silently-ignored filter is an
+ *    answer to a different question than the router decided to answer.
  *
- * Nothing here interprets what a value *means*: the keys and values are
- * opaque strings the domain pack owns.
+ * Nothing here interprets what a value *means*: the keys and values are opaque
+ * strings the domain pack owns. The one value whose meaning this module reads is
+ * `grade`'s `sahih`, because {@link effectiveGrade} resolves it at read time —
+ * see {@link storeFilters}.
  */
 
 /** A filter dimension the store cannot express. Loud, typed, never a drop. */
@@ -130,6 +133,33 @@ export function entriesToFilters(entries: readonly FilterEntry[]): Record<string
  */
 export function metadataFilters(filters: KajianQFilters | undefined): Record<string, string[]> {
   return entriesToFilters(filterEntries(filters));
+}
+
+/**
+ * The filter record a search is handed: the record the trace publishes, dimension
+ * for dimension and value for value, with each value's read-time expansion
+ * attached as data.
+ *
+ * Exactly one value has an expansion — `grade`'s `sahih`
+ * ({@link sahihFilterExpansion}): a row from a collection the term *sahihayn*
+ * names carries no stored grade, and {@link effectiveGrade} reads it as sahih,
+ * so the filter selecting sahih evidence must select it too. It is attached here,
+ * at the one boundary where the domain's decision becomes the store's record, and
+ * expressed as data so the engine's SQL binds it without knowing what `sahih` or
+ * a collection is. Every other dimension and every other value reaches the store
+ * exactly as the route decided it, and relaxation keeps dropping dimensions from
+ * the unexpanded record, so a drop removes the whole dimension — expansion
+ * included — rather than leaving an alternative behind.
+ */
+export function storeFilters(
+  filters: Readonly<Record<string, readonly string[]>>,
+): Record<string, MetadataFilterValue> {
+  const out: Record<string, MetadataFilterValue> = {};
+  for (const [key, values] of Object.entries(filters)) {
+    const expansion = key === FILTER_DIMENSIONS.grade ? sahihFilterExpansion(values) : undefined;
+    out[key] = expansion ?? [...values];
+  }
+  return out;
 }
 
 /**

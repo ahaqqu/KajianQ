@@ -1,4 +1,5 @@
 import type { Chunk } from "@app/rag-core";
+import { effectiveGrade } from "./sahihayn";
 
 /**
  * The pure half of the retriever: Reciprocal Rank Fusion (spec §3.3, k=60) and
@@ -88,6 +89,10 @@ function compareChunkIds(a: string, b: string): number {
  * is measured against — and on a factual question the same chunk is commentary
  * and must not outrank a direct dalil. `intent` is opaque here: the engine and
  * this function never interpret it beyond equality with the caller's label.
+ *
+ * The grade read is {@link effectiveGrade}, the sahihayn derivation, so a row
+ * from a collection the term names takes the Sahih bonus with no stored grade —
+ * the same value the `grade` filter matches, and for the same reason.
  */
 export function hierarchyBonus(chunk: Chunk, intent?: string): number {
   const meta = (chunk.metadata ?? {}) as Record<string, unknown>;
@@ -98,7 +103,7 @@ export function hierarchyBonus(chunk: Chunk, intent?: string): number {
   if (sourceType === "principle" && intent === "analogy") {
     bonus += HIERARCHY_BONUS.principleOnAnalogy;
   }
-  const grade = meta["grade"];
+  const grade = effectiveGrade(meta);
   if (grade === "sahih") bonus += HIERARCHY_BONUS.sahih;
   if (grade === "hasan") bonus += HIERARCHY_BONUS.hasan;
   return bonus;

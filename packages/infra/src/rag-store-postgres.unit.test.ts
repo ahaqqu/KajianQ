@@ -274,6 +274,34 @@ describe("rag-store-postgres adapter (fake runner)", () => {
     expect(q?.values).toHaveLength(6);
   });
 
+  it("similaritySearch binds a clause's derived case without widening its own key", async () => {
+    const sql = makeFakeSql();
+    const store = createPostgresRagStore(sql);
+    sql._setQuery([]);
+    await runOk(
+      store.similaritySearch("primary", VEC1536, {
+        limit: 5,
+        filters: {
+          grade: { values: ["sahih"], whenAbsent: { key: "collection", values: ["bukhari"] } },
+        },
+      }),
+    );
+    const q = sql._calls.find((c) => c.kind === "query");
+    // $1 embedding, $2 limit, then the dimension's key + values and the
+    // alternative's key + values — bound, never interpolated.
+    expect(q?.values).toEqual([
+      expect.any(String),
+      5,
+      "grade",
+      ["sahih"],
+      "collection",
+      ["bukhari"],
+    ]);
+    expect(q?.text).toContain(
+      "AND (metadata->>$3 = ANY($4::text[]) OR (metadata->>$3 IS NULL AND metadata->>$5 = ANY($6::text[])))",
+    );
+  });
+
   it("similaritySearch rejects a bad-dimension embedding before querying (constraint kind)", async () => {
     const sql = makeFakeSql();
     const store = createPostgresRagStore(sql);

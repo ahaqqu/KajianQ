@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vite-plus/test";
 import type { Chunk } from "@app/rag-core";
 import { HIERARCHY_BONUS, hierarchyBonus, rrfFuse, type TrackHit } from "./chat-fusion";
+import { HADITH_COLLECTIONS } from "./hadith-source";
+import { SAHIHAYN_BASIS } from "./sahihayn";
 
 /**
  * The fusion arithmetic's **total order**.
@@ -75,6 +77,64 @@ describe("hierarchyBonus — the spec's magnitudes, including the two that were 
     expect(bonus({ grade: "dhaif" })).toBe(0);
     expect(bonus({ grade: "mutawatir" })).toBe(0);
     expect(bonus({ sourceType: "hadith", grade: "dhaif" })).toBe(0);
+  });
+
+  it("gives an ungraded sahihayn row the Sahih bonus — the collection is the evidence", () => {
+    for (const collection of SAHIHAYN_BASIS.collections) {
+      expect(bonus({ sourceType: "hadith", collection, grade: null })).toBe(HIERARCHY_BONUS.sahih);
+      // A missing grade key is the same absence the store's `IS NULL` reads.
+      expect(bonus({ sourceType: "hadith", collection })).toBe(HIERARCHY_BONUS.sahih);
+    }
+  });
+
+  it("gives an ungraded row from every other collection nothing", () => {
+    const others = HADITH_COLLECTIONS.filter(
+      (collection) => !(SAHIHAYN_BASIS.collections as readonly string[]).includes(collection),
+    );
+    expect(others.length).toBeGreaterThan(0);
+    for (const collection of others) {
+      expect(bonus({ sourceType: "hadith", collection, grade: null })).toBe(0);
+    }
+  });
+
+  it("keeps a sahihayn row's own grade in charge", () => {
+    // The derivation fills an absence; a source's weak verdict is never boosted
+    // away, and a hasan verdict keeps the hasan magnitude.
+    expect(bonus({ sourceType: "hadith", collection: "bukhari", grade: "dhaif" })).toBe(0);
+    expect(bonus({ sourceType: "hadith", collection: "muslim", grade: "hasan" })).toBe(
+      HIERARCHY_BONUS.hasan,
+    );
+  });
+
+  it("stops a stored sahih grade outranking an ungraded sahihayn row from a better rank", () => {
+    // The authority order the spec states, as a behavioural consequence: both
+    // tracks rank the ungraded Bukhari narration first and a stored-sahih Nasai
+    // one second. RRF alone makes rank beat one bonus — 1/61 < 1.25/62 — so
+    // without the derivation the lesser collection wins; with it the better rank
+    // wins (1.25/61 > 1.25/62). Asserting the ORDER, not a number, is what makes
+    // this the regression a re-inversion cannot pass.
+    const bukhari: Chunk = {
+      id: "b",
+      text: "bukhari",
+      metadata: { sourceType: "hadith", collection: "bukhari", grade: null },
+    };
+    const nasai: Chunk = {
+      id: "n",
+      text: "nasai",
+      metadata: { sourceType: "hadith", collection: "nasai", grade: "sahih" },
+    };
+    const lists: TrackHit[][] = [
+      [
+        { chunk: bukhari, rank: 1 },
+        { chunk: nasai, rank: 2 },
+      ],
+      [
+        { chunk: bukhari, rank: 1 },
+        { chunk: nasai, rank: 2 },
+      ],
+    ];
+    expect(rrfFuse(lists, (chunk) => hierarchyBonus(chunk)).map((c) => c.id)).toEqual(["b", "n"]);
+    expect(hierarchyBonus(bukhari)).toBe(HIERARCHY_BONUS.sahih);
   });
 
   it("boosts a Principle only on an analogy question", () => {

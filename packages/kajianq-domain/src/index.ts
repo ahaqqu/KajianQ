@@ -195,7 +195,11 @@ export {
   filterEntries,
   metadataFilters,
   nextRelaxation,
+  storeFilters,
 } from "./chat-filter-policy";
+// The read-time grade the sahihayn carry without a stored one: the basis, the
+// resolver both consumers read, and the filter's data expansion of it.
+export { SAHIHAYN_BASIS, effectiveGrade, sahihFilterExpansion } from "./sahihayn";
 export {
   SourceRoleNotExpressibleError,
   roleSources,

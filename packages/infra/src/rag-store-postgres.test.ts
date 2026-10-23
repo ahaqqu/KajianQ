@@ -7,7 +7,7 @@ import { resolve } from "node:path";
 import { runFail } from "@app/rag-core/testing";
 import { createPostgresRagStore } from "./rag-store-postgres";
 import { disposePostgresPools, postgresPool, postgresSqlRunner } from "./rag-store-postgres-driver";
-import type { RagStore } from "./rag-store";
+import type { MetadataFilterValue, RagStore } from "./rag-store";
 
 /**
  * RagStore contract tests against a real Postgres server.
@@ -39,7 +39,14 @@ let cleanup: () => Promise<void>;
 // Every key this suite creates is `${PREFIX}${suffix}`, and cleanup deletes those
 // exact keys rather than a `LIKE ${PREFIX}-%` pattern, whose reach would exceed
 // the rows this suite owns in the shared database.
-const SOURCE_KEY_SUFFIXES = ["", "-upsert", "-neigh-a", "-neigh-b", "-census"] as const;
+const SOURCE_KEY_SUFFIXES = [
+  "",
+  "-upsert",
+  "-neigh-a",
+  "-neigh-b",
+  "-census",
+  "-sahihayn",
+] as const;
 const TRACE_MESSAGE_SUFFIX = "-msg-1";
 const EVAL_RUN_LABEL_SUFFIX = "-run";
 
@@ -680,6 +687,100 @@ run("RagStore contract (real Postgres, Effect-shaped seam)", () => {
           store.listDocChildrenByParentSourceKey(`${PREFIX}-absent-parent`, { limit: 5 }),
         ),
       ).toEqual([]);
+    }, 60_000);
+  });
+
+  /**
+   * The derived filter case against the real schema: `metadata->>grade` reads
+   * JSON `null` and a missing key alike as SQL NULL, so `key IS NULL` is the one
+   * predicate that covers both, and the alternative must be OR-ed inside the
+   * dimension's clause rather than AND-ed beside it. A text assertion cannot
+   * prove either; these rows do.
+   */
+  describe("a filter's derived case executes against real Postgres", () => {
+    // One row per behaviour the case must distinguish: the two collections whose
+    // absent grade is covered, an absent grade outside them, and grades that are
+    // stored — under a covered collection (weak, never upgraded) and outside it.
+    const ROWS = [
+      { slug: "bukhari-null", metadata: { grade: null, collection: "bukhari" } },
+      { slug: "muslim-missing", metadata: { collection: "muslim" } },
+      { slug: "nasai-null", metadata: { grade: null, collection: "nasai" } },
+      { slug: "bukhari-dhaif", metadata: { grade: "dhaif", collection: "bukhari" } },
+      { slug: "tirmidhi-sahih", metadata: { grade: "sahih", collection: "tirmidhi" } },
+      { slug: "malik-hasan", metadata: { grade: "hasan", collection: "malik" } },
+    ] as const;
+    const idBySlug = new Map<string, string>();
+
+    beforeAll(async () => {
+      if (!URL) return;
+      const program = Effect.gen(function* () {
+        const parentId = yield* store.insertDocParent({
+          sourceKey: corpusKey("-sahihayn"),
+          title: `${PREFIX}-sahihayn-fixture`,
+          metadata: { pfx: PREFIX },
+        });
+        yield* Effect.forEach(ROWS, (row, ordinal) =>
+          Effect.map(
+            store.insertDocChild({
+              parentId,
+              textRaw: `raw-${row.slug}`,
+              textAr: `ar-${row.slug}`,
+              textId: `id-${row.slug}`,
+              citation: { fixture: "sahihayn", slug: row.slug },
+              embeddingPrimary: vec(1536, 950 + ordinal),
+              embeddingFallback: null,
+              ordinal,
+              // `pfx` isolates this fixture's rows; the other keys are the ones the
+              // derived case reads.
+              metadata: { pfx: PREFIX, ...row.metadata },
+            }),
+            (id) => {
+              idBySlug.set(row.slug, id);
+            },
+          ),
+        );
+      });
+      await Effect.runPromise(program);
+    });
+
+    const search = (filters: Record<string, MetadataFilterValue>) =>
+      Effect.runPromise(store.similaritySearch("primary", vec(1536, 950), { limit: 10, filters }));
+
+    it("admits an absent grade from either covered collection, and nothing else", async () => {
+      if (!URL) return;
+      const hits = await search({
+        pfx: PREFIX,
+        grade: {
+          values: ["sahih"],
+          whenAbsent: { key: "collection", values: ["bukhari", "muslim"] },
+        },
+      });
+      const slugs = hits.map((h) => (h.child.citation as { slug: string }).slug).sort();
+      expect(slugs).toEqual(["bukhari-null", "muslim-missing", "tirmidhi-sahih"]);
+      // The ids are the fixture's own rows, not a coincidence of shape.
+      expect(hits.map((h) => h.child.id).sort()).toEqual(
+        ["bukhari-null", "muslim-missing", "tirmidhi-sahih"]
+          .map((slug) => idBySlug.get(slug)!)
+          .sort(),
+      );
+    }, 60_000);
+
+    it("keeps exact-equality semantics for the same value without the derived case", async () => {
+      if (!URL) return;
+      const hits = await search({ pfx: PREFIX, grade: ["sahih"] });
+      expect(hits.map((h) => (h.child.citation as { slug: string }).slug)).toEqual([
+        "tirmidhi-sahih",
+      ]);
+    }, 60_000);
+
+    it("keeps exact-equality semantics for a value set that has no derived case", async () => {
+      if (!URL) return;
+      // A grade the domain never expands: `hasan` returns only a stored hasan row,
+      // and the ungraded sahihayn rows beside it stay out.
+      const hits = await search({ pfx: PREFIX, grade: ["hasan"] });
+      expect(hits.map((h) => (h.child.citation as { slug: string }).slug)).toEqual(["malik-hasan"]);
+      // A value no row stores is an empty search, not a widening.
+      expect(await search({ pfx: PREFIX, grade: ["mutawatir"] })).toEqual([]);
     }, 60_000);
   });
 

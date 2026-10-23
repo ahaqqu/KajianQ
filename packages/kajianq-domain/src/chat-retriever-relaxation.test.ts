@@ -3,6 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 import { RunContext } from "@app/rag-core";
 import { createKajianQRetriever } from "./chat-retriever";
 import type { KajianQFilters } from "./filters";
+import type { MetadataFilterValue } from "./chat-retriever-parts";
 import { routedQuery } from "./test-utils/routed-query";
 
 /**
@@ -21,6 +22,21 @@ const hit = (id: string) => ({
   rankDense: 1,
 });
 
+/**
+ * The decision a search ran with, as the trace records it — dimension to value
+ * set. A value may reach the store carrying a derived case (`grade: sahih` also
+ * matching an ungraded sahihayn row); that expansion is the filter policy's
+ * business, pinned in `chat-filter-policy.test.ts`, and relaxation's contract is
+ * which dimensions survive.
+ */
+const decisionOf = (filters: Record<string, MetadataFilterValue>): Record<string, string[]> =>
+  Object.fromEntries(
+    Object.entries(filters).map(([key, value]) => [
+      key,
+      typeof value === "string" ? [value] : Array.isArray(value) ? [...value] : [...value.values],
+    ]),
+  );
+
 function makeRetriever(opts: { hitsWhenFiltered: number }) {
   const recorded: { kind: string }[] = [];
   const calls: (Record<string, string> | undefined)[] = [];
@@ -30,7 +46,7 @@ function makeRetriever(opts: { hitsWhenFiltered: number }) {
       _embedding: readonly number[],
       o: { filters?: Record<string, string> },
     ) => {
-      calls.push(o.filters);
+      calls.push(o.filters === undefined ? undefined : decisionOf(o.filters));
       const filtered = o.filters !== undefined && Object.keys(o.filters).length > 0;
       const rows = filtered
         ? Array.from({ length: opts.hitsWhenFiltered }, (_, i) => hit(`f${i}`))
@@ -110,7 +126,7 @@ describe("filter relaxation gives up one dimension at a time", () => {
         o: { filters?: Record<string, string | readonly string[]> },
       ) => {
         const filters = o.filters ?? {};
-        calls.push(filters);
+        calls.push(decisionOf(filters));
         const blocked = Object.keys(filters).some((key) => unsatisfiable.includes(key));
         return Effect.succeed(blocked ? [] : [hit("c1")]);
       },
@@ -284,7 +300,7 @@ describe("filter relaxation gives up one dimension at a time", () => {
         _embedding: readonly number[],
         o: { filters?: Record<string, string[]> },
       ) => {
-        calls.push(o.filters ?? {});
+        calls.push(decisionOf(o.filters ?? {}));
         return Effect.succeed([]);
       },
       listDocChildNeighboursByChildIds: () => Effect.succeed([]),

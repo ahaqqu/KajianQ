@@ -67,6 +67,8 @@ export {
   type DocParent,
   type DocParentInsert,
   type FeedbackInsert,
+  type MetadataFilterMatch,
+  type MetadataFilterValue,
   type RagStore,
   type RetrievalTrack,
   type SimilarChild,

@@ -20,9 +20,11 @@ import {
   expandVerseNeighbours,
   createFilterRelaxation,
   filterEntries,
+  storeFilters,
   hierarchyBonus,
   lookupCitationLabels,
   rrfFuse,
+  type MetadataFilterValue,
   type NeighbourChildRow,
   type ScopeChildRow,
   type TrackHit,
@@ -44,12 +46,13 @@ export type RetrieverEmbedder = {
   }): Effect.Effect<{ vectors: readonly (readonly number[])[]; cost: CostRecord }, unknown>;
 };
 
-/** Wiring-level store role: search one track; filters are opaque metadata keys. */
+/** Wiring-level store role: search one track; filters are opaque metadata keys,
+ * plus the derived case a value can carry (`MetadataFilterValue`). */
 export type RetrieverStore = {
   similaritySearch(
     track: "primary" | "fallback",
     embedding: readonly number[],
-    opts: { limit: number; filters?: Record<string, string | readonly string[]> },
+    opts: { limit: number; filters?: Record<string, MetadataFilterValue> },
   ): Effect.Effect<
     readonly {
       child: {
@@ -147,7 +150,14 @@ export function createKajianQRetriever(deps: KajianQRetrieverDeps): Retriever<Ka
                 Effect.tryPromise({
                   try: () =>
                     deps.bridge(
-                      deps.store.similaritySearch(track, vector, { limit, filters: withFilters }),
+                      deps.store.similaritySearch(track, vector, {
+                        limit,
+                        // The decision's values, each value's read-time expansion
+                        // attached where it is resolved: `grade: sahih` also matches
+                        // an ungraded row from a sahihayn collection, which the store
+                        // expresses as the same data it binds for any other filter.
+                        filters: storeFilters(withFilters),
+                      }),
                     ),
                   catch: (cause: unknown) => ({ cause }),
                 });
