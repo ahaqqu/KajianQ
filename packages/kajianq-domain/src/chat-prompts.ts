@@ -8,6 +8,8 @@
  * would only buy a sentence the rule strips and rewrites.
  */
 
+import type { Chunk } from "@app/rag-core";
+import { addressedEvidenceIn } from "./chat-citation-reference";
 import { DEFAULT_REFUSALS } from "./chat-refusal";
 
 export type ChatLanguage = "id" | "en";
@@ -66,7 +68,86 @@ export function chatSystemPrompt(language: ChatLanguage): string {
   ].join("\n");
 }
 
-/** The user turn: the routed question plus the assembled context. */
-export function chatUserPrompt(question: string, context: string): string {
-  return [`Pertanyaan / Question: ${question}`, "", "Konteks / Context:", context].join("\n");
+/**
+ * The instruction a reread carries when the question names a citation address
+ * the assembled context carries (ADR-0055). It points the reading at that
+ * passage and at nothing beyond it: the canonical insufficiency sentence stays
+ * available for what the context does not state, and such a gap is declined
+ * with that sentence rather than explained.
+ */
+export const ADDRESSED_EVIDENCE_PROMPT = {
+  id: (labels: string) =>
+    `Bagian yang disebut pertanyaan ada di konteks ini: ${labels}. Bila bagian itu menjawab hal yang ditanyakan, jawablah dari konteks dan kutip bagian itu. Kalimat "${DEFAULT_REFUSALS.id}" tetap berlaku bila konteks tidak menyatakan hal yang ditanyakan; jangan menyatakan apa yang tidak dinyatakan bagian itu.`,
+  en: (labels: string) =>
+    `The passage the question names is in this context: ${labels}. If it answers what was asked, answer from the context and cite it. The "${DEFAULT_REFUSALS.en}" sentence still applies where the context does not state the thing asked; do not state what the passage does not say.`,
+} as const;
+
+export type ChatUserPromptOptions = {
+  /** The answer language, whose instruction copy the directed line uses. */
+  language?: ChatLanguage;
+  /** Citation labels the context carries that the question names (ADR-0055). */
+  addressed?: readonly string[];
+};
+
+/** The user turn: the routed question, an optional addressed-evidence line, and the assembled context. */
+export function chatUserPrompt(
+  question: string,
+  context: string,
+  options: ChatUserPromptOptions = {},
+): string {
+  const lines = [`Pertanyaan / Question: ${question}`];
+  const addressed = options.addressed ?? [];
+  if (addressed.length > 0) {
+    lines.push("", ADDRESSED_EVIDENCE_PROMPT[options.language ?? "id"](addressed.join(", ")));
+  }
+  lines.push("", "Konteks / Context:", context);
+  return lines.join("\n");
+}
+
+/** One turn of the generator's prompt. */
+export type ChatTurn = { role: "system" | "user"; content: string };
+
+/** The trace purpose of the directed second reading (ADR-0055). */
+export const ADDRESSED_REREAD_PURPOSE = "generate_addressed_reread";
+
+/** A directed second reading: the prompt it sends and the labels its trace records. */
+export type AddressedReread = {
+  turns: readonly ChatTurn[];
+  purpose: typeof ADDRESSED_REREAD_PURPOSE;
+  /** The rendered labels the instruction names — the strings the citation gate grounds. */
+  addressed: readonly string[];
+};
+
+/**
+ * The second reading a pure refusal gets when the verbatim question names a
+ * citation address the assembled context carries (ADR-0055): the same system
+ * prompt and evidence, with the carried passage named in the user turn. `null`
+ * keeps the plain reread — a question naming no address, or naming one the
+ * assembled context does not carry.
+ *
+ * The trigger and its trace purpose are read once here, so a directed reading
+ * cannot be sent under the plain purpose or the other way round.
+ */
+export function addressedReread(input: {
+  question: string;
+  context: string;
+  chunks: readonly Chunk[];
+  language: ChatLanguage;
+}): AddressedReread | null {
+  const addressed = addressedEvidenceIn(input.question, input.chunks);
+  if (addressed.length === 0) return null;
+  return {
+    purpose: ADDRESSED_REREAD_PURPOSE,
+    addressed,
+    turns: [
+      { role: "system", content: chatSystemPrompt(input.language) },
+      {
+        role: "user",
+        content: chatUserPrompt(input.question, input.context, {
+          language: input.language,
+          addressed,
+        }),
+      },
+    ],
+  };
 }
