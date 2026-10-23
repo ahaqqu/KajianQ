@@ -314,14 +314,14 @@ describe("a content-free question is not routed", () => {
     // run with are what the trace publishes, so the panel cannot disagree with the
     // route's own decision.
     const h = harness();
-    const answer = await h.run("\u200b", { filters: { madzhab: ["hambali"] } });
+    const answer = await h.run("\u200b", { filters: { grade: ["sahih"] } });
 
     const intent = eventsOf(answer).find((event) => event.kind === "intent");
     expect(intent?.detail).toMatchObject({
-      attributes: { fallback: true, contentFree: true, madzhab: ["hambali"] },
+      attributes: { fallback: true, contentFree: true, grade: ["sahih"] },
     });
     expect(eventsOf(answer).find((event) => event.kind === "source_routing")).toMatchObject({
-      detail: { sources: [], filters: { madzhab: ["hambali"] } },
+      detail: { sources: [], filters: { grade: ["sahih"] } },
     });
     expect(h.routerCalls).toEqual([]);
   });

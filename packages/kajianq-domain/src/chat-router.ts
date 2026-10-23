@@ -131,7 +131,9 @@ export function createKajianQRouter(
           // drift. A dimension the caller pinned is the one exception: the
           // override rides into `routeFilters` verbatim while the event detail
           // publishes its normalized projection, and no wire request can set
-          // one.
+          // one. A pinned key outside the filter vocabulary — a retired
+          // dimension — is rejected by that same mapping as a typed stage
+          // failure before a search runs.
           return yield* recordRouting(run, () =>
             reading === undefined
               ? fallbackRouting(overrides, question)
@@ -213,7 +215,6 @@ function routingInputOf(
     intent: reading.intent,
     ...(reading.category !== undefined ? { category: reading.category } : {}),
     needsPrinciple: reading.needsPrinciple,
-    principleTags: reading.principleTags,
     filters: reading.filters,
     subQueries,
   };

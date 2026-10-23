@@ -1,5 +1,12 @@
 import * as v from "valibot";
-import { GRADES, MADZHABS, TEXT_LAYERS, type KajianQFilters } from "./filters";
+import {
+  GRADES,
+  MADZHABS,
+  TEXT_LAYERS,
+  type KajianQFilters,
+  type Madzhab,
+  type TextLayer,
+} from "./filters";
 import {
   INTENTS,
   PRINCIPLE_TAGS,
@@ -22,7 +29,7 @@ import type { ModelSubQuery } from "./chat-router-decompose";
  * The model's reply is free text and its values are free strings, so every
  * field is narrowed here: an unrecognized value is dropped rather than
  * force-matched into a wrong category, tag, or filter (the same rule the
- * filter hints already followed). Two exceptions are deliberate:
+ * hints already followed). Two exceptions are deliberate:
  *
  * - `intent` is required and must be in the vocabulary. It is the field the
  *   Trace presents as *the* classification, so an unusable one means the
@@ -31,6 +38,12 @@ import type { ModelSubQuery } from "./chat-router-decompose";
  * - `category` may be absent. It only steers which decomposition rules fire,
  *   and "no subject area was settled" is a real state the Trace can show,
  *   unlike a fabricated one.
+ *
+ * **A classification is not a filter.** Madzhab, TextLayer and Principle are
+ * read and recorded on the Trace, but they are not `KajianQFilters`
+ * dimensions: the corpus carries no row for them, so turning one into a
+ * filter would ask the store for a match that can never exist. Only the
+ * dimensions in `FILTER_DIMENSIONS` reach `filters`.
  */
 
 /** One `subQueries` entry as the model may write it: a string, or an object. */
@@ -86,6 +99,10 @@ export function extractJsonObject(text: string): unknown {
 export type RouterReading = {
   intent: Intent;
   category?: SubjectArea;
+  /** The model's Madzhab classification, when it is usable — Trace content only. */
+  madzhab?: Madzhab;
+  /** The model's TextLayer classification, when it is usable — Trace content only. */
+  textLayer?: TextLayer;
   needsPrinciple: boolean;
   principleTags: readonly PrincipleTag[];
   /** The model's sub-queries, in its own order. */
@@ -97,9 +114,11 @@ export type RouterReading = {
   /** The model's rationale for the classification, bounded and trimmed. */
   reasoning?: string;
   /**
-   * The Trace's opaque classification payload: the subject area, the principle
-   * decision, and the effective filters. Built once here so the trace and the
-   * routing decision can never disagree about what was understood.
+   * The Trace's opaque classification payload: the subject area, the Madzhab /
+   * TextLayer / Principle classifications, and the effective filters. Built
+   * once here so the trace and the routing decision can never disagree about
+   * what was understood. The filter record retrieval runs with is the
+   * `source_routing` event, and only `FILTER_DIMENSIONS` members can reach it.
    */
   attributes: Record<string, unknown>;
 };
@@ -136,17 +155,22 @@ export function readRouterReply(
   // flag out.
   const needsPrinciple = reply.needsPrinciple === true || principleTags.length > 0;
 
-  const filters: KajianQFilters = {};
-  // Each dimension is a SET: the reply names at most one value per dimension,
-  // so a hint is a one-element set and the store binds one shape for every
-  // dimension (`metadata->>key = ANY($n::text[])`, spec §3.3 item 3). The
-  // caller's explicit filters always win over a hint.
-  const madzhab = overrides.madzhab ?? narrow(MADZHABS, reply.madzhab);
-  const grade = overrides.grade ?? narrow(GRADES, reply.grade);
-  const textLayer = overrides.textLayer ?? narrow(TEXT_LAYERS, reply.textLayer);
-  if (madzhab !== undefined) filters.madzhab = madzhab;
+  // The caller's explicit filters ride through untouched. A key outside the
+  // filter vocabulary — a retired dimension included — is rejected downstream
+  // by `filterEntries` as a typed stage failure, never silently ignored, so a
+  // stale caller filter cannot widen the search.
+  const filters: KajianQFilters = { ...overrides };
+  // Each filter dimension is a SET: the reply names at most one value per
+  // dimension, so a hint is a one-element set and the store binds one shape for
+  // every dimension (`metadata->>key = ANY($n::text[])`, spec §3.3 item 3). The
+  // caller's explicit value wins over the hint.
+  const grade = filters.grade ?? narrow(GRADES, reply.grade);
   if (grade !== undefined) filters.grade = grade;
-  if (textLayer !== undefined) filters.textLayer = textLayer;
+
+  // Classifications the corpus cannot filter on: read into their vocabularies
+  // and recorded on the reading, never copied into `filters`.
+  const madzhab = narrow(MADZHABS, reply.madzhab)?.[0];
+  const textLayer = narrow(TEXT_LAYERS, reply.textLayer)?.[0];
 
   const confidence =
     reply.confidence !== undefined &&
@@ -159,12 +183,16 @@ export function readRouterReply(
 
   const attributes: Record<string, unknown> = { needsPrinciple };
   if (category !== undefined) attributes["category"] = category;
+  if (madzhab !== undefined) attributes["madzhab"] = madzhab;
+  if (textLayer !== undefined) attributes["textLayer"] = textLayer;
   if (principleTags.length > 0) attributes["principleTags"] = principleTags;
   Object.assign(attributes, filters);
 
   return {
     intent,
     ...(category !== undefined ? { category } : {}),
+    ...(madzhab !== undefined ? { madzhab } : {}),
+    ...(textLayer !== undefined ? { textLayer } : {}),
     needsPrinciple,
     principleTags,
     modelSubQueries: (reply.subQueries ?? []).map((entry) =>

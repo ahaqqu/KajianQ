@@ -40,13 +40,14 @@ describe("readRouterText", () => {
 
     expect(reading?.intent).toBe("analogy");
     expect(reading?.category).toBe("fikih");
+    expect(reading?.madzhab).toBe("syafii");
+    expect(reading?.textLayer).toBe("matn");
     expect(reading?.needsPrinciple).toBe(true);
     expect(reading?.principleTags).toEqual(["yusr", "rahmah"]);
-    expect(reading?.filters).toEqual({
-      madzhab: ["syafii"],
-      grade: ["sahih"],
-      textLayer: ["matn"],
-    });
+    // Only the corpus-backed dimensions become filters. Madzhab, TextLayer and
+    // Principle are classifications: the corpus carries no row for their keys,
+    // so a filter on one could never match.
+    expect(reading?.filters).toEqual({ grade: ["sahih"] });
     expect(reading?.confidence).toBe(0.82);
     expect(reading?.reasoning).toBe("the question asks why the rule is lenient");
     expect(reading?.modelSubQueries).toEqual([
@@ -56,10 +57,10 @@ describe("readRouterText", () => {
     expect(reading?.attributes).toEqual({
       needsPrinciple: true,
       category: "fikih",
+      madzhab: "syafii",
+      textLayer: "matn",
       principleTags: ["yusr", "rahmah"],
-      madzhab: ["syafii"],
       grade: ["sahih"],
-      textLayer: ["matn"],
     });
   });
 
@@ -113,18 +114,44 @@ describe("readRouterReply narrowing", () => {
     expect(long.length).toBe(600);
   });
 
-  it("drops filter hints outside their vocabularies", () => {
+  it("drops classification hints outside their vocabularies", () => {
     const reading = reply({ madzhab: "shafi'i", grade: "daif", textLayer: "commentary" });
     expect(reading?.filters).toEqual({});
+    expect(reading?.madzhab).toBeUndefined();
+    expect(reading?.textLayer).toBeUndefined();
+    expect(reading?.attributes).toEqual({ needsPrinciple: false, category: "fikih" });
+  });
+
+  it("records the Madzhab and TextLayer classifications without making them filters", () => {
+    // The ruling keeps the router's classification as trace value; the corpus
+    // carries no row for either key, so neither may become a constraint.
+    const reading = reply({ madzhab: "syafii", textLayer: "matn" });
+    expect(reading?.filters).toEqual({});
+    expect(reading?.attributes).toMatchObject({ madzhab: "syafii", textLayer: "matn" });
+    expect(reading?.attributes).not.toHaveProperty("grade");
   });
 
   it("lets the caller's explicit filters win over the model's hints", () => {
     const reading = readRouterReply(
-      { intent: "ruling", category: "fikih", madzhab: "hanafi", grade: "hasan" } as never,
-      { madzhab: ["syafii"] },
+      { intent: "ruling", category: "fikih", grade: "hasan" } as never,
+      { grade: ["sahih"] },
     );
-    expect(reading?.filters).toEqual({ madzhab: ["syafii"], grade: ["hasan"] });
-    expect(reading?.attributes).toMatchObject({ madzhab: ["syafii"], grade: ["hasan"] });
+    expect(reading?.filters).toEqual({ grade: ["sahih"] });
+    expect(reading?.attributes).toMatchObject({ grade: ["sahih"] });
+  });
+
+  it("keeps a caller key outside the filter vocabulary for the store mapping to reject", () => {
+    // The reader does not silently drop an unknown key: it rides into
+    // `filters`, where `filterEntries` raises `FilterNotExpressibleError`
+    // before a search runs. Dropping it here would reproduce the silent
+    // constraint drop the filter map exists to prevent.
+    const reading = readRouterReply(
+      { intent: "ruling" } as never,
+      {
+        madzhab: ["syafii"],
+      } as never,
+    );
+    expect(reading?.filters).toHaveProperty("madzhab", ["syafii"]);
   });
 
   it("accepts a sub-query written as a plain string", () => {

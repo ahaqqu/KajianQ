@@ -86,18 +86,17 @@ describe("createKajianQRouter", () => {
     expect(routed.confidence).toBe(0.9);
     expect(routed.reasoning).toBe("the question asks why the rule is lenient");
     // Stage 3's decision, not the reply's hints: a fikih question is answered from
-    // Quran, Sunnah and Kitab, `needsPrinciple` puts the Principle Index in play, and
-    // the reply's own madzhab/Principle hints ride along as the sets the store binds.
+    // Quran, Sunnah and Kitab, and `needsPrinciple` puts the Principle Index in
+    // play. Madzhab, TextLayer and Principle stay classifications: the corpus
+    // carries no row for their keys, so they are not filters.
     expect(routed.filters).toEqual({
-      madzhab: ["syafii"],
       sourceType: ["quran", "hadith", "kitab", "principle"],
-      principleTags: ["yusr"],
     });
     expect(routed.attributes).toMatchObject({
       category: "fikih",
       needsPrinciple: true,
       principleTags: ["yusr"],
-      madzhab: ["syafii"],
+      madzhab: "syafii",
       sourceType: ["quran", "hadith", "kitab", "principle"],
     });
     expect(routed.subQueries.map((s) => [s.role, s.origin])).toEqual([
@@ -204,10 +203,10 @@ describe("createKajianQRouter", () => {
           sources: ["quran", "hadith", "kitab", "principle"],
           // The record retrieval is handed, keyed as the store binds it — the
           // routing decision is on the trace, not only in the router's prose.
+          // Only corpus-backed dimensions are here; the classifications ride the
+          // intent event's attributes instead.
           filters: {
             sourceType: ["quran", "hadith", "kitab", "principle"],
-            madzhab: ["syafii"],
-            principleTags: ["yusr"],
           },
         },
         at: 7,
@@ -306,13 +305,34 @@ describe("createKajianQRouter", () => {
     const h = harness(JSON.stringify({ not: "a router reply" }));
     const routed = (await h.route({
       text: "Apa hukum riba?",
-      filters: { madzhab: ["hambali"] },
+      filters: { grade: ["sahih"] },
     })) as { filters: KajianQFilters; attributes: Record<string, unknown> };
-    expect(routed.filters).toEqual({ madzhab: ["hambali"] });
+    expect(routed.filters).toEqual({ grade: ["sahih"] });
     // The fallback applied those filters to retrieval, so the payload that says what
     // was understood carries them too — `{fallback: true}` alone would leave a trace
     // reader unable to tell what the route ran with.
-    expect(routed.attributes).toEqual({ fallback: true, madzhab: ["hambali"] });
+    expect(routed.attributes).toEqual({ fallback: true, grade: ["sahih"] });
+  });
+
+  it("rejects a caller filter on a retired dimension on either arm, usable reply included", async () => {
+    // The API edge for a dimension the corpus cannot satisfy is rejection as an
+    // unknown dimension, not "ignore it and record a note": ignoring it would leave
+    // the run executing a widened search while the trace claims the constraint ran —
+    // the silent drop this change exists to remove. The usable-reply arm is the one
+    // that regresses if the reader filters out caller keys instead of carrying them
+    // to `filterEntries`.
+    for (const dimension of ["madzhab", "textLayer", "principleTags"] as const) {
+      for (const reply of [JSON.stringify({ not: "a reply" }), REPLY]) {
+        const h = harness(reply);
+        const filters = { [dimension]: ["x"] } as unknown as KajianQFilters;
+        const error = await h.route({ text: "Apa hukum riba?", filters }).then(
+          () => undefined,
+          (cause: unknown) => cause,
+        );
+        expect(error, `${dimension} / ${reply.slice(0, 40)}`).toBeInstanceOf(StageError);
+        expect((error as StageError).stage, dimension).toBe("router");
+      }
+    }
   });
 
   it("fails the stage typed on a caller filter the store cannot express — on either arm", async () => {

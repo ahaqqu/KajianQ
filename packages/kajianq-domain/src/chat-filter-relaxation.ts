@@ -5,17 +5,16 @@ import { nextRelaxation, type FilterEntry } from "./chat-filter-policy";
  * unit-testable object with no store and no effects.
  *
  * The router's filters are hints a cheap model inferred, and it does not
- * reliably leave unconstrained attributes empty (observed: a Quran question
- * routed with a text-layer hint no Quran chunk carries), so a hint that
- * matches nothing empties the context and makes the answer uncitable. The
- * retriever therefore gives a hint up and retries.
+ * reliably leave unconstrained attributes empty, so a hint that matches nothing
+ * empties the context and makes the answer uncitable. The retriever therefore
+ * gives a hint up and retries.
  *
  * **What this owns, and why it is not just "drop the filters".** Emptying the
  * whole filter record on the first zero-hit search is a widening the trace
- * cannot describe: a wrong text-layer hint takes a grade screen down with it,
- * so a question routed to strong-grade evidence silently comes back over weak
- * material too — and one event naming the whole set reads identically whether
- * one hint was wrong or all of them were.
+ * cannot describe: a wrong grade hint takes the source selection down with it,
+ * so a question routed to one source silently comes back over every source —
+ * and one event naming the whole set reads identically whether one hint was
+ * wrong or all of them were.
  *
  * So a zero-hit search **probes** the dimensions in a declared order: each probe
  * omits exactly one dimension, and only a probe that returns hits is *adopted*
@@ -31,16 +30,16 @@ import { nextRelaxation, type FilterEntry } from "./chat-filter-policy";
  * a sweep already made holds for the searches after it — a request the filters
  * cannot serve pays for the probing once, not once per sub-query per track.
  *
- * **The record-level last resort.** A per-dimension probe can only help when
- * *exactly one* dimension is unsatisfiable: with two, every probe still carries
- * the other and every probe returns nothing. Two dead dimensions are the
- * expected state today, not a corner case — no row carries `madzhab`,
- * `textLayer` or `principleTags`, and the router prompt offers all three as
- * hints. So when the sweep exhausts with nothing adopted, the policy hands out
- * **one more** probe that omits every live dimension at once: the retry runs
- * with `{}`, and the earlier `adopted: false` probes stay on the trace as the
- * evidence that no single dimension was at fault. Without it a wrong hint turns
- * into a refusal for a question the corpus can serve.
+ * **The record-level last resort.** Every probe keeps all but one dimension, so
+ * a sweep rescues a run only when dropping one dimension leaves a set that
+ * matches rows. When every one of those probes returns nothing — a source no row
+ * carries and a grade no row carries — the record as a whole matches nothing
+ * too, and the one record no probe has run yet is the empty one. So when the
+ * sweep exhausts with nothing adopted, the policy hands out **one more** probe
+ * that omits every live dimension at once: the retry runs with `{}`, and the
+ * earlier `adopted: false` probes stay on the trace as the evidence that no
+ * single dimension was at fault. Without it a wrong hint turns into a refusal
+ * for a question the corpus can serve.
  *
  * **The last resort runs a record nothing has run yet, or it does not run.**
  * It is issued only with two or more live dimensions. One live dimension's own
@@ -87,13 +86,12 @@ export function createFilterRelaxation(intended: readonly FilterEntry[]): Filter
         tried.push(drop);
         return { dropped: [drop], retained: record(live.filter((entry) => entry !== drop)) };
       }
-      // Every dimension in play survived its own probe, so the record as a SET
-      // matched nothing. Reaching here means no untried live dimension is left,
-      // so a lone live dimension's own probe has already run exactly `{}` (and
-      // with none, the run's first search did): firing again would repeat a
-      // byte-identical search, record a duplicate `filter_relaxed` event, and
-      // leave the trace unable to tell a lone dimension's probe from the last
-      // resort.
+      // No untried live dimension is left: every probe returned nothing, so the
+      // record as a SET matched nothing. A lone live dimension's own probe has
+      // already run exactly `{}` (and with none, the run's first search did):
+      // firing again would repeat a byte-identical search, record a duplicate
+      // `filter_relaxed` event, and leave the trace unable to tell a lone
+      // dimension's probe from the last resort.
       settled = true;
       if (live.length <= 1) return undefined;
       return { dropped: [...live], retained: record([]) };

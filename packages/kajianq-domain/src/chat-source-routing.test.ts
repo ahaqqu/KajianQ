@@ -45,7 +45,6 @@ const ROLE_SOURCES_EXPECTED: Readonly<Record<SubQueryRole, readonly RoutableSour
 const reading = (overrides: Partial<SourceRoutingInput> = {}): SourceRoutingInput => ({
   intent: "ruling",
   needsPrinciple: false,
-  principleTags: [],
   filters: {},
   subQueries: [],
   ...overrides,
@@ -349,57 +348,52 @@ describe("the retriever's scope is the filter record, never the classification",
 
 describe("routeFilters decides, the reply only hints", () => {
   it("carries the reply's own hints through as the sets the store binds", () => {
-    expect(routeFilters(reading({ filters: { madzhab: ["syafii"], grade: ["sahih"] } }))).toEqual({
-      madzhab: ["syafii"],
+    expect(routeFilters(reading({ filters: { grade: ["sahih"] } }))).toEqual({
       grade: ["sahih"],
     });
   });
 
-  it("sets the source selection and the Principle tags the reply named", () => {
-    expect(
-      routeFilters(reading({ category: "hadith", needsPrinciple: true, principleTags: ["yusr"] })),
-    ).toEqual({
+  it("sets the source selection a lens puts in play", () => {
+    // `needsPrinciple` selects the Principle Index; the tags themselves are a
+    // classification on the intent event, not a filter dimension.
+    expect(routeFilters(reading({ category: "hadith", needsPrinciple: true }))).toEqual({
       sourceType: ["hadith", "principle"],
-      principleTags: ["yusr"],
     });
   });
 
-  it("never overrules the caller's explicit selection", () => {
+  it("never overrules the caller's explicit filters", () => {
     // A caller who names sources gets them: stage 3 refines a reading, never overrules it.
     expect(
       routeFilters(reading({ category: "fikih", filters: { sourceType: ["quran"] } })),
     ).toEqual({ sourceType: ["quran"] });
-    // The tag filter and the source selection are independent dimensions: a
-    // caller pinning the tags does not pin the index, so the lens still puts the
-    // Principle Index in play.
+    // A caller-pinned filter does not pin the source selection: the lens still puts
+    // the Principle Index in play beside the caller's grade screen.
     expect(
       routeFilters(
         reading({
           category: "quran",
           needsPrinciple: true,
-          filters: { principleTags: ["dharar"] },
+          filters: { grade: ["sahih"] },
         }),
       ),
     ).toEqual({
-      principleTags: ["dharar"],
+      grade: ["sahih"],
       sourceType: ["quran", "tafsir", "hadith", "principle"],
     });
   });
 
-  it("does not invent a tag filter from a lens that has no tags", () => {
-    // `needsPrinciple` with no tags selects the source but filters no tag: an
-    // empty `principleTags` filter would demand a tag nobody named.
+  it("never turns a lens into a tag filter", () => {
+    // A lens selects the source but filters no tag: a `principleTags` filter would
+    // ask the store for a metadata key no row carries.
     const filters = routeFilters(reading({ category: "fikih", needsPrinciple: true }));
-    expect(filters.principleTags).toBeUndefined();
+    expect(filters).not.toHaveProperty("principleTags");
     expect(filters.sourceType).toEqual(["quran", "hadith", "kitab", "principle"]);
   });
 });
 
 describe("the decision the trace publishes is the record retrieval runs with", () => {
   it("hands the retriever the very record the trace published", async () => {
-    const filters = routeFilters(
-      reading({ category: "fikih", needsPrinciple: true, principleTags: ["yusr"] }),
-    );
+    const filters = routeFilters(reading({ category: "fikih", needsPrinciple: true }));
     const detail = sourceRoutingDetail(filters);
     expect(detail.sources).toEqual(["quran", "hadith", "kitab", "principle"]);
 

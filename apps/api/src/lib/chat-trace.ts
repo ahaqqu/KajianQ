@@ -154,10 +154,10 @@ export function deriveTraceFrame(input: {
   const routingEvent = trace.events.find((event) => event.kind === "source_routing");
   // ... and the dimensions the run actually GAVE UP, from the retriever's own
   // `filter_relaxed` events. Without them the block shows a filter the search had
-  // already dropped, so a `principleTags` hint for the Principle Index that does
-  // not exist yet reads as a filter that ran. `adopted: false` is a probe
-  // that changed nothing (machinery, not a relaxation); an absent `adopted` is a
-  // trace persisted before probing, where every recorded drop was applied.
+  // already dropped, so a hint the store did not honour reads as a filter that
+  // ran. `adopted: false` is a probe that changed nothing (machinery, not a
+  // relaxation); an absent `adopted` is a trace persisted before probing, where
+  // every recorded drop was applied.
   const relaxed: { key: string; values: string[] }[] = [];
   for (const event of trace.events) {
     if (event.kind !== "filter_relaxed" || event.detail.adopted === false) continue;
