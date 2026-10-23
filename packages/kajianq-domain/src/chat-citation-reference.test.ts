@@ -137,9 +137,9 @@ describe("addressedEvidenceIn", () => {
   const verse = ayah(98, 5, "QS. 98:5");
 
   it("returns the ayah label the question names and the context carries", () => {
-    expect(
-      addressedEvidenceIn("Jelaskan perbedaan niat dan ikhlas berdasarkan QS. 98:5!", [verse]),
-    ).toEqual(["QS. 98:5"]);
+    expect(addressedEvidenceIn("Apa makna ikhlas berdasarkan QS. 98:5?", [verse])).toEqual([
+      "QS. 98:5",
+    ]);
   });
 
   it("matches the stored identity pairs and names the chunk's rendered label", () => {

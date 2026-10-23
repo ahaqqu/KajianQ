@@ -424,7 +424,7 @@ describe("createKajianQGenerator — the refusal reread", () => {
  */
 describe("createKajianQGenerator — the addressed-evidence reread", () => {
   const refusal = DEFAULT_REFUSALS.id;
-  const question = "Jelaskan perbedaan niat dan ikhlas berdasarkan QS. 98:5!";
+  const question = "Apa makna ikhlas berdasarkan QS. 98:5?";
   const evidence = "QS. 98:5 — wa ma umiru illa liya'budu Allah …";
 
   /** A chunk whose stored identity is the address the question names. */
@@ -832,7 +832,7 @@ describe("runChatPipeline — the addressed-evidence invariant", () => {
   const refusal = DEFAULT_REFUSALS.id;
   const ARABIC = "وَمَا أُمِرُوا إِلَّا لِيَعْبُدُوا اللَّهَ";
   const TRANSLATION = "Mereka tidak diperintah, kecuali untuk menyembah Allah …";
-  const question = "Jelaskan perbedaan niat dan ikhlas berdasarkan QS. 98:5!";
+  const question = "Apa makna ikhlas berdasarkan QS. 98:5?";
 
   /** Seed one corpus chunk exactly as ingestion writes it. */
   async function seedChild(

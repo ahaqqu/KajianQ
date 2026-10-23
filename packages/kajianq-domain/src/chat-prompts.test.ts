@@ -230,7 +230,7 @@ describe("the evidence-present answer rule", () => {
  * does not state, so the reread can still decline and never explains the gap.
  */
 describe("the addressed-evidence reread instruction", () => {
-  const question = "Jelaskan perbedaan niat dan ikhlas berdasarkan QS. 98:5!";
+  const question = "Apa makna ikhlas berdasarkan QS. 98:5?";
   const evidence = "QS. 98:5 — wahyu";
 
   it("names the carried passage and keeps the canonical refusal for what the context does not state", () => {
