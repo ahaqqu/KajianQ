@@ -1,0 +1,73 @@
+{
+  "$comment": "Identity classes the analysis uses IN ADDITION to the exact required label. Two are researcher-declared from a corpus query (the Jibril narration; the mother/father narration), one is the owner-signed hadith-identities-v0 fixture, two have no class (exact requirement only). Every member is a normalized citation label.",
+  "classes": {
+    "q-owner": {
+      "source": "corpus query: text_id ILIKE '%jibril%' AND text_id ILIKE '%ihsan%'",
+      "groups": [
+        [
+          "hr. abudawud no. 4695",
+          "hr. bukhari no. 4777",
+          "hr. bukhari no. 50",
+          "hr. muslim no. 93",
+          "hr. muslim no. 97",
+          "hr. muslim no. 99",
+          "hr. nasai no. 4990",
+          "hr. nasai no. 4991",
+          "hr. tirmidhi no. 2610"
+        ]
+      ]
+    },
+    "q-tri": {
+      "source": "same Jibril class",
+      "groups": [
+        [
+          "hr. abudawud no. 4695",
+          "hr. bukhari no. 4777",
+          "hr. bukhari no. 50",
+          "hr. muslim no. 93",
+          "hr. muslim no. 97",
+          "hr. muslim no. 99",
+          "hr. nasai no. 4990",
+          "hr. nasai no. 4991",
+          "hr. tirmidhi no. 2610"
+        ]
+      ]
+    },
+    "gs-v0-022": {
+      "source": "corpus query: text_id ILIKE '%ibumu%' AND text_id ILIKE '%ayahmu%'",
+      "groups": [
+        [
+          "hr. abudawud no. 2277",
+          "hr. bukhari no. 5971",
+          "hr. bukhari no. 6636",
+          "hr. bukhari no. 6979",
+          "hr. bukhari no. 7197",
+          "hr. ibnmajah no. 2706",
+          "hr. ibnmajah no. 3658",
+          "hr. nasai no. 2532",
+          "hr. nasai no. 3496"
+        ]
+      ]
+    },
+    "gs-v0-006": {
+      "source": "hadith-identities-v0.json group combining-prayers-in-travel-maghrib-isha",
+      "groups": [
+        [
+          "hr. bukhari no. 1108",
+          "hr. bukhari no. 1109",
+          "hr. bukhari no. 1110",
+          "hr. muslim no. 1621",
+          "hr. muslim no. 1624"
+        ]
+      ]
+    },
+    "gs-v0-016": {
+      "source": "exact required label only (no signed group, no corpus class)",
+      "groups": [["hr. bukhari no. 1395"]]
+    },
+    "q-ruling": {
+      "source": "exact required labels only",
+      "groups": [["hr. bukhari no. 1503"], ["hr. bukhari no. 1395"]]
+    }
+  }
+}

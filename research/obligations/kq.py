@@ -45,7 +45,7 @@ DATABASE_URL = os.environ.get(
     "DATABASE_URL", "postgresql://postgres:kq@127.0.0.1:55432/kajianq"
 )
 DSN = ["-h", "127.0.0.1", "-p", "55432", "-U", "postgres", "-d", "kajianq"]
-BUDGET_USD = 0.45
+BUDGET_USD = 0.499
 LIMIT_PER_TRACK = 10
 RRF_K = 60
 HIERARCHY_BONUS = {"quran": 0.3, "kitab": 0.1, "sahih": 0.25, "hasan": 0.15}
@@ -95,6 +95,19 @@ def micro_usd(model: str, tokens_in: int, tokens_out: int) -> float:
 # ------------------------------------------------------------------------- money
 
 
+CONTEXT: dict[str, str | None] = {"question": None, "arm": None}
+
+
+def set_context(question: str | None, arm: str | None) -> None:
+    """Tag subsequent ledger lines with the question and arm that paid for them."""
+    CONTEXT["question"] = question
+    CONTEXT["arm"] = arm
+
+
+def spent() -> float:
+    return _ledger_totals()
+
+
 def _ledger_totals() -> float:
     if not LEDGER.exists():
         return 0.0
@@ -107,8 +120,9 @@ def _ledger_totals() -> float:
 
 def record_cost(entry: dict) -> None:
     CACHE.mkdir(exist_ok=True)
+    tagged = {**entry, "question": CONTEXT["question"], "arm": CONTEXT["arm"]}
     with LEDGER.open("a") as handle:
-        handle.write(json.dumps(entry, ensure_ascii=False) + "\n")
+        handle.write(json.dumps(tagged, ensure_ascii=False) + "\n")
 
 
 def guard_budget(next_usd: float = 0.0) -> None:
@@ -268,7 +282,7 @@ def chat(
     cache_path = LLM_CACHE / f"{key}.json"
     if cache and cache_path.exists():
         return json.loads(cache_path.read_text())
-    guard_budget(0.05)
+    guard_budget(float(os.environ.get("KQ_RESERVE", "0.025")))
     payload: dict = {"model": model, "messages": messages, "max_tokens": max_tokens}
     if temperature is not None:
         payload["temperature"] = temperature
@@ -611,6 +625,13 @@ def extract_json_object(text: str) -> dict | None:
         if isinstance(parsed, dict):
             return parsed
     return None
+
+
+def assign_evidence_ids(chunks: list[dict]) -> list[dict]:
+    """E1..En in the order the arm presents its chunks, for the evidence judge."""
+    for number, chunk in enumerate(chunks, start=1):
+        chunk.setdefault("evidence_id", f"E{number}")
+    return chunks
 
 
 def language_of(question: str) -> str:

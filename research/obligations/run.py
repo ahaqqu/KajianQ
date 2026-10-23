@@ -26,6 +26,16 @@ import questions
 
 HERE = Path(__file__).resolve().parent
 DRAWS = 3
+# The answer-draw count per question. The first three questions carry three
+# draws (the pipeline run is deterministic, so extra draws measure generator
+# variance only); the budget stop rule allowed one draw on the last three.
+DRAW_PLAN = {"q-owner": 3, "q-tri": 3, "gs-v0-022": 3,
+             "gs-v0-016": 1, "gs-v0-006": 1, "q-ruling": 1}
+# The caller-words confound control ran on four questions; the two remaining
+# B2 arms would have cost more than the budget the main run left.
+WITH_B2 = {"q-owner", "q-tri", "gs-v0-022", "q-ruling"}
+# E4's admission-cap sensitivity, descoped by the same stop rule.
+E4_QUESTIONS = ("q-owner", "gs-v0-022")
 
 
 def _write(name: str, payload: object) -> None:
@@ -106,6 +116,7 @@ def e2() -> None:
     out = []
     for question in questions.QUESTIONS:
         started = time.time()
+        kq.set_context(question["id"], "B/B2-repro")
         reading = arms.route(question["question"])
         sub_queries = arms.decompose(question["question"], reading)
         baseline = arms.baseline_context(question["question"], sub_queries, reading["intent"])
@@ -165,17 +176,24 @@ def e3() -> None:
             raise SystemExit("run e1 first")
         obligations = plan_row["obligations"]
 
-        for arm, context in (
-            ("B", arms.baseline_context(question["question"], sub_queries, reading["intent"])),
-            ("B2", arms.baseline_context(question["question"], variant_subs, reading["intent"])),
-            ("P", arms.plan_context(question["question"], question["language"])),
-        ):
+        for arm in ("B", "B2", "P"):
             key = f"{question['id']}:{arm}"
             if key in existing:
                 continue
+            if arm == "B2" and question["id"] not in WITH_B2:
+                continue
             started = time.time()
+            kq.set_context(question["id"], arm)
+            retrieval_before = kq.spent()
+            if arm == "P":
+                context = arms.plan_context(question["question"], question["language"])
+            else:
+                sub = variant_subs if arm == "B2" else sub_queries
+                context = arms.baseline_context(question["question"], sub, reading["intent"])
+            retrieval_usd = kq.spent() - retrieval_before
+            kq.assign_evidence_ids(context["chunks"])
             draws = []
-            for draw_index in range(DRAWS):
+            for draw_index in range(DRAW_PLAN[question["id"]]):
                 if arm == "P":
                     draw = arms.generate_plan(question["question"], context["context"],
                                               obligations, question["language"])
@@ -183,6 +201,7 @@ def e3() -> None:
                     draw = arms.generate(question["question"], context["context"],
                                          question["language"], stage=f"generator:{arm}")
                 draws.append(answer_metrics(draw, context["chunks"], question))
+            generation_usd = sum(draw["usd"] for draw in draws)
             judged = planner.judge(
                 question["question"], obligations, context["chunks"],
                 draws[0]["text"], question["language"],
@@ -212,6 +231,12 @@ def e3() -> None:
                     question["required_groups"], context["context_labels"], [],
                     question["language"]),
                 "answers": draws,
+                "arm_cost": {
+                    "retrieval_usd": round(retrieval_usd, 6),
+                    "generation_usd": round(generation_usd, 6),
+                    "generation_per_draw_usd": round(generation_usd / len(draws), 6),
+                    "judge_usd": round(judged["cost"]["usd"], 6),
+                },
                 "judge": {"readings": judged["readings"], "repair": judged["repair"],
                           "cost": judged["cost"]},
                 "seconds": round(time.time() - started, 1),
@@ -223,7 +248,7 @@ def e3() -> None:
             supported = sum(1 for reading in judged["readings"] if reading["supported"])
             print(f"{question['id']} {arm}: required_in_context="
                   f"{record['required_context']['in_context']} "
-                  f"required_cited_draws={required}/{DRAWS} "
+                  f"required_cited_draws={required}/{len(draws)} "
                   f"obligations_supported={supported}/{len(obligations)} "
                   f"context_chars={len(context['context'])} "
                   f"seconds={record['seconds']}")
@@ -237,8 +262,15 @@ def e4() -> None:
     plans = {row["question_id"]: row for row in (_read("e1-plans.json") or [])}
     out = []
     for question in questions.QUESTIONS:
+        if question["id"] not in E4_QUESTIONS:
+            continue
+        kq.set_context(question["id"], "P-k5")
         obligations = plans[question["id"]]["obligations"]
+        started = time.time()
+        retrieval_before = kq.spent()
         context = arms.plan_context(question["question"], question["language"], admit_k=5)
+        retrieval_usd = kq.spent() - retrieval_before
+        kq.assign_evidence_ids(context["chunks"])
         draw = arms.generate_plan(question["question"], context["context"], obligations,
                                   question["language"])
         metrics = answer_metrics(draw, context["chunks"], question)
@@ -248,6 +280,7 @@ def e4() -> None:
             "question_id": question["id"],
             "obligations": obligations,
             "admitted_total": context["admitted_total"],
+            "retrieval_usd": round(retrieval_usd, 6),
             "context_chars": len(context["context"]),
             "required_context": required_state(
                 question["required_groups"], context["context_labels"], [], question["language"]),

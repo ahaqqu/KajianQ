@@ -1,0 +1,221 @@
+[
+  {
+    "question_id": "q-owner",
+    "question": "Apa beda ihsan dan iman?",
+    "obligations": [
+      {
+        "kind": "definition",
+        "text": "definisi iman dalam Islam",
+        "id": "O1"
+      },
+      {
+        "kind": "definition",
+        "text": "definisi ihsan dalam Islam",
+        "id": "O2"
+      },
+      {
+        "kind": "comparison",
+        "text": "perbedaan antara iman dan ihsan",
+        "id": "O3"
+      },
+      {
+        "kind": "dalil",
+        "text": "hadis Jibril tentang iman, islam, dan ihsan",
+        "id": "O4"
+      }
+    ],
+    "repair": [],
+    "raw": "{\"obligations\": [{\"kind\": \"definition\", \"text\": \"definisi iman dalam Islam\"}, {\"kind\": \"definition\", \"text\": \"definisi ihsan dalam Islam\"}, {\"kind\": \"comparison\", \"text\": \"perbedaan antara iman dan ihsan\"}, {\"kind\": \"dalil\", \"text\": \"hadis Jibril tentang iman, islam, dan ihsan\"}]}",
+    "cost": {
+      "prompt_tokens": 231,
+      "completion_tokens": 90,
+      "usd": 0.0001773
+    },
+    "seconds": 1.3
+  },
+  {
+    "question_id": "q-tri",
+    "question": "Apa perbedaan iman, islam, dan ihsan?",
+    "obligations": [
+      {
+        "kind": "definition",
+        "text": "definisi iman dalam Islam menurut Al-Qur'an dan hadis",
+        "id": "O1"
+      },
+      {
+        "kind": "definition",
+        "text": "definisi islam sebagai agama dan amal lahiriah",
+        "id": "O2"
+      },
+      {
+        "kind": "definition",
+        "text": "definisi ihsan dalam hadis Jibril",
+        "id": "O3"
+      },
+      {
+        "kind": "dalil",
+        "text": "hadis Jibril tentang islam, iman, dan ihsan",
+        "id": "O4"
+      },
+      {
+        "kind": "comparison",
+        "text": "perbedaan antara iman, islam, dan ihsan menurut ulama",
+        "id": "O5"
+      }
+    ],
+    "repair": [],
+    "raw": "{\"obligations\": [{\"kind\": \"definition\", \"text\": \"definisi iman dalam Islam menurut Al-Qur'an dan hadis\"}, {\"kind\": \"definition\", \"text\": \"definisi islam sebagai agama dan amal lahiriah\"}, {\"kind\": \"definition\", \"text\": \"definisi ihsan dalam hadis Jibril\"}, {\"kind\": \"dalil\", \"text\": \"hadis Jibril tentang islam, iman, dan ihsan\"}, {\"kind\": \"comparison\", \"text\": \"perbedaan antara iman, islam, dan ihsan menurut ulama\"}]}",
+    "cost": {
+      "prompt_tokens": 234,
+      "completion_tokens": 131,
+      "usd": 0.00022739999999999997
+    },
+    "seconds": 1.4
+  },
+  {
+    "question_id": "gs-v0-022",
+    "question": "Siapa yang harus diutamakan: istri atau ibu?",
+    "obligations": [
+      {
+        "kind": "ruling",
+        "text": "hukum mendahulukan ibu daripada istri dalam berbakti",
+        "id": "O1"
+      },
+      {
+        "kind": "dalil",
+        "text": "hadis tentang siapa yang paling berhak mendapat bakti seorang anak (ibu, lalu ibu, lalu ibu, lalu ayah)",
+        "id": "O2"
+      },
+      {
+        "kind": "comparison",
+        "text": "perbandingan hak ibu dan hak istri atas seorang lelaki",
+        "id": "O3"
+      },
+      {
+        "kind": "scope",
+        "text": "kapan mendahulukan istri diperbolehkan dan kapan ibu didahulukan",
+        "id": "O4"
+      },
+      {
+        "kind": "ruling",
+        "text": "kewajiban menunaikan hak istri dan hak ibu secara bersamaan tanpa menzalimi salah satu",
+        "id": "O5"
+      }
+    ],
+    "repair": [],
+    "raw": "{\"obligations\": [{\"kind\": \"ruling\", \"text\": \"hukum mendahulukan ibu daripada istri dalam berbakti\"}, {\"kind\": \"dalil\", \"text\": \"hadis tentang siapa yang paling berhak mendapat bakti seorang anak (ibu, lalu ibu, lalu ibu, lalu ayah)\"}, {\"kind\": \"comparison\", \"text\": \"perbandingan hak ibu dan hak istri atas seorang lelaki\"}, {\"kind\": \"scope\", \"text\": \"kapan mendahulukan istri diperbolehkan dan kapan ibu didahulukan\"}, {\"kind\": \"ruling\", \"text\": \"kewajiban menunaikan hak istri dan hak ibu secara bersamaan tanpa menzalimi salah satu\"}]}",
+    "cost": {
+      "prompt_tokens": 236,
+      "completion_tokens": 165,
+      "usd": 0.00026880000000000003
+    },
+    "seconds": 1.6
+  },
+  {
+    "question_id": "gs-v0-016",
+    "question": "Which hadith describes the obligations of Zakat, and what does it say?",
+    "obligations": [
+      {
+        "kind": "dalil",
+        "text": "hadith that mentions the obligation of zakat among the pillars of Islam",
+        "id": "O1"
+      },
+      {
+        "kind": "ruling",
+        "text": "ruling on zakat being obligatory (wajib) and one of the five pillars",
+        "id": "O2"
+      },
+      {
+        "kind": "scope",
+        "text": "conditions and categories of wealth and people to whom zakat applies",
+        "id": "O3"
+      },
+      {
+        "kind": "definition",
+        "text": "meaning of zakat in Islamic law",
+        "id": "O4"
+      }
+    ],
+    "repair": [],
+    "raw": "{\"obligations\": [{\"kind\": \"dalil\", \"text\": \"hadith that mentions the obligation of zakat among the pillars of Islam\"}, {\"kind\": \"ruling\", \"text\": \"ruling on zakat being obligatory (wajib) and one of the five pillars\"}, {\"kind\": \"scope\", \"text\": \"conditions and categories of wealth and people to whom zakat applies\"}, {\"kind\": \"definition\", \"text\": \"meaning of zakat in Islamic law\"}]}",
+    "cost": {
+      "prompt_tokens": 237,
+      "completion_tokens": 105,
+      "usd": 0.0001971
+    },
+    "seconds": 1.6
+  },
+  {
+    "question_id": "gs-v0-006",
+    "question": "Apakah menjamak shalat saat safar diperbolehkan? Sebutkan dalilnya.",
+    "obligations": [
+      {
+        "kind": "ruling",
+        "text": "hukum menjamak shalat bagi musafir",
+        "id": "O1"
+      },
+      {
+        "kind": "dalil",
+        "text": "dalil hadis tentang menjamak shalat saat safar",
+        "id": "O2"
+      },
+      {
+        "kind": "scope",
+        "text": "syarat dan ketentuan menjamak shalat dalam safar",
+        "id": "O3"
+      },
+      {
+        "kind": "comparison",
+        "text": "perbedaan jamak taqdim dan jamak takhir",
+        "id": "O4"
+      }
+    ],
+    "repair": [],
+    "raw": "{\"obligations\": [{\"kind\": \"ruling\", \"text\": \"hukum menjamak shalat bagi musafir\"}, {\"kind\": \"dalil\", \"text\": \"dalil hadis tentang menjamak shalat saat safar\"}, {\"kind\": \"scope\", \"text\": \"syarat dan ketentuan menjamak shalat dalam safar\"}, {\"kind\": \"comparison\", \"text\": \"perbedaan jamak taqdim dan jamak takhir\"}]}",
+    "cost": {
+      "prompt_tokens": 243,
+      "completion_tokens": 106,
+      "usd": 0.0002001
+    },
+    "seconds": 1.4
+  },
+  {
+    "question_id": "q-ruling",
+    "question": "Apa hukum zakat fitrah dan zakat mal, dan siapa yang wajib mengeluarkannya?",
+    "obligations": [
+      {
+        "kind": "ruling",
+        "text": "hukum zakat fitrah wajib bagi setiap muslim",
+        "id": "O1"
+      },
+      {
+        "kind": "ruling",
+        "text": "hukum zakat mal wajib bagi yang memenuhi syarat nisab dan haul",
+        "id": "O2"
+      },
+      {
+        "kind": "scope",
+        "text": "siapa yang wajib mengeluarkan zakat fitrah dan syaratnya",
+        "id": "O3"
+      },
+      {
+        "kind": "scope",
+        "text": "siapa yang wajib mengeluarkan zakat mal dan syarat nisab haul",
+        "id": "O4"
+      },
+      {
+        "kind": "dalil",
+        "text": "dalil Al-Quran dan hadis tentang kewajiban zakat fitrah dan zakat mal",
+        "id": "O5"
+      }
+    ],
+    "repair": [],
+    "raw": "{\"obligations\": [{\"kind\": \"ruling\", \"text\": \"hukum zakat fitrah wajib bagi setiap muslim\"}, {\"kind\": \"ruling\", \"text\": \"hukum zakat mal wajib bagi yang memenuhi syarat nisab dan haul\"}, {\"kind\": \"scope\", \"text\": \"siapa yang wajib mengeluarkan zakat fitrah dan syaratnya\"}, {\"kind\": \"scope\", \"text\": \"siapa yang wajib mengeluarkan zakat mal dan syarat nisab haul\"}, {\"kind\": \"dalil\", \"text\": \"dalil Al-Quran dan hadis tentang kewajiban zakat fitrah dan zakat mal\"}]}",
+    "cost": {
+      "prompt_tokens": 244,
+      "completion_tokens": 150,
+      "usd": 0.0002532
+    },
+    "seconds": 1.4
+  }
+]

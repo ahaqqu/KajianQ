@@ -1,0 +1,41 @@
+{
+  "$comment": "Replay of the gs-v0-004 displacement claim, no paid call: cached embeddings, the real decompose bridge and the production router reader. Written during analysis because the selfcheck proves the verbatim rerank rank but not what the fan-out assembles.",
+  "question": "Apa yang Nabi Islam katakan tentang mencari ilmu?",
+  "intent": "factual",
+  "sub_queries": [
+    "hadith Nabi tentang keutamaan menuntut ilmu طلب العلم",
+    "man salaka tariqan yaltamisu fihi ilman sahhalallahu lahu tariqan ilal jannah",
+    "hadith sahih Bukhari Muslim bab fadhl al-ilm wa talabuhu"
+  ],
+  "verbatim_primary_rank_224": 2,
+  "paraphrase": "keutamaan mencari ilmu",
+  "paraphrase_primary_rank_224": 10,
+  "fanout_context_labels": [
+    "hr. ibnmajah no. 224",
+    "hr. tirmidhi no. 2646",
+    "hr. abudawud no. 3641",
+    "hr. ibnmajah no. 226",
+    "hr. tirmidhi no. 2647",
+    "hr. abudawud no. 3643",
+    "hr. ibnmajah no. 223",
+    "hr. ibnmajah no. 225",
+    "hr. tirmidhi no. 2682",
+    "hr. tirmidhi no. 2945",
+    "hr. ibnmajah no. 228",
+    "hr. malik no. 1856",
+    "hr. ibnmajah no. 3843",
+    "hr. ibnmajah no. 219",
+    "hr. muslim no. 6853",
+    "hr. ibnmajah no. 258",
+    "hr. tirmidhi no. 2655",
+    "hr. ibnmajah no. 252",
+    "hr. tirmidhi no. 2685",
+    "hr. abudawud no. 3658",
+    "hr. tirmidhi no. 2325",
+    "hr. ibnmajah no. 243",
+    "hr. ibnmajah no. 260",
+    "hr. ibnmajah no. 247"
+  ],
+  "fanout_224_position": 1,
+  "spend_usd": 0.491399
+}

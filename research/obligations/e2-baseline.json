@@ -1,0 +1,1052 @@
+[
+  {
+    "question_id": "q-owner",
+    "question": "Apa beda ihsan dan iman?",
+    "route": {
+      "intent": "comparison",
+      "category": "tasawuf",
+      "needsPrinciple": false,
+      "confidence": 0.82,
+      "fallback": false
+    },
+    "sub_queries": [
+      {
+        "text": "perbedaan iman dan ihsan dalam Islam",
+        "role": "factual",
+        "origin": "model"
+      },
+      {
+        "text": "definisi ihsan hadits Jibril arkan al-din",
+        "role": "dalil",
+        "origin": "model"
+      },
+      {
+        "text": "makna iman tasdiq amal dan tingkatan ihsan",
+        "role": "factual",
+        "origin": "model"
+      }
+    ],
+    "variant_sub_queries": [
+      {
+        "text": "Apa beda ihsan dan iman?",
+        "role": "factual",
+        "origin": "rule"
+      },
+      {
+        "text": "definisi ihsan hadits Jibril arkan al-din",
+        "role": "dalil",
+        "origin": "model"
+      },
+      {
+        "text": "perbedaan iman dan ihsan dalam Islam",
+        "role": "factual",
+        "origin": "model"
+      },
+      {
+        "text": "makna iman tasdiq amal dan tingkatan ihsan",
+        "role": "factual",
+        "origin": "model"
+      }
+    ],
+    "baseline": {
+      "queries": [
+        "perbedaan iman dan ihsan dalam Islam",
+        "definisi ihsan hadits Jibril arkan al-din",
+        "makna iman tasdiq amal dan tingkatan ihsan"
+      ],
+      "lists": 3,
+      "hits": 60,
+      "unique": 29,
+      "rerank_applied": true,
+      "chunks": 29,
+      "labels": [
+        "hr. bukhari no. 50",
+        "hr. nasai no. 4990",
+        "hr. bukhari no. 4777",
+        "hr. ibnmajah no. 64",
+        "hr. muslim no. 97",
+        "hr. muslim no. 99",
+        "hr. ibnmajah no. 4184",
+        "hr. ibnmajah no. 65",
+        "hr. nasai no. 4411",
+        "hr. ibnmajah no. 63",
+        "hr. abudawud no. 4695",
+        "hr. tirmidhi no. 2610",
+        "hr. nasai no. 4991",
+        "hr. tirmidhi no. 2614",
+        "hr. tirmidhi no. 2623",
+        "hr. tirmidhi no. 1409",
+        "hr. nasai no. 4414",
+        "hr. tirmidhi no. 3881",
+        "hr. tirmidhi no. 1942",
+        "hr. bukhari no. 51",
+        "hr. muslim no. 153",
+        "hr. ibnmajah no. 75",
+        "hr. abudawud no. 2815",
+        "hr. abudawud no. 4676",
+        "hr. nasai no. 4412",
+        "hr. ibnmajah no. 3170",
+        "hr. nasai no. 4413",
+        "hr. nasai no. 5005",
+        "hr. muslim no. 5055"
+      ],
+      "required": {
+        "in_context": true,
+        "cited": false,
+        "detail": [
+          {
+            "group": ["hr. bukhari no. 4777", "hr. muslim no. 97"],
+            "in_context": ["hr. bukhari no. 4777", "hr. muslim no. 97"],
+            "cited": []
+          }
+        ]
+      }
+    },
+    "variant": {
+      "queries": [
+        "Apa beda ihsan dan iman?",
+        "definisi ihsan hadits Jibril arkan al-din",
+        "perbedaan iman dan ihsan dalam Islam",
+        "makna iman tasdiq amal dan tingkatan ihsan"
+      ],
+      "lists": 4,
+      "hits": 80,
+      "unique": 30,
+      "rerank_applied": true,
+      "chunks": 30,
+      "labels": [
+        "hr. nasai no. 4990",
+        "hr. bukhari no. 50",
+        "hr. bukhari no. 4777",
+        "hr. ibnmajah no. 64",
+        "hr. muslim no. 97",
+        "hr. ibnmajah no. 65",
+        "hr. abudawud no. 4695",
+        "hr. tirmidhi no. 2610",
+        "hr. ibnmajah no. 63",
+        "hr. nasai no. 4413",
+        "hr. muslim no. 99",
+        "hr. nasai no. 4991",
+        "hr. ibnmajah no. 4184",
+        "hr. bukhari no. 51",
+        "hr. ibnmajah no. 3170",
+        "hr. nasai no. 4411",
+        "hr. abudawud no. 4684",
+        "hr. tirmidhi no. 2623",
+        "hr. tirmidhi no. 1409",
+        "hr. nasai no. 4414",
+        "hr. tirmidhi no. 1942",
+        "hr. muslim no. 5055",
+        "hr. muslim no. 153",
+        "hr. ibnmajah no. 75",
+        "hr. nasai no. 5005",
+        "hr. tirmidhi no. 2614",
+        "hr. abudawud no. 2815",
+        "hr. abudawud no. 4676",
+        "hr. nasai no. 4412",
+        "hr. tirmidhi no. 3881"
+      ],
+      "required": {
+        "in_context": true,
+        "cited": false,
+        "detail": [
+          {
+            "group": ["hr. bukhari no. 4777", "hr. muslim no. 97"],
+            "in_context": ["hr. bukhari no. 4777", "hr. muslim no. 97"],
+            "cited": []
+          }
+        ]
+      }
+    },
+    "context_chars": {
+      "baseline": 69045,
+      "variant": 69309
+    },
+    "seconds": 4.8
+  },
+  {
+    "question_id": "q-tri",
+    "question": "Apa perbedaan iman, islam, dan ihsan?",
+    "route": {
+      "intent": "factual",
+      "category": "aqidah",
+      "needsPrinciple": false,
+      "confidence": 0.92,
+      "fallback": false
+    },
+    "sub_queries": [
+      {
+        "text": "perbedaan iman islam ihsan hadis Jibril",
+        "role": "factual",
+        "origin": "model"
+      },
+      {
+        "text": "hadis Jibril arkan al-iman al-islam al-ihsan",
+        "role": "dalil",
+        "origin": "model"
+      },
+      {
+        "text": "definisi islam iman ihsan menurut ulama akidah",
+        "role": "factual",
+        "origin": "model"
+      }
+    ],
+    "variant_sub_queries": [
+      {
+        "text": "Apa perbedaan iman, islam, dan ihsan?",
+        "role": "factual",
+        "origin": "rule"
+      },
+      {
+        "text": "hadis Jibril arkan al-iman al-islam al-ihsan",
+        "role": "dalil",
+        "origin": "model"
+      },
+      {
+        "text": "perbedaan iman islam ihsan hadis Jibril",
+        "role": "factual",
+        "origin": "model"
+      },
+      {
+        "text": "definisi islam iman ihsan menurut ulama akidah",
+        "role": "factual",
+        "origin": "model"
+      }
+    ],
+    "baseline": {
+      "queries": [
+        "perbedaan iman islam ihsan hadis Jibril",
+        "hadis Jibril arkan al-iman al-islam al-ihsan",
+        "definisi islam iman ihsan menurut ulama akidah"
+      ],
+      "lists": 3,
+      "hits": 60,
+      "unique": 11,
+      "rerank_applied": true,
+      "chunks": 11,
+      "labels": [
+        "hr. ibnmajah no. 64",
+        "hr. abudawud no. 4695",
+        "hr. bukhari no. 4777",
+        "hr. bukhari no. 50",
+        "hr. nasai no. 4991",
+        "hr. tirmidhi no. 2610",
+        "hr. nasai no. 4990",
+        "hr. muslim no. 97",
+        "hr. muslim no. 99",
+        "hr. muslim no. 93",
+        "hr. ibnmajah no. 63"
+      ],
+      "required": {
+        "in_context": true,
+        "cited": false,
+        "detail": [
+          {
+            "group": ["hr. bukhari no. 4777", "hr. muslim no. 97"],
+            "in_context": ["hr. bukhari no. 4777", "hr. muslim no. 97"],
+            "cited": []
+          }
+        ]
+      }
+    },
+    "variant": {
+      "queries": [
+        "Apa perbedaan iman, islam, dan ihsan?",
+        "hadis Jibril arkan al-iman al-islam al-ihsan",
+        "perbedaan iman islam ihsan hadis Jibril",
+        "definisi islam iman ihsan menurut ulama akidah"
+      ],
+      "lists": 4,
+      "hits": 80,
+      "unique": 14,
+      "rerank_applied": true,
+      "chunks": 14,
+      "labels": [
+        "hr. nasai no. 4990",
+        "hr. abudawud no. 4695",
+        "hr. ibnmajah no. 63",
+        "hr. muslim no. 93",
+        "hr. tirmidhi no. 2610",
+        "hr. ibnmajah no. 64",
+        "hr. nasai no. 4991",
+        "hr. bukhari no. 4777",
+        "hr. bukhari no. 50",
+        "hr. muslim no. 97",
+        "hr. muslim no. 99",
+        "hr. ibnmajah no. 4184",
+        "hr. bukhari no. 44",
+        "hr. ibnmajah no. 4033"
+      ],
+      "required": {
+        "in_context": true,
+        "cited": false,
+        "detail": [
+          {
+            "group": ["hr. bukhari no. 4777", "hr. muslim no. 97"],
+            "in_context": ["hr. bukhari no. 4777", "hr. muslim no. 97"],
+            "cited": []
+          }
+        ]
+      }
+    },
+    "context_chars": {
+      "baseline": 55117,
+      "variant": 58847
+    },
+    "seconds": 5.2
+  },
+  {
+    "question_id": "gs-v0-022",
+    "question": "Siapa yang harus diutamakan: istri atau ibu?",
+    "route": {
+      "intent": "comparison",
+      "category": "fikih",
+      "needsPrinciple": true,
+      "confidence": 0.82,
+      "fallback": false
+    },
+    "sub_queries": [
+      {
+        "text": "prioritas berbakti kepada ibu dibanding istri dalam Islam birrul walidain",
+        "role": "factual",
+        "origin": "model"
+      },
+      {
+        "text": "hak istri dan kewajiban suami nafkah serta mu'asyarah bil ma'ruf",
+        "role": "dalil",
+        "origin": "model"
+      },
+      {
+        "text": "kaidah rahmah dan masyaqqah dalam menyeimbangkan bakti ibu dan hak istri",
+        "role": "principle",
+        "origin": "model"
+      }
+    ],
+    "variant_sub_queries": [
+      {
+        "text": "Siapa yang harus diutamakan: istri atau ibu?",
+        "role": "factual",
+        "origin": "rule"
+      },
+      {
+        "text": "hak istri dan kewajiban suami nafkah serta mu'asyarah bil ma'ruf",
+        "role": "dalil",
+        "origin": "model"
+      },
+      {
+        "text": "kaidah rahmah dan masyaqqah dalam menyeimbangkan bakti ibu dan hak istri",
+        "role": "principle",
+        "origin": "model"
+      },
+      {
+        "text": "prioritas berbakti kepada ibu dibanding istri dalam Islam birrul walidain",
+        "role": "factual",
+        "origin": "model"
+      }
+    ],
+    "baseline": {
+      "queries": [
+        "prioritas berbakti kepada ibu dibanding istri dalam Islam birrul walidain",
+        "hak istri dan kewajiban suami nafkah serta mu'asyarah bil ma'ruf",
+        "kaidah rahmah dan masyaqqah dalam menyeimbangkan bakti ibu dan hak istri"
+      ],
+      "lists": 3,
+      "hits": 60,
+      "unique": 46,
+      "rerank_applied": true,
+      "chunks": 46,
+      "labels": [
+        "qs. 58:2",
+        "qs. 2:233",
+        "qs. 46:15",
+        "qs. 17:28",
+        "qs. 4:34",
+        "qs. 33:6",
+        "qs. 31:14",
+        "qs. 65:4",
+        "qs. 65:6",
+        "qs. 19:32",
+        "qs. 2:228",
+        "hr. ibnmajah no. 3658",
+        "hr. bukhari no. 5971",
+        "hr. abudawud no. 5139",
+        "hr. nasai no. 2643",
+        "hr. tirmidhi no. 1163",
+        "hr. muslim no. 6500",
+        "hr. muslim no. 2370",
+        "hr. ibnmajah no. 3661",
+        "hr. ibnmajah no. 2294",
+        "hr. abudawud no. 3546",
+        "hr. bukhari no. 5559",
+        "hr. abudawud no. 2144",
+        "hr. nasai no. 5394",
+        "hr. ibnmajah no. 2013",
+        "hr. abudawud no. 3565",
+        "hr. muslim no. 3799",
+        "hr. ibnmajah no. 1668",
+        "hr. ibnmajah no. 1850",
+        "hr. abudawud no. 2142",
+        "hr. ibnmajah no. 3659",
+        "hr. abudawud no. 2143",
+        "hr. ibnmajah no. 1851",
+        "hr. muslim no. 256",
+        "hr. abudawud no. 2317",
+        "hr. nasai no. 290",
+        "hr. abudawud no. 3310",
+        "hr. muslim no. 6501",
+        "hr. abudawud no. 2129",
+        "hr. tirmidhi no. 1897",
+        "hr. muslim no. 2366",
+        "hr. muslim no. 6503",
+        "hr. abudawud no. 5140",
+        "hr. bukhari no. 56",
+        "hr. ibnmajah no. 3657",
+        "hr. ibnmajah no. 1857"
+      ],
+      "required": {
+        "in_context": true,
+        "cited": false,
+        "detail": [
+          {
+            "group": ["hr. bukhari no. 5971"],
+            "in_context": ["hr. bukhari no. 5971"],
+            "cited": []
+          }
+        ]
+      }
+    },
+    "variant": {
+      "queries": [
+        "Siapa yang harus diutamakan: istri atau ibu?",
+        "hak istri dan kewajiban suami nafkah serta mu'asyarah bil ma'ruf",
+        "kaidah rahmah dan masyaqqah dalam menyeimbangkan bakti ibu dan hak istri",
+        "prioritas berbakti kepada ibu dibanding istri dalam Islam birrul walidain"
+      ],
+      "lists": 4,
+      "hits": 80,
+      "unique": 53,
+      "rerank_applied": true,
+      "chunks": 53,
+      "labels": [
+        "qs. 33:6",
+        "qs. 58:2",
+        "qs. 70:12",
+        "qs. 65:4",
+        "qs. 31:14",
+        "qs. 19:32",
+        "qs. 4:34",
+        "qs. 2:233",
+        "qs. 65:6",
+        "qs. 80:36",
+        "qs. 2:228",
+        "qs. 19:14",
+        "qs. 17:23",
+        "qs. 46:15",
+        "qs. 80:35",
+        "qs. 17:28",
+        "qs. 37:153",
+        "hr. ibnmajah no. 3658",
+        "hr. bukhari no. 5971",
+        "hr. abudawud no. 5139",
+        "hr. ibnmajah no. 1851",
+        "hr. muslim no. 6501",
+        "hr. ibnmajah no. 3661",
+        "hr. ibnmajah no. 1850",
+        "hr. abudawud no. 2142",
+        "hr. muslim no. 6500",
+        "hr. ibnmajah no. 3659",
+        "hr. abudawud no. 2143",
+        "hr. tirmidhi no. 1897",
+        "hr. tirmidhi no. 1163",
+        "hr. muslim no. 256",
+        "hr. abudawud no. 5140",
+        "hr. abudawud no. 2317",
+        "hr. nasai no. 290",
+        "hr. abudawud no. 3310",
+        "hr. tirmidhi no. 1900",
+        "hr. ibnmajah no. 2294",
+        "hr. abudawud no. 3546",
+        "hr. bukhari no. 5559",
+        "hr. nasai no. 2643",
+        "hr. abudawud no. 2144",
+        "hr. muslim no. 2370",
+        "hr. ibnmajah no. 2013",
+        "hr. abudawud no. 3565",
+        "hr. abudawud no. 2129",
+        "hr. muslim no. 3799",
+        "hr. muslim no. 6503",
+        "hr. bukhari no. 56",
+        "hr. ibnmajah no. 3657",
+        "hr. ibnmajah no. 1857",
+        "hr. nasai no. 5394",
+        "hr. muslim no. 2366",
+        "hr. ibnmajah no. 1668"
+      ],
+      "required": {
+        "in_context": true,
+        "cited": false,
+        "detail": [
+          {
+            "group": ["hr. bukhari no. 5971"],
+            "in_context": ["hr. bukhari no. 5971"],
+            "cited": []
+          }
+        ]
+      }
+    },
+    "context_chars": {
+      "baseline": 52262,
+      "variant": 55136
+    },
+    "seconds": 6.5
+  },
+  {
+    "question_id": "gs-v0-016",
+    "question": "Which hadith describes the obligations of Zakat, and what does it say?",
+    "route": {
+      "intent": "factual",
+      "category": "hadith",
+      "needsPrinciple": false,
+      "confidence": 0.9,
+      "fallback": false
+    },
+    "sub_queries": [
+      {
+        "text": "hadith zakat obligations pillars of Islam",
+        "role": "factual",
+        "origin": "model"
+      },
+      {
+        "text": "حديث بني الإسلام على خمس وإيتاء الزكاة",
+        "role": "dalil",
+        "origin": "model"
+      },
+      {
+        "text": "sanad hadith Ibn Umar Islam built on five zakat",
+        "role": "sanad",
+        "origin": "model"
+      }
+    ],
+    "variant_sub_queries": [
+      {
+        "text": "Which hadith describes the obligations of Zakat, and what does it say?",
+        "role": "factual",
+        "origin": "rule"
+      },
+      {
+        "text": "حديث بني الإسلام على خمس وإيتاء الزكاة",
+        "role": "dalil",
+        "origin": "model"
+      },
+      {
+        "text": "sanad hadith Ibn Umar Islam built on five zakat",
+        "role": "sanad",
+        "origin": "model"
+      },
+      {
+        "text": "hadith zakat obligations pillars of Islam",
+        "role": "factual",
+        "origin": "model"
+      }
+    ],
+    "baseline": {
+      "queries": [
+        "hadith zakat obligations pillars of Islam",
+        "حديث بني الإسلام على خمس وإيتاء الزكاة",
+        "sanad hadith Ibn Umar Islam built on five zakat"
+      ],
+      "lists": 3,
+      "hits": 60,
+      "unique": 24,
+      "rerank_applied": false,
+      "chunks": 24,
+      "labels": [
+        "qs. 23:4",
+        "hr. tirmidhi no. 2609",
+        "hr. nasai no. 5001",
+        "hr. bukhari no. 8",
+        "hr. muslim no. 112",
+        "hr. muslim no. 111",
+        "hr. muslim no. 113",
+        "hr. muslim no. 114",
+        "hr. abudawud no. 4697",
+        "hr. bukhari no. 4514",
+        "hr. bukhari no. 2678",
+        "hr. abudawud no. 866",
+        "hr. nasai no. 2538",
+        "hr. tirmidhi no. 2863",
+        "hr. bukhari no. 6022",
+        "hr. tirmidhi no. 618",
+        "hr. tirmidhi no. 2617",
+        "hr. nasai no. 2472",
+        "hr. bukhari no. 1463",
+        "hr. muslim no. 100",
+        "hr. ibnmajah no. 1788",
+        "hr. bukhari no. 4515",
+        "hr. bukhari no. 46",
+        "hr. bukhari no. 4513"
+      ],
+      "required": {
+        "in_context": false,
+        "cited": false,
+        "detail": [
+          {
+            "group": ["hr. bukhari no. 1395"],
+            "in_context": [],
+            "cited": []
+          }
+        ]
+      }
+    },
+    "variant": {
+      "queries": [
+        "Which hadith describes the obligations of Zakat, and what does it say?",
+        "حديث بني الإسلام على خمس وإيتاء الزكاة",
+        "sanad hadith Ibn Umar Islam built on five zakat",
+        "hadith zakat obligations pillars of Islam"
+      ],
+      "lists": 4,
+      "hits": 80,
+      "unique": 39,
+      "rerank_applied": false,
+      "chunks": 39,
+      "labels": [
+        "qs. 23:4",
+        "hr. tirmidhi no. 2609",
+        "hr. nasai no. 5001",
+        "hr. bukhari no. 8",
+        "hr. muslim no. 112",
+        "hr. muslim no. 111",
+        "hr. muslim no. 113",
+        "hr. muslim no. 114",
+        "hr. nasai no. 2538",
+        "hr. abudawud no. 4697",
+        "hr. abudawud no. 866",
+        "hr. bukhari no. 6022",
+        "hr. bukhari no. 4514",
+        "hr. bukhari no. 2678",
+        "hr. ibnmajah no. 1788",
+        "hr. nasai no. 2502",
+        "hr. nasai no. 2482",
+        "hr. abudawud no. 1567",
+        "hr. abudawud no. 1611",
+        "hr. malik no. 604",
+        "hr. tirmidhi no. 2863",
+        "hr. bukhari no. 1445",
+        "hr. nasai no. 2447",
+        "hr. muslim no. 2282",
+        "hr. bukhari no. 1403",
+        "hr. tirmidhi no. 627",
+        "hr. muslim no. 2278",
+        "hr. tirmidhi no. 618",
+        "hr. nasai no. 2487",
+        "hr. tirmidhi no. 2617",
+        "hr. nasai no. 2472",
+        "hr. tirmidhi no. 677",
+        "hr. abudawud no. 1572",
+        "hr. bukhari no. 1463",
+        "hr. muslim no. 100",
+        "hr. abudawud no. 1637",
+        "hr. bukhari no. 4515",
+        "hr. bukhari no. 46",
+        "hr. bukhari no. 4513"
+      ],
+      "required": {
+        "in_context": false,
+        "cited": false,
+        "detail": [
+          {
+            "group": ["hr. bukhari no. 1395"],
+            "in_context": [],
+            "cited": []
+          }
+        ]
+      }
+    },
+    "context_chars": {
+      "baseline": 46155,
+      "variant": 83480
+    },
+    "seconds": 169.8
+  },
+  {
+    "question_id": "gs-v0-006",
+    "question": "Apakah menjamak shalat saat safar diperbolehkan? Sebutkan dalilnya.",
+    "route": {
+      "intent": "ruling",
+      "category": "fikih",
+      "needsPrinciple": true,
+      "confidence": 0.95,
+      "fallback": false
+    },
+    "sub_queries": [
+      {
+        "text": "hukum jamak shalat dalam safar menurut empat madzhab",
+        "role": "factual",
+        "origin": "model"
+      },
+      {
+        "text": "prinsip yusr dan raf'ul haraj dalam rukhshah safar",
+        "role": "principle",
+        "origin": "model"
+      },
+      {
+        "text": "dalil Al-Quran dan hadis tentang jamak shalat saat safar",
+        "role": "dalil",
+        "origin": "model"
+      }
+    ],
+    "variant_sub_queries": [
+      {
+        "text": "Apakah menjamak shalat saat safar diperbolehkan? Sebutkan dalilnya.",
+        "role": "factual",
+        "origin": "rule"
+      },
+      {
+        "text": "prinsip yusr dan raf'ul haraj dalam rukhshah safar",
+        "role": "principle",
+        "origin": "model"
+      },
+      {
+        "text": "dalil Al-Quran dan hadis tentang jamak shalat saat safar",
+        "role": "dalil",
+        "origin": "model"
+      },
+      {
+        "text": "hukum jamak shalat dalam safar menurut empat madzhab",
+        "role": "factual",
+        "origin": "model"
+      }
+    ],
+    "baseline": {
+      "queries": [
+        "hukum jamak shalat dalam safar menurut empat madzhab",
+        "prinsip yusr dan raf'ul haraj dalam rukhshah safar",
+        "dalil Al-Quran dan hadis tentang jamak shalat saat safar"
+      ],
+      "lists": 3,
+      "hits": 60,
+      "unique": 42,
+      "rerank_applied": true,
+      "chunks": 42,
+      "labels": [
+        "qs. 87:8",
+        "qs. 94:6",
+        "qs. 92:7",
+        "qs. 80:20",
+        "qs. 94:5",
+        "hr. muslim no. 1624",
+        "hr. malik no. 331",
+        "hr. nasai no. 2294",
+        "hr. bukhari no. 1108",
+        "hr. ibnmajah no. 1070",
+        "hr. tirmidhi no. 710",
+        "hr. nasai no. 2300",
+        "hr. ibnmajah no. 1194",
+        "hr. malik no. 337",
+        "hr. malik no. 342",
+        "hr. tirmidhi no. 553",
+        "hr. bukhari no. 1743",
+        "hr. muslim no. 1627",
+        "hr. nasai no. 598",
+        "hr. nasai no. 2303",
+        "hr. muslim no. 2629",
+        "hr. nasai no. 126",
+        "hr. nasai no. 2274",
+        "hr. tirmidhi no. 713",
+        "hr. malik no. 326",
+        "hr. tirmidhi no. 550",
+        "hr. bukhari no. 1109",
+        "hr. tirmidhi no. 549",
+        "hr. muslim no. 1621",
+        "hr. bukhari no. 5429",
+        "hr. abudawud no. 1215",
+        "hr. tirmidhi no. 548",
+        "hr. muslim no. 1626",
+        "hr. nasai no. 592",
+        "hr. malik no. 340",
+        "hr. tirmidhi no. 544",
+        "hr. malik no. 328",
+        "hr. nasai no. 2296",
+        "hr. tirmidhi no. 188",
+        "hr. muslim no. 2624",
+        "hr. bukhari no. 39",
+        "hr. muslim no. 1630"
+      ],
+      "required": {
+        "in_context": true,
+        "cited": false,
+        "detail": [
+          {
+            "group": ["hr. bukhari no. 1108"],
+            "in_context": ["hr. bukhari no. 1108"],
+            "cited": []
+          }
+        ]
+      }
+    },
+    "variant": {
+      "queries": [
+        "Apakah menjamak shalat saat safar diperbolehkan? Sebutkan dalilnya.",
+        "prinsip yusr dan raf'ul haraj dalam rukhshah safar",
+        "dalil Al-Quran dan hadis tentang jamak shalat saat safar",
+        "hukum jamak shalat dalam safar menurut empat madzhab"
+      ],
+      "lists": 4,
+      "hits": 80,
+      "unique": 44,
+      "rerank_applied": true,
+      "chunks": 44,
+      "labels": [
+        "qs. 87:8",
+        "qs. 92:7",
+        "qs. 80:20",
+        "qs. 94:6",
+        "qs. 94:5",
+        "hr. nasai no. 598",
+        "hr. muslim no. 1626",
+        "hr. malik no. 331",
+        "hr. malik no. 328",
+        "hr. nasai no. 592",
+        "hr. bukhari no. 1108",
+        "hr. malik no. 326",
+        "hr. muslim no. 1627",
+        "hr. muslim no. 2629",
+        "hr. tirmidhi no. 188",
+        "hr. nasai no. 2294",
+        "hr. tirmidhi no. 544",
+        "hr. muslim no. 1624",
+        "hr. malik no. 340",
+        "hr. nasai no. 2303",
+        "hr. muslim no. 1630",
+        "hr. malik no. 337",
+        "hr. tirmidhi no. 548",
+        "hr. ibnmajah no. 1194",
+        "hr. muslim no. 1621",
+        "hr. ibnmajah no. 1070",
+        "hr. tirmidhi no. 710",
+        "hr. nasai no. 126",
+        "hr. malik no. 342",
+        "hr. nasai no. 2274",
+        "hr. tirmidhi no. 713",
+        "hr. nasai no. 2300",
+        "hr. tirmidhi no. 553",
+        "hr. nasai no. 2296",
+        "hr. nasai no. 601",
+        "hr. tirmidhi no. 550",
+        "hr. bukhari no. 1109",
+        "hr. bukhari no. 1743",
+        "hr. bukhari no. 1107",
+        "hr. tirmidhi no. 549",
+        "hr. muslim no. 2624",
+        "hr. bukhari no. 39",
+        "hr. bukhari no. 5429",
+        "hr. abudawud no. 1215"
+      ],
+      "required": {
+        "in_context": true,
+        "cited": false,
+        "detail": [
+          {
+            "group": ["hr. bukhari no. 1108"],
+            "in_context": ["hr. bukhari no. 1108"],
+            "cited": []
+          }
+        ]
+      }
+    },
+    "context_chars": {
+      "baseline": 50464,
+      "variant": 51471
+    },
+    "seconds": 5.4
+  },
+  {
+    "question_id": "q-ruling",
+    "question": "Apa hukum zakat fitrah dan zakat mal, dan siapa yang wajib mengeluarkannya?",
+    "route": {
+      "intent": "ruling",
+      "category": "fikih",
+      "needsPrinciple": true,
+      "confidence": 0.9,
+      "fallback": false
+    },
+    "sub_queries": [
+      {
+        "text": "hukum zakat fitrah dan zakat mal serta syarat wajib muzakki",
+        "role": "factual",
+        "origin": "model"
+      },
+      {
+        "text": "dalil kewajiban zakat fitrah dan zakat mal dalam Al-Qur'an dan hadis",
+        "role": "dalil",
+        "origin": "model"
+      },
+      {
+        "text": "prinsip yusr dan rahmah dalam kewajiban zakat harta",
+        "role": "principle",
+        "origin": "model"
+      }
+    ],
+    "variant_sub_queries": [
+      {
+        "text": "Apa hukum zakat fitrah dan zakat mal, dan siapa yang wajib mengeluarkannya?",
+        "role": "factual",
+        "origin": "rule"
+      },
+      {
+        "text": "dalil kewajiban zakat fitrah dan zakat mal dalam Al-Qur'an dan hadis",
+        "role": "dalil",
+        "origin": "model"
+      },
+      {
+        "text": "prinsip yusr dan rahmah dalam kewajiban zakat harta",
+        "role": "principle",
+        "origin": "model"
+      },
+      {
+        "text": "hukum zakat fitrah dan zakat mal serta syarat wajib muzakki",
+        "role": "factual",
+        "origin": "model"
+      }
+    ],
+    "baseline": {
+      "queries": [
+        "hukum zakat fitrah dan zakat mal serta syarat wajib muzakki",
+        "dalil kewajiban zakat fitrah dan zakat mal dalam Al-Qur'an dan hadis",
+        "prinsip yusr dan rahmah dalam kewajiban zakat harta"
+      ],
+      "lists": 3,
+      "hits": 60,
+      "unique": 35,
+      "rerank_applied": true,
+      "chunks": 35,
+      "labels": [
+        "qs. 2:280",
+        "qs. 23:4",
+        "qs. 9:103",
+        "qs. 24:56",
+        "qs. 4:28",
+        "qs. 9:60",
+        "hr. malik no. 625",
+        "hr. bukhari no. 1504",
+        "hr. malik no. 595",
+        "hr. tirmidhi no. 676",
+        "hr. muslim no. 2278",
+        "hr. malik no. 629",
+        "hr. abudawud no. 1611",
+        "hr. nasai no. 2503",
+        "hr. ibnmajah no. 1826",
+        "hr. muslim no. 2282",
+        "hr. malik no. 626",
+        "hr. malik no. 603",
+        "hr. malik no. 609",
+        "hr. malik no. 584",
+        "hr. malik no. 596",
+        "hr. abudawud no. 1609",
+        "hr. malik no. 607",
+        "hr. abudawud no. 1610",
+        "hr. abudawud no. 1613",
+        "hr. malik no. 619",
+        "hr. abudawud no. 1572",
+        "hr. tirmidhi no. 677",
+        "hr. abudawud no. 1664",
+        "hr. muslim no. 2289",
+        "hr. tirmidhi no. 632",
+        "hr. malik no. 601",
+        "hr. abudawud no. 1583",
+        "hr. malik no. 581",
+        "hr. bukhari no. 1506"
+      ],
+      "required": {
+        "in_context": false,
+        "cited": false,
+        "detail": [
+          {
+            "group": ["hr. bukhari no. 1503"],
+            "in_context": [],
+            "cited": []
+          },
+          {
+            "group": ["hr. bukhari no. 1395"],
+            "in_context": [],
+            "cited": []
+          }
+        ]
+      }
+    },
+    "variant": {
+      "queries": [
+        "Apa hukum zakat fitrah dan zakat mal, dan siapa yang wajib mengeluarkannya?",
+        "dalil kewajiban zakat fitrah dan zakat mal dalam Al-Qur'an dan hadis",
+        "prinsip yusr dan rahmah dalam kewajiban zakat harta",
+        "hukum zakat fitrah dan zakat mal serta syarat wajib muzakki"
+      ],
+      "lists": 4,
+      "hits": 80,
+      "unique": 37,
+      "rerank_applied": true,
+      "chunks": 37,
+      "labels": [
+        "qs. 9:60",
+        "qs. 9:103",
+        "qs. 24:56",
+        "qs. 2:280",
+        "qs. 23:4",
+        "qs. 4:28",
+        "hr. malik no. 625",
+        "hr. muslim no. 2282",
+        "hr. abudawud no. 1611",
+        "hr. tirmidhi no. 676",
+        "hr. bukhari no. 1504",
+        "hr. malik no. 626",
+        "hr. muslim no. 2278",
+        "hr. nasai no. 2503",
+        "hr. ibnmajah no. 1826",
+        "hr. malik no. 629",
+        "hr. malik no. 595",
+        "hr. malik no. 609",
+        "hr. malik no. 584",
+        "hr. tirmidhi no. 632",
+        "hr. malik no. 627",
+        "hr. malik no. 601",
+        "hr. abudawud no. 1609",
+        "hr. malik no. 607",
+        "hr. abudawud no. 1610",
+        "hr. abudawud no. 1583",
+        "hr. malik no. 619",
+        "hr. abudawud no. 1572",
+        "hr. malik no. 581",
+        "hr. tirmidhi no. 677",
+        "hr. bukhari no. 1506",
+        "hr. malik no. 603",
+        "hr. muslim no. 2289",
+        "hr. malik no. 596",
+        "hr. abudawud no. 1613",
+        "hr. abudawud no. 1664",
+        "hr. tirmidhi no. 674"
+      ],
+      "required": {
+        "in_context": false,
+        "cited": false,
+        "detail": [
+          {
+            "group": ["hr. bukhari no. 1503"],
+            "in_context": [],
+            "cited": []
+          },
+          {
+            "group": ["hr. bukhari no. 1395"],
+            "in_context": [],
+            "cited": []
+          }
+        ]
+      }
+    },
+    "context_chars": {
+      "baseline": 52917,
+      "variant": 55329
+    },
+    "seconds": 5.3
+  }
+]

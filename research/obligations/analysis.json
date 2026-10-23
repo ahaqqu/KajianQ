@@ -1,0 +1,1640 @@
+{
+  "tables": [
+    {
+      "question_id": "q-owner",
+      "question": "Apa beda ihsan dan iman?",
+      "kind": "comparison (owner's)",
+      "arm": "B",
+      "draws": 3,
+      "obligations": 4,
+      "obligations_supported": 4,
+      "obligation_readings": [
+        {
+          "id": "O1",
+          "supported": true,
+          "evidence": ["E1", "E2", "E3", "E4", "E5", "E6", "E10", "E11", "E12", "E13"],
+          "answer_cites": "E1",
+          "reason": "Hadis Jibril mendefinisikan iman sebagai iman kepada Allah, malaikat, kitab, rasul, hari akhir, dan takdir."
+        },
+        {
+          "id": "O2",
+          "supported": true,
+          "evidence": ["E1", "E2", "E3", "E4", "E5", "E6", "E10", "E11", "E12", "E13"],
+          "answer_cites": "E1",
+          "reason": "Hadis Jibril mendefinisikan ihsan sebagai menyembah Allah seolah melihat-Nya, dan jika tidak, Dia melihatmu."
+        },
+        {
+          "id": "O3",
+          "supported": true,
+          "evidence": ["E1", "E2", "E3", "E4", "E5", "E6", "E10", "E11", "E12", "E13"],
+          "answer_cites": "E1",
+          "reason": "Hadis membedakan iman (keyakinan pada rukun iman) dan ihsan (kualitas ibadah dengan kesadaran diawasi Allah)."
+        },
+        {
+          "id": "O4",
+          "supported": true,
+          "evidence": ["E1", "E2", "E3", "E4", "E5", "E6", "E10", "E11", "E12", "E13"],
+          "answer_cites": "E1",
+          "reason": "Hadis Jibril memuat pertanyaan dan jawaban tentang iman, Islam, dan ihsan."
+        }
+      ],
+      "exact_context": {
+        "in_context": true,
+        "cited": false,
+        "detail": [
+          {
+            "group": ["hr. bukhari no. 4777", "hr. muslim no. 97"],
+            "in_context": ["hr. bukhari no. 4777", "hr. muslim no. 97"],
+            "cited": []
+          }
+        ]
+      },
+      "identity_context": {
+        "in_context": true,
+        "cited": false,
+        "detail": [
+          {
+            "group": [
+              "hr. abudawud no. 4695",
+              "hr. bukhari no. 4777",
+              "hr. bukhari no. 50",
+              "hr. muslim no. 93",
+              "hr. muslim no. 97",
+              "hr. muslim no. 99",
+              "hr. nasai no. 4990",
+              "hr. nasai no. 4991",
+              "hr. tirmidhi no. 2610"
+            ],
+            "in_context": [
+              "hr. abudawud no. 4695",
+              "hr. bukhari no. 4777",
+              "hr. bukhari no. 50",
+              "hr. muslim no. 97",
+              "hr. muslim no. 99",
+              "hr. nasai no. 4990",
+              "hr. nasai no. 4991",
+              "hr. tirmidhi no. 2610"
+            ],
+            "cited": []
+          }
+        ]
+      },
+      "exact_cited_draws": 0,
+      "identity_cited_draws": 3,
+      "citations_per_draw": [2, 3, 3],
+      "ungrounded_citations": [],
+      "grounding_rate_mean": 1.0,
+      "grounding_rate_per_draw": [1.0, 1.0, 1.0],
+      "refusals": 0,
+      "prompt_tokens": 29606.0,
+      "completion_tokens": 637.6666666666666,
+      "context_chars": 69045,
+      "context_chunks": 29,
+      "cost_usd": {
+        "router_usd": 0.000306,
+        "planner_usd": 0.0,
+        "embed_usd": 6e-6,
+        "rerank_usd": 0.000826,
+        "writer_usd": 0.0,
+        "validator_usd": 0.0
+      },
+      "judge_usd": 0.009556199999999999,
+      "generation_usd_per_draw": 0.009647,
+      "per_answer_usd": 0.010785,
+      "per_answer_micro_usd": 10784.8
+    },
+    {
+      "question_id": "q-owner",
+      "question": "Apa beda ihsan dan iman?",
+      "kind": "comparison (owner's)",
+      "arm": "B2",
+      "draws": 3,
+      "obligations": 4,
+      "obligations_supported": 4,
+      "obligation_readings": [
+        {
+          "id": "O1",
+          "supported": true,
+          "evidence": ["E1", "E2", "E3", "E4", "E5", "E7", "E8", "E9", "E11", "E12"],
+          "answer_cites": "E5",
+          "reason": "Hadis-hadis Jibril menyebutkan definisi iman sebagai beriman kepada Allah, malaikat, kitab, rasul, hari akhir, dan takdir."
+        },
+        {
+          "id": "O2",
+          "supported": true,
+          "evidence": ["E1", "E2", "E3", "E4", "E5", "E7", "E8", "E9", "E11", "E12"],
+          "answer_cites": "E2",
+          "reason": "Hadis-hadis menyebutkan ihsan sebagai menyembah Allah seolah melihat-Nya, dan jika tidak, Dia melihatmu."
+        },
+        {
+          "id": "O3",
+          "supported": true,
+          "evidence": ["E1", "E2", "E5", "E7", "E8", "E9", "E11", "E12"],
+          "answer_cites": "E1",
+          "reason": "Hadis Jibril memisahkan pertanyaan dan jawaban tentang iman dan ihsan secara berdampingan."
+        },
+        {
+          "id": "O4",
+          "supported": true,
+          "evidence": ["E1", "E2", "E3", "E4", "E5", "E7", "E8", "E9", "E11", "E12"],
+          "answer_cites": "E1",
+          "reason": "Hadis Jibril meriwayatkan pertanyaan tentang Islam, iman, dan ihsan beserta jawabannya."
+        }
+      ],
+      "exact_context": {
+        "in_context": true,
+        "cited": false,
+        "detail": [
+          {
+            "group": ["hr. bukhari no. 4777", "hr. muslim no. 97"],
+            "in_context": ["hr. bukhari no. 4777", "hr. muslim no. 97"],
+            "cited": []
+          }
+        ]
+      },
+      "identity_context": {
+        "in_context": true,
+        "cited": false,
+        "detail": [
+          {
+            "group": [
+              "hr. abudawud no. 4695",
+              "hr. bukhari no. 4777",
+              "hr. bukhari no. 50",
+              "hr. muslim no. 93",
+              "hr. muslim no. 97",
+              "hr. muslim no. 99",
+              "hr. nasai no. 4990",
+              "hr. nasai no. 4991",
+              "hr. tirmidhi no. 2610"
+            ],
+            "in_context": [
+              "hr. abudawud no. 4695",
+              "hr. bukhari no. 4777",
+              "hr. bukhari no. 50",
+              "hr. muslim no. 97",
+              "hr. muslim no. 99",
+              "hr. nasai no. 4990",
+              "hr. nasai no. 4991",
+              "hr. tirmidhi no. 2610"
+            ],
+            "cited": []
+          }
+        ]
+      },
+      "exact_cited_draws": 2,
+      "identity_cited_draws": 3,
+      "citations_per_draw": [4, 2, 11],
+      "ungrounded_citations": [],
+      "grounding_rate_mean": 1.0,
+      "grounding_rate_per_draw": [1.0, 1.0, 1.0],
+      "refusals": 0,
+      "prompt_tokens": 29757.0,
+      "completion_tokens": 642.0,
+      "context_chars": 69309,
+      "context_chunks": 30,
+      "cost_usd": {
+        "router_usd": 0.000306,
+        "planner_usd": 0.0,
+        "embed_usd": 7e-6,
+        "rerank_usd": 0.000847,
+        "writer_usd": 0.0,
+        "validator_usd": 0.0
+      },
+      "judge_usd": 0.009567299999999999,
+      "generation_usd_per_draw": 0.009698,
+      "per_answer_usd": 0.010858,
+      "per_answer_micro_usd": 10858.1
+    },
+    {
+      "question_id": "q-owner",
+      "question": "Apa beda ihsan dan iman?",
+      "kind": "comparison (owner's)",
+      "arm": "P",
+      "draws": 3,
+      "obligations": 4,
+      "obligations_supported": 3,
+      "obligation_readings": [
+        {
+          "id": "O1",
+          "supported": true,
+          "evidence": ["E1", "E5", "E6"],
+          "answer_cites": "E5",
+          "reason": "Hadis-hadis Jibril menyebutkan definisi iman secara eksplisit."
+        },
+        {
+          "id": "O2",
+          "supported": true,
+          "evidence": ["E1", "E3", "E5"],
+          "answer_cites": "E1",
+          "reason": "Hadis-hadis Jibril menyebutkan definisi ihsan secara eksplisit."
+        },
+        {
+          "id": "O3",
+          "supported": false,
+          "evidence": [],
+          "answer_cites": null,
+          "reason": "Tidak ada bukti yang secara khusus membandingkan iman dan ihsan."
+        },
+        {
+          "id": "O4",
+          "supported": true,
+          "evidence": ["E1", "E4", "E5", "E6"],
+          "answer_cites": "E4",
+          "reason": "Hadis Jibril tentang iman, islam, dan ihsan terdapat dalam bukti-bukti tersebut."
+        }
+      ],
+      "exact_context": {
+        "in_context": true,
+        "cited": false,
+        "detail": [
+          {
+            "group": ["hr. bukhari no. 4777", "hr. muslim no. 97"],
+            "in_context": ["hr. bukhari no. 4777", "hr. muslim no. 97"],
+            "cited": []
+          }
+        ]
+      },
+      "identity_context": {
+        "in_context": true,
+        "cited": false,
+        "detail": [
+          {
+            "group": [
+              "hr. abudawud no. 4695",
+              "hr. bukhari no. 4777",
+              "hr. bukhari no. 50",
+              "hr. muslim no. 93",
+              "hr. muslim no. 97",
+              "hr. muslim no. 99",
+              "hr. nasai no. 4990",
+              "hr. nasai no. 4991",
+              "hr. tirmidhi no. 2610"
+            ],
+            "in_context": [
+              "hr. bukhari no. 4777",
+              "hr. bukhari no. 50",
+              "hr. muslim no. 97",
+              "hr. nasai no. 4990",
+              "hr. nasai no. 4991"
+            ],
+            "cited": []
+          }
+        ]
+      },
+      "exact_cited_draws": 3,
+      "identity_cited_draws": 3,
+      "citations_per_draw": [5, 5, 3],
+      "ungrounded_citations": [],
+      "grounding_rate_mean": 1.0,
+      "grounding_rate_per_draw": [1.0, 1.0, 1.0],
+      "refusals": 0,
+      "prompt_tokens": 11367.0,
+      "completion_tokens": 1442.0,
+      "context_chars": 25454,
+      "context_chunks": 6,
+      "cost_usd": {
+        "router_usd": 0.0,
+        "planner_usd": 0.000177,
+        "embed_usd": 1.1e-5,
+        "rerank_usd": 0.002764,
+        "writer_usd": 0.0,
+        "validator_usd": 0.003983
+      },
+      "judge_usd": 0.0039834,
+      "generation_usd_per_draw": 0.00514,
+      "per_answer_usd": 0.012076,
+      "per_answer_micro_usd": 12076.4
+    },
+    {
+      "question_id": "q-tri",
+      "question": "Apa perbedaan iman, islam, dan ihsan?",
+      "kind": "comparison (three terms)",
+      "arm": "B",
+      "draws": 3,
+      "obligations": 5,
+      "obligations_supported": 4,
+      "obligation_readings": [
+        {
+          "id": "O1",
+          "supported": true,
+          "evidence": ["E1", "E2", "E3", "E4", "E5", "E6", "E7", "E8", "E9", "E10", "E11"],
+          "answer_cites": "E2",
+          "reason": "Hadis-hadis mendefinisikan iman sebagai beriman kepada Allah, malaikat, kitab, rasul, hari akhir, dan takdir."
+        },
+        {
+          "id": "O2",
+          "supported": true,
+          "evidence": ["E1", "E2", "E3", "E4", "E5", "E6", "E7", "E8", "E9", "E10", "E11"],
+          "answer_cites": "E2",
+          "reason": "Hadis mendefinisikan Islam sebagai syahadat, shalat, zakat, puasa, dan haji."
+        },
+        {
+          "id": "O3",
+          "supported": true,
+          "evidence": ["E1", "E2", "E3", "E4", "E5", "E6", "E7", "E8", "E9", "E10", "E11"],
+          "answer_cites": "E2",
+          "reason": "Hadis Jibril mendefinisikan ihsan sebagai beribadah seakan melihat Allah."
+        },
+        {
+          "id": "O4",
+          "supported": true,
+          "evidence": ["E1", "E2", "E3", "E4", "E5", "E6", "E7", "E8", "E9", "E10", "E11"],
+          "answer_cites": "E2",
+          "reason": "Hadis Jibril memuat pertanyaan dan jawaban tentang Islam, iman, dan ihsan."
+        },
+        {
+          "id": "O5",
+          "supported": false,
+          "evidence": [],
+          "answer_cites": null,
+          "reason": "Tidak ada bukti yang memuat perbandingan eksplisit menurut ulama."
+        }
+      ],
+      "exact_context": {
+        "in_context": true,
+        "cited": false,
+        "detail": [
+          {
+            "group": ["hr. bukhari no. 4777", "hr. muslim no. 97"],
+            "in_context": ["hr. bukhari no. 4777", "hr. muslim no. 97"],
+            "cited": []
+          }
+        ]
+      },
+      "identity_context": {
+        "in_context": true,
+        "cited": false,
+        "detail": [
+          {
+            "group": [
+              "hr. abudawud no. 4695",
+              "hr. bukhari no. 4777",
+              "hr. bukhari no. 50",
+              "hr. muslim no. 93",
+              "hr. muslim no. 97",
+              "hr. muslim no. 99",
+              "hr. nasai no. 4990",
+              "hr. nasai no. 4991",
+              "hr. tirmidhi no. 2610"
+            ],
+            "in_context": [
+              "hr. abudawud no. 4695",
+              "hr. bukhari no. 4777",
+              "hr. bukhari no. 50",
+              "hr. muslim no. 93",
+              "hr. muslim no. 97",
+              "hr. muslim no. 99",
+              "hr. nasai no. 4990",
+              "hr. nasai no. 4991",
+              "hr. tirmidhi no. 2610"
+            ],
+            "cited": []
+          }
+        ]
+      },
+      "exact_cited_draws": 2,
+      "identity_cited_draws": 3,
+      "citations_per_draw": [2, 11, 9],
+      "ungrounded_citations": [],
+      "grounding_rate_mean": 1.0,
+      "grounding_rate_per_draw": [1.0, 1.0, 1.0],
+      "refusals": 0,
+      "prompt_tokens": 23535.0,
+      "completion_tokens": 895.0,
+      "context_chars": 55117,
+      "context_chunks": 11,
+      "cost_usd": {
+        "router_usd": 0.000311,
+        "planner_usd": 0.0,
+        "embed_usd": 7e-6,
+        "rerank_usd": 0.000841,
+        "writer_usd": 0.0,
+        "validator_usd": 0.0
+      },
+      "judge_usd": 0.0077337,
+      "generation_usd_per_draw": 0.008135,
+      "per_answer_usd": 0.009293,
+      "per_answer_micro_usd": 9292.6
+    },
+    {
+      "question_id": "q-tri",
+      "question": "Apa perbedaan iman, islam, dan ihsan?",
+      "kind": "comparison (three terms)",
+      "arm": "B2",
+      "draws": 3,
+      "obligations": 5,
+      "obligations_supported": 4,
+      "obligation_readings": [
+        {
+          "id": "O1",
+          "supported": true,
+          "evidence": ["E1", "E2", "E3", "E4", "E5", "E6", "E8", "E9", "E10", "E11"],
+          "answer_cites": "E1",
+          "reason": "Hadis Jibril mendefinisikan iman sebagai iman kepada Allah, malaikat, kitab, rasul, hari akhir, dan takdir."
+        },
+        {
+          "id": "O2",
+          "supported": true,
+          "evidence": ["E1", "E2", "E3", "E4", "E5", "E6", "E7", "E8", "E9", "E10", "E11"],
+          "answer_cites": "E1",
+          "reason": "Hadis mendefinisikan Islam sebagai syahadat, shalat, zakat, puasa, dan haji."
+        },
+        {
+          "id": "O3",
+          "supported": true,
+          "evidence": ["E1", "E2", "E3", "E4", "E5", "E6", "E7", "E8", "E9", "E10", "E11"],
+          "answer_cites": "E1",
+          "reason": "Hadis Jibril mendefinisikan ihsan sebagai menyembah Allah seakan melihat-Nya."
+        },
+        {
+          "id": "O4",
+          "supported": true,
+          "evidence": ["E1", "E2", "E3", "E4", "E5", "E7", "E8", "E9", "E10", "E11"],
+          "answer_cites": "E1",
+          "reason": "Hadis Jibril memuat pertanyaan dan jawaban tentang Islam, iman, dan ihsan."
+        },
+        {
+          "id": "O5",
+          "supported": false,
+          "evidence": [],
+          "answer_cites": null,
+          "reason": "Tidak ada bukti yang memuat perbandingan ketiganya menurut ulama."
+        }
+      ],
+      "exact_context": {
+        "in_context": true,
+        "cited": false,
+        "detail": [
+          {
+            "group": ["hr. bukhari no. 4777", "hr. muslim no. 97"],
+            "in_context": ["hr. bukhari no. 4777", "hr. muslim no. 97"],
+            "cited": []
+          }
+        ]
+      },
+      "identity_context": {
+        "in_context": true,
+        "cited": false,
+        "detail": [
+          {
+            "group": [
+              "hr. abudawud no. 4695",
+              "hr. bukhari no. 4777",
+              "hr. bukhari no. 50",
+              "hr. muslim no. 93",
+              "hr. muslim no. 97",
+              "hr. muslim no. 99",
+              "hr. nasai no. 4990",
+              "hr. nasai no. 4991",
+              "hr. tirmidhi no. 2610"
+            ],
+            "in_context": [
+              "hr. abudawud no. 4695",
+              "hr. bukhari no. 4777",
+              "hr. bukhari no. 50",
+              "hr. muslim no. 93",
+              "hr. muslim no. 97",
+              "hr. muslim no. 99",
+              "hr. nasai no. 4990",
+              "hr. nasai no. 4991",
+              "hr. tirmidhi no. 2610"
+            ],
+            "cited": []
+          }
+        ]
+      },
+      "exact_cited_draws": 1,
+      "identity_cited_draws": 3,
+      "citations_per_draw": [4, 9, 7],
+      "ungrounded_citations": [],
+      "grounding_rate_mean": 1.0,
+      "grounding_rate_per_draw": [1.0, 1.0, 1.0],
+      "refusals": 0,
+      "prompt_tokens": 25081.0,
+      "completion_tokens": 822.6666666666666,
+      "context_chars": 58847,
+      "context_chunks": 14,
+      "cost_usd": {
+        "router_usd": 0.000311,
+        "planner_usd": 0.0,
+        "embed_usd": 9e-6,
+        "rerank_usd": 0.000765,
+        "writer_usd": 0.0,
+        "validator_usd": 0.0
+      },
+      "judge_usd": 0.008241,
+      "generation_usd_per_draw": 0.008511,
+      "per_answer_usd": 0.009596,
+      "per_answer_micro_usd": 9595.5
+    },
+    {
+      "question_id": "q-tri",
+      "question": "Apa perbedaan iman, islam, dan ihsan?",
+      "kind": "comparison (three terms)",
+      "arm": "P",
+      "draws": 3,
+      "obligations": 5,
+      "obligations_supported": 4,
+      "obligation_readings": [
+        {
+          "id": "O1",
+          "supported": true,
+          "evidence": ["E1", "E2", "E3", "E4", "E5", "E6", "E7", "E8"],
+          "answer_cites": "E1",
+          "reason": "Hadis Jibril dalam E1 (dan riwayat lain) menyebutkan definisi iman secara eksplisit."
+        },
+        {
+          "id": "O2",
+          "supported": true,
+          "evidence": ["E1", "E2", "E3", "E4", "E5", "E6", "E7", "E8"],
+          "answer_cites": "E1",
+          "reason": "Hadis Jibril dalam E1 menyebutkan definisi Islam sebagai amal lahiriah secara eksplisit."
+        },
+        {
+          "id": "O3",
+          "supported": true,
+          "evidence": ["E1", "E2", "E3", "E4", "E5", "E6", "E7", "E8"],
+          "answer_cites": "E1",
+          "reason": "Hadis Jibril dalam E1 menyebutkan definisi ihsan secara eksplisit."
+        },
+        {
+          "id": "O4",
+          "supported": true,
+          "evidence": ["E1", "E2", "E3", "E4", "E5", "E6", "E7", "E8"],
+          "answer_cites": "E3",
+          "reason": "E3 memuat hadis Jibril lengkap dengan urutan Islam, iman, dan ihsan."
+        },
+        {
+          "id": "O5",
+          "supported": false,
+          "evidence": [],
+          "answer_cites": null,
+          "reason": "Tidak ada bukti yang menyatakan perbandingan menurut ulama."
+        }
+      ],
+      "exact_context": {
+        "in_context": true,
+        "cited": false,
+        "detail": [
+          {
+            "group": ["hr. bukhari no. 4777", "hr. muslim no. 97"],
+            "in_context": ["hr. bukhari no. 4777", "hr. muslim no. 97"],
+            "cited": []
+          }
+        ]
+      },
+      "identity_context": {
+        "in_context": true,
+        "cited": false,
+        "detail": [
+          {
+            "group": [
+              "hr. abudawud no. 4695",
+              "hr. bukhari no. 4777",
+              "hr. bukhari no. 50",
+              "hr. muslim no. 93",
+              "hr. muslim no. 97",
+              "hr. muslim no. 99",
+              "hr. nasai no. 4990",
+              "hr. nasai no. 4991",
+              "hr. tirmidhi no. 2610"
+            ],
+            "in_context": [
+              "hr. abudawud no. 4695",
+              "hr. bukhari no. 4777",
+              "hr. bukhari no. 50",
+              "hr. muslim no. 97",
+              "hr. nasai no. 4990",
+              "hr. tirmidhi no. 2610"
+            ],
+            "cited": []
+          }
+        ]
+      },
+      "exact_cited_draws": 2,
+      "identity_cited_draws": 3,
+      "citations_per_draw": [4, 5, 5],
+      "ungrounded_citations": [],
+      "grounding_rate_mean": 1.0,
+      "grounding_rate_per_draw": [1.0, 1.0, 1.0],
+      "refusals": 0,
+      "prompt_tokens": 16157.0,
+      "completion_tokens": 1565.6666666666667,
+      "context_chars": 36569,
+      "context_chunks": 8,
+      "cost_usd": {
+        "router_usd": 0.0,
+        "planner_usd": 0.000227,
+        "embed_usd": 2.2e-5,
+        "rerank_usd": 0.004087,
+        "writer_usd": 0.0,
+        "validator_usd": 0.005632
+      },
+      "judge_usd": 0.0056321999999999995,
+      "generation_usd_per_draw": 0.006726,
+      "per_answer_usd": 0.016694,
+      "per_answer_micro_usd": 16694.5
+    },
+    {
+      "question_id": "gs-v0-022",
+      "question": "Siapa yang harus diutamakan: istri atau ibu?",
+      "kind": "comparison (istri/ibu)",
+      "arm": "B",
+      "draws": 3,
+      "obligations": 5,
+      "obligations_supported": 2,
+      "obligation_readings": [
+        {
+          "id": "O1",
+          "supported": true,
+          "evidence": ["E12", "E13", "E14", "E17", "E38", "E40"],
+          "answer_cites": null,
+          "reason": "Hadis-hadis menyebut ibu didahulukan sebelum ayah dalam berbakti."
+        },
+        {
+          "id": "O2",
+          "supported": true,
+          "evidence": ["E12", "E13", "E14", "E17", "E38", "E40"],
+          "answer_cites": null,
+          "reason": "Hadis menyebut ibu tiga kali lalu ayah sebagai yang paling berhak dibakti."
+        },
+        {
+          "id": "O3",
+          "supported": false,
+          "evidence": [],
+          "answer_cites": null,
+          "reason": "Tidak ada bukti yang secara eksplisit membandingkan hak ibu dan hak istri."
+        },
+        {
+          "id": "O4",
+          "supported": false,
+          "evidence": [],
+          "answer_cites": null,
+          "reason": "Tidak ada bukti yang merinci kapan istri didahulukan dan kapan ibu didahulukan."
+        },
+        {
+          "id": "O5",
+          "supported": false,
+          "evidence": [],
+          "answer_cites": null,
+          "reason": "Tidak ada bukti yang menyatakan kewajiban menunaikan hak istri dan ibu bersamaan tanpa menzalimi."
+        }
+      ],
+      "exact_context": {
+        "in_context": true,
+        "cited": false,
+        "detail": [
+          {
+            "group": ["hr. bukhari no. 5971"],
+            "in_context": ["hr. bukhari no. 5971"],
+            "cited": []
+          }
+        ]
+      },
+      "identity_context": {
+        "in_context": true,
+        "cited": false,
+        "detail": [
+          {
+            "group": [
+              "hr. abudawud no. 2277",
+              "hr. bukhari no. 5971",
+              "hr. bukhari no. 6636",
+              "hr. bukhari no. 6979",
+              "hr. bukhari no. 7197",
+              "hr. ibnmajah no. 2706",
+              "hr. ibnmajah no. 3658",
+              "hr. nasai no. 2532",
+              "hr. nasai no. 3496"
+            ],
+            "in_context": ["hr. bukhari no. 5971", "hr. ibnmajah no. 3658"],
+            "cited": []
+          }
+        ]
+      },
+      "exact_cited_draws": 1,
+      "identity_cited_draws": 1,
+      "citations_per_draw": [0, 7, 0],
+      "ungrounded_citations": [],
+      "grounding_rate_mean": 1.0,
+      "grounding_rate_per_draw": [1.0],
+      "refusals": 2,
+      "prompt_tokens": 45612.0,
+      "completion_tokens": 894.6666666666666,
+      "context_chars": 52262,
+      "context_chunks": 46,
+      "cost_usd": {
+        "router_usd": 0.000367,
+        "planner_usd": 0.0,
+        "embed_usd": 1.1e-5,
+        "rerank_usd": 0.000658,
+        "writer_usd": 0.0,
+        "validator_usd": 0.0
+      },
+      "judge_usd": 0.0072969,
+      "generation_usd_per_draw": 0.014757,
+      "per_answer_usd": 0.015793,
+      "per_answer_micro_usd": 15793.3
+    },
+    {
+      "question_id": "gs-v0-022",
+      "question": "Siapa yang harus diutamakan: istri atau ibu?",
+      "kind": "comparison (istri/ibu)",
+      "arm": "B2",
+      "draws": 3,
+      "obligations": 5,
+      "obligations_supported": 2,
+      "obligation_readings": [
+        {
+          "id": "O1",
+          "supported": true,
+          "evidence": ["E18", "E19", "E20", "E22", "E26", "E29", "E47"],
+          "answer_cites": "E19",
+          "reason": "Hadis-hadis menyebut ibu tiga kali sebelum ayah sebagai yang paling berhak dibakti."
+        },
+        {
+          "id": "O2",
+          "supported": true,
+          "evidence": ["E18", "E19", "E20", "E22", "E26", "E29", "E47"],
+          "answer_cites": "E19",
+          "reason": "Hadis Abu Hurairah menyebut ibu, ibu, ibu, lalu ayah."
+        },
+        {
+          "id": "O3",
+          "supported": false,
+          "evidence": [],
+          "answer_cites": null,
+          "reason": "Tidak ada bukti yang secara eksplisit membandingkan hak ibu dan hak istri."
+        },
+        {
+          "id": "O4",
+          "supported": false,
+          "evidence": [],
+          "answer_cites": null,
+          "reason": "Tidak ada bukti yang merinci kapan istri didahulukan dan kapan ibu didahulukan."
+        },
+        {
+          "id": "O5",
+          "supported": false,
+          "evidence": [],
+          "answer_cites": null,
+          "reason": "Tidak ada bukti yang menyatakan kewajiban menunaikan hak keduanya sekaligus tanpa menzalimi."
+        }
+      ],
+      "exact_context": {
+        "in_context": true,
+        "cited": false,
+        "detail": [
+          {
+            "group": ["hr. bukhari no. 5971"],
+            "in_context": ["hr. bukhari no. 5971"],
+            "cited": []
+          }
+        ]
+      },
+      "identity_context": {
+        "in_context": true,
+        "cited": false,
+        "detail": [
+          {
+            "group": [
+              "hr. abudawud no. 2277",
+              "hr. bukhari no. 5971",
+              "hr. bukhari no. 6636",
+              "hr. bukhari no. 6979",
+              "hr. bukhari no. 7197",
+              "hr. ibnmajah no. 2706",
+              "hr. ibnmajah no. 3658",
+              "hr. nasai no. 2532",
+              "hr. nasai no. 3496"
+            ],
+            "in_context": ["hr. bukhari no. 5971", "hr. ibnmajah no. 3658"],
+            "cited": []
+          }
+        ]
+      },
+      "exact_cited_draws": 2,
+      "identity_cited_draws": 2,
+      "citations_per_draw": [5, 0, 5],
+      "ungrounded_citations": [],
+      "grounding_rate_mean": 1.0,
+      "grounding_rate_per_draw": [1.0, 1.0],
+      "refusals": 1,
+      "prompt_tokens": 32069.333333333332,
+      "completion_tokens": 750.6666666666666,
+      "context_chars": 55136,
+      "context_chunks": 53,
+      "cost_usd": {
+        "router_usd": 0.000367,
+        "planner_usd": 0.0,
+        "embed_usd": 1.3e-5,
+        "rerank_usd": 0.000718,
+        "writer_usd": 0.0,
+        "validator_usd": 0.0
+      },
+      "judge_usd": 0.0080949,
+      "generation_usd_per_draw": 0.010522,
+      "per_answer_usd": 0.01162,
+      "per_answer_micro_usd": 11620.2
+    },
+    {
+      "question_id": "gs-v0-022",
+      "question": "Siapa yang harus diutamakan: istri atau ibu?",
+      "kind": "comparison (istri/ibu)",
+      "arm": "P",
+      "draws": 3,
+      "obligations": 5,
+      "obligations_supported": 2,
+      "obligation_readings": [
+        {
+          "id": "O1",
+          "supported": true,
+          "evidence": ["E1", "E4", "E5", "E8", "E9", "E10"],
+          "answer_cites": "E1",
+          "reason": "Hadis-hadis menyebut ibu didahulukan tiga kali sebelum ayah dalam berbakti."
+        },
+        {
+          "id": "O2",
+          "supported": true,
+          "evidence": ["E1", "E4", "E5", "E8", "E9", "E10"],
+          "answer_cites": "E8",
+          "reason": "Hadis riwayat Bukhari, Muslim, Tirmidhi, Abu Dawud, dan Ibn Majah menyebut urutan ibu, ibu, ibu, lalu ayah."
+        },
+        {
+          "id": "O3",
+          "supported": false,
+          "evidence": [],
+          "answer_cites": null,
+          "reason": "Tidak ada bukti yang secara eksplisit membandingkan hak ibu dan hak istri."
+        },
+        {
+          "id": "O4",
+          "supported": false,
+          "evidence": ["E2", "E3", "E6"],
+          "answer_cites": null,
+          "reason": "Ayat-ayat yang diambil tidak menjelaskan kapan istri didahulukan dan kapan ibu didahulukan."
+        },
+        {
+          "id": "O5",
+          "supported": false,
+          "evidence": ["E7", "E9"],
+          "answer_cites": null,
+          "reason": "Bukti tidak secara eksplisit menyatakan kewajiban menunaikan hak istri dan ibu bersamaan tanpa menzalimi."
+        }
+      ],
+      "exact_context": {
+        "in_context": true,
+        "cited": false,
+        "detail": [
+          {
+            "group": ["hr. bukhari no. 5971"],
+            "in_context": ["hr. bukhari no. 5971"],
+            "cited": []
+          }
+        ]
+      },
+      "identity_context": {
+        "in_context": true,
+        "cited": false,
+        "detail": [
+          {
+            "group": [
+              "hr. abudawud no. 2277",
+              "hr. bukhari no. 5971",
+              "hr. bukhari no. 6636",
+              "hr. bukhari no. 6979",
+              "hr. bukhari no. 7197",
+              "hr. ibnmajah no. 2706",
+              "hr. ibnmajah no. 3658",
+              "hr. nasai no. 2532",
+              "hr. nasai no. 3496"
+            ],
+            "in_context": ["hr. bukhari no. 5971", "hr. ibnmajah no. 3658"],
+            "cited": []
+          }
+        ]
+      },
+      "exact_cited_draws": 3,
+      "identity_cited_draws": 3,
+      "citations_per_draw": [10, 8, 10],
+      "ungrounded_citations": [],
+      "grounding_rate_mean": 1.0,
+      "grounding_rate_per_draw": [1.0, 1.0, 1.0],
+      "refusals": 0,
+      "prompt_tokens": 5021.0,
+      "completion_tokens": 2921.6666666666665,
+      "context_chars": 9181,
+      "context_chunks": 10,
+      "cost_usd": {
+        "router_usd": 0.0,
+        "planner_usd": 0.000269,
+        "embed_usd": 2.9e-5,
+        "rerank_usd": 0.001488,
+        "writer_usd": 0.0,
+        "validator_usd": 0.002843
+      },
+      "judge_usd": 0.0028428000000000004,
+      "generation_usd_per_draw": 0.005012,
+      "per_answer_usd": 0.009641,
+      "per_answer_micro_usd": 9641.4
+    },
+    {
+      "question_id": "gs-v0-016",
+      "question": "Which hadith describes the obligations of Zakat, and what does it say?",
+      "kind": "ruling (zakat obligations)",
+      "arm": "B",
+      "draws": 3,
+      "obligations": 4,
+      "obligations_supported": 3,
+      "obligation_readings": [
+        {
+          "id": "O1",
+          "supported": true,
+          "evidence": ["E2", "E4", "E14", "E19", "E20", "E21", "E22"],
+          "answer_cites": "E4",
+          "reason": "Multiple hadiths list zakat among the five pillars on which Islam is built."
+        },
+        {
+          "id": "O2",
+          "supported": true,
+          "evidence": ["E2", "E4", "E14", "E19", "E20", "E21", "E22"],
+          "answer_cites": "E2",
+          "reason": "The hadiths establish zakat as one of the five obligatory pillars of Islam."
+        },
+        {
+          "id": "O3",
+          "supported": true,
+          "evidence": ["E16", "E17"],
+          "answer_cites": null,
+          "reason": "Hadiths state no zakat is due on a Muslim's horse or slave, indicating scope of zakatable wealth."
+        },
+        {
+          "id": "O4",
+          "supported": false,
+          "evidence": [],
+          "answer_cites": null,
+          "reason": "No passage defines the legal meaning of zakat."
+        }
+      ],
+      "exact_context": {
+        "in_context": false,
+        "cited": false,
+        "detail": [
+          {
+            "group": ["hr. bukhari no. 1395"],
+            "in_context": [],
+            "cited": []
+          }
+        ]
+      },
+      "identity_context": {
+        "in_context": false,
+        "cited": false,
+        "detail": [
+          {
+            "group": ["hr. bukhari no. 1395"],
+            "in_context": [],
+            "cited": []
+          }
+        ]
+      },
+      "exact_cited_draws": 0,
+      "identity_cited_draws": 0,
+      "citations_per_draw": [4, 5, 9],
+      "ungrounded_citations": [],
+      "grounding_rate_mean": 1.0,
+      "grounding_rate_per_draw": [1.0, 1.0, 1.0],
+      "refusals": 0,
+      "prompt_tokens": 20008.0,
+      "completion_tokens": 2070.3333333333335,
+      "context_chars": 46155,
+      "context_chunks": 24,
+      "cost_usd": {
+        "router_usd": 0.000313,
+        "planner_usd": 0.0,
+        "embed_usd": 7e-6,
+        "rerank_usd": 0.000603,
+        "writer_usd": 0.0,
+        "validator_usd": 0.0
+      },
+      "judge_usd": 0.006679200000000001,
+      "generation_usd_per_draw": 0.008487,
+      "per_answer_usd": 0.009409,
+      "per_answer_micro_usd": 9408.6
+    },
+    {
+      "question_id": "gs-v0-016",
+      "question": "Which hadith describes the obligations of Zakat, and what does it say?",
+      "kind": "ruling (zakat obligations)",
+      "arm": "P",
+      "draws": 1,
+      "obligations": 4,
+      "obligations_supported": 4,
+      "obligation_readings": [
+        {
+          "id": "O1",
+          "supported": true,
+          "evidence": ["E1", "E3", "E4", "E5"],
+          "answer_cites": "E1",
+          "reason": "E1 and parallel hadiths state Islam is built on five pillars including giving zakat."
+        },
+        {
+          "id": "O2",
+          "supported": true,
+          "evidence": ["E1", "E3", "E4", "E5", "E2"],
+          "answer_cites": "E5",
+          "reason": "E5 and others list zakat among the five pillars, establishing its obligation."
+        },
+        {
+          "id": "O3",
+          "supported": true,
+          "evidence": ["E8", "E9", "E6", "E7"],
+          "answer_cites": "E8",
+          "reason": "E8 and E9 detail nisab and categories of wealth subject to zakat."
+        },
+        {
+          "id": "O4",
+          "supported": true,
+          "evidence": ["E6", "E7"],
+          "answer_cites": "E6",
+          "reason": "E6 and E7 describe zakat's legal nature regarding recipients and debt."
+        }
+      ],
+      "exact_context": {
+        "in_context": false,
+        "cited": false,
+        "detail": [
+          {
+            "group": ["hr. bukhari no. 1395"],
+            "in_context": [],
+            "cited": []
+          }
+        ]
+      },
+      "identity_context": {
+        "in_context": false,
+        "cited": false,
+        "detail": [
+          {
+            "group": ["hr. bukhari no. 1395"],
+            "in_context": [],
+            "cited": []
+          }
+        ]
+      },
+      "exact_cited_draws": 0,
+      "identity_cited_draws": 0,
+      "citations_per_draw": [9],
+      "ungrounded_citations": [],
+      "grounding_rate_mean": 1.0,
+      "grounding_rate_per_draw": [1.0],
+      "refusals": 0,
+      "prompt_tokens": 12244.0,
+      "completion_tokens": 3025.0,
+      "context_chars": 27954,
+      "context_chunks": 9,
+      "cost_usd": {
+        "router_usd": 0.0,
+        "planner_usd": 0.000197,
+        "embed_usd": 2.6e-5,
+        "rerank_usd": 0.002464,
+        "writer_usd": 0.0,
+        "validator_usd": 0.00475
+      },
+      "judge_usd": 0.0047501999999999996,
+      "generation_usd_per_draw": 0.007303,
+      "per_answer_usd": 0.014741,
+      "per_answer_micro_usd": 14740.6
+    },
+    {
+      "question_id": "gs-v0-006",
+      "question": "Apakah menjamak shalat saat safar diperbolehkan? Sebutkan dalilnya.",
+      "kind": "ruling with dalil (jamak)",
+      "arm": "B",
+      "draws": 1,
+      "obligations": 4,
+      "obligations_supported": 4,
+      "obligation_readings": [
+        {
+          "id": "O1",
+          "supported": true,
+          "evidence": ["E6", "E7", "E9", "E10", "E25", "E29", "E37"],
+          "answer_cites": "E6",
+          "reason": "Hadis-hadis menunjukkan Nabi menjamak shalat dalam safar, menetapkan kebolehannya."
+        },
+        {
+          "id": "O2",
+          "supported": true,
+          "evidence": ["E6", "E9", "E10", "E25", "E29", "E37", "E42"],
+          "answer_cites": "E6",
+          "reason": "Jawaban mengutip hadis Muslim 1624, Bukhari 1108, Ibn Majah 1070, dan Muslim 1630 sebagai dalil."
+        },
+        {
+          "id": "O3",
+          "supported": true,
+          "evidence": ["E6", "E9", "E16", "E18", "E27", "E33", "E42"],
+          "answer_cites": null,
+          "reason": "Bukti menyebut kondisi safar dan tergesa-gesa, namun jawaban tidak merinci syarat dan ketentuan secara eksplisit."
+        },
+        {
+          "id": "O4",
+          "supported": true,
+          "evidence": ["E16", "E18", "E33", "E42"],
+          "answer_cites": null,
+          "reason": "Bukti memuat contoh taqdim dan takhir, tetapi jawaban tidak membandingkan keduanya secara eksplisit."
+        }
+      ],
+      "exact_context": {
+        "in_context": true,
+        "cited": false,
+        "detail": [
+          {
+            "group": ["hr. bukhari no. 1108"],
+            "in_context": ["hr. bukhari no. 1108"],
+            "cited": []
+          }
+        ]
+      },
+      "identity_context": {
+        "in_context": true,
+        "cited": false,
+        "detail": [
+          {
+            "group": [
+              "hr. bukhari no. 1108",
+              "hr. bukhari no. 1109",
+              "hr. bukhari no. 1110",
+              "hr. muslim no. 1621",
+              "hr. muslim no. 1624"
+            ],
+            "in_context": [
+              "hr. bukhari no. 1108",
+              "hr. bukhari no. 1109",
+              "hr. muslim no. 1621",
+              "hr. muslim no. 1624"
+            ],
+            "cited": []
+          }
+        ]
+      },
+      "exact_cited_draws": 1,
+      "identity_cited_draws": 1,
+      "citations_per_draw": [6],
+      "ungrounded_citations": [],
+      "grounding_rate_mean": 1.0,
+      "grounding_rate_per_draw": [1.0],
+      "refusals": 0,
+      "prompt_tokens": 21823.0,
+      "completion_tokens": 1416.0,
+      "context_chars": 50464,
+      "context_chunks": 42,
+      "cost_usd": {
+        "router_usd": 0.00034,
+        "planner_usd": 0.0,
+        "embed_usd": 8e-6,
+        "rerank_usd": 0.000682,
+        "writer_usd": 0.0,
+        "validator_usd": 0.0
+      },
+      "judge_usd": 0.007424399999999999,
+      "generation_usd_per_draw": 0.008246,
+      "per_answer_usd": 0.009275,
+      "per_answer_micro_usd": 9275.4
+    },
+    {
+      "question_id": "gs-v0-006",
+      "question": "Apakah menjamak shalat saat safar diperbolehkan? Sebutkan dalilnya.",
+      "kind": "ruling with dalil (jamak)",
+      "arm": "P",
+      "draws": 1,
+      "obligations": 4,
+      "obligations_supported": 3,
+      "obligation_readings": [
+        {
+          "id": "O1",
+          "supported": true,
+          "evidence": ["E1", "E2"],
+          "answer_cites": "E2",
+          "reason": "E2 menyatakan jamak zhuhur-ashar dalam safar tidak masalah, dan E1 menyebut Nabi menjamak dua shalat dalam safar."
+        },
+        {
+          "id": "O2",
+          "supported": true,
+          "evidence": ["E4"],
+          "answer_cites": "E4",
+          "reason": "E4 adalah hadis Anas tentang Nabi mengakhirkan zhuhur ke awal ashar lalu menjamak saat safar."
+        },
+        {
+          "id": "O3",
+          "supported": true,
+          "evidence": ["E3", "E5"],
+          "answer_cites": "E3",
+          "reason": "E3 dan E5 menyebut ketentuan jamak saat tergesa-gesa/menyegerakan perjalanan."
+        },
+        {
+          "id": "O4",
+          "supported": false,
+          "evidence": [],
+          "answer_cites": null,
+          "reason": "Tidak ada bukti yang membedakan jamak taqdim dan jamak takhir."
+        }
+      ],
+      "exact_context": {
+        "in_context": false,
+        "cited": false,
+        "detail": [
+          {
+            "group": ["hr. bukhari no. 1108"],
+            "in_context": [],
+            "cited": []
+          }
+        ]
+      },
+      "identity_context": {
+        "in_context": true,
+        "cited": false,
+        "detail": [
+          {
+            "group": [
+              "hr. bukhari no. 1108",
+              "hr. bukhari no. 1109",
+              "hr. bukhari no. 1110",
+              "hr. muslim no. 1621",
+              "hr. muslim no. 1624"
+            ],
+            "in_context": ["hr. muslim no. 1624"],
+            "cited": []
+          }
+        ]
+      },
+      "exact_cited_draws": 0,
+      "identity_cited_draws": 1,
+      "citations_per_draw": [5],
+      "ungrounded_citations": [],
+      "grounding_rate_mean": 1.0,
+      "grounding_rate_per_draw": [1.0],
+      "refusals": 0,
+      "prompt_tokens": 2601.0,
+      "completion_tokens": 628.0,
+      "context_chars": 4112,
+      "context_chunks": 5,
+      "cost_usd": {
+        "router_usd": 0.0,
+        "planner_usd": 0.0002,
+        "embed_usd": 2.2e-5,
+        "rerank_usd": 0.001643,
+        "writer_usd": 0.0,
+        "validator_usd": 0.001069
+      },
+      "judge_usd": 0.0010685999999999998,
+      "generation_usd_per_draw": 0.001534,
+      "per_answer_usd": 0.004468,
+      "per_answer_micro_usd": 4468.2
+    },
+    {
+      "question_id": "q-ruling",
+      "question": "Apa hukum zakat fitrah dan zakat mal, dan siapa yang wajib mengeluarkannya?",
+      "kind": "multi-part ruling (zakat fitrah + zakat mal)",
+      "arm": "B",
+      "draws": 1,
+      "obligations": 5,
+      "obligations_supported": 5,
+      "obligation_readings": [
+        {
+          "id": "O1",
+          "supported": true,
+          "evidence": ["E8", "E10", "E11", "E13", "E14", "E15", "E16", "E17", "E25"],
+          "answer_cites": "E8",
+          "reason": "Hadits-hadits menyatakan Rasulullah mewajibkan zakat fitrah atas setiap muslim."
+        },
+        {
+          "id": "O2",
+          "supported": true,
+          "evidence": ["E20", "E21", "E31", "E27"],
+          "answer_cites": "E20",
+          "reason": "Bukti menyebut kewajiban zakat pada nishab tertentu (20 dinar/200 dirham) dan haul."
+        },
+        {
+          "id": "O3",
+          "supported": true,
+          "evidence": ["E8", "E16", "E25", "E7", "E10"],
+          "answer_cites": "E8",
+          "reason": "Hadits merinci zakat fitrah wajib atas setiap muslim merdeka/budak, laki/perempuan, kecil/dewasa, dan tanggungan nafkah."
+        },
+        {
+          "id": "O4",
+          "supported": true,
+          "evidence": ["E20", "E21", "E31", "E9"],
+          "answer_cites": "E20",
+          "reason": "Bukti menjelaskan syarat nishab dan haul serta pengecualian orang berutang."
+        },
+        {
+          "id": "O5",
+          "supported": true,
+          "evidence": ["E3", "E4", "E2", "E6", "E8", "E16", "E22"],
+          "answer_cites": "E3",
+          "reason": "Ayat dan hadis tentang kewajiban zakat mal dan zakat fitrah dikutip dalam bukti."
+        }
+      ],
+      "exact_context": {
+        "in_context": false,
+        "cited": false,
+        "detail": [
+          {
+            "group": ["hr. bukhari no. 1503"],
+            "in_context": [],
+            "cited": []
+          },
+          {
+            "group": ["hr. bukhari no. 1395"],
+            "in_context": [],
+            "cited": []
+          }
+        ]
+      },
+      "identity_context": {
+        "in_context": false,
+        "cited": false,
+        "detail": [
+          {
+            "group": ["hr. bukhari no. 1503"],
+            "in_context": [],
+            "cited": []
+          },
+          {
+            "group": ["hr. bukhari no. 1395"],
+            "in_context": [],
+            "cited": []
+          }
+        ]
+      },
+      "exact_cited_draws": 0,
+      "identity_cited_draws": 0,
+      "citations_per_draw": [15],
+      "ungrounded_citations": [],
+      "grounding_rate_mean": 1.0,
+      "grounding_rate_per_draw": [1.0],
+      "refusals": 0,
+      "prompt_tokens": 25145.0,
+      "completion_tokens": 2343.0,
+      "context_chars": 52917,
+      "context_chunks": 35,
+      "cost_usd": {
+        "router_usd": 0.000347,
+        "planner_usd": 0.0,
+        "embed_usd": 9e-6,
+        "rerank_usd": 0.001101,
+        "writer_usd": 0.0,
+        "validator_usd": 0.0
+      },
+      "judge_usd": 0.008759399999999999,
+      "generation_usd_per_draw": 0.010355,
+      "per_answer_usd": 0.011813,
+      "per_answer_micro_usd": 11812.5
+    },
+    {
+      "question_id": "q-ruling",
+      "question": "Apa hukum zakat fitrah dan zakat mal, dan siapa yang wajib mengeluarkannya?",
+      "kind": "multi-part ruling (zakat fitrah + zakat mal)",
+      "arm": "B2",
+      "draws": 1,
+      "obligations": 5,
+      "obligations_supported": 5,
+      "obligation_readings": [
+        {
+          "id": "O1",
+          "supported": true,
+          "evidence": ["E8", "E9", "E10", "E11", "E12", "E13", "E14", "E15", "E35", "E37"],
+          "answer_cites": "E8",
+          "reason": "Hadis-hadis menyatakan zakat fitrah diwajibkan atas setiap muslim."
+        },
+        {
+          "id": "O2",
+          "supported": true,
+          "evidence": ["E19", "E20", "E34"],
+          "answer_cites": "E19",
+          "reason": "Bukti menyebut kewajiban zakat pada nisab tertentu dan setelah haul."
+        },
+        {
+          "id": "O3",
+          "supported": true,
+          "evidence": ["E8", "E9", "E10", "E11", "E12", "E13", "E14", "E15", "E35", "E37"],
+          "answer_cites": "E8",
+          "reason": "Hadis merinci zakat fitrah wajib atas muslim merdeka/hamba, laki/perempuan, kecil/dewasa."
+        },
+        {
+          "id": "O4",
+          "supported": true,
+          "evidence": ["E19", "E20", "E34"],
+          "answer_cites": "E19",
+          "reason": "Bukti menyebut pemilik harta mencapai nisab dan haul wajib zakat mal."
+        },
+        {
+          "id": "O5",
+          "supported": true,
+          "evidence": [
+            "E1",
+            "E2",
+            "E3",
+            "E5",
+            "E8",
+            "E9",
+            "E10",
+            "E11",
+            "E12",
+            "E13",
+            "E14",
+            "E15",
+            "E35",
+            "E37"
+          ],
+          "answer_cites": "E1",
+          "reason": "Jawaban mengutip ayat dan hadis tentang kewajiban zakat fitrah dan mal."
+        }
+      ],
+      "exact_context": {
+        "in_context": false,
+        "cited": false,
+        "detail": [
+          {
+            "group": ["hr. bukhari no. 1503"],
+            "in_context": [],
+            "cited": []
+          },
+          {
+            "group": ["hr. bukhari no. 1395"],
+            "in_context": [],
+            "cited": []
+          }
+        ]
+      },
+      "identity_context": {
+        "in_context": false,
+        "cited": false,
+        "detail": [
+          {
+            "group": ["hr. bukhari no. 1503"],
+            "in_context": [],
+            "cited": []
+          },
+          {
+            "group": ["hr. bukhari no. 1395"],
+            "in_context": [],
+            "cited": []
+          }
+        ]
+      },
+      "exact_cited_draws": 0,
+      "identity_cited_draws": 0,
+      "citations_per_draw": [13],
+      "ungrounded_citations": [],
+      "grounding_rate_mean": 1.0,
+      "grounding_rate_per_draw": [1.0],
+      "refusals": 0,
+      "prompt_tokens": 26178.0,
+      "completion_tokens": 1353.0,
+      "context_chars": 55329,
+      "context_chunks": 37,
+      "cost_usd": {
+        "router_usd": 0.000347,
+        "planner_usd": 0.0,
+        "embed_usd": 1.3e-5,
+        "rerank_usd": 0.001133,
+        "writer_usd": 0.0,
+        "validator_usd": 0.0
+      },
+      "judge_usd": 0.008803799999999999,
+      "generation_usd_per_draw": 0.009477,
+      "per_answer_usd": 0.01097,
+      "per_answer_micro_usd": 10969.7
+    },
+    {
+      "question_id": "q-ruling",
+      "question": "Apa hukum zakat fitrah dan zakat mal, dan siapa yang wajib mengeluarkannya?",
+      "kind": "multi-part ruling (zakat fitrah + zakat mal)",
+      "arm": "P",
+      "draws": 1,
+      "obligations": 5,
+      "obligations_supported": 4,
+      "obligation_readings": [
+        {
+          "id": "O1",
+          "supported": true,
+          "evidence": ["E1", "E2", "E3", "E4", "E6", "E9", "E10"],
+          "answer_cites": "E2",
+          "reason": "Hadis-hadis menyatakan zakat fitrah wajib/fardhu atas setiap muslim, meski E2 berlabel dhaif."
+        },
+        {
+          "id": "O2",
+          "supported": true,
+          "evidence": ["E5", "E8"],
+          "answer_cites": "E5",
+          "reason": "E5 menyebut zakat wajib pada 20 dinar/200 dirham dan haul, E8 menyebut kewajiban setelah satu tahun."
+        },
+        {
+          "id": "O3",
+          "supported": true,
+          "evidence": ["E1", "E3", "E4", "E6", "E9", "E10"],
+          "answer_cites": "E1",
+          "reason": "E1 menjelaskan kewajiban atas orang yang ditanggung nafkahnya dan syarat muslim, didukung hadis lain tentang merdeka/budak, laki/perempuan."
+        },
+        {
+          "id": "O4",
+          "supported": true,
+          "evidence": ["E5", "E8"],
+          "answer_cites": "E5",
+          "reason": "E5 dan E8 menyebut syarat nisab (20 dinar/200 dirham) dan haul satu tahun bagi zakat mal."
+        },
+        {
+          "id": "O5",
+          "supported": false,
+          "evidence": [],
+          "answer_cites": null,
+          "reason": "Tidak ada ayat Al-Quran dalam bukti; hanya hadis, sehingga dalil Al-Quran yang diminta tidak terpenuhi."
+        }
+      ],
+      "exact_context": {
+        "in_context": false,
+        "cited": false,
+        "detail": [
+          {
+            "group": ["hr. bukhari no. 1503"],
+            "in_context": [],
+            "cited": []
+          },
+          {
+            "group": ["hr. bukhari no. 1395"],
+            "in_context": [],
+            "cited": []
+          }
+        ]
+      },
+      "identity_context": {
+        "in_context": false,
+        "cited": false,
+        "detail": [
+          {
+            "group": ["hr. bukhari no. 1503"],
+            "in_context": [],
+            "cited": []
+          },
+          {
+            "group": ["hr. bukhari no. 1395"],
+            "in_context": [],
+            "cited": []
+          }
+        ]
+      },
+      "exact_cited_draws": 0,
+      "identity_cited_draws": 0,
+      "citations_per_draw": [11],
+      "ungrounded_citations": [],
+      "grounding_rate_mean": 1.0,
+      "grounding_rate_per_draw": [1.0],
+      "refusals": 0,
+      "prompt_tokens": 7797.0,
+      "completion_tokens": 3036.0,
+      "context_chars": 15219,
+      "context_chunks": 11,
+      "cost_usd": {
+        "router_usd": 0.0,
+        "planner_usd": 0.000253,
+        "embed_usd": 3.4e-5,
+        "rerank_usd": 0.003315,
+        "writer_usd": 0.0,
+        "validator_usd": 0.003519
+      },
+      "judge_usd": 0.0035187000000000005,
+      "generation_usd_per_draw": 0.005982,
+      "per_answer_usd": 0.013103,
+      "per_answer_micro_usd": 13102.9
+    }
+  ],
+  "spend": {
+    "calls": 162,
+    "prompt_tokens": 1921158,
+    "completion_tokens": 72854,
+    "usd": 0.491399,
+    "by_stage": {
+      "embed": 0.000163,
+      "generator:B": 0.147236,
+      "generator:B2": 0.113323,
+      "generator:B2:reread": 0.007228,
+      "generator:B:reread": 0.02371,
+      "planner": 0.001324,
+      "rerank": 0.026096,
+      "router": 0.002648,
+      "validator": 0.104216,
+      "writer": 0.065455
+    }
+  },
+  "identity_sources": {
+    "q-owner": "corpus query: text_id ILIKE '%jibril%' AND text_id ILIKE '%ihsan%'",
+    "q-tri": "same Jibril class",
+    "gs-v0-022": "corpus query: text_id ILIKE '%ibumu%' AND text_id ILIKE '%ayahmu%'",
+    "gs-v0-006": "hadith-identities-v0.json group combining-prayers-in-travel-maghrib-isha",
+    "gs-v0-016": "exact required label only (no signed group, no corpus class)",
+    "q-ruling": "exact required labels only"
+  }
+}
