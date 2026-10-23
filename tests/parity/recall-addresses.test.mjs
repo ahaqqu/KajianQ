@@ -57,7 +57,9 @@ const mean = (values) => values.reduce((sum, value) => sum + value, 0) / values.
 const typeRecallOf = (row) =>
   sourceTypeRecall(row.expectedSourceTypes, refsOf(row), sourceTypeOf(row));
 const addressRecallOf = (row) =>
-  citationAddressRecall(requiredById.get(row.questionId), refsOf(row), citationOf(row), GRAMMAR);
+  citationAddressRecall(requiredById.get(row.questionId), refsOf(row), citationOf(row), {
+    grammar: GRAMMAR,
+  });
 
 describe("recorded run — the two retrieval metrics", () => {
   it("carries the whole recorded run", () => {
@@ -155,12 +157,9 @@ describe("recorded run — the two retrieval metrics", () => {
         id.startsWith("a")
           ? added[Number(id.slice(1))]
           : (row.retrieved[Number(id.slice(1))]?.label ?? undefined);
-      const recall = citationAddressRecall(
-        requiredById.get(row.questionId),
-        refs,
-        labelOf,
-        GRAMMAR,
-      );
+      const recall = citationAddressRecall(requiredById.get(row.questionId), refs, labelOf, {
+        grammar: GRAMMAR,
+      });
       return { questionId: row.questionId, recall };
     });
     expect(mean(completed.map((row) => row.recall))).toBeCloseTo(0.75, 3);

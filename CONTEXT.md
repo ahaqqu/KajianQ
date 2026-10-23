@@ -36,6 +36,10 @@ _Avoid_: same hadith (ambiguous with the corpus row), parallel (unqualified)
 Two addresses that carry the same ruling or instruction but are not the same report — a different wording, occasion, or chain, so neither is a parallel chain of the other. Recorded as `same-ruling`: reported by the identity-satisfied measure, never a citation gate identity.
 _Avoid_: parallel chain (that is a same-report relation)
 
+**Verse pair**:
+Two Qur'an addresses the owner rules one piece of evidence, recorded together in a curated identity map with the pair's own rationale; the pair is the unit, so a verse outside it has no identity and no rule that merely shares a name admits another.
+_Avoid_: equivalent verse (unqualified), name match (that is not the curation)
+
 **Sharh**:
 A commentary written to explain a matn. Ingestion must distinguish sharh from matn and never mix them in one chunk.
 _Avoid_: commentary (ambiguous in English prose)

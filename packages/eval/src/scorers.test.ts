@@ -18,6 +18,7 @@ import type {
   CitationIdentity,
   TraceEventLike,
 } from "./harness-types";
+import { CitationAlternativesScopeError } from "./citation-alternatives";
 import { CitationGrammarError } from "./citation-grammar";
 import { CitationIdentityError } from "./citation-identity";
 import { identitySatisfiedCitationAddressRecall } from "./scorers-address";
@@ -117,10 +118,14 @@ describe("citationAddressRecall", () => {
     };
     const labels = ["QS. 1:1-3"];
     expect(
-      citationAddressRecall(["QS. 1:3"], retrieved(labels), citationOfFor(labels), rangeGrammar),
+      citationAddressRecall(["QS. 1:3"], retrieved(labels), citationOfFor(labels), {
+        grammar: rangeGrammar,
+      }),
     ).toBe(1);
     expect(
-      citationAddressRecall(["QS. 1:4"], retrieved(labels), citationOfFor(labels), rangeGrammar),
+      citationAddressRecall(["QS. 1:4"], retrieved(labels), citationOfFor(labels), {
+        grammar: rangeGrammar,
+      }),
     ).toBe(0);
   });
 
@@ -132,12 +137,9 @@ describe("citationAddressRecall", () => {
     };
     const labels = ["SRC. Alpha no. 1 (Graded)"];
     expect(
-      citationAddressRecall(
-        ["SRC. Alpha no. 1"],
-        retrieved(labels),
-        citationOfFor(labels),
+      citationAddressRecall(["SRC. Alpha no. 1"], retrieved(labels), citationOfFor(labels), {
         grammar,
-      ),
+      }),
     ).toBe(1);
   });
 
@@ -150,12 +152,9 @@ describe("citationAddressRecall", () => {
     };
     const labels = ["SRC. Alpha no. 1-2"];
     expect(
-      citationAddressRecall(
-        ["SRC. Alpha no. 1-2"],
-        retrieved(labels),
-        citationOfFor(labels),
-        unenumerable,
-      ),
+      citationAddressRecall(["SRC. Alpha no. 1-2"], retrieved(labels), citationOfFor(labels), {
+        grammar: unenumerable,
+      }),
     ).toBe(0);
   });
 
@@ -167,12 +166,9 @@ describe("citationAddressRecall", () => {
     };
     const labels = ["an opaque chunk label"];
     expect(
-      citationAddressRecall(
-        ["an opaque chunk label"],
-        retrieved(labels),
-        citationOfFor(labels),
-        noGrammarMatch,
-      ),
+      citationAddressRecall(["an opaque chunk label"], retrieved(labels), citationOfFor(labels), {
+        grammar: noGrammarMatch,
+      }),
     ).toBe(1);
   });
 
@@ -200,7 +196,9 @@ describe("citationAddressRecall", () => {
       labelsInText: () => [],
     } as unknown as CitationGrammar;
     const call = (required: string[]) =>
-      citationAddressRecall(required, [{ id: "c1" }], () => "SRC. Alpha no. 1", withoutDeclaration);
+      citationAddressRecall(required, [{ id: "c1" }], () => "SRC. Alpha no. 1", {
+        grammar: withoutDeclaration,
+      });
     expect(() => call(["SRC. Alpha no. 1"])).toThrow(CitationGrammarError);
     expect(() => call(["SRC. Alpha no. 1"])).toThrow(/addressesNamedBy/);
     // Guarded before the empty-required short-circuit, so no question escapes it.
@@ -1140,10 +1138,9 @@ describe("the opt-in any-of alternative set (D3)", () => {
     ).toBe(1);
     const labels = ["label-2"];
     expect(
-      citationAddressRecall(["label-1"], retrieved(...labels), citationOfFor(labels), undefined, [
-        "label-2",
-        "label-3",
-      ]),
+      citationAddressRecall(["label-1"], retrieved(...labels), citationOfFor(labels), {
+        alternatives: ["label-2", "label-3"],
+      }),
     ).toBe(1);
     // Without the opt-in set neither dimension moves: the alternative is not
     // silently accepted.
@@ -1158,6 +1155,53 @@ describe("the opt-in any-of alternative set (D3)", () => {
         alternatives: ["label-2", "label-3"],
       }),
     ).toBe(0);
+  });
+
+  it("refuses a set on a multi-requirement row instead of widening a sibling", () => {
+    // The schema rejects this shape at load; the scorers are package exports and
+    // `scoreQuestion` takes a hand-built question, so the boundary must refuse it
+    // too — otherwise the set would satisfy every requirement it was applied to.
+    const labels = ["label-1", "label-2"];
+    expect(() =>
+      citationAddressRecall(["req-1", "req-2"], retrieved(...labels), citationOfFor(labels), {
+        alternatives: ["label-1"],
+      }),
+    ).toThrow(CitationAlternativesScopeError);
+    expect(() =>
+      citationValidity(["req-1", "req-2"], "", {
+        frame: frame("label-1"),
+        alternatives: ["label-1"],
+      }),
+    ).toThrow(CitationAlternativesScopeError);
+    expect(() =>
+      identitySatisfiedCitationAddressRecall({
+        requiredCitations: ["req-1", "req-2"],
+        retrieved: retrieved(...labels),
+        citationOf: citationOfFor(labels),
+        identity: { identityOf: () => null },
+        alternatives: ["label-1"],
+      }),
+    ).toThrow(CitationAlternativesScopeError);
+    // Guarded before the empty-required short-circuit: a set with no requirement is
+    // as mis-shaped as one with two.
+    expect(() =>
+      citationAddressRecall([], [], () => undefined, { alternatives: ["label-1"] }),
+    ).toThrow(CitationAlternativesScopeError);
+    // The engine's own entry refuses it too: a hand-built question cannot smuggle a
+    // widening set past the schema.
+    expect(() =>
+      scoreQuestion(
+        {
+          ...question,
+          id: "gs-test-and",
+          requiredCitations: ["label-1", "label-2"],
+          citationAlternatives: ["label-1"],
+        },
+        "",
+        [],
+        { sourceTypeOf: () => undefined, citationOf: () => undefined, refusalMarkers: [] },
+      ),
+    ).toThrow(CitationAlternativesScopeError);
   });
 });
 

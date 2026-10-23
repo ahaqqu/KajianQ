@@ -156,6 +156,30 @@ describe("runGoldenSet", () => {
     }
   });
 
+  it("carries a ledger-write failure into the reported block — one verdict per row (A5)", async () => {
+    // The reported counterfactual is a verdict over the same evidence, so a write
+    // failure fails it with the gate's verdict: the row must not read `passed: false`
+    // beside an identity-satisfied pass the run itself counted as failed.
+    const { deps, getReport } = makeDeps({ failLedger: true });
+    const identity = {
+      identityOf: (label: string) => (label === "label-1" ? "same-report" : null),
+    };
+    const result = await runGoldenSet(set, {
+      ...deps,
+      citationIdentity: identity,
+      reportedCitationIdentity: identity,
+    });
+    const q1 = result.results.find((entry) => entry.questionId === "q1");
+    // The block exists at all only because the reported resolver was injected.
+    expect(q1?.identitySatisfied).toBeDefined();
+    for (const entry of result.results) {
+      expect(entry.passed).toBe(false);
+      expect(entry.identitySatisfied?.passed ?? false).toBe(false);
+    }
+    const report = getReport() as { identitySatisfiedPassed?: number };
+    expect(report.identitySatisfiedPassed).toBe(0);
+  });
+
   it("keeps the run and its report alive when the skip row's own write fails (A1)", async () => {
     // The skip path's ledger guard keeps a failed row from taking the run down: a
     // rethrow rejects the run, so `refreshRun` never runs and the rest go unmeasured.

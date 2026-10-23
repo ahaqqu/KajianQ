@@ -12,13 +12,12 @@ import type { CitationGrammar, TraceEventLike } from "./harness-types";
 
 /**
  * The identity/equivalence instruments' decisions, fed the packet's own per-row
- * inputs. The cited labels are **reported** — quoted from the QA audit of run
- * `5d47c85b`, whose traces were erased — and the retrieval presence is the audit's
- * recorded presence (the required address retrieved or absent, per row). Nothing
- * here is a run score: each case asserts what the instrument decides on those
- * inputs, which is the property the gate must hold whatever a future run returns.
- * Grade suffixes are omitted from the quoted labels because the gate's own fold
- * strips them; the decision is the same.
+ * inputs. The cited labels and the retrieval presence are **reported** inputs from
+ * the QA audit (the required address retrieved or absent, per row), so nothing here
+ * is a run score: each case asserts what the instrument decides on that evidence,
+ * which is the property the gate must hold whatever a future run returns. Grade
+ * suffixes are omitted from the quoted labels because the gate's own fold strips
+ * them; the decision is the same.
  *
  * The trust invariant under test: a cited address is gate-accepted only when it is
  * the requirement's own address (or a curated any-of alternative of it) or a signed

@@ -3,12 +3,12 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vite-plus/test";
 import {
   GATING_IDENTITY_RELATIONS,
-  HadithIdentityError,
   REPORTED_IDENTITY_RELATIONS,
   identityResolver,
   parseHadithIdentitySet,
   type HadithIdentitySet,
 } from "./hadith-identity";
+import { IdentityMapError } from "./identity-map";
 
 /**
  * The identity map's contract: a group is one report (`same-report`) or one
@@ -256,7 +256,7 @@ describe("parseHadithIdentitySet", () => {
         ...valid,
         groups: [{ ...group, members: ["QS. 2:255"] }],
       }),
-    ).toThrow(HadithIdentityError);
+    ).toThrow(IdentityMapError);
   });
 
   it("rejects a dash-joined range: one key names one corpus row, not two", () => {
@@ -346,7 +346,7 @@ describe("parseHadithIdentitySet", () => {
 
   it("rejects a member with no companion", () => {
     expect(() => parseHadithIdentitySet({ ...valid, groups: [{ ...group, members: [] }] })).toThrow(
-      HadithIdentityError,
+      IdentityMapError,
     );
   });
 
@@ -356,12 +356,10 @@ describe("parseHadithIdentitySet", () => {
         ...valid,
         groups: [{ ...group, members: ["HR. Bukhari no. 1"] }],
       }),
-    ).toThrow(HadithIdentityError);
+    ).toThrow(IdentityMapError);
   });
 
   it("rejects an unknown status", () => {
-    expect(() => parseHadithIdentitySet({ ...valid, status: "draft" })).toThrow(
-      HadithIdentityError,
-    );
+    expect(() => parseHadithIdentitySet({ ...valid, status: "draft" })).toThrow(IdentityMapError);
   });
 });

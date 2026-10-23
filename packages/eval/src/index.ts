@@ -48,6 +48,7 @@ export {
   runGoldenSet,
   scoreQuestion,
   buildReport,
+  identitySatisfiedSummary,
   type AnswerTraceSource,
   type ChatTransport,
   type HarnessDeps,

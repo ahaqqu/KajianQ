@@ -1,5 +1,15 @@
 import { normalizeCitationLabel } from "./chat-citation-normalize";
 import { parseHadithCitation } from "./hadith-source";
+import {
+  ClaimRegistry,
+  IdentityMapError,
+  claimEntryId,
+  requiredEntries,
+  requiredStatus,
+  requiredString,
+  requireRecord,
+  type IdentityMapStatus,
+} from "./identity-map";
 
 /**
  * The **canonical matn identities** of the hadiths the Golden Set requires. A
@@ -58,30 +68,15 @@ export type HadithIdentityGroup = {
 export type HadithIdentitySet = {
   id: string;
   /** "v0-draft" until the owner signs the content off, like the Golden Set. */
-  status: "v0-draft" | "canonical";
+  status: IdentityMapStatus;
   groups: readonly HadithIdentityGroup[];
 };
 
-/** Thrown when the identity map is malformed; the message names the field. */
-export class HadithIdentityError extends Error {
-  override readonly name = "HadithIdentityError";
-}
-
 const RELATIONS: readonly HadithIdentityRelation[] = ["same-report", "same-ruling"];
-
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
-
-function requiredString(value: unknown, field: string, source: string): string {
-  if (typeof value !== "string" || value.trim() === "") {
-    throw new HadithIdentityError(`${source}: ${field} must be a non-empty string`);
-  }
-  return value.trim();
-}
 
 function requiredRelation(value: unknown, source: string): HadithIdentityRelation {
   if (typeof value !== "string" || !RELATIONS.includes(value as HadithIdentityRelation)) {
-    throw new HadithIdentityError(
+    throw new IdentityMapError(
       `${source}: relation must be "same-report" or "same-ruling" (got ${JSON.stringify(value)})`,
     );
   }
@@ -115,63 +110,45 @@ export function parseHadithIdentitySet(
   input: unknown,
   source = "matn identity set",
 ): HadithIdentitySet {
-  if (!isRecord(input)) throw new HadithIdentityError(`${source}: must be an object`);
-  const id = requiredString(input["id"], "id", source);
-  const status = input["status"];
-  if (status !== "v0-draft" && status !== "canonical") {
-    throw new HadithIdentityError(`${source}: status must be "v0-draft" or "canonical"`);
-  }
-  if (!Array.isArray(input["groups"]) || input["groups"].length === 0) {
-    throw new HadithIdentityError(`${source}: groups must be a non-empty array`);
-  }
+  const record = requireRecord(input, source);
+  const id = requiredString(record["id"], "id", source);
+  const status = requiredStatus(record["status"], source);
+  const entries = requiredEntries(record, "groups", source);
 
-  const seen = new Map<HadithIdentityRelation, Map<string, string>>([
-    ["same-report", new Map()],
-    ["same-ruling", new Map()],
+  const claims = new Map<HadithIdentityRelation, ClaimRegistry>([
+    ["same-report", new ClaimRegistry("same-report")],
+    ["same-ruling", new ClaimRegistry("same-ruling")],
   ]);
   const groupIds = new Set<string>();
-  const groups = input["groups"].map((raw, index) => {
+  const groups = entries.map((raw, index) => {
     const where = `${source}: groups[${index}]`;
-    if (!isRecord(raw)) throw new HadithIdentityError(`${where} must be an object`);
-    const groupId = requiredString(raw["id"], "id", where);
-    if (groupIds.has(groupId)) {
-      throw new HadithIdentityError(`${where}: group id "${groupId}" is already used`);
-    }
-    groupIds.add(groupId);
-    const relation = requiredRelation(raw["relation"], where);
-    const rationale = requiredString(raw["rationale"], "rationale", where);
-    const canonical = requiredString(raw["canonical"], "canonical", where);
+    const group = requireRecord(raw, where);
+    const groupId = requiredString(group["id"], "id", where);
+    claimEntryId(groupIds, groupId, "group", where);
+    const relation = requiredRelation(group["relation"], where);
+    const rationale = requiredString(group["rationale"], "rationale", where);
+    const canonical = requiredString(group["canonical"], "canonical", where);
     if (!isSingleHadithCitation(canonical)) {
-      throw new HadithIdentityError(
+      throw new IdentityMapError(
         `${where}: canonical "${canonical}" is not a single hadith citation`,
       );
     }
-    if (!Array.isArray(raw["members"]) || raw["members"].length === 0) {
-      throw new HadithIdentityError(`${where}: members must be a non-empty array`);
-    }
-    const claimed = seen.get(relation)!;
+    const memberEntries = requiredEntries(group, "members", where);
+    const claimed = claims.get(relation)!;
     const canonicalKey = normalizeCitationLabel(canonical);
     const claim = (label: string, field: string): string => {
       const key = normalizeCitationLabel(label);
       if (!isSingleHadithCitation(label)) {
-        throw new HadithIdentityError(
-          `${where}: ${field} "${label}" is not a single hadith citation`,
-        );
+        throw new IdentityMapError(`${where}: ${field} "${label}" is not a single hadith citation`);
       }
-      const previous = claimed.get(key);
-      if (previous !== undefined) {
-        throw new HadithIdentityError(
-          `${where}: ${field} "${label}" is already claimed by "${previous}" as ${relation}`,
-        );
-      }
-      claimed.set(key, groupId);
+      claimed.claim({ key, owner: groupId, label, field, where });
       return key;
     };
     claim(canonical, "canonical");
-    const members = raw["members"].map((member, memberIndex) => {
+    const members = memberEntries.map((member, memberIndex) => {
       const label = requiredString(member, `members[${memberIndex}]`, where);
       if (normalizeCitationLabel(label) === canonicalKey) {
-        throw new HadithIdentityError(`${where}: members must not repeat the canonical "${label}"`);
+        throw new IdentityMapError(`${where}: members must not repeat the canonical "${label}"`);
       }
       claim(label, "member");
       return label;

@@ -81,9 +81,9 @@ export type HarnessDeps = {
   citationIdentity?: CitationIdentity;
   /** The broader resolver the REPORTED identity-satisfied block reads: every group
    * the gate may read plus those signed as the same ruling. Supplied only by a
-   * composition root that curates that relation; omitted, the reported block falls
-   * back to `citationIdentity`, so a same-report-only map reports the same relation
-   * it gates. Never read by `passed`. */
+   * composition root that curates that relation; omitted, no reported block is
+   * written, so a forgotten delivery publishes no figure rather than the gate's
+   * own relation under the reported name. Never read by `passed`. */
   reportedCitationIdentity?: CitationIdentity;
   /** The opaque `origin` label the domain pack puts on chunks its scope expansion
    * added (ADR-0045), supplied by the composition root — the engine must not
@@ -150,7 +150,12 @@ export async function runGoldenSet(set: GoldenSet, deps: HarnessDeps): Promise<H
       } catch (err) {
         // A write failure fails THIS question — its evidence was not persisted —
         // and never fabricates a skip. Only a transport/trace failure is a skip.
+        // The reported block is that same row's verdict over the same evidence, so
+        // it takes the same correction: one row never carries two verdicts.
         result.passed = false;
+        if (result.identitySatisfied !== undefined) {
+          result.identitySatisfied = { ...result.identitySatisfied, passed: false };
+        }
         result.notes = [ledgerFailureNote(err)];
       }
       results.push(result);
@@ -211,15 +216,35 @@ export type BuildReportRun = {
   costs: readonly CostRecordLike[];
 };
 
+const mean = (xs: readonly number[]): number | null =>
+  xs.length === 0 ? null : xs.reduce((a, b) => a + b, 0) / xs.length;
+
+/**
+ * The reported identity-satisfied figures over the scored rows that carry the
+ * block: how many would pass, how many were measured, and their mean address
+ * recall. `undefined` when no row carries one. One derivation for the persisted
+ * report and the CLI summary, so the printed figure and the stored one cannot
+ * drift apart.
+ */
+export function identitySatisfiedSummary(
+  scored: readonly EvalResultOutcome[],
+): { passed: number; measured: number; meanCitationAddressRecall: number | null } | undefined {
+  const blocks = scored.flatMap((row) =>
+    row.identitySatisfied === undefined ? [] : [row.identitySatisfied],
+  );
+  if (blocks.length === 0) return undefined;
+  return {
+    passed: blocks.filter((block) => block.passed).length,
+    measured: blocks.length,
+    meanCitationAddressRecall: mean(blocks.map((block) => block.citationAddressRecall)),
+  };
+}
+
 export function buildReport(set: GoldenSet, run: BuildReportRun): EvalRunReport {
-  const mean = (xs: readonly number[]): number | null =>
-    xs.length === 0 ? null : xs.reduce((a, b) => a + b, 0) / xs.length;
   const quoteFidelity = run.scored.flatMap((r) =>
     r.quoteFidelity === undefined ? [] : [r.quoteFidelity],
   );
-  const identitySatisfied = run.scored.flatMap((r) =>
-    r.identitySatisfied === undefined ? [] : [r.identitySatisfied],
-  );
+  const identitySatisfied = identitySatisfiedSummary(run.scored);
   return {
     runId: run.runId,
     setId: set.id,
@@ -244,13 +269,11 @@ export function buildReport(set: GoldenSet, run: BuildReportRun): EvalRunReport 
     ...(quoteFidelity.length > 0 ? { quoteFidelityMeasured: quoteFidelity.length } : {}),
     // REPORTED, never gating: the exact numbers above stay the gate's; these say what
     // the same run would read if a signed identity satisfied the requirement. Absent
-    // when no row carried the block (no identity map was injected).
-    ...(identitySatisfied.length > 0
+    // when no row carried the block (no reported identity map was injected).
+    ...(identitySatisfied !== undefined
       ? {
-          identitySatisfiedPassed: identitySatisfied.filter((row) => row.passed).length,
-          meanIdentitySatisfiedCitationAddressRecall: mean(
-            identitySatisfied.map((row) => row.citationAddressRecall),
-          ),
+          identitySatisfiedPassed: identitySatisfied.passed,
+          meanIdentitySatisfiedCitationAddressRecall: identitySatisfied.meanCitationAddressRecall,
         }
       : {}),
     costMicroUsd: run.costMicroUsd,

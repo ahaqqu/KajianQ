@@ -278,6 +278,30 @@ describe("printSummary (#290, #340)", () => {
     expect(printed).not.toContain("skipped: q1");
   });
 
+  it("prints the reported identity-satisfied figures beside the gate's counts", () => {
+    const block = (passed, citationAddressRecall) => ({
+      identitySatisfied: { citationAddressRecall, citationValidity: 1, passed },
+    });
+    const printed = printedSummary(
+      {
+        passed: 1,
+        failed: 1,
+        skipped: 0,
+        budgetExceeded: false,
+        results: [
+          scoredOutcome("gs-v0-015", { ...block(true, 1), passed: true }),
+          scoredOutcome("gs-v0-010", block(false, 0.5)),
+        ],
+      },
+      FIXTURE,
+    );
+    // Reported on the counts line, from the same derivation the run report persists:
+    // the measured count is the denominator, and the gate's means above are unmoved.
+    expect(printed).toContain(
+      "identity-satisfied (reported): 1 of 2 rows, mean address recall 0.750",
+    );
+  });
+
   it("leaves a passing run's summary unchanged (#340 acceptance: counts, means, expansion lines)", () => {
     const scoped = {
       questionId: "q3",

@@ -14,6 +14,26 @@ import {
   sourceTypeRecall,
 } from "./scorers";
 
+/** The one verdict composition: a question passes when its behaviour, citation
+ * validity and source-type recall are complete, and its address recall too unless
+ * the run gates only on the others (`gateAddressRecall: false`). The gate and the
+ * reported counterfactual call this same function with different citation
+ * readings, so a change to the acceptance rule cannot move one without the other. */
+function verdict(input: {
+  behavior: boolean;
+  citationValidity: number;
+  sourceTypeRecall: number;
+  addressRecall: number;
+  gateAddressRecall: boolean | undefined;
+}): boolean {
+  return (
+    input.behavior &&
+    input.citationValidity === 1 &&
+    input.sourceTypeRecall === 1 &&
+    (input.gateAddressRecall === false || input.addressRecall === 1)
+  );
+}
+
 /** Score one question from its answer text, trace events, and the citations frame
  * when the transport carried one. A question passes only when behaviour, both
  * recall dimensions and citation validity are all complete — the address dimension
@@ -23,8 +43,10 @@ import {
  * The `identitySatisfied` block is REPORTED, never gating: it repeats the address
  * and validity readings through the broader signed relation and derives the
  * counterfactual verdict, so an exact-address residual is visible as a number
- * without redefining `passed`. It is written only when the caller injected an
- * identity resolver; a run without one keeps its historical outcome shape. */
+ * without redefining `passed`. It is written only when the caller injected
+ * `reportedCitationIdentity`; a run without one keeps its historical outcome
+ * shape, so a composition root that forgets the reported resolver publishes no
+ * figure rather than the gate's relation under the reported name. */
 export function scoreQuestion(
   question: GoldenQuestion,
   answerText: string,
@@ -48,13 +70,10 @@ export function scoreQuestion(
   const chunks = retrieval?.detail?.chunks ?? [];
   const alternatives = question.citationAlternatives ?? [];
   const sourceTypes = sourceTypeRecall(question.expectedSourceTypes, chunks, deps.sourceTypeOf);
-  const addressRecall = citationAddressRecall(
-    question.requiredCitations,
-    chunks,
-    deps.citationOf,
-    deps.citationGrammar,
-    alternatives,
-  );
+  const addressRecall = citationAddressRecall(question.requiredCitations, chunks, deps.citationOf, {
+    ...(deps.citationGrammar !== undefined ? { grammar: deps.citationGrammar } : {}),
+    ...(alternatives.length > 0 ? { alternatives } : {}),
+  });
   const citations = citationValidity(question.requiredCitations, answerText, {
     frame,
     events,
@@ -65,11 +84,13 @@ export function scoreQuestion(
   const refused = detectRefusal(events, answerText, deps.refusalMarkers ?? []);
   const grounded = groundedAnswer({ frame, events });
   const correct = behaviorAccepted(question.expectedBehavior, refused, grounded);
-  const passed =
-    correct &&
-    citations === 1 &&
-    sourceTypes === 1 &&
-    (deps.gateAddressRecall === false || addressRecall === 1);
+  const passed = verdict({
+    behavior: correct,
+    citationValidity: citations,
+    sourceTypeRecall: sourceTypes,
+    addressRecall,
+    gateAddressRecall: deps.gateAddressRecall,
+  });
   const identitySatisfied = reportedIdentityOutcome({
     question,
     answerText,
@@ -104,11 +125,12 @@ export function scoreQuestion(
 
 /**
  * The reported identity-satisfied block: the address and validity readings through
- * the broader resolver, then the counterfactual verdict. Same gate composition as
- * `passed` — including the run's address-gating policy — so the two verdicts are
- * like-for-like and the difference is only which relation the citation dimensions
- * read. `undefined` when no identity was injected, because the block would then be
- * a copy of the exact numbers under a name that claims more.
+ * the broader resolver, then the counterfactual verdict from {@link verdict} — the
+ * same composition the gate uses, including the run's address-gating policy — so
+ * the two verdicts are like-for-like and the difference is only which relation the
+ * citation dimensions read. `undefined` when the caller injected no reported
+ * resolver, because the block would then be a copy of the gate's own numbers under
+ * a name that claims more. The gate resolver alone never stands in for it.
  */
 function reportedIdentityOutcome(input: {
   question: GoldenQuestion;
@@ -118,18 +140,14 @@ function reportedIdentityOutcome(input: {
   frame?: CitationFrameLike | null | undefined;
   deps: Pick<
     HarnessDeps,
-    | "citationOf"
-    | "citationGrammar"
-    | "citationIdentity"
-    | "reportedCitationIdentity"
-    | "gateAddressRecall"
+    "citationOf" | "citationGrammar" | "reportedCitationIdentity" | "gateAddressRecall"
   >;
   correct: boolean;
   sourceTypes: number;
   alternatives: readonly string[];
 }): EvalResultOutcome["identitySatisfied"] {
   const { question, deps } = input;
-  const identity = deps.reportedCitationIdentity ?? deps.citationIdentity;
+  const identity = deps.reportedCitationIdentity;
   if (identity === undefined) return undefined;
   const citationAddressRecallValue = identitySatisfiedCitationAddressRecall({
     requiredCitations: question.requiredCitations,
@@ -149,10 +167,12 @@ function reportedIdentityOutcome(input: {
   return {
     citationAddressRecall: citationAddressRecallValue,
     citationValidity: citationValidityValue,
-    passed:
-      input.correct &&
-      citationValidityValue === 1 &&
-      input.sourceTypes === 1 &&
-      (deps.gateAddressRecall === false || citationAddressRecallValue === 1),
+    passed: verdict({
+      behavior: input.correct,
+      citationValidity: citationValidityValue,
+      sourceTypeRecall: input.sourceTypes,
+      addressRecall: citationAddressRecallValue,
+      gateAddressRecall: deps.gateAddressRecall,
+    }),
   };
 }

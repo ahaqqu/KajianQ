@@ -192,12 +192,11 @@ export function failureLines(failed, questions) {
 
 /**
  * `costMicroUsd` is the settled figure: the ledger's record when it exists, else the live
- * budget — the ledger is authoritative once the row is written. `questions` is required.
- * `reportAddressMisses` is the reported-not-gated line: the smoke sets it because its
- * sample cannot decide the full set, and the misses are read from the run's own scored
- * outcomes — never a caller-supplied list — with the sample named as the line's scope.
- * Its denominator is the measured set — the scored rows carrying `citationAddressRecall`;
- * `eval:run`, which gates on that dimension, omits the switch.
+ * budget. `questions` is required. `reportAddressMisses` is the reported-not-gated address
+ * line: the smoke sets it because its sample cannot decide the full set, and the misses are
+ * read from the run's own outcomes — never a caller-supplied list — with the sample as the
+ * line's scope. The identity-satisfied figures are REPORTED beside the gate's counts, from
+ * the same derivation the run report persists, and absent when no row carried a block.
  */
 export function printSummary(
   prefix,
@@ -209,6 +208,7 @@ export function printSummary(
   const failed = scored.filter((x) => x.passed !== true);
   const addressMeasured = scored.filter(hasAddressRecall);
   const quoteMeasured = scored.filter((x) => x.quoteFidelity !== undefined);
+  const identitySatisfied = evalpkg.identitySatisfiedSummary(scored);
   const addressMisses = addressMeasured
     .filter((x) => x.citationAddressRecall < 1)
     .map((x) => x.questionId);
@@ -216,7 +216,7 @@ export function printSummary(
     [
       "",
       `${prefix} summary — run ${runId}`,
-      `  questions: ${questionCount}  passed: ${result.passed}  failed: ${result.failed}  skipped: ${result.skipped}`,
+      `  questions: ${questionCount}  passed: ${result.passed}  failed: ${result.failed}  skipped: ${result.skipped}${identitySatisfied === undefined ? "" : `  identity-satisfied (reported): ${identitySatisfied.passed} of ${identitySatisfied.measured} rows, mean address recall ${identitySatisfied.meanCitationAddressRecall?.toFixed(3) ?? "n/a"}`}`,
       `  mean source-type recall: ${mean(scored.map((x) => x.sourceTypeRecall))?.toFixed(3) ?? "n/a"}`,
       `  mean citation-address recall: ${
         mean(addressMeasured.map((x) => x.citationAddressRecall))?.toFixed(3) ?? "n/a"

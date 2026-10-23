@@ -1,3 +1,4 @@
+import { requireAlternativesScope } from "./citation-alternatives";
 import { requireCitationGrammar } from "./citation-grammar";
 import type {
   ChunkRefLike,
@@ -71,9 +72,11 @@ export function citationLabelsPresent(input: {
   alternatives?: readonly string[];
 }): string[] {
   const { required, answerText, frame, events, grammar, identity, alternatives = [] } = input;
-  // An unwired grammar fails loudly at the engine's grammar entry.
+  // An unwired grammar fails loudly at the engine's grammar entry, and so does a
+  // set that the row cannot bound to one requirement.
   if (grammar !== undefined) requireCitationGrammar(grammar);
   if (identity !== undefined) requireCitationIdentity(identity);
+  requireAlternativesScope(required, alternatives);
   const evidence = verifiedEvidenceLabels({ frame, events });
   if (evidence !== undefined) {
     return groundedLabels(required, evidence, grammar, identity, alternatives);
@@ -146,19 +149,21 @@ function groundedLabels(
   identity?: CitationIdentity,
   alternatives: readonly string[] = [],
 ): string[] {
-  const matches = (citation: string): boolean => {
-    if (grammar === undefined) {
-      return (
-        evidence.some((label) => label.includes(citation)) ||
-        sameIdentity(identity, citation, evidence)
-      );
-    }
-    const named = new Set(evidence.flatMap((label) => comparedAddressesOf(label, grammar) ?? []));
+  if (grammar === undefined) {
+    const textMatches = (citation: string): boolean =>
+      evidence.some((label) => label.includes(citation)) ||
+      sameIdentity(identity, citation, evidence);
+    return required.filter((citation) => [citation, ...alternatives].some(textMatches));
+  }
+  // One set per row: the evidence's addresses do not change per requirement, and
+  // every rebuild re-parses each evidence label through the grammar.
+  const named = new Set(evidence.flatMap((label) => comparedAddressesOf(label, grammar) ?? []));
+  const addressMatches = (citation: string): boolean => {
     const addresses = comparedAddressesOf(citation, grammar);
     if (addresses !== null && addresses.every((address) => named.has(address))) return true;
     return sameIdentity(identity, citation, evidence);
   };
-  return required.filter((citation) => [citation, ...alternatives].some(matches));
+  return required.filter((citation) => [citation, ...alternatives].some(addressMatches));
 }
 
 /** Whether one required citation names the same curated identity as any

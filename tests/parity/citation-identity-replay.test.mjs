@@ -1,18 +1,12 @@
 /// <reference types="node" />
-import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vite-plus/test";
 import { citationValidity } from "../../packages/eval/src/scorers";
 import {
   addressesNamedBy,
   citationCandidatesIn,
+  curatedIdentityResolvers,
   normalizeCitationLabel,
 } from "../../packages/kajianq-domain/src/index";
-import {
-  GATING_IDENTITY_RELATIONS,
-  parseHadithIdentitySet,
-} from "../../packages/kajianq-domain/src/hadith-identity";
-import { parseQuranIdentitySet } from "../../packages/kajianq-domain/src/quran-identity";
-import { citationIdentityResolver } from "../../packages/kajianq-domain/src/citation-identity";
 
 /**
  * The recorded full Golden Set run's citation evidence, replayed through the
@@ -21,6 +15,9 @@ import { citationIdentityResolver } from "../../packages/kajianq-domain/src/cita
  * whose relation is "same ruling" is signed and reported, but it is not a gate
  * identity — the gate's number stays the exact-address number it has always been.
  *
+ * The resolver comes from the domain pack's one loader, the same wiring `eval:run`
+ * runs, so this replay cannot pass against a composition production does not use.
+ *
  * The rows pin the boundary the identity rule has to hold: a parallel narration
  * of the required report scores 1, a report on the same subject with a different
  * wording stays 0, and the curated verse pair carries the two names of the
@@ -28,27 +25,7 @@ import { citationIdentityResolver } from "../../packages/kajianq-domain/src/cita
  * scores 1, and an unrelated report still scores 0.
  */
 
-const IDENTITIES = parseHadithIdentitySet(
-  JSON.parse(
-    readFileSync(
-      new URL("../../packages/kajianq-domain/fixtures/hadith-identities-v0.json", import.meta.url),
-      "utf8",
-    ),
-  ),
-  "hadith-identities-v0",
-);
-const VERSE_PAIRS = parseQuranIdentitySet(
-  JSON.parse(
-    readFileSync(
-      new URL("../../packages/kajianq-domain/fixtures/quran-identities-v0.json", import.meta.url),
-      "utf8",
-    ),
-  ),
-  "quran-identities-v0",
-);
-const identity = {
-  identityOf: citationIdentityResolver(IDENTITIES, VERSE_PAIRS, GATING_IDENTITY_RELATIONS),
-};
+const { gating: identity } = curatedIdentityResolvers();
 
 /** The domain's own citation grammar, injected here as the composition root does. */
 const grammar = {

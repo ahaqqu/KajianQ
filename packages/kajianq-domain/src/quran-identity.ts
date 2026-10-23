@@ -1,4 +1,14 @@
 import { normalizeCitationLabel } from "./chat-citation-normalize";
+import {
+  ClaimRegistry,
+  IdentityMapError,
+  claimEntryId,
+  requiredEntries,
+  requiredStatus,
+  requiredString,
+  requireRecord,
+  type IdentityMapStatus,
+} from "./identity-map";
 import { parseQuranCitation } from "./quran-source";
 
 /**
@@ -35,24 +45,9 @@ export type QuranIdentityPair = {
 export type QuranIdentitySet = {
   id: string;
   /** "v0-draft" until the owner signs the content off, like the Golden Set. */
-  status: "v0-draft" | "canonical";
+  status: IdentityMapStatus;
   pairs: readonly QuranIdentityPair[];
 };
-
-/** Thrown when the Qur'an identity map is malformed; the message names the field. */
-export class QuranIdentityError extends Error {
-  override readonly name = "QuranIdentityError";
-}
-
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
-
-function requiredString(value: unknown, field: string, source: string): string {
-  if (typeof value !== "string" || value.trim() === "") {
-    throw new QuranIdentityError(`${source}: ${field} must be a non-empty string`);
-  }
-  return value.trim();
-}
 
 /**
  * Whether a label names exactly one verse **in the corpus's own spelling**:
@@ -71,53 +66,37 @@ export function parseQuranIdentitySet(
   input: unknown,
   source = "quran identity set",
 ): QuranIdentitySet {
-  if (!isRecord(input)) throw new QuranIdentityError(`${source}: must be an object`);
-  const id = requiredString(input["id"], "id", source);
-  const status = input["status"];
-  if (status !== "v0-draft" && status !== "canonical") {
-    throw new QuranIdentityError(`${source}: status must be "v0-draft" or "canonical"`);
-  }
-  if (!Array.isArray(input["pairs"]) || input["pairs"].length === 0) {
-    throw new QuranIdentityError(`${source}: pairs must be a non-empty array`);
-  }
+  const record = requireRecord(input, source);
+  const id = requiredString(record["id"], "id", source);
+  const status = requiredStatus(record["status"], source);
+  const entries = requiredEntries(record, "pairs", source);
 
-  const seen = new Map<string, string>();
+  const claims = new ClaimRegistry();
   const pairIds = new Set<string>();
-  const pairs = input["pairs"].map((raw, index) => {
+  const pairs = entries.map((raw, index) => {
     const where = `${source}: pairs[${index}]`;
-    if (!isRecord(raw)) throw new QuranIdentityError(`${where} must be an object`);
-    const pairId = requiredString(raw["id"], "id", where);
-    if (pairIds.has(pairId)) {
-      throw new QuranIdentityError(`${where}: pair id "${pairId}" is already used`);
-    }
-    pairIds.add(pairId);
-    const rationale = requiredString(raw["rationale"], "rationale", where);
-    const canonical = requiredString(raw["canonical"], "canonical", where);
+    const pair = requireRecord(raw, where);
+    const pairId = requiredString(pair["id"], "id", where);
+    claimEntryId(pairIds, pairId, "pair", where);
+    const rationale = requiredString(pair["rationale"], "rationale", where);
+    const canonical = requiredString(pair["canonical"], "canonical", where);
     if (!isSingleVerse(canonical)) {
-      throw new QuranIdentityError(`${where}: canonical "${canonical}" is not one Quran verse`);
+      throw new IdentityMapError(`${where}: canonical "${canonical}" is not one Quran verse`);
     }
-    if (!Array.isArray(raw["members"]) || raw["members"].length === 0) {
-      throw new QuranIdentityError(`${where}: members must be a non-empty array`);
-    }
+    const memberEntries = requiredEntries(pair, "members", where);
     const canonicalKey = normalizeCitationLabel(canonical);
     const claim = (label: string, field: string): void => {
       const key = normalizeCitationLabel(label);
       if (!isSingleVerse(label)) {
-        throw new QuranIdentityError(`${where}: ${field} "${label}" is not one Quran verse`);
+        throw new IdentityMapError(`${where}: ${field} "${label}" is not one Quran verse`);
       }
-      const previous = seen.get(key);
-      if (previous !== undefined) {
-        throw new QuranIdentityError(
-          `${where}: ${field} "${label}" is already claimed by "${previous}"`,
-        );
-      }
-      seen.set(key, pairId);
+      claims.claim({ key, owner: pairId, label, field, where });
     };
     claim(canonical, "canonical");
-    const members = raw["members"].map((member, memberIndex) => {
+    const members = memberEntries.map((member, memberIndex) => {
       const label = requiredString(member, `members[${memberIndex}]`, where);
       if (normalizeCitationLabel(label) === canonicalKey) {
-        throw new QuranIdentityError(`${where}: members must not repeat the canonical "${label}"`);
+        throw new IdentityMapError(`${where}: members must not repeat the canonical "${label}"`);
       }
       claim(label, "member");
       return label;

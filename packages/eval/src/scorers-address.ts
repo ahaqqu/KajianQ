@@ -1,3 +1,4 @@
+import { requireAlternativesScope } from "./citation-alternatives";
 import { requireCitationGrammar } from "./citation-grammar";
 import { requireCitationIdentity, resolveIdentity } from "./citation-identity";
 import type { ChunkRefLike, CitationGrammar, CitationIdentity } from "./harness-types";
@@ -16,12 +17,14 @@ import type { ChunkRefLike, CitationGrammar, CitationIdentity } from "./harness-
  * satisfied by a citation identity: recall asks for the exact address, so a
  * parallel narration that may satisfy citation validity does not count here.
  *
- * `alternatives` is the curator's opt-in any-of set for the requirement (the
- * question contract permits it on a single-requirement row): a member whose
- * addresses were all retrieved satisfies the requirement, because the curator
- * ruled it a valid answer to the question. It is a requirement-scope decision,
- * not an identity — the members are different reports, and the exact-address
- * behavior is unchanged when no set is curated.
+ * `alternatives` is the curator's opt-in any-of set for the requirement the row
+ * opted in: the contract permits it on a single-requirement row, and
+ * {@link requireAlternativesScope} refuses a set on any other shape, so it can
+ * never widen a sibling requirement. A member whose addresses were all retrieved
+ * satisfies the requirement, because the curator ruled it a valid answer to the
+ * question. It is a requirement-scope decision, not an identity — the members are
+ * different reports, and the exact-address behavior is unchanged when no set is
+ * curated.
  *
  * The comparison form is many-to-one where the grammar treats two spellings as
  * one address: a grade written into a requirement is not the address, a
@@ -32,11 +35,13 @@ export function citationAddressRecall(
   requiredCitations: readonly string[],
   retrieved: readonly ChunkRefLike[],
   citationOf: (chunkId: string) => string | undefined,
-  grammar?: CitationGrammar,
-  alternatives: readonly string[] = [],
+  options: { grammar?: CitationGrammar; alternatives?: readonly string[] } = {},
 ): number {
-  // Guarded before the empty-required return, so a miswired grammar fails typed.
+  const { grammar, alternatives = [] } = options;
+  // Guarded before the empty-required return, so a miswired grammar or a set on a
+  // multi-requirement row fails typed.
   if (grammar !== undefined) requireCitationGrammar(grammar);
+  requireAlternativesScope(requiredCitations, alternatives);
   if (requiredCitations.length === 0) return 1;
   const retrievedAddresses = retrievedAddressSet(retrieved, citationOf, grammar);
   const present = requiredCitations.filter((citation) =>
@@ -69,10 +74,12 @@ export function identitySatisfiedCitationAddressRecall(input: {
   alternatives?: readonly string[];
 }): number {
   const { requiredCitations, retrieved, citationOf, identity, grammar, alternatives = [] } = input;
-  // Both guards run before the empty-required return: a malformed resolver is a
-  // loud failure even on a question whose citations are trivially satisfied.
+  // Every guard runs before the empty-required return: a malformed resolver or a
+  // set the row cannot bound is a loud failure even on a question whose citations
+  // are trivially satisfied.
   if (grammar !== undefined) requireCitationGrammar(grammar);
   requireCitationIdentity(identity);
+  requireAlternativesScope(requiredCitations, alternatives);
   if (requiredCitations.length === 0) return 1;
   const retrievedAddresses = retrievedAddressSet(retrieved, citationOf, grammar);
   const retrievedIdentities = new Set<string>();

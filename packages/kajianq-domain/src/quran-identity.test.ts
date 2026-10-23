@@ -7,8 +7,8 @@ import {
   REPORTED_IDENTITY_RELATIONS,
   parseHadithIdentitySet,
 } from "./hadith-identity";
+import { IdentityMapError } from "./identity-map";
 import {
-  QuranIdentityError,
   parseQuranIdentitySet,
   quranIdentityResolver,
   type QuranIdentitySet,
@@ -130,7 +130,7 @@ describe("parseQuranIdentitySet", () => {
   it("rejects a label that is not a Qur'an citation", () => {
     expect(() =>
       parseQuranIdentitySet({ ...valid, pairs: [{ ...pair, members: ["HR. Bukhari no. 1"] }] }),
-    ).toThrow(QuranIdentityError);
+    ).toThrow(IdentityMapError);
   });
 
   it("rejects a pair with no rationale: the rule would be unreadable", () => {
@@ -160,11 +160,11 @@ describe("parseQuranIdentitySet", () => {
   it("rejects a member that repeats the canonical", () => {
     expect(() =>
       parseQuranIdentitySet({ ...valid, pairs: [{ ...pair, members: ["QS. 1:1"] }] }),
-    ).toThrow(QuranIdentityError);
+    ).toThrow(IdentityMapError);
   });
 
   it("rejects a malformed map or status", () => {
-    expect(() => parseQuranIdentitySet(null)).toThrow(QuranIdentityError);
+    expect(() => parseQuranIdentitySet(null)).toThrow(IdentityMapError);
     expect(() => parseQuranIdentitySet({ ...valid, status: "draft" })).toThrow(/status must be/);
     expect(() => parseQuranIdentitySet({ ...valid, pairs: [] })).toThrow(/pairs must be/);
   });
