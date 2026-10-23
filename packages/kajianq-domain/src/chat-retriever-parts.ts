@@ -17,12 +17,15 @@
  * they do not share a trigger.
  */
 export { HIERARCHY_BONUS, RRF_K, hierarchyBonus, rrfFuse, type TrackHit } from "./chat-fusion";
+export type { MetadataFilterMatch, MetadataFilterValue } from "@app/infra";
+export type { RetrieverStore } from "./chat-retriever-store";
 export {
   FilterNotExpressibleError,
   RELAXATION_ORDER,
   filterEntries,
   metadataFilters,
   nextRelaxation,
+  storeFilters,
   type FilterEntry,
 } from "./chat-filter-policy";
 export { createFilterRelaxation } from "./chat-filter-relaxation";

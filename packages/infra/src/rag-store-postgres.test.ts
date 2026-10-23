@@ -7,7 +7,7 @@ import { resolve } from "node:path";
 import { runFail } from "@app/rag-core/testing";
 import { createPostgresRagStore } from "./rag-store-postgres";
 import { disposePostgresPools, postgresPool, postgresSqlRunner } from "./rag-store-postgres-driver";
-import type { RagStore } from "./rag-store";
+import type { MetadataFilterValue, RagStore } from "./rag-store";
 
 /**
  * RagStore contract tests against a real Postgres server.
@@ -39,7 +39,7 @@ let cleanup: () => Promise<void>;
 // Every key this suite creates is `${PREFIX}${suffix}`, and cleanup deletes those
 // exact keys rather than a `LIKE ${PREFIX}-%` pattern, whose reach would exceed
 // the rows this suite owns in the shared database.
-const SOURCE_KEY_SUFFIXES = ["", "-upsert", "-neigh-a", "-neigh-b", "-census"] as const;
+const SOURCE_KEY_SUFFIXES = ["", "-upsert", "-neigh-a", "-neigh-b", "-census", "-derived"] as const;
 const TRACE_MESSAGE_SUFFIX = "-msg-1";
 const EVAL_RUN_LABEL_SUFFIX = "-run";
 
@@ -680,6 +680,96 @@ run("RagStore contract (real Postgres, Effect-shaped seam)", () => {
           store.listDocChildrenByParentSourceKey(`${PREFIX}-absent-parent`, { limit: 5 }),
         ),
       ).toEqual([]);
+    }, 60_000);
+  });
+
+  /**
+   * The derived filter case against the real schema: `metadata->>tag` reads JSON
+   * `null` and a missing key alike as SQL NULL, so `tag IS NULL` is the one
+   * predicate that covers both, and the alternative must be OR-ed inside the
+   * dimension's clause rather than AND-ed beside it. A text assertion cannot
+   * prove either; these rows do. The keys and values are deliberately opaque —
+   * the domain pack owns what they mean, and the engine never learns it.
+   */
+  describe("a filter's derived case executes against real Postgres", () => {
+    // One row per behaviour the case must distinguish: an absent tag under either
+    // covered bucket, an absent tag outside them, and tags that are stored —
+    // including one under a covered bucket.
+    const ROWS = [
+      { slug: "absent-null", metadata: { tag: null, bucket: "one" } },
+      { slug: "absent-missing", metadata: { bucket: "two" } },
+      { slug: "absent-other", metadata: { tag: null, bucket: "three" } },
+      { slug: "stored-covered", metadata: { tag: "weak", bucket: "one" } },
+      { slug: "stored-strong", metadata: { tag: "strong", bucket: "three" } },
+      { slug: "stored-mid", metadata: { tag: "mid", bucket: "four" } },
+    ] as const;
+    const idBySlug = new Map<string, string>();
+
+    beforeAll(async () => {
+      if (!URL) return;
+      const program = Effect.gen(function* () {
+        const parentId = yield* store.insertDocParent({
+          sourceKey: corpusKey("-derived"),
+          title: `${PREFIX}-derived-fixture`,
+          metadata: { pfx: PREFIX },
+        });
+        yield* Effect.forEach(ROWS, (row, ordinal) =>
+          Effect.map(
+            store.insertDocChild({
+              parentId,
+              textRaw: `raw-${row.slug}`,
+              textAr: `ar-${row.slug}`,
+              textId: `id-${row.slug}`,
+              citation: { fixture: "derived", slug: row.slug },
+              embeddingPrimary: vec(1536, 950 + ordinal),
+              embeddingFallback: null,
+              ordinal,
+              // `pfx` isolates this fixture's rows; the other keys are the ones the
+              // derived case reads.
+              metadata: { pfx: PREFIX, ...row.metadata },
+            }),
+            (id) => {
+              idBySlug.set(row.slug, id);
+            },
+          ),
+        );
+      });
+      await Effect.runPromise(program);
+    });
+
+    const search = (filters: Record<string, MetadataFilterValue>) =>
+      Effect.runPromise(store.similaritySearch("primary", vec(1536, 950), { limit: 10, filters }));
+
+    const slugsOf = (hits: readonly { child: { citation: Record<string, unknown> } }[]) =>
+      hits.map((h) => h.child.citation["slug"] as string).sort();
+
+    it("admits an absent value from either alternative bucket, and nothing else", async () => {
+      if (!URL) return;
+      const hits = await search({
+        pfx: PREFIX,
+        tag: { values: ["strong"], whenAbsent: { key: "bucket", values: ["one", "two"] } },
+      });
+      expect(slugsOf(hits)).toEqual(["absent-missing", "absent-null", "stored-strong"]);
+      // The ids are the fixture's own rows, not a coincidence of shape.
+      expect(hits.map((h) => h.child.id).sort()).toEqual(
+        ["absent-missing", "absent-null", "stored-strong"]
+          .map((slug) => idBySlug.get(slug)!)
+          .sort(),
+      );
+    }, 60_000);
+
+    it("keeps exact-equality semantics for the same value without the derived case", async () => {
+      if (!URL) return;
+      expect(slugsOf(await search({ pfx: PREFIX, tag: ["strong"] }))).toEqual(["stored-strong"]);
+    }, 60_000);
+
+    it("keeps exact-equality semantics for a value set that has no derived case", async () => {
+      if (!URL) return;
+      // A stored tag under a covered bucket is still returned by its exact value,
+      // and the absent tags beside it stay out.
+      expect(slugsOf(await search({ pfx: PREFIX, tag: ["mid"] }))).toEqual(["stored-mid"]);
+      // A value no row stores is an empty search, not a widening.
+      expect(await search({ pfx: PREFIX, tag: ["none"] })).toEqual([]);
     }, 60_000);
   });
 

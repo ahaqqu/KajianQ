@@ -9,6 +9,7 @@ import {
   type SimilarChild,
 } from "@app/infra";
 import {
+  matchesMetadataFilters,
   memoryAuthMethods,
   memoryChatMethods,
   memoryEvalMethods,
@@ -120,33 +121,6 @@ export function createMemoryRagStore(): RagStore & {
     return dot / (Math.sqrt(na) * Math.sqrt(nb) || 1);
   };
 
-  /**
-   * The adapter binds each filter dimension as `metadata->>$k = ANY($v::text[])`,
-   * so a row matches when the key's JSON *text* is one of the requested values: a
-   * string matches itself, a number or boolean matches its text form, and a key
-   * that is absent, JSON `null`, or an array/object matches nothing (its `->>` text
-   * is `null` or the serialized JSON, which no single value equals). An empty or
-   * absent filter record constrains nothing.
-   */
-  const matchesFilters = (
-    metadata: Record<string, unknown>,
-    filters: Record<string, string | readonly string[]> | undefined,
-  ): boolean => {
-    for (const [key, wanted] of Object.entries(filters ?? {})) {
-      const values: readonly string[] = Array.isArray(wanted) ? wanted : [wanted as string];
-      const raw = metadata[key];
-      if (raw === undefined || raw === null) return false;
-      const text =
-        typeof raw === "string"
-          ? raw
-          : typeof raw === "number" || typeof raw === "boolean"
-            ? String(raw)
-            : JSON.stringify(raw);
-      if (!values.includes(text)) return false;
-    }
-    return true;
-  };
-
   const store: RagStore = {
     insertDocParent(input) {
       return Effect.sync(() => {
@@ -190,7 +164,7 @@ export function createMemoryRagStore(): RagStore & {
         const vec = track === "primary" ? "embeddingPrimary" : "embeddingFallback";
         const rows = [...children.values()]
           .filter((c) => c[vec] !== null && c[vec] !== undefined)
-          .filter((c) => matchesFilters(c.metadata ?? {}, opts.filters))
+          .filter((c) => matchesMetadataFilters(c.metadata ?? {}, opts.filters))
           .map((c) => ({
             child: toReadChild(c),
             distance: 1 - cosine(embedding, (c[vec] ?? []) as readonly number[]),

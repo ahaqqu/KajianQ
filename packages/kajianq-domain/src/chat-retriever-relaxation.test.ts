@@ -1,8 +1,10 @@
 import { Effect } from "effect";
 import { describe, expect, it } from "vite-plus/test";
+import { filterMatchOf } from "@app/infra";
 import { RunContext } from "@app/rag-core";
 import { createKajianQRetriever } from "./chat-retriever";
 import type { KajianQFilters } from "./filters";
+import type { MetadataFilterValue, RetrieverStore } from "./chat-retriever-parts";
 import { routedQuery } from "./test-utils/routed-query";
 
 /**
@@ -21,16 +23,34 @@ const hit = (id: string) => ({
   rankDense: 1,
 });
 
+/**
+ * The decision a search ran with, as the trace records it — dimension to value
+ * set. A value may reach the store carrying a derived case (`grade: sahih` also
+ * matching an ungraded sahihayn row); that case is the filter policy's business,
+ * pinned in `chat-filter-policy.test.ts`, and relaxation's contract is which
+ * dimensions survive.
+ */
+const decisionOf = (filters: Record<string, MetadataFilterValue>): Record<string, string[]> => {
+  const out: Record<string, string[]> = {};
+  for (const [key, value] of Object.entries(filters)) out[key] = [...filterMatchOf(value).values];
+  return out;
+};
+
+/** The seam's own options type, so a fake cannot narrow what the retriever hands it. */
+type SearchOptions = Parameters<RetrieverStore["similaritySearch"]>[2];
+
 function makeRetriever(opts: { hitsWhenFiltered: number }) {
   const recorded: { kind: string }[] = [];
-  const calls: (Record<string, string> | undefined)[] = [];
+  const calls: (Record<string, string[]> | undefined)[] = [];
+  const handed: (Record<string, MetadataFilterValue> | undefined)[] = [];
   const store = {
     similaritySearch: (
       _track: "primary" | "fallback",
       _embedding: readonly number[],
-      o: { filters?: Record<string, string> },
+      o: SearchOptions,
     ) => {
-      calls.push(o.filters);
+      handed.push(o.filters);
+      calls.push(o.filters === undefined ? undefined : decisionOf(o.filters));
       const filtered = o.filters !== undefined && Object.keys(o.filters).length > 0;
       const rows = filtered
         ? Array.from({ length: opts.hitsWhenFiltered }, (_, i) => hit(`f${i}`))
@@ -56,10 +76,43 @@ function makeRetriever(opts: { hitsWhenFiltered: number }) {
         record: (e: unknown) => recorded.push(e as { kind: string }),
       } as never) as never,
     ) as Promise<T>;
-  return { retriever, calls, recorded, run };
+  return { retriever, calls, handed, recorded, run };
 }
 
 const routed = (filters: KajianQFilters) => routedQuery("apa maksud ayat kursi", { filters });
+
+/**
+ * The one boundary where the domain's decision becomes the store's record: a
+ * `sahih` filter must reach the store with the ungraded sahihayn's derived case
+ * attached, and a non-sahih set must not widen. The policy suite pins
+ * `storeFilters` itself, and relaxation normalises the derived case away to
+ * assert which dimensions survive, so without this case nothing fails if the
+ * retriever hands the store the unexpanded decision.
+ */
+describe("the retriever hands the store the expanded filter record", () => {
+  it("attaches the sahih value's derived case on both tracks", async () => {
+    const { retriever, handed, run } = makeRetriever({ hitsWhenFiltered: 1 });
+    await run(retriever.retrieve(routed({ grade: ["sahih"] })));
+
+    expect(handed).toHaveLength(2);
+    for (const record of handed) {
+      expect(record).toEqual({
+        grade: {
+          values: ["sahih"],
+          whenAbsent: { key: "collection", values: ["bukhari", "muslim"] },
+        },
+      });
+    }
+  });
+
+  it("hands a non-sahih grade set through unexpanded", async () => {
+    const { retriever, handed, run } = makeRetriever({ hitsWhenFiltered: 1 });
+    await run(retriever.retrieve(routed({ grade: ["hasan"] })));
+
+    expect(handed).toHaveLength(2);
+    for (const record of handed) expect(record).toEqual({ grade: ["hasan"] });
+  });
+});
 
 describe("retriever filter relaxation", () => {
   it("retries unfiltered when the inferred filters match nothing, and records the drop", async () => {
@@ -102,15 +155,11 @@ describe("retriever filter relaxation", () => {
  */
 describe("filter relaxation gives up one dimension at a time", () => {
   function makeStore(unsatisfiable: readonly string[]) {
-    const calls: Record<string, string | readonly string[]>[] = [];
+    const calls: Record<string, string[]>[] = [];
     const store = {
-      similaritySearch: (
-        _track: string,
-        _embedding: readonly number[],
-        o: { filters?: Record<string, string | readonly string[]> },
-      ) => {
+      similaritySearch: (_track: string, _embedding: readonly number[], o: SearchOptions) => {
         const filters = o.filters ?? {};
-        calls.push(filters);
+        calls.push(decisionOf(filters));
         const blocked = Object.keys(filters).some((key) => unsatisfiable.includes(key));
         return Effect.succeed(blocked ? [] : [hit("c1")]);
       },
@@ -279,12 +328,8 @@ describe("filter relaxation gives up one dimension at a time", () => {
     const calls: Record<string, string[]>[] = [];
     const recorded: { kind: string }[] = [];
     const store = {
-      similaritySearch: (
-        _track: string,
-        _embedding: readonly number[],
-        o: { filters?: Record<string, string[]> },
-      ) => {
-        calls.push(o.filters ?? {});
+      similaritySearch: (_track: string, _embedding: readonly number[], o: SearchOptions) => {
+        calls.push(decisionOf(o.filters ?? {}));
         return Effect.succeed([]);
       },
       listDocChildNeighboursByChildIds: () => Effect.succeed([]),

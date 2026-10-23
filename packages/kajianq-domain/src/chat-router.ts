@@ -28,9 +28,10 @@ export { extractJsonObject, ROUTER_SYSTEM_PROMPT } from "./chat-router-output";
  * model that gets it wrong narrows the corpus silently — so the model hints
  * and `chat-source-routing.ts` decides. The decision is recorded as its own
  * typed `source_routing` event carrying the selected sources and the exact
- * filter record retrieval is handed, so "which sources were searched, with
- * which filters" is derivable from the persisted trace rather than inferred
- * from the router's prose.
+ * filter record of the decision — the store receives that same decision with
+ * each value's derived case attached as data — so "which sources were searched,
+ * with which filters the route decided" is derivable from the persisted trace
+ * rather than inferred from the router's prose.
  *
  * The stage returns a `Routing` — what it understood — not a `RoutedQuery`:
  * the engine's runner stamps the caller's verbatim question and prior turns

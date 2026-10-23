@@ -8,4 +8,5 @@ export { memoryEvalMethods } from "./memory-rag-store-eval";
 export { memoryFeedbackMethods } from "./memory-rag-store-feedback";
 export { memoryAuthMethods } from "./memory-rag-store-auth";
 export { memoryChatMethods } from "./memory-rag-store-chat";
+export { matchesMetadataFilters } from "./memory-rag-store-filter";
 export { memoryScopeMethods, toReadChild } from "./memory-rag-store-scope";

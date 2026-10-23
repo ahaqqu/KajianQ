@@ -13,6 +13,7 @@ import {
   filterEntries,
   metadataFilters,
   nextRelaxation,
+  storeFilters,
   type FilterEntry,
 } from "./chat-filter-policy";
 import { bundleQuranSources, quranSourceParser } from "./quran-ingest";
@@ -298,5 +299,64 @@ describe("the source vocabulary the routing decision selects from", () => {
     expect(values).toContain("kitab");
     expect(values).toContain("principle");
     expect(new Set(values).size).toBe(values.length);
+  });
+});
+
+/**
+ * The store record a search is handed: the trace's decision, value for value,
+ * with the one read-time expansion the domain owns attached as data.
+ *
+ * The trap: expanding one filter while silently rewriting the decision. The
+ * trace publishes what the route decided, so the values here must be the same
+ * values — an expansion that replaced them would make the trace and the search
+ * disagree about the question being answered.
+ */
+describe("storeFilters — the decision's values, plus the derived case where one exists", () => {
+  it("attaches the sahihayn expansion to a grade set carrying sahih", () => {
+    expect(storeFilters({ grade: ["sahih"] })).toEqual({
+      grade: {
+        values: ["sahih"],
+        whenAbsent: { key: "collection", values: ["bukhari", "muslim"] },
+      },
+    });
+  });
+
+  it("leaves every other dimension and value exactly as the route decided it", () => {
+    // The other grade and the other dimension keep exact-equality semantics:
+    // nothing widens, and the values are the same ones `metadataFilters` maps.
+    expect(storeFilters({ sourceType: ["hadith"], grade: ["hasan"] })).toEqual({
+      sourceType: ["hadith"],
+      grade: ["hasan"],
+    });
+    expect(storeFilters({ sourceType: ["quran"] })).toEqual({ sourceType: ["quran"] });
+    expect(storeFilters({})).toEqual({});
+  });
+
+  it("keeps every value of a mixed set, expanding the clause once", () => {
+    const record = storeFilters({ grade: ["hasan", "sahih"] });
+    expect(record["grade"]).toEqual({
+      values: ["hasan", "sahih"],
+      whenAbsent: { key: "collection", values: ["bukhari", "muslim"] },
+    });
+  });
+
+  it("carries the trace record's dimensions and values, expanding only the expression", () => {
+    // The trace publishes the decision and the search runs it: the two records
+    // must name the same dimensions with the same values, or the trace explains
+    // an answer to a different question. Relaxation drops dimensions from the
+    // unexpanded record, so a dropped one leaves no alternative behind.
+    const decision = metadataFilters({ sourceType: ["hadith"], grade: ["sahih"] });
+    expect(storeFilters(decision)).toEqual({
+      sourceType: ["hadith"],
+      grade: {
+        values: ["sahih"],
+        whenAbsent: { key: "collection", values: ["bukhari", "muslim"] },
+      },
+    });
+    expect(Object.keys(storeFilters(decision))).toEqual(Object.keys(decision));
+    expect(storeFilters({ grade: ["sahih"] }).grade).toEqual({
+      values: ["sahih"],
+      whenAbsent: { key: "collection", values: ["bukhari", "muslim"] },
+    });
   });
 });

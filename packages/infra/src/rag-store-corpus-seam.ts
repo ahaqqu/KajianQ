@@ -5,6 +5,7 @@ import type {
   DocChildById,
   DocChildInsert,
   DocParentInsert,
+  MetadataFilterValue,
   RetrievalTrack,
   SimilarChild,
 } from "./rag-store";
@@ -38,7 +39,8 @@ export interface RagStoreCorpus {
   ): Effect.Effect<readonly { value: string | null; count: number }[], StoreError>;
 
   /** Nearest-neighbour similarity search over one embedding track. `filters` are
-   * exact-match against `metadata` JSONB keys, passed through untouched.
+   * exact-match against `metadata` JSONB keys, plus the derived case a value can
+   * carry ({@link MetadataFilterMatch}) — both passed through untouched.
    *
    * A hit's embeddings are `null` — the search used the vectors to order the
    * rows, so re-shipping them is dead weight; only those two fields are
@@ -48,7 +50,7 @@ export interface RagStoreCorpus {
     embedding: readonly number[],
     opts: {
       limit: number;
-      filters?: Record<string, string | readonly string[]>;
+      filters?: Record<string, MetadataFilterValue>;
     },
   ): Effect.Effect<readonly SimilarChild[], StoreError>;
 

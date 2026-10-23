@@ -1,4 +1,4 @@
-import type { RetrievalTrack } from "./rag-store";
+import { filterMatchOf, type MetadataFilterValue, type RetrievalTrack } from "./rag-store";
 
 /**
  * Postgres-specific similarity-search SQL builder.
@@ -26,12 +26,51 @@ const SIMILARITY_COLUMNS: Record<RetrievalTrack, string> = {
 };
 
 /**
- * Build the similarity-search SQL string for a track with `filterCount`
- * metadata filters. Parameter slots: $1 = embedding, $2 = limit, then for each
- * filter a key slot and an array slot, assigned from a running counter (so
- * the arithmetic stays local and auditable rather than magic offsets).
+ * How one metadata filter binds. `exact` is two parameter slots (key, values);
+ * `derived` adds the absent-key alternative's two, so its clause is
+ * `(key = ANY(values) OR (key IS NULL AND absentKey = ANY(absentValues)))`.
  */
-export function buildSimilarityQuery(track: RetrievalTrack, filterCount: number): string {
+export type FilterClause = "exact" | "derived";
+
+/**
+ * Read a filter record into the clauses {@link buildSimilarityQuery} emits and
+ * the values the adapter binds, in one pass: the slot arithmetic and the bound
+ * parameters are produced from one reading of the record, so the SQL and the
+ * values cannot disagree about how many slots a clause carries.
+ *
+ * Values stay bound in the caller's order. A `whenAbsent` alternative appends
+ * its own key and value set after its dimension's — never before, which is the
+ * slot order the builder assigns.
+ */
+export function filterBindings(filters: Record<string, MetadataFilterValue>): {
+  clauses: FilterClause[];
+  values: unknown[];
+} {
+  const clauses: FilterClause[] = [];
+  const values: unknown[] = [];
+  for (const [key, value] of Object.entries(filters)) {
+    const match = filterMatchOf(value);
+    values.push(key, match.values);
+    if (match.whenAbsent === undefined) {
+      clauses.push("exact");
+      continue;
+    }
+    clauses.push("derived");
+    values.push(match.whenAbsent.key, match.whenAbsent.values);
+  }
+  return { clauses, values };
+}
+
+/**
+ * Build the similarity-search SQL string for a track with the given filter
+ * clauses. Parameter slots: $1 = embedding, $2 = limit, then each clause's
+ * slots from a running counter (so the arithmetic stays local and auditable
+ * rather than magic offsets).
+ */
+export function buildSimilarityQuery(
+  track: RetrievalTrack,
+  clauses: readonly FilterClause[],
+): string {
   const column = SIMILARITY_COLUMNS[track];
   // The embedding columns are deliberately NOT selected: the search already
   // used the vectors to order the rows, and the retriever reads only
@@ -46,16 +85,25 @@ export function buildSimilarityQuery(track: RetrievalTrack, filterCount: number)
          ROW_NUMBER() OVER (ORDER BY ${column} <=> $1::vector) AS rank_dense
   FROM doc_children
   WHERE ${column} IS NOT NULL`;
-  if (filterCount <= 0) {
+  if (clauses.length === 0) {
     return `${select}\n  ORDER BY ${column} <=> $1::vector\n  LIMIT $2\n`;
   }
-  // $1 embedding, $2 limit → filters start at $3, two slots each (key, array).
+  // $1 embedding, $2 limit → filters start at $3, two slots per clause and two
+  // more for a clause's absent-key alternative.
   let slot = 3;
-  const clauses: string[] = [];
-  for (let i = 0; i < filterCount; i += 1) {
+  const where: string[] = [];
+  for (const clause of clauses) {
     const kIdx = slot++;
     const vIdx = slot++;
-    clauses.push(`metadata->>$${kIdx} = ANY($${vIdx}::text[])`);
+    if (clause === "exact") {
+      where.push(`metadata->>$${kIdx} = ANY($${vIdx}::text[])`);
+      continue;
+    }
+    const aIdx = slot++;
+    const aVIdx = slot++;
+    where.push(
+      `(metadata->>$${kIdx} = ANY($${vIdx}::text[]) OR (metadata->>$${kIdx} IS NULL AND metadata->>$${aIdx} = ANY($${aVIdx}::text[])))`,
+    );
   }
-  return `${select}\n        AND ${clauses.join("\n        AND ")}\n  ORDER BY ${column} <=> $1::vector\n  LIMIT $2\n`;
+  return `${select}\n        AND ${where.join("\n        AND ")}\n  ORDER BY ${column} <=> $1::vector\n  LIMIT $2\n`;
 }

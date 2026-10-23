@@ -20,10 +20,12 @@ import {
   expandVerseNeighbours,
   createFilterRelaxation,
   filterEntries,
+  storeFilters,
   hierarchyBonus,
   lookupCitationLabels,
   rrfFuse,
   type NeighbourChildRow,
+  type RetrieverStore,
   type ScopeChildRow,
   type TrackHit,
 } from "./chat-retriever-parts";
@@ -33,7 +35,6 @@ import { withTextLayers } from "./chunk-text-layers";
  * embedding tracks (ADR-0013 dual-track), and fuse the hits with Reciprocal Rank
  * Fusion (k=60) plus the spec's hierarchy bonuses.
  */
-
 export type RetrieverEmbedder = {
   embed(spec: {
     texts: readonly string[];
@@ -44,45 +45,7 @@ export type RetrieverEmbedder = {
   }): Effect.Effect<{ vectors: readonly (readonly number[])[]; cost: CostRecord }, unknown>;
 };
 
-/** Wiring-level store role: search one track; filters are opaque metadata keys. */
-export type RetrieverStore = {
-  similaritySearch(
-    track: "primary" | "fallback",
-    embedding: readonly number[],
-    opts: { limit: number; filters?: Record<string, string | readonly string[]> },
-  ): Effect.Effect<
-    readonly {
-      child: {
-        id: string;
-        textAr: string;
-        textId: string | null;
-        metadata: Record<string, unknown>;
-      };
-      distance: number;
-      rankDense: number;
-    }[],
-    StoreError
-  >;
-  /** The bounded, capped read of a surah's children, in the corpus's order,
-   * optionally beginning at an ordinal lower bound — a named verse's position. */
-  listDocChildrenByParentSourceKey(
-    parentSourceKey: string,
-    opts: { limit: number; fromOrdinal?: number },
-  ): Effect.Effect<readonly ScopeChildRow[], StoreError>;
-  /** The bounded read of the children within `radius` ordinals of each anchor child, in
-   * the caller's priority order; anchors are opaque child ids, so the window cannot be
-   * mis-anchored. */
-  listDocChildNeighboursByChildIds(
-    anchorChildIds: readonly string[],
-    opts: { radius: number; limit: number },
-  ): Effect.Effect<readonly NeighbourChildRow[], StoreError>;
-  /** The bounded exact-match read of the children carrying a label's opaque metadata
-   * pairs — the one read the citation-label arm issues. */
-  findDocChildrenByMetadata(
-    match: Readonly<Record<string, string | number>>,
-    opts: { limit: number },
-  ): Effect.Effect<readonly ScopeChildRow[], StoreError>;
-};
+export type { RetrieverStore } from "./chat-retriever-store";
 
 /** Effect bridge the wiring injects (keeps this module free of runner imports). */
 export type StoreBridge = <A>(effect: Effect.Effect<A, StoreError>) => Promise<A>;
@@ -147,7 +110,14 @@ export function createKajianQRetriever(deps: KajianQRetrieverDeps): Retriever<Ka
                 Effect.tryPromise({
                   try: () =>
                     deps.bridge(
-                      deps.store.similaritySearch(track, vector, { limit, filters: withFilters }),
+                      deps.store.similaritySearch(track, vector, {
+                        limit,
+                        // The decision's values, each value's read-time expansion
+                        // attached where it is resolved: `grade: sahih` also matches
+                        // an ungraded row from a sahihayn collection, which the store
+                        // expresses as the same data it binds for any other filter.
+                        filters: storeFilters(withFilters),
+                      }),
                     ),
                   catch: (cause: unknown) => ({ cause }),
                 });

@@ -18,6 +18,6 @@ The chosen source provides what the others lack together: both language editions
 
 - Hadith ingestion unblocks with no human prerequisite; the open key request is enrichment, not a blocker.
 - The weak-class vocabulary is a single source of truth in code, read by both grade consolidation and the report's statistics.
-- The grade filter operates on the consolidated field, so grader-level disagreement is visible in trace metadata but not filterable until per-chain grades.
+- The grade filter reads the consolidated field, so grader-level disagreement is visible in trace metadata but not filterable until per-chain grades; a sahihayn row with no consolidated grade is read as sahih at retrieval (ADR-0060).
 - Collections the source does not carry need a future source decision; the domain pack's registry lists what v1 ingested.
 - **Revisit when** a source with structured sanad under a compatible licence is available (ADR-0012's v2 work).

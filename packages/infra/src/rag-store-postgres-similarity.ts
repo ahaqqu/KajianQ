@@ -7,7 +7,7 @@ import {
   toVectorLiteral,
   type ChildRow,
 } from "./rag-store-shared";
-import { buildSimilarityQuery } from "./rag-store-postgres-query";
+import { buildSimilarityQuery, filterBindings } from "./rag-store-postgres-query";
 import { sqlEffect, type SqlRunner } from "./rag-store-postgres-errors";
 
 /**
@@ -34,14 +34,12 @@ export function postgresSimilaritySearch(
 ) {
   return Effect.flatMap(checkEmbedding(embedding, CORPUS_EMBEDDING_DIM), () => {
     const literal = toVectorLiteral(embedding);
-    const filters = Object.entries(opts.filters ?? {});
-    // $1 embedding, $2 limit, then per filter: the key string ($k) and the
-    // values array ($v) — both bound, matching buildSimilarityQuery's slots.
-    const params: unknown[] = [literal, opts.limit];
-    for (const [key, val] of filters) {
-      params.push(key, Array.isArray(val) ? val : [val]);
-    }
-    const query = buildSimilarityQuery(track, filters.length);
+    // One pass reads the filter record into the clauses the builder emits and the
+    // values bound for them ($1 embedding, $2 limit, then the clause values), so
+    // the SQL text and the parameters cannot disagree about a clause's slot count.
+    const bindings = filterBindings(opts.filters ?? {});
+    const params: unknown[] = [literal, opts.limit, ...bindings.values];
+    const query = buildSimilarityQuery(track, bindings.clauses);
     return Effect.flatMap(
       sqlEffect(
         sql,

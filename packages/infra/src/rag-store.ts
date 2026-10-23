@@ -119,6 +119,44 @@ export type SimilarChild = {
   rankDense: number;
 };
 
+/**
+ * One metadata filter dimension's match. `values` is the exact-equality set
+ * (`metadata->>key = ANY(values)`); `whenAbsent` adds the one derived case the
+ * seam can express — a row that carries **no** value for the dimension's key
+ * still matches when a second metadata key holds one of the given values.
+ *
+ * The caller supplies it as data, so the store binds every key and value as a
+ * parameter and never learns what any of them means; a dimension without a
+ * `whenAbsent` keeps exact-equality semantics.
+ *
+ * **The alternative is part of the dimension's clause, not of `values`**: it
+ * admits the absent-key row whatever the set holds. A caller attaching it is
+ * asserting that a row with no value *is* one of the values it asked for, so it
+ * attaches the alternative only to a set that carries that value — otherwise the
+ * alternative would widen a filter to evidence it never requested.
+ */
+export type MetadataFilterMatch = {
+  values: readonly string[];
+  whenAbsent?: { key: string; values: readonly string[] };
+};
+
+/** One filter dimension's value: a single value, a set, or a set with a derived case. */
+export type MetadataFilterValue = string | readonly string[] | MetadataFilterMatch;
+
+/**
+ * Read one filter value into its match shape: a single value becomes a one-element
+ * set, a set is copied, and a match passes through unchanged. The seam's one reader
+ * for the union's three spellings, so the adapter, the in-memory double and the
+ * retriever's tests cannot disagree about how a value arrives.
+ */
+export function filterMatchOf(value: MetadataFilterValue): MetadataFilterMatch {
+  if (typeof value === "string") return { values: [value] };
+  // `Array.isArray` does not narrow a `readonly string[]` in the false branch, so
+  // the non-array branch restates the seam's own type rather than guessing one.
+  if (Array.isArray(value)) return { values: [...(value as string[])] };
+  return value as MetadataFilterMatch;
+}
+
 export interface RagStore
   extends
     RagStoreCorpus,

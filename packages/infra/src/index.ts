@@ -58,6 +58,7 @@ export {
 } from "./providers/retry-schedule";
 export {
   canonicalMessageId,
+  filterMatchOf,
   type AlignedPairInsert,
   type AnswerFeedbackTarget,
   type ChatMessage,
@@ -67,6 +68,8 @@ export {
   type DocParent,
   type DocParentInsert,
   type FeedbackInsert,
+  type MetadataFilterMatch,
+  type MetadataFilterValue,
   type RagStore,
   type RetrievalTrack,
   type SimilarChild,
