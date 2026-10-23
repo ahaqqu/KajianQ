@@ -4,6 +4,7 @@ import { RunContext, type Chunk } from "@app/rag-core";
 import { createKajianQRetriever } from "./chat-retriever";
 import type { KajianQFilters } from "./filters";
 import {
+  CALLER_PRIORITY_ORIGIN,
   SEARCH_HITS_TRACE_LIMIT,
   hierarchyBonus,
   rrfFuse,
@@ -434,11 +435,13 @@ async function runOracle() {
 /**
  * The differential oracle. The store double returns a known list per
  * sub-query × track, the sink keeps every event, and the expected fusion is
- * built from the events themselves in the shape production fuses — one
- * single-hit list per hit — with the retriever's own bonus function. Ids **and**
- * scores are compared, so a doubled or lost list changes the assertion even
- * where the id order does not; and the fixture is non-uniform, so dropping any
- * one sub-query's lists changes the numbers.
+ * built from the events themselves with the retriever's own bonus function.
+ * Fusion scores a hit independently of which list carries it, so rebuilding the
+ * events as one single-hit list per hit reproduces the same numbers as
+ * production's one list per search. Ids **and** scores are compared, so a
+ * doubled or lost list changes the assertion even where the id order does not;
+ * and the fixture is non-uniform, so dropping any one sub-query's lists changes
+ * the numbers.
  */
 describe("the fused set is the pure fusion of the searches it recorded", () => {
   it("reproduces the events' own hit lists, ids and scores alike", async () => {
@@ -460,18 +463,24 @@ describe("the fused set is the pure fusion of the searches it recorded", () => {
       if (!found) throw new Error(`an event recorded an id the fixture never returned: ${id}`);
       return { id, text: found.textAr, metadata: found.metadata };
     };
-    // Production fuses one single-hit list per hit — not one list per track — so
-    // this rebuilds exactly that shape from the events. A per-track list would
-    // reproduce the id order while halving every chunk's score.
     const listsOf = (chosen: readonly SearchEvent[]) =>
       chosen.flatMap((event) =>
         event.detail.topHits.map((hit) => [{ chunk: chunkOf(hit.id), rank: hit.rankDense }]),
       );
     const expected = rrfFuse(listsOf(events), (chunk) => hierarchyBonus(chunk, ORACLE_INTENT));
+    const byId = (rows: readonly Chunk[]) =>
+      [...rows]
+        .sort((a, b) => (a.id < b.id ? -1 : 1))
+        .map(({ id, score, rankDense }) => ({ id, score, rankDense }));
 
-    expect(chunks.map(({ id, score, rankDense }) => ({ id, score, rankDense }))).toEqual(
-      expected.map(({ id, score, rankDense }) => ({ id, score, rankDense })),
-    );
+    // The returned set is fusion's set — same rows, same scores, same dense
+    // ranks. The caller-priority guarantee leads the set (ADR-0062), so
+    // membership is compared order-insensitively and the lead is asserted next.
+    expect(byId(chunks)).toEqual(byId(expected));
+    // The caller sub-query's top three hit rows: its primary rank 1 and 2 and the
+    // fallback rank 2, in rank order with ties broken by id.
+    expect(chunks.slice(0, 3).map((chunk) => chunk.id)).toEqual(["a1", "a2", "b1"]);
+    expect(chunks.slice(0, 3).every((chunk) => chunk.origin === CALLER_PRIORITY_ORIGIN)).toBe(true);
 
     // The fixture is discriminating: dropping any one sub-query's lists changes
     // the fusion, so a run that consumed fewer searches than its record shows

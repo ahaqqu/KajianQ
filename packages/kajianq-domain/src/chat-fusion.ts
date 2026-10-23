@@ -80,6 +80,17 @@ function compareChunkIds(a: string, b: string): number {
 }
 
 /**
+ * The same total order for one track's hit: ascending dense rank, ties broken
+ * by chunk id. The caller-priority guarantee selects its top rows with it, so
+ * equal ranks from the two tracks — where the store's array order is no
+ * contract — still pick the same rows on every run.
+ */
+export function compareTrackHits(a: TrackHit, b: TrackHit): number {
+  if (a.rank !== b.rank) return a.rank - b.rank;
+  return compareChunkIds(a.chunk.id, b.chunk.id);
+}
+
+/**
  * A search's hits in ascending dense rank, ties broken by chunk id — the order
  * the `search_hits` trace record carries. The store's array order is no
  * contract (only `rankDense` states which row ranked where), so a record that

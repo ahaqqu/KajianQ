@@ -104,6 +104,7 @@ export {
 } from "./ingestion";
 export { describeIssue, issuePath, type ValidationIssue } from "./issue-path";
 export {
+  CALLER_PRIORITY_K,
   ChunkRefSchema,
   CostRecordSchema,
   SEARCH_HITS_TRACE_LIMIT,

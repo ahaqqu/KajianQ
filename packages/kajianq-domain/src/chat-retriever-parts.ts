@@ -8,7 +8,8 @@
  * The split itself stays meaningful. `chat-fusion` is the pure arithmetic
  * (RRF + hierarchy bonuses); `chat-filter-policy` is the store-facing filter
  * mapping (the exhaustive dimension map, the loud unexpressible-dimension
- * failure, and the relaxation order); `chat-scope-expansion` widens
+ * failure, and the relaxation order); `chat-caller-priority` leads the set with
+ * the caller's own query's top hits (ADR-0062); `chat-scope-expansion` widens
  * around a scope the **question named** (ADR-0045); `chat-surah-completion`
  * widens around a short surah **retrieval returned**, the same read's second
  * trigger; `chat-neighbour-expansion` widens around the verses **retrieval
@@ -20,6 +21,7 @@ export {
   HIERARCHY_BONUS,
   RRF_K,
   compareHitsByDenseRank,
+  compareTrackHits,
   hierarchyBonus,
   rrfFuse,
   type TrackHit,
@@ -27,6 +29,16 @@ export {
 export { SEARCH_HITS_TRACE_LIMIT } from "@app/contracts";
 export type { MetadataFilterMatch, MetadataFilterValue } from "@app/infra";
 export type { RetrieverStore } from "./chat-retriever-store";
+export {
+  CALLER_PRIORITY_ORIGIN,
+  CALLER_QUERY_ORIGIN,
+  CALLER_QUERY_ROLE,
+  callerPriorityHits,
+  guaranteeCallerPriority,
+  isCallerSubQuery,
+  type CallerPriority,
+  type CallerPriorityDetail,
+} from "./chat-caller-priority";
 export {
   FilterNotExpressibleError,
   RELAXATION_ORDER,
