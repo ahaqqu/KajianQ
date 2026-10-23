@@ -1,0 +1,750 @@
+{
+  "items": [
+    {
+      "concept": "tanzih-mukhalafat",
+      "doctrine": "Allah is not like anything created",
+      "question": "Apa itu sifat wajib bagi Allah dalam aqidah Ahlus Sunnah?",
+      "anchor": "QS. 42:11",
+      "conceptLabel": "Sifat wajib bagi Allah: tanzih, mukhalafat lil hawadits, Allah tidak menyerupai makhluk-Nya",
+      "triggers": ["sifat wajib", "tanzih", "mukhalafat", "menyerupai allah", "menyerupai makhluk"],
+      "anchorExists": true,
+      "verbatimRank": 5352,
+      "anchorText": "(Allah) Pencipta langit dan bumi. Dia menjadikan bagimu pasangan-pasangan dari jenismu sendiri dan (menjadikan pula) dari jenis hewan ternak pasangan-pasangan(-nya). Dia menjadikanmu berkembang biak dengan jalan itu. Tid",
+      "overlap": {
+        "sharedContentWords": [],
+        "longestSharedTokenRun": 1,
+        "jaccard": 0.0
+      }
+    },
+    {
+      "concept": "wahdaniyah-esa",
+      "doctrine": "Allah is one, with no partner",
+      "question": "Bagaimana dalil bahwa Allah itu tunggal dan tidak ada sekutu bagi-Nya?",
+      "anchor": "QS. 112:1",
+      "conceptLabel": "Keesaan Allah: Allah itu satu, tidak ada sekutu bagi-Nya, wahdaniyah",
+      "triggers": ["sekutu", "maha esa", "tunggal", "wahdaniyah", "keesaan"],
+      "anchorExists": true,
+      "verbatimRank": 4,
+      "anchorText": "Katakanlah (Nabi Muhammad), \u201cDialah Allah Yang Maha Esa.",
+      "overlap": {
+        "sharedContentWords": [],
+        "longestSharedTokenRun": 1,
+        "jaccard": 0.0
+      }
+    },
+    {
+      "concept": "tanzih-ruyah",
+      "doctrine": "Allah cannot be grasped by human sight",
+      "question": "Apakah Allah bisa dilihat oleh manusia di dunia?",
+      "anchor": "QS. 6:103",
+      "conceptLabel": "Tanzih: Allah tidak dapat dijangkau penglihatan mata, tidak menyerupai makhluk",
+      "triggers": [
+        "dilihat oleh manusia",
+        "penglihatan",
+        "mata manusia",
+        "ruyah",
+        "tidak dapat dijangkau"
+      ],
+      "anchorExists": true,
+      "verbatimRank": 11,
+      "anchorText": "Dia tidak dapat dijangkau oleh penglihatan mata, sedangkan Dia dapat menjangkau segala penglihatan itu. Dialah Yang Mahahalus lagi Mahateliti.",
+      "overlap": {
+        "sharedContentWords": [],
+        "longestSharedTokenRun": 1,
+        "jaccard": 0.0
+      }
+    },
+    {
+      "concept": "ilmu-ghaib",
+      "doctrine": "Allah knows the unseen",
+      "question": "Apakah Allah mengetahui perkara-perkara yang tidak terlihat?",
+      "anchor": "QS. 6:59",
+      "conceptLabel": "Ilmu Allah meliputi yang gaib: tidak ada yang tersembunyi bagi-Nya",
+      "triggers": ["gaib", "ghaib", "tersembunyi", "tidak terlihat"],
+      "anchorExists": true,
+      "verbatimRank": 19,
+      "anchorText": "Kunci-kunci semua yang gaib ada pada-Nya; tidak ada yang mengetahuinya selain Dia. Dia mengetahui apa yang ada di darat dan di laut. Tidak ada sehelai daun pun yang gugur yang tidak diketahui-Nya. Tidak ada sebutir biji ",
+      "overlap": {
+        "sharedContentWords": ["mengetahui"],
+        "longestSharedTokenRun": 2,
+        "jaccard": 0.033
+      }
+    },
+    {
+      "concept": "hayat-qayyum",
+      "doctrine": "Allah is living and sustains creation",
+      "question": "Sifat apa yang menunjukkan bahwa Allah terus mengurus makhluk-Nya?",
+      "anchor": "QS. 2:255",
+      "conceptLabel": "Hayat dan qayyum: Allah Mahahidup dan terus-menerus mengurus makhluk-Nya",
+      "triggers": ["terus mengurus", "mahahidup", "qayyum", "tidak tidur", "mengurus makhluk"],
+      "anchorExists": true,
+      "verbatimRank": 7,
+      "anchorText": "Allah, tidak ada tuhan selain Dia, Yang Mahahidup lagi terus-menerus mengurus (makhluk-Nya). Dia tidak dilanda oleh kantuk dan tidak (pula) oleh tidur. Milik-Nyalah apa yang ada di langit dan apa yang ada di bumi. Tidak ",
+      "overlap": {
+        "sharedContentWords": ["terus", "mengurus", "makhluk", "nya"],
+        "longestSharedTokenRun": 5,
+        "jaccard": 0.093
+      }
+    },
+    {
+      "concept": "qidam-baqa",
+      "doctrine": "Allah is without beginning and without end",
+      "question": "Apakah Allah memiliki permulaan dan penghabisan?",
+      "anchor": "QS. 57:3",
+      "conceptLabel": "Qidam dan baqa: Allah Mahaawal dan Mahaakhir, tidak berpermulaan dan tidak berkesudahan",
+      "triggers": ["permulaan", "penghabisan", "mahaawal", "mahaakhir", "azali"],
+      "anchorExists": true,
+      "verbatimRank": 2,
+      "anchorText": "Dialah Yang Mahaawal, Mahaakhir, Mahazahir, dan Mahabatin. Dia Maha Mengetahui segala sesuatu.",
+      "overlap": {
+        "sharedContentWords": [],
+        "longestSharedTokenRun": 1,
+        "jaccard": 0.0
+      }
+    },
+    {
+      "concept": "kalam-musa",
+      "doctrine": "Allah spoke to Musa directly",
+      "question": "Apakah Allah berbicara langsung kepada Nabi Musa?",
+      "anchor": "QS. 4:164",
+      "conceptLabel": "Kalam Allah: Allah berbicara kepada Musa secara langsung",
+      "triggers": ["berbicara kepada", "kalam", "musa"],
+      "anchorExists": true,
+      "verbatimRank": 2,
+      "anchorText": "Ada beberapa rasul yang telah Kami ceritakan (kisah) tentang mereka kepadamu sebelumnya dan ada (pula) beberapa rasul (lain) yang tidak Kami ceritakan (kisah) tentang mereka kepadamu. Allah telah benar-benar berbicara ke",
+      "overlap": {
+        "sharedContentWords": ["berbicara", "langsung", "musa"],
+        "longestSharedTokenRun": 4,
+        "jaccard": 0.176
+      }
+    },
+    {
+      "concept": "qudrah-syamil",
+      "doctrine": "Allah's power encompasses everything",
+      "question": "Apakah kekuasaan Allah meliputi segala sesuatu?",
+      "anchor": "QS. 2:20",
+      "conceptLabel": "Qudrah: kekuasaan Allah meliputi segala sesuatu",
+      "triggers": ["kekuasaan", "maha kuasa", "qudrah", "meliputi segala"],
+      "anchorExists": true,
+      "verbatimRank": 155,
+      "anchorText": "Hampir saja kilat itu menyambar penglihatan mereka. Setiap kali (kilat itu) menyinari, mereka berjalan di bawah (sinar) itu. Apabila gelap menerpa mereka, mereka berdiri (tidak bergerak). Sekiranya Allah menghendaki, nis",
+      "overlap": {
+        "sharedContentWords": ["sesuatu"],
+        "longestSharedTokenRun": 2,
+        "jaccard": 0.036
+      }
+    },
+    {
+      "concept": "uluhiyah-ibadah",
+      "doctrine": "None is worthy of worship but Allah",
+      "question": "Mengapa hanya Allah yang boleh disembah?",
+      "anchor": "QS. 2:163",
+      "conceptLabel": "Tauhid uluhiyah: tidak ada tuhan selain Allah, hanya Dia yang disembah",
+      "triggers": ["disembah", "tuhan selain", "uluhiyah", "hanya allah"],
+      "anchorExists": true,
+      "verbatimRank": 64,
+      "anchorText": "Tuhan kamu adalah Tuhan Yang Maha Esa. Tidak ada tuhan selain Dia Yang Maha Pengasih lagi Maha Penyayang.",
+      "overlap": {
+        "sharedContentWords": [],
+        "longestSharedTokenRun": 1,
+        "jaccard": 0.0
+      }
+    }
+  ],
+  "rows": [
+    {
+      "item": "tanzih-mukhalafat",
+      "variant": "original",
+      "text": "Apa itu sifat wajib bagi Allah dalam aqidah Ahlus Sunnah?",
+      "expected": "tanzih-mukhalafat",
+      "triggerFired": ["tanzih-mukhalafat"],
+      "bestConcept": "tanzih-mukhalafat",
+      "bestSim": 0.7501,
+      "simToExpected": 0.7501,
+      "top3": [
+        ["tanzih-mukhalafat", 0.7501],
+        ["wahdaniyah-esa", 0.6739],
+        ["tanzih-ruyah", 0.657]
+      ]
+    },
+    {
+      "item": "tanzih-mukhalafat",
+      "variant": "paraphrase-1",
+      "text": "Bagaimana aqidah Ahlus Sunnah memaknai sifat-sifat yang wajib ada pada Allah?",
+      "expected": "tanzih-mukhalafat",
+      "triggerFired": [],
+      "bestConcept": "tanzih-mukhalafat",
+      "bestSim": 0.7327,
+      "simToExpected": 0.7327,
+      "top3": [
+        ["tanzih-mukhalafat", 0.7327],
+        ["tanzih-ruyah", 0.6643],
+        ["wahdaniyah-esa", 0.661]
+      ]
+    },
+    {
+      "item": "tanzih-mukhalafat",
+      "variant": "paraphrase-2",
+      "text": "Dalam keyakinan Ahlus Sunnah, sifat wajib bagi Allah itu seperti apa?",
+      "expected": "tanzih-mukhalafat",
+      "triggerFired": ["tanzih-mukhalafat"],
+      "bestConcept": "tanzih-mukhalafat",
+      "bestSim": 0.7512,
+      "simToExpected": 0.7512,
+      "top3": [
+        ["tanzih-mukhalafat", 0.7512],
+        ["wahdaniyah-esa", 0.6843],
+        ["tanzih-ruyah", 0.6719]
+      ]
+    },
+    {
+      "item": "wahdaniyah-esa",
+      "variant": "original",
+      "text": "Bagaimana dalil bahwa Allah itu tunggal dan tidak ada sekutu bagi-Nya?",
+      "expected": "wahdaniyah-esa",
+      "triggerFired": ["wahdaniyah-esa"],
+      "bestConcept": "wahdaniyah-esa",
+      "bestSim": 0.8144,
+      "simToExpected": 0.8144,
+      "top3": [
+        ["wahdaniyah-esa", 0.8144],
+        ["uluhiyah-ibadah", 0.7279],
+        ["tanzih-ruyah", 0.686]
+      ]
+    },
+    {
+      "item": "wahdaniyah-esa",
+      "variant": "paraphrase-1",
+      "text": "Apa bukti yang menunjukkan bahwa Allah itu esa dan tidak memiliki sekutu?",
+      "expected": "wahdaniyah-esa",
+      "triggerFired": ["wahdaniyah-esa"],
+      "bestConcept": "wahdaniyah-esa",
+      "bestSim": 0.8116,
+      "simToExpected": 0.8116,
+      "top3": [
+        ["wahdaniyah-esa", 0.8116],
+        ["uluhiyah-ibadah", 0.7136],
+        ["tanzih-ruyah", 0.6718]
+      ]
+    },
+    {
+      "item": "wahdaniyah-esa",
+      "variant": "paraphrase-2",
+      "text": "Bagaimana landasan yang menegaskan ketunggalan Allah tanpa adanya sekutu bagi-Nya?",
+      "expected": "wahdaniyah-esa",
+      "triggerFired": ["wahdaniyah-esa"],
+      "bestConcept": "wahdaniyah-esa",
+      "bestSim": 0.8061,
+      "simToExpected": 0.8061,
+      "top3": [
+        ["wahdaniyah-esa", 0.8061],
+        ["uluhiyah-ibadah", 0.7296],
+        ["tanzih-ruyah", 0.6775]
+      ]
+    },
+    {
+      "item": "tanzih-ruyah",
+      "variant": "original",
+      "text": "Apakah Allah bisa dilihat oleh manusia di dunia?",
+      "expected": "tanzih-ruyah",
+      "triggerFired": ["tanzih-ruyah"],
+      "bestConcept": "tanzih-ruyah",
+      "bestSim": 0.762,
+      "simToExpected": 0.762,
+      "top3": [
+        ["tanzih-ruyah", 0.762],
+        ["ilmu-ghaib", 0.724],
+        ["wahdaniyah-esa", 0.6764]
+      ]
+    },
+    {
+      "item": "tanzih-ruyah",
+      "variant": "paraphrase-1",
+      "text": "Apakah manusia di dunia ini memiliki kemampuan untuk melihat Allah?",
+      "expected": "tanzih-ruyah",
+      "triggerFired": [],
+      "bestConcept": "tanzih-ruyah",
+      "bestSim": 0.7617,
+      "simToExpected": 0.7617,
+      "top3": [
+        ["tanzih-ruyah", 0.7617],
+        ["ilmu-ghaib", 0.715],
+        ["wahdaniyah-esa", 0.6582]
+      ]
+    },
+    {
+      "item": "tanzih-ruyah",
+      "variant": "paraphrase-2",
+      "text": "Bisakah manusia menyaksikan Allah secara langsung selama hidup di dunia?",
+      "expected": "tanzih-ruyah",
+      "triggerFired": [],
+      "bestConcept": "tanzih-ruyah",
+      "bestSim": 0.7153,
+      "simToExpected": 0.7153,
+      "top3": [
+        ["tanzih-ruyah", 0.7153],
+        ["ilmu-ghaib", 0.6878],
+        ["kalam-musa", 0.6739]
+      ]
+    },
+    {
+      "item": "ilmu-ghaib",
+      "variant": "original",
+      "text": "Apakah Allah mengetahui perkara-perkara yang tidak terlihat?",
+      "expected": "ilmu-ghaib",
+      "triggerFired": ["ilmu-ghaib"],
+      "bestConcept": "ilmu-ghaib",
+      "bestSim": 0.8527,
+      "simToExpected": 0.8527,
+      "top3": [
+        ["ilmu-ghaib", 0.8527],
+        ["tanzih-ruyah", 0.7549],
+        ["qudrah-syamil", 0.699]
+      ]
+    },
+    {
+      "item": "ilmu-ghaib",
+      "variant": "paraphrase-1",
+      "text": "Apakah Allah mengetahui hal-hal yang tidak tampak?",
+      "expected": "ilmu-ghaib",
+      "triggerFired": [],
+      "bestConcept": "ilmu-ghaib",
+      "bestSim": 0.854,
+      "simToExpected": 0.854,
+      "top3": [
+        ["ilmu-ghaib", 0.854],
+        ["tanzih-ruyah", 0.764],
+        ["qudrah-syamil", 0.696]
+      ]
+    },
+    {
+      "item": "ilmu-ghaib",
+      "variant": "paraphrase-2",
+      "text": "Apakah Allah mengetahui segala sesuatu yang tersembunyi?",
+      "expected": "ilmu-ghaib",
+      "triggerFired": ["ilmu-ghaib"],
+      "bestConcept": "ilmu-ghaib",
+      "bestSim": 0.8888,
+      "simToExpected": 0.8888,
+      "top3": [
+        ["ilmu-ghaib", 0.8888],
+        ["tanzih-ruyah", 0.7026],
+        ["qudrah-syamil", 0.6982]
+      ]
+    },
+    {
+      "item": "hayat-qayyum",
+      "variant": "original",
+      "text": "Sifat apa yang menunjukkan bahwa Allah terus mengurus makhluk-Nya?",
+      "expected": "hayat-qayyum",
+      "triggerFired": ["hayat-qayyum"],
+      "bestConcept": "hayat-qayyum",
+      "bestSim": 0.8149,
+      "simToExpected": 0.8149,
+      "top3": [
+        ["hayat-qayyum", 0.8149],
+        ["qudrah-syamil", 0.6949],
+        ["tanzih-mukhalafat", 0.6926]
+      ]
+    },
+    {
+      "item": "hayat-qayyum",
+      "variant": "paraphrase-1",
+      "text": "Sifat apa yang menandakan bahwa Allah senantiasa mengurus ciptaan-Nya?",
+      "expected": "hayat-qayyum",
+      "triggerFired": [],
+      "bestConcept": "hayat-qayyum",
+      "bestSim": 0.7846,
+      "simToExpected": 0.7846,
+      "top3": [
+        ["hayat-qayyum", 0.7846],
+        ["qudrah-syamil", 0.6948],
+        ["tanzih-mukhalafat", 0.6823]
+      ]
+    },
+    {
+      "item": "hayat-qayyum",
+      "variant": "paraphrase-2",
+      "text": "Sifat apa yang memperlihatkan bahwa Allah terus memelihara makhluk-Nya?",
+      "expected": "hayat-qayyum",
+      "triggerFired": [],
+      "bestConcept": "hayat-qayyum",
+      "bestSim": 0.8088,
+      "simToExpected": 0.8088,
+      "top3": [
+        ["hayat-qayyum", 0.8088],
+        ["tanzih-mukhalafat", 0.7007],
+        ["qudrah-syamil", 0.6899]
+      ]
+    },
+    {
+      "item": "qidam-baqa",
+      "variant": "original",
+      "text": "Apakah Allah memiliki permulaan dan penghabisan?",
+      "expected": "qidam-baqa",
+      "triggerFired": ["qidam-baqa"],
+      "bestConcept": "qidam-baqa",
+      "bestSim": 0.8316,
+      "simToExpected": 0.8316,
+      "top3": [
+        ["qidam-baqa", 0.8316],
+        ["tanzih-ruyah", 0.7101],
+        ["wahdaniyah-esa", 0.6982]
+      ]
+    },
+    {
+      "item": "qidam-baqa",
+      "variant": "paraphrase-1",
+      "text": "Apakah Allah mempunyai awal dan akhir?",
+      "expected": "qidam-baqa",
+      "triggerFired": [],
+      "bestConcept": "qidam-baqa",
+      "bestSim": 0.8474,
+      "simToExpected": 0.8474,
+      "top3": [
+        ["qidam-baqa", 0.8474],
+        ["tanzih-ruyah", 0.7018],
+        ["wahdaniyah-esa", 0.6942]
+      ]
+    },
+    {
+      "item": "qidam-baqa",
+      "variant": "paraphrase-2",
+      "text": "Apakah Allah memiliki titik mula dan titik akhir?",
+      "expected": "qidam-baqa",
+      "triggerFired": [],
+      "bestConcept": "qidam-baqa",
+      "bestSim": 0.8103,
+      "simToExpected": 0.8103,
+      "top3": [
+        ["qidam-baqa", 0.8103],
+        ["tanzih-ruyah", 0.7206],
+        ["wahdaniyah-esa", 0.6938]
+      ]
+    },
+    {
+      "item": "kalam-musa",
+      "variant": "original",
+      "text": "Apakah Allah berbicara langsung kepada Nabi Musa?",
+      "expected": "kalam-musa",
+      "triggerFired": ["kalam-musa"],
+      "bestConcept": "kalam-musa",
+      "bestSim": 0.9231,
+      "simToExpected": 0.9231,
+      "top3": [
+        ["kalam-musa", 0.9231],
+        ["wahdaniyah-esa", 0.6025],
+        ["ilmu-ghaib", 0.6002]
+      ]
+    },
+    {
+      "item": "kalam-musa",
+      "variant": "paraphrase-1",
+      "text": "Apakah Nabi Musa menerima perkataan langsung dari Allah?",
+      "expected": "kalam-musa",
+      "triggerFired": ["kalam-musa"],
+      "bestConcept": "kalam-musa",
+      "bestSim": 0.8901,
+      "simToExpected": 0.8901,
+      "top3": [
+        ["kalam-musa", 0.8901],
+        ["wahdaniyah-esa", 0.5696],
+        ["ilmu-ghaib", 0.5696]
+      ]
+    },
+    {
+      "item": "kalam-musa",
+      "variant": "paraphrase-2",
+      "text": "Bagaimana cara Allah berfirman kepada Nabi Musa, apakah secara langsung?",
+      "expected": "kalam-musa",
+      "triggerFired": ["kalam-musa"],
+      "bestConcept": "kalam-musa",
+      "bestSim": 0.9034,
+      "simToExpected": 0.9034,
+      "top3": [
+        ["kalam-musa", 0.9034],
+        ["ilmu-ghaib", 0.5863],
+        ["wahdaniyah-esa", 0.5784]
+      ]
+    },
+    {
+      "item": "qudrah-syamil",
+      "variant": "original",
+      "text": "Apakah kekuasaan Allah meliputi segala sesuatu?",
+      "expected": "qudrah-syamil",
+      "triggerFired": ["qudrah-syamil"],
+      "bestConcept": "qudrah-syamil",
+      "bestSim": 0.8877,
+      "simToExpected": 0.8877,
+      "top3": [
+        ["qudrah-syamil", 0.8877],
+        ["ilmu-ghaib", 0.725],
+        ["hayat-qayyum", 0.7062]
+      ]
+    },
+    {
+      "item": "qudrah-syamil",
+      "variant": "paraphrase-1",
+      "text": "Apakah segala sesuatu berada dalam cakupan kekuasaan Allah?",
+      "expected": "qudrah-syamil",
+      "triggerFired": ["qudrah-syamil"],
+      "bestConcept": "qudrah-syamil",
+      "bestSim": 0.8566,
+      "simToExpected": 0.8566,
+      "top3": [
+        ["qudrah-syamil", 0.8566],
+        ["ilmu-ghaib", 0.7145],
+        ["hayat-qayyum", 0.712]
+      ]
+    },
+    {
+      "item": "qudrah-syamil",
+      "variant": "paraphrase-2",
+      "text": "Apakah kekuasaan Allah mencakup seluruh hal?",
+      "expected": "qudrah-syamil",
+      "triggerFired": ["qudrah-syamil"],
+      "bestConcept": "qudrah-syamil",
+      "bestSim": 0.8636,
+      "simToExpected": 0.8636,
+      "top3": [
+        ["qudrah-syamil", 0.8636],
+        ["ilmu-ghaib", 0.7194],
+        ["hayat-qayyum", 0.6974]
+      ]
+    },
+    {
+      "item": "uluhiyah-ibadah",
+      "variant": "original",
+      "text": "Mengapa hanya Allah yang boleh disembah?",
+      "expected": "uluhiyah-ibadah",
+      "triggerFired": ["uluhiyah-ibadah"],
+      "bestConcept": "uluhiyah-ibadah",
+      "bestSim": 0.8246,
+      "simToExpected": 0.8246,
+      "top3": [
+        ["uluhiyah-ibadah", 0.8246],
+        ["wahdaniyah-esa", 0.7411],
+        ["tanzih-ruyah", 0.6843]
+      ]
+    },
+    {
+      "item": "uluhiyah-ibadah",
+      "variant": "paraphrase-1",
+      "text": "Apa alasan hanya Allah yang layak menjadi satu-satunya yang disembah?",
+      "expected": "uluhiyah-ibadah",
+      "triggerFired": ["uluhiyah-ibadah"],
+      "bestConcept": "uluhiyah-ibadah",
+      "bestSim": 0.7847,
+      "simToExpected": 0.7847,
+      "top3": [
+        ["uluhiyah-ibadah", 0.7847],
+        ["wahdaniyah-esa", 0.7321],
+        ["tanzih-mukhalafat", 0.6727]
+      ]
+    },
+    {
+      "item": "uluhiyah-ibadah",
+      "variant": "paraphrase-2",
+      "text": "Mengapa penyembahan hanya boleh ditujukan kepada Allah?",
+      "expected": "uluhiyah-ibadah",
+      "triggerFired": [],
+      "bestConcept": "uluhiyah-ibadah",
+      "bestSim": 0.7995,
+      "simToExpected": 0.7995,
+      "top3": [
+        ["uluhiyah-ibadah", 0.7995],
+        ["wahdaniyah-esa", 0.723],
+        ["tanzih-ruyah", 0.6795]
+      ]
+    }
+  ],
+  "controls": [
+    {
+      "id": "gs-v0-001",
+      "triggerFired": [],
+      "bestConcept": "wahdaniyah-esa",
+      "bestSim": 0.6458,
+      "text": "Apa maksud Ayat Kursi?"
+    },
+    {
+      "id": "gs-v0-002",
+      "triggerFired": [],
+      "bestConcept": "kalam-musa",
+      "bestSim": 0.6108,
+      "text": "Sebutkan dalil tentang perintah shalat dalam Al-Quran!"
+    },
+    {
+      "id": "gs-v0-003",
+      "triggerFired": [],
+      "bestConcept": "tanzih-mukhalafat",
+      "bestSim": 0.5738,
+      "text": "Bagaimana tata cara wudhu menurut hadits?"
+    },
+    {
+      "id": "gs-v0-004",
+      "triggerFired": [],
+      "bestConcept": "ilmu-ghaib",
+      "bestSim": 0.6355,
+      "text": "Apa yang Nabi Islam katakan tentang mencari ilmu?"
+    },
+    {
+      "id": "gs-v0-005",
+      "triggerFired": [],
+      "bestConcept": "wahdaniyah-esa",
+      "bestSim": 0.6444,
+      "text": "Jelaskan makna Surat Al-Ikhlas!"
+    },
+    {
+      "id": "gs-v0-006",
+      "triggerFired": [],
+      "bestConcept": "wahdaniyah-esa",
+      "bestSim": 0.5223,
+      "text": "Apakah menjamak shalat saat safar diperbolehkan? Sebutkan dalilnya."
+    },
+    {
+      "id": "gs-v0-008",
+      "triggerFired": [],
+      "bestConcept": "kalam-musa",
+      "bestSim": 0.569,
+      "text": "Hadits apa yang menyebutkan keutamaan membaca Al-Quran?"
+    },
+    {
+      "id": "gs-v0-009",
+      "triggerFired": [],
+      "bestConcept": "qudrah-syamil",
+      "bestSim": 0.5512,
+      "text": "Jelaskan konsep ridha dalam QS. 89:28!"
+    },
+    {
+      "id": "gs-v0-010",
+      "triggerFired": [],
+      "bestConcept": "tanzih-mukhalafat",
+      "bestSim": 0.563,
+      "text": "Bagaimana hukum riba dalam transaksi? Sebutkan ayat dan haditsnya."
+    },
+    {
+      "id": "gs-v0-011",
+      "triggerFired": [],
+      "bestConcept": "tanzih-ruyah",
+      "bestSim": 0.5773,
+      "text": "Sebutkan hadits tentang kebersihan itu sebagian dari iman!"
+    },
+    {
+      "id": "gs-v0-012",
+      "triggerFired": [],
+      "bestConcept": "hayat-qayyum",
+      "bestSim": 0.5837,
+      "text": "Apa makna asmaul husna Ar-Rahman dan Ar-Rahim?"
+    },
+    {
+      "id": "gs-v0-013",
+      "triggerFired": [],
+      "bestConcept": "hayat-qayyum",
+      "bestSim": 0.5347,
+      "text": "Bagaimana adab makan menurut hadits Rasulullah?"
+    },
+    {
+      "id": "gs-v0-014",
+      "triggerFired": [],
+      "bestConcept": "tanzih-mukhalafat",
+      "bestSim": 0.5575,
+      "text": "Jelaskan perbedaan niat dan ikhlas berdasarkan QS. 98:5!"
+    },
+    {
+      "id": "gs-v0-015",
+      "triggerFired": [],
+      "bestConcept": "hayat-qayyum",
+      "bestSim": 0.5272,
+      "text": "What does Surah Al-Fatihah mean and why is it recited in every prayer?"
+    },
+    {
+      "id": "gs-v0-016",
+      "triggerFired": [],
+      "bestConcept": "tanzih-mukhalafat",
+      "bestSim": 0.5078,
+      "text": "Which hadith describes the obligations of Zakat, and what does it say?"
+    },
+    {
+      "id": "gs-v0-017",
+      "triggerFired": [],
+      "bestConcept": "ilmu-ghaib",
+      "bestSim": 0.5006,
+      "text": "What is the ruling on praying in a garment that contains gold?"
+    },
+    {
+      "id": "gs-v0-018",
+      "triggerFired": [],
+      "bestConcept": "wahdaniyah-esa",
+      "bestSim": 0.5624,
+      "text": "Berapa jumlah rakaat shalat Tarawih yang paling utama menurut hadits sahih?"
+    },
+    {
+      "id": "gs-v0-019",
+      "triggerFired": [],
+      "bestConcept": "qidam-baqa",
+      "bestSim": 0.5755,
+      "text": "Kapan kiamat akan terjadi? Sebutkan tahun pastinya!"
+    },
+    {
+      "id": "gs-v0-020",
+      "triggerFired": [],
+      "bestConcept": "ilmu-ghaib",
+      "bestSim": 0.5714,
+      "text": "Sebutkan hadits yang memerintahkan mencari ilmu sampai ke negeri China dan jelaskan sanadnya!"
+    },
+    {
+      "id": "gs-v0-021",
+      "triggerFired": [],
+      "bestConcept": "wahdaniyah-esa",
+      "bestSim": 0.5408,
+      "text": "Apa isi hadits pada HR. Bukhari no. 191?"
+    }
+  ],
+  "summaries": {
+    "trueMin": 0.7153,
+    "trueMax": 0.9231,
+    "controlMin": 0.5006,
+    "controlMax": 0.6458,
+    "fullMatcherUs": 2524.6447540004738,
+    "conceptCount": 9,
+    "memoryKiB": 54.0
+  },
+  "paraphrases": {
+    "tanzih-mukhalafat": [
+      "Bagaimana aqidah Ahlus Sunnah memaknai sifat-sifat yang wajib ada pada Allah?",
+      "Dalam keyakinan Ahlus Sunnah, sifat wajib bagi Allah itu seperti apa?"
+    ],
+    "wahdaniyah-esa": [
+      "Apa bukti yang menunjukkan bahwa Allah itu esa dan tidak memiliki sekutu?",
+      "Bagaimana landasan yang menegaskan ketunggalan Allah tanpa adanya sekutu bagi-Nya?"
+    ],
+    "tanzih-ruyah": [
+      "Apakah manusia di dunia ini memiliki kemampuan untuk melihat Allah?",
+      "Bisakah manusia menyaksikan Allah secara langsung selama hidup di dunia?"
+    ],
+    "ilmu-ghaib": [
+      "Apakah Allah mengetahui hal-hal yang tidak tampak?",
+      "Apakah Allah mengetahui segala sesuatu yang tersembunyi?"
+    ],
+    "hayat-qayyum": [
+      "Sifat apa yang menandakan bahwa Allah senantiasa mengurus ciptaan-Nya?",
+      "Sifat apa yang memperlihatkan bahwa Allah terus memelihara makhluk-Nya?"
+    ],
+    "qidam-baqa": [
+      "Apakah Allah mempunyai awal dan akhir?",
+      "Apakah Allah memiliki titik mula dan titik akhir?"
+    ],
+    "kalam-musa": [
+      "Apakah Nabi Musa menerima perkataan langsung dari Allah?",
+      "Bagaimana cara Allah berfirman kepada Nabi Musa, apakah secara langsung?"
+    ],
+    "qudrah-syamil": [
+      "Apakah segala sesuatu berada dalam cakupan kekuasaan Allah?",
+      "Apakah kekuasaan Allah mencakup seluruh hal?"
+    ],
+    "uluhiyah-ibadah": [
+      "Apa alasan hanya Allah yang layak menjadi satu-satunya yang disembah?",
+      "Mengapa penyembahan hanya boleh ditujukan kepada Allah?"
+    ]
+  }
+}

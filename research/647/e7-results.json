@@ -1,0 +1,176 @@
+{
+  "sweep": [
+    {
+      "tau": 0.6,
+      "trueFires": 27,
+      "ofTrue": 27,
+      "falseFires": 4,
+      "ofControls": 20
+    },
+    {
+      "tau": 0.62,
+      "trueFires": 27,
+      "ofTrue": 27,
+      "falseFires": 3,
+      "ofControls": 20
+    },
+    {
+      "tau": 0.64,
+      "trueFires": 27,
+      "ofTrue": 27,
+      "falseFires": 2,
+      "ofControls": 20
+    },
+    {
+      "tau": 0.66,
+      "trueFires": 27,
+      "ofTrue": 27,
+      "falseFires": 0,
+      "ofControls": 20
+    },
+    {
+      "tau": 0.68,
+      "trueFires": 27,
+      "ofTrue": 27,
+      "falseFires": 0,
+      "ofControls": 20
+    },
+    {
+      "tau": 0.7,
+      "trueFires": 27,
+      "ofTrue": 27,
+      "falseFires": 0,
+      "ofControls": 20
+    },
+    {
+      "tau": 0.72,
+      "trueFires": 26,
+      "ofTrue": 27,
+      "falseFires": 0,
+      "ofControls": 20
+    },
+    {
+      "tau": 0.74,
+      "trueFires": 25,
+      "ofTrue": 27,
+      "falseFires": 0,
+      "ofControls": 20
+    },
+    {
+      "tau": 0.76,
+      "trueFires": 23,
+      "ofTrue": 27,
+      "falseFires": 0,
+      "ofControls": 20
+    },
+    {
+      "tau": 0.8,
+      "trueFires": 18,
+      "ofTrue": 27,
+      "falseFires": 0,
+      "ofControls": 20
+    }
+  ],
+  "cleanWindow": [
+    {
+      "tau": 0.66,
+      "trueFires": 27,
+      "ofTrue": 27,
+      "falseFires": 0,
+      "ofControls": 20
+    },
+    {
+      "tau": 0.68,
+      "trueFires": 27,
+      "ofTrue": 27,
+      "falseFires": 0,
+      "ofControls": 20
+    },
+    {
+      "tau": 0.7,
+      "trueFires": 27,
+      "ofTrue": 27,
+      "falseFires": 0,
+      "ofControls": 20
+    }
+  ],
+  "displacement": {
+    "007": {
+      "before": 5352,
+      "after": 5353,
+      "top10Before": false,
+      "top10After": false,
+      "top50Before": false,
+      "top50After": false
+    },
+    "008": {
+      "before": 397,
+      "after": 398,
+      "top10Before": false,
+      "top10After": false,
+      "top50Before": false,
+      "top50After": false
+    },
+    "011": {
+      "before": 8,
+      "after": 9,
+      "top10Before": true,
+      "top10After": true,
+      "top50Before": true,
+      "top50After": true
+    },
+    "016": {
+      "before": 48,
+      "after": 49,
+      "top10Before": false,
+      "top10After": false,
+      "top50Before": true,
+      "top50After": true
+    }
+  },
+  "cost": {
+    "hydePerQuery": {
+      "llmCalls": 1,
+      "promptTokens": 74.0,
+      "completionTokens": 60.5,
+      "usdPerQuery": 9.48e-5
+    },
+    "classifierPerQuery": {
+      "llmCalls": 1,
+      "usdPerQuery": 4.8063829787234046e-5
+    },
+    "tablePerEntry": {
+      "embeddings": 1,
+      "sqlReads": 1,
+      "usdPerEntry": 1.2e-5
+    },
+    "tablePerQueryNoMatch": {
+      "embeddings": 0,
+      "llmCalls": 0,
+      "measuredUs": 2524.6447540004738,
+      "concepts": 9,
+      "memoryKiB": 54.0
+    },
+    "tablePerQueryMatch": {
+      "embeddings": 0,
+      "llmCalls": 0,
+      "sqlReads": 1
+    },
+    "k10to50": {
+      "embeddings": 0,
+      "llmCalls": 0,
+      "candidatesPerTrack": "5x"
+    },
+    "filterFix646": {
+      "embeddings": 0,
+      "llmCalls": 0,
+      "code": "merged at head"
+    },
+    "rowsBefore": 42511,
+    "embeddingCallsInE2": 25,
+    "e2LlmUsd": 0.000758,
+    "e5LlmUsd": 0.002259,
+    "totalLlmUsd": 0.003587
+  },
+  "rowsBefore": 42511
+}

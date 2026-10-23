@@ -1,0 +1,77 @@
+{
+  "id": "647-heldout-aqidah-v0",
+  "status": "research-proposal-not-owner-signed",
+  "$comment": "Held-out aqidah set proposed by the #647 researcher, not by a curator. Construction rule: for each doctrine, the question was written in Indonesian from the doctrine's meaning and the anchor was then read from the corpus by address; the question was kept only if it does not quote the anchor's wording and if the anchor is not in the verbatim question's dense top-50 (the class the concept->anchor table exists for). 007 is deliberately absent. Each item needs a curator's signature before it can gate anything; the owner must re-author the trigger lexicon blind to these questions, because the researcher wrote both.",
+  "entries": [
+    {
+      "concept": "wahdaniyah-esa",
+      "doctrine": "Allah is one, with no partner",
+      "question": "Bagaimana dalil bahwa Allah itu tunggal dan tidak ada sekutu bagi-Nya?",
+      "anchor": "QS. 112:1",
+      "conceptLabel": "Keesaan Allah: Allah itu satu, tidak ada sekutu bagi-Nya, wahdaniyah",
+      "triggers": ["sekutu", "maha esa", "tunggal", "wahdaniyah", "keesaan"]
+    },
+    {
+      "concept": "tanzih-ruyah",
+      "doctrine": "Allah cannot be grasped by human sight",
+      "question": "Apakah Allah bisa dilihat oleh manusia di dunia?",
+      "anchor": "QS. 6:103",
+      "conceptLabel": "Tanzih: Allah tidak dapat dijangkau penglihatan mata, tidak menyerupai makhluk",
+      "triggers": [
+        "dilihat oleh manusia",
+        "penglihatan",
+        "mata manusia",
+        "ruyah",
+        "tidak dapat dijangkau"
+      ]
+    },
+    {
+      "concept": "ilmu-ghaib",
+      "doctrine": "Allah knows the unseen",
+      "question": "Apakah Allah mengetahui perkara-perkara yang tidak terlihat?",
+      "anchor": "QS. 6:59",
+      "conceptLabel": "Ilmu Allah meliputi yang gaib: tidak ada yang tersembunyi bagi-Nya",
+      "triggers": ["gaib", "ghaib", "tersembunyi", "tidak terlihat"]
+    },
+    {
+      "concept": "hayat-qayyum",
+      "doctrine": "Allah is living and sustains creation",
+      "question": "Sifat apa yang menunjukkan bahwa Allah terus mengurus makhluk-Nya?",
+      "anchor": "QS. 2:255",
+      "conceptLabel": "Hayat dan qayyum: Allah Mahahidup dan terus-menerus mengurus makhluk-Nya",
+      "triggers": ["terus mengurus", "mahahidup", "qayyum", "tidak tidur", "mengurus makhluk"]
+    },
+    {
+      "concept": "qidam-baqa",
+      "doctrine": "Allah is without beginning and without end",
+      "question": "Apakah Allah memiliki permulaan dan penghabisan?",
+      "anchor": "QS. 57:3",
+      "conceptLabel": "Qidam dan baqa: Allah Mahaawal dan Mahaakhir, tidak berpermulaan dan tidak berkesudahan",
+      "triggers": ["permulaan", "penghabisan", "mahaawal", "mahaakhir", "azali"]
+    },
+    {
+      "concept": "kalam-musa",
+      "doctrine": "Allah spoke to Musa directly",
+      "question": "Apakah Allah berbicara langsung kepada Nabi Musa?",
+      "anchor": "QS. 4:164",
+      "conceptLabel": "Kalam Allah: Allah berbicara kepada Musa secara langsung",
+      "triggers": ["berbicara kepada", "kalam", "musa"]
+    },
+    {
+      "concept": "qudrah-syamil",
+      "doctrine": "Allah's power encompasses everything",
+      "question": "Apakah kekuasaan Allah meliputi segala sesuatu?",
+      "anchor": "QS. 2:20",
+      "conceptLabel": "Qudrah: kekuasaan Allah meliputi segala sesuatu",
+      "triggers": ["kekuasaan", "maha kuasa", "qudrah", "meliputi segala"]
+    },
+    {
+      "concept": "uluhiyah-ibadah",
+      "doctrine": "None is worthy of worship but Allah",
+      "question": "Mengapa hanya Allah yang boleh disembah?",
+      "anchor": "QS. 2:163",
+      "conceptLabel": "Tauhid uluhiyah: tidak ada tuhan selain Allah, hanya Dia yang disembah",
+      "triggers": ["disembah", "tuhan selain", "uluhiyah", "hanya allah"]
+    }
+  ]
+}

@@ -1,0 +1,62 @@
+{
+  "determinism": {
+    "007": {
+      "pairwiseCosine": [1.0, 1.0, 1.0],
+      "ranks": [5352, 5352, 5352]
+    },
+    "011": {
+      "pairwiseCosine": [1.0, 1.0, 1.0],
+      "ranks": [8, 8, 8]
+    }
+  },
+  "margins": {
+    "007": {
+      "rank": 5352,
+      "inTop60": false
+    },
+    "008": {
+      "rank": 397,
+      "inTop60": false
+    },
+    "011": {
+      "rank": 8,
+      "cosine": 0.637134,
+      "gapAbove": 0.001323,
+      "gapBelow": 0.001436,
+      "rowsWithin0002": 3,
+      "neighbours": [
+        "HR. Tirmidhi no. 3519",
+        "HR. Nasai no. 5004",
+        "HR. Muslim no. 534",
+        "HR. Nasai no. 5006",
+        "HR. Tirmidhi no. 2614"
+      ]
+    },
+    "016": {
+      "rank": 48,
+      "inTop60": false
+    }
+  },
+  "baselines": {
+    "007": {
+      "reported": 5352,
+      "measured": 5352,
+      "delta": 0
+    },
+    "008": {
+      "reported": 397,
+      "measured": 397,
+      "delta": 0
+    },
+    "011": {
+      "reported": 11,
+      "measured": 8,
+      "delta": -3
+    },
+    "016": {
+      "reported": 48,
+      "measured": 48,
+      "delta": 0
+    }
+  }
+}
