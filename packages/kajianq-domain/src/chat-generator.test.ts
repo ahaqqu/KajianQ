@@ -3,6 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 import { ProviderError, RunContext, type AssembledContext, type Chunk } from "@app/rag-core";
 import type { CostRecord } from "@app/contracts";
 import { createKajianQGenerator, REFUSAL_REREAD_LIMIT } from "./chat-generator";
+import { ADDRESSED_EVIDENCE_PROMPT } from "./chat-prompts";
 import { DEFAULT_REFUSALS, createKajianQReviewer } from "./chat-reviewer";
 import type { KajianQFilters } from "./filters";
 import { runChatPipeline } from "./chat-pipeline";
@@ -447,7 +448,11 @@ describe("createKajianQGenerator — the addressed-evidence reread", () => {
   type StageRun = {
     draft: { text: string };
     seen: string[][];
-    events: { kind: string; detail?: { purpose?: string }; cost?: CostRecord }[];
+    events: {
+      kind: string;
+      detail?: { purpose?: string; addressed?: readonly string[] };
+      cost?: CostRecord;
+    }[];
   };
 
   const runScripted = async (
@@ -486,24 +491,32 @@ describe("createKajianQGenerator — the addressed-evidence reread", () => {
     ]);
     expect(draft.text).toBe("Menurut QS. 98:5, ikhlas adalah …");
     expect(seen).toHaveLength(2);
-    // The second reading is the same question and evidence, with the addressed
-    // passage named and the insufficiency sentence ruled out for it.
+    // The second reading is the same question and evidence, with the carried
+    // passage named and the canonical refusal left available for what it does
+    // not state — the reread may still decline.
     expect(seen[1]?.[1]).toContain(question);
     expect(seen[1]?.[1]).toContain(evidence);
-    expect(seen[1]?.[1]).toContain("QS. 98:5");
-    expect(seen[1]?.[1]).toContain(`kalimat "${DEFAULT_REFUSALS.id}" tidak berlaku`);
+    expect(seen[1]?.[1]).toContain(`"${DEFAULT_REFUSALS.id}" tetap berlaku`);
     // The first reading is the plain prompt: an answer never pays the directive.
-    expect(seen[0]?.[1]).not.toContain("tidak berlaku");
+    expect(seen[0]?.[1]).not.toContain("tetap berlaku");
     const calls = events.filter((e) => e.kind === "llm_call");
     expect(calls.map((e) => e.detail?.purpose)).toEqual(["generate", "generate_addressed_reread"]);
+    // The trace names the addressed labels the reread was pointed at; the plain
+    // first reading carries none.
+    expect(calls.map((e) => e.detail?.addressed)).toEqual([undefined, ["QS. 98:5"]]);
     expect(calls.map((e) => e.cost?.costMicroUsd)).toEqual([7, 7]);
   });
 
-  it("ships the refusal when the directed reread declines too", async () => {
+  it("ships the first refusal when a directed reread declines with different wording", async () => {
     // The model is still the writer: a refusal that survives a reading pointed
     // at the named evidence is the recorded residual, never a licence to
-    // fabricate an answer.
-    const { draft, events } = await runScripted(context([verse()], question), [refusal, refusal]);
+    // fabricate an answer. The second reading uses the floor's polite decline,
+    // so a path that promoted a declining reread would ship the wrong text.
+    const politeDecline = "Mohon maaf. Kami tidak menemukan dalil yang memadai.";
+    const { draft, events } = await runScripted(context([verse()], question), [
+      refusal,
+      politeDecline,
+    ]);
     expect(draft.text).toBe(refusal);
     expect(events.filter((e) => e.kind === "llm_call").map((e) => e.detail?.purpose)).toEqual([
       "generate",
@@ -520,7 +533,7 @@ describe("createKajianQGenerator — the addressed-evidence reread", () => {
     ]);
     expect(draft.text).toBe(refusal);
     expect(seen[1]).toEqual(seen[0]);
-    expect(seen[0]?.[1]).not.toContain("tidak berlaku");
+    expect(seen[0]?.[1]).not.toContain("tetap berlaku");
     expect(events.filter((e) => e.kind === "llm_call").map((e) => e.detail?.purpose)).toEqual([
       "generate",
       "generate_reread",
@@ -547,7 +560,7 @@ describe("createKajianQGenerator — the addressed-evidence reread", () => {
     ]);
     expect(draft.text).toBe("Menurut QS. 98:5 …");
     expect(seen).toHaveLength(1);
-    expect(seen[0]?.[1]).not.toContain("tidak berlaku");
+    expect(seen[0]?.[1]).not.toContain("tetap berlaku");
     expect(events.filter((e) => e.kind === "llm_call")).toHaveLength(1);
   });
 });
@@ -849,15 +862,22 @@ describe("runChatPipeline — the addressed-evidence invariant", () => {
     );
   }
 
-  const run = (
+  type PipelineAnswer = {
+    text: string;
+    trace: { events: { kind: string; stage?: string; detail?: Record<string, unknown> }[] };
+    generatorCalls: readonly (readonly { role: string; content: string }[])[];
+  };
+
+  const run = async (
     store: ReturnType<typeof createMemoryRagStore>,
     replies: readonly string[],
     text: string,
-  ) =>
-    Effect.runPromise(
+  ): Promise<PipelineAnswer> => {
+    const stubs = createStubChatProviders({ generatorReplies: replies });
+    const answer = (await Effect.runPromise(
       runChatPipeline(
         {
-          ...createStubChatProviders({ generatorReplies: replies }),
+          ...stubs,
           store: store as never,
           bridge: (e) => Effect.runPromise(e as never),
           language: "id",
@@ -865,17 +885,19 @@ describe("runChatPipeline — the addressed-evidence invariant", () => {
         },
         { text },
       ) as never,
-    ) as Promise<{
-      text: string;
-      trace: { events: { kind: string; stage?: string; detail?: Record<string, unknown> }[] };
-    }>;
+    )) as { text: string; trace: PipelineAnswer["trace"] };
+    return { ...answer, generatorCalls: stubs.generatorCalls };
+  };
 
-  const generatorPurposes = (answer: {
-    trace: { events: { kind: string; stage?: string; detail?: Record<string, unknown> }[] };
-  }): unknown[] =>
+  const generatorPurposes = (answer: PipelineAnswer): unknown[] =>
     answer.trace.events
       .filter((e) => e.kind === "llm_call" && e.stage === "generator")
       .map((e) => e.detail?.["purpose"]);
+
+  /** The user turn each generator call actually delivered — what the provider
+   * was asked to read, which is where the directive has to be visible. */
+  const deliveredPrompts = (answer: PipelineAnswer): string[] =>
+    answer.generatorCalls.map((turns) => turns.at(-1)?.content ?? "");
 
   it("answers when the named verse is in the context and the first reading declined", async () => {
     const store = createMemoryRagStore();
@@ -887,6 +909,15 @@ describe("runChatPipeline — the addressed-evidence invariant", () => {
     expect(answer.text).toContain("QS. 98:5");
     expect(answer.trace.events.some((e) => e.kind === "refusal")).toBe(false);
     expect(generatorPurposes(answer)).toEqual(["generate", "generate_addressed_reread"]);
+    // The delivered second reading carries the directive and the first does not:
+    // this test observes the prompt the provider received, so removing the
+    // directive from the path fails it even while the purpose label survives.
+    const directive = ADDRESSED_EVIDENCE_PROMPT.id("QS. 98:5");
+    const prompts = deliveredPrompts(answer);
+    expect(prompts).toHaveLength(2);
+    expect(prompts[0]).not.toContain(directive);
+    expect(prompts[1]).toContain(directive);
+    expect(prompts[1]).toMatch(/"tidak menemukan dalil yang memadai" tetap berlaku/);
   });
 
   it("keeps the refusal for a trap question that names no address", async () => {
@@ -911,7 +942,11 @@ describe("runChatPipeline — the addressed-evidence invariant", () => {
     expect(refusalEvents).toHaveLength(1);
     expect(refusalEvents[0]?.detail).toMatchObject({ trigger: "generator_refusal" });
     // The trap never gets the addressed reread: its second reading is the plain
-    // ADR-0055 one, so the dhaif trap's behaviour is unchanged.
+    // ADR-0055 one, so the dhaif trap's behaviour is unchanged — and the two
+    // delivered prompts are the same turn, not merely the same purpose label.
+    const prompts = deliveredPrompts(answer);
+    expect(prompts[1]).toBe(prompts[0]);
+    expect(prompts[1]).not.toContain("tetap berlaku");
     expect(generatorPurposes(answer)).toEqual(["generate", "generate_reread"]);
   });
 });

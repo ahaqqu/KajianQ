@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vite-plus/test";
-import { ADDRESSED_EVIDENCE_PROMPT, chatSystemPrompt, chatUserPrompt } from "./chat-prompts";
+import type { Chunk } from "@app/rag-core";
+import {
+  ADDRESSED_EVIDENCE_PROMPT,
+  ADDRESSED_REREAD_PURPOSE,
+  addressedReread,
+  chatSystemPrompt,
+  chatUserPrompt,
+} from "./chat-prompts";
 import { DEFAULT_REFUSALS } from "./chat-reviewer";
 
 /**
@@ -217,37 +224,46 @@ describe("the evidence-present answer rule", () => {
 
 /**
  * The addressed-evidence line a second reading carries (ADR-0055): the question
- * names a citation address the context holds, so the insufficiency sentence is
- * false about the named passage. The line points the reading at that evidence
- * and keeps the honest decline for what the context does not state.
+ * names a citation address the assembled context carries, so the reading is
+ * pointed at that passage. The line is scoped to the passage, not the question:
+ * the canonical insufficiency sentence stays the answer for whatever the
+ * passage does not state, so the reread can still decline and never explains
+ * the gap.
  */
 describe("the addressed-evidence reread instruction", () => {
   const question = "Jelaskan perbedaan niat dan ikhlas berdasarkan QS. 98:5!";
   const evidence = "QS. 98:5 — wahyu";
 
-  it("names the carried evidence and rules the insufficiency sentence out", () => {
+  it("names the carried passage and keeps the canonical refusal for what it does not state", () => {
     const prompt = chatUserPrompt(question, evidence, {
       language: "id",
       addressed: ["QS. 98:5"],
     });
     expect(prompt).toContain("QS. 98:5");
-    expect(prompt).toContain(`kalimat "${DEFAULT_REFUSALS.id}" tidak berlaku`);
-    // The honest decline survives: what the context does not state is said
-    // plainly, and the no-gloss ban is restated rather than relaxed.
-    expect(prompt).toMatch(/nyatakan itu terus terang/);
-    expect(prompt).toMatch(/tanpa menambah tafsir/);
+    // The sentence survives: it still applies where the passage does not state
+    // the asked thing, so a reread pointed at the evidence can still decline.
+    expect(prompt).toContain(`"${DEFAULT_REFUSALS.id}" tetap berlaku`);
+    expect(prompt).toMatch(/bila konteks tidak menyatakan hal yang ditanyakan/);
+    // The instruction is scoped to the passage and never orders the gap
+    // explanation the product forbids; the old whole-question override is gone.
+    expect(prompt).toMatch(/Bila bagian itu menjawab hal yang ditanyakan/);
+    expect(prompt).toMatch(/jangan menyatakan apa yang tidak dinyatakan bagian itu/);
+    expect(prompt).not.toMatch(/tidak berlaku untuk pertanyaan ini/);
+    expect(prompt).not.toMatch(/nyatakan itu terus terang/);
     // The question and the assembled context stay in the same turn.
     expect(prompt).toContain(`Pertanyaan / Question: ${question}`);
     expect(prompt).toContain(`Konteks / Context:\n${evidence}`);
   });
 
-  it("uses the answer language's copy", () => {
+  it("uses the answer language's copy with the same scoping", () => {
     const prompt = chatUserPrompt(question, evidence, {
       language: "en",
       addressed: ["QS. 98:5"],
     });
-    expect(prompt).toContain(`"${DEFAULT_REFUSALS.en}" sentence does not apply`);
-    expect(prompt).toMatch(/without adding interpretation/);
+    expect(prompt).toContain(`"${DEFAULT_REFUSALS.en}" sentence still applies`);
+    expect(prompt).toMatch(/where the context does not state the thing asked/);
+    expect(prompt).toMatch(/do not state what the passage does not say/);
+    expect(prompt).not.toMatch(/does not apply to this question/);
   });
 
   it("is absent when the question named no carried evidence — every trap shape", () => {
@@ -265,5 +281,51 @@ describe("the addressed-evidence reread instruction", () => {
   it("keeps the instruction per language, both pinned by the exported owner", () => {
     expect(ADDRESSED_EVIDENCE_PROMPT.id("QS. 98:5")).toContain(DEFAULT_REFUSALS.id);
     expect(ADDRESSED_EVIDENCE_PROMPT.en("QS. 98:5")).toContain(DEFAULT_REFUSALS.en);
+    expect(ADDRESSED_EVIDENCE_PROMPT.id("QS. 98:5")).toMatch(/tetap berlaku/);
+    expect(ADDRESSED_EVIDENCE_PROMPT.en("QS. 98:5")).toMatch(/still applies/);
+  });
+});
+
+/**
+ * The directed reread decision (ADR-0055, review B2): one helper owns the
+ * trigger, the prompt and the trace purpose, so the generator cannot send a
+ * directed prompt under the plain reading's label. `null` is the plain reread:
+ * the question names no address, or names one the assembled context does not
+ * carry.
+ */
+describe("the directed reread decision", () => {
+  const verse: Chunk = {
+    id: "c-qs-98-5",
+    text: "QS. 98:5 — wahyu",
+    metadata: { citation: "QS. 98:5", sourceType: "quran", surah: 98, ayah: 5 },
+  };
+
+  it("returns the directed turns, purpose and labels for a carried address", () => {
+    const reread = addressedReread({
+      question: "Apa makna QS. 98:5?",
+      context: verse.text,
+      chunks: [verse],
+      language: "id",
+    });
+    expect(reread?.purpose).toBe(ADDRESSED_REREAD_PURPOSE);
+    expect(reread?.addressed).toEqual(["QS. 98:5"]);
+    expect(reread?.turns.at(-1)?.content).toContain(`"${DEFAULT_REFUSALS.id}" tetap berlaku`);
+  });
+
+  it("returns null for the trap shape and for an address the context does not carry", () => {
+    const noAddress = addressedReread({
+      question: "Kapan kiamat akan terjadi? Sebutkan tahun pastinya!",
+      context: verse.text,
+      chunks: [verse],
+      language: "id",
+    });
+    const absentAddress = addressedReread({
+      question: "Apa makna QS. 2:255?",
+      context: verse.text,
+      chunks: [verse],
+      language: "id",
+    });
+    expect(noAddress).toBeNull();
+    expect(absentAddress).toBeNull();
   });
 });

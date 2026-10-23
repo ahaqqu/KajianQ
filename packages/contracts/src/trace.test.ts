@@ -148,7 +148,9 @@ describe("trace contract", () => {
       {
         stage: "generator",
         kind: "llm_call",
-        detail: { purpose: "generate" },
+        // The directed second reading names the evidence it was pointed at; a
+        // plain reading omits the field.
+        detail: { purpose: "generate_addressed_reread", addressed: ["QS. 98:5"] },
         cost: { modelId: "m", tokensIn: 1, tokensOut: 2, latencyMs: 3, costMicroUsd: 4 },
         at: 5,
       },

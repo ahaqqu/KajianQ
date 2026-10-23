@@ -8,15 +8,9 @@
  * would only buy a sentence the rule strips and rewrites.
  */
 
+import type { Chunk } from "@app/rag-core";
+import { addressedEvidenceIn } from "./chat-citation-reference";
 import { DEFAULT_REFUSALS } from "./chat-refusal";
-
-/**
- * The addressed-evidence matcher is re-exported here so the generator reads its
- * prompt and the signal that selects the directed reread through one import
- * (the agentic import cap). The matcher lives with the citation grammar; this
- * module owns the instruction that consumes it.
- */
-export { addressedEvidenceIn } from "./chat-citation-reference";
 
 export type ChatLanguage = "id" | "en";
 
@@ -75,18 +69,17 @@ export function chatSystemPrompt(language: ChatLanguage): string {
 }
 
 /**
- * The one-line instruction a reread carries when the question names evidence
- * the context holds (ADR-0055). It is not a new refusal rule and not a licence
- * to invent: it points the reading at the passage the question asked for, and
- * keeps the honest decline — what the context does not state is said plainly
- * instead of the insufficiency sentence, which is false about the named
- * passage.
+ * The instruction a reread carries when the question names a citation address
+ * the assembled context carries (ADR-0055). It points the reading at that
+ * passage and at nothing beyond it: the canonical insufficiency sentence stays
+ * available for what the passage does not state, and a gap is declined with
+ * that sentence rather than explained.
  */
 export const ADDRESSED_EVIDENCE_PROMPT = {
   id: (labels: string) =>
-    `Bukti yang ditanyakan sudah ada di konteks ini: ${labels}. Jawab dari konteks dan sebutkan bukti itu; kalimat "${DEFAULT_REFUSALS.id}" tidak berlaku untuk pertanyaan ini. Bila konteks tidak merinci sesuatu, nyatakan itu terus terang dari apa yang konteks berikan, tanpa menambah tafsir.`,
+    `Bagian yang disebut pertanyaan ada di konteks ini: ${labels}. Bila bagian itu menjawab hal yang ditanyakan, jawablah dari konteks dan kutip bagian itu. Kalimat "${DEFAULT_REFUSALS.id}" tetap berlaku bila konteks tidak menyatakan hal yang ditanyakan; jangan menyatakan apa yang tidak dinyatakan bagian itu.`,
   en: (labels: string) =>
-    `The evidence asked about is already in this context: ${labels}. Answer from the context and cite that evidence; the "${DEFAULT_REFUSALS.en}" sentence does not apply to this question. Where the context does not spell something out, state that plainly from what the context provides, without adding interpretation.`,
+    `The passage the question names is in this context: ${labels}. If it answers what was asked, answer from the context and cite it. The "${DEFAULT_REFUSALS.en}" sentence still applies where the context does not state the thing asked; do not state what the passage does not say.`,
 } as const;
 
 export type ChatUserPromptOptions = {
@@ -109,4 +102,52 @@ export function chatUserPrompt(
   }
   lines.push("", "Konteks / Context:", context);
   return lines.join("\n");
+}
+
+/** One turn of the generator's prompt. */
+export type ChatTurn = { role: "system" | "user"; content: string };
+
+/** The trace purpose of the directed second reading (ADR-0055). */
+export const ADDRESSED_REREAD_PURPOSE = "generate_addressed_reread";
+
+/** A directed second reading: the prompt it sends and the labels its trace records. */
+export type AddressedReread = {
+  turns: readonly ChatTurn[];
+  purpose: typeof ADDRESSED_REREAD_PURPOSE;
+  /** The rendered labels the instruction names — the strings the citation gate grounds. */
+  addressed: readonly string[];
+};
+
+/**
+ * The second reading a pure refusal gets when the verbatim question names a
+ * citation address the assembled context carries (ADR-0055): the same system
+ * prompt and evidence, with the carried passage named in the user turn. `null`
+ * keeps the plain reread — a question naming no address, or naming one the
+ * assembled context does not carry.
+ *
+ * The trigger and its trace purpose are read once here, so a directed reading
+ * cannot be sent under the plain purpose or the other way round.
+ */
+export function addressedReread(input: {
+  question: string;
+  context: string;
+  chunks: readonly Chunk[];
+  language: ChatLanguage;
+}): AddressedReread | null {
+  const addressed = addressedEvidenceIn(input.question, input.chunks);
+  if (addressed.length === 0) return null;
+  return {
+    purpose: ADDRESSED_REREAD_PURPOSE,
+    addressed,
+    turns: [
+      { role: "system", content: chatSystemPrompt(input.language) },
+      {
+        role: "user",
+        content: chatUserPrompt(input.question, input.context, {
+          language: input.language,
+          addressed,
+        }),
+      },
+    ],
+  };
 }

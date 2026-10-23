@@ -5,6 +5,7 @@ import {
   addressedEvidenceIn,
   citationLabelScan,
 } from "./chat-citation-reference";
+import { validateCitations } from "./chat-citation-validator";
 
 /** The read list alone — what the lookup would spend its reads on. */
 const referencesIn = (text: string) => citationLabelScan(text).references;
@@ -22,6 +23,7 @@ describe("citationReferencesIn", () => {
     expect(referencesIn("Apa isi hadits pada HR. Bukhari no. 4697?")).toEqual([
       {
         label: "HR. Bukhari no. 4697",
+        sourceType: "hadith",
         match: { collection: "bukhari", hadithNo: "4697" },
       },
     ]);
@@ -29,7 +31,7 @@ describe("citationReferencesIn", () => {
 
   it("maps an ayah label onto the surah + ayah identity", () => {
     expect(referencesIn("Apa makna QS. 2:255?")).toEqual([
-      { label: "QS. 2:255", match: { surah: 2, ayah: 255 } },
+      { label: "QS. 2:255", sourceType: "quran", match: { surah: 2, ayah: 255 } },
     ]);
   });
 
@@ -37,6 +39,7 @@ describe("citationReferencesIn", () => {
     const references = referencesIn("Jelaskan HR. Sahih al-Bukhari no. 4697.");
     expect(references).toHaveLength(1);
     expect(references[0]?.label).toBe("HR. Bukhari no. 4697");
+    expect(references[0]?.sourceType).toBe("hadith");
     expect(references[0]?.match).toEqual({ collection: "bukhari", hadithNo: "4697" });
   });
 
@@ -113,11 +116,13 @@ describe("citationReferencesIn", () => {
 });
 
 /**
- * The addressed-evidence read: the labels a question names that the assembled
- * context actually carries. It is the deterministic fact a refusal is
- * contradicted by (ADR-0055), so it is read off the stored identity pairs —
- * never the rendered label — and it is empty for a question that names no
- * label (the trap shape) or a label the context does not hold.
+ * The addressed-evidence read: the labels the assembled context renders for the
+ * addresses the question names. It is the deterministic fact a refusal is
+ * contradicted by (ADR-0055). The match is read off the stored identity pairs
+ * scoped to the reference's own source type, so a derivative row at the same
+ * address never counts; the label returned is the matched chunk's rendered
+ * citation, the string the gate grounds. It is empty for a question that names
+ * no label (the trap shape) or a label the context does not hold.
  */
 describe("addressedEvidenceIn", () => {
   const chunk = (metadata: Record<string, unknown>): Chunk => ({
@@ -127,6 +132,8 @@ describe("addressedEvidenceIn", () => {
   });
   const ayah = (surah: number, ayahNo: number, citation: string): Chunk =>
     chunk({ citation, sourceType: "quran", surah, ayah: ayahNo });
+  const hadith = (citation: string, hadithNo: string | number): Chunk =>
+    chunk({ citation, sourceType: "hadith", collection: "bukhari", hadithNo });
   const verse = ayah(98, 5, "QS. 98:5");
 
   it("returns the ayah label the question names and the context carries", () => {
@@ -135,31 +142,70 @@ describe("addressedEvidenceIn", () => {
     ).toEqual(["QS. 98:5"]);
   });
 
-  it("matches the stored identity pairs, not the chunk's rendered label", () => {
-    // The row's citation metadata can carry another rendering; the identity the
-    // grammar parsed is what says the question's passage is in hand.
+  it("matches the stored identity pairs and names the chunk's rendered label", () => {
+    // The identity the grammar parsed says the question's passage is in hand; the
+    // label it names is the chunk's own rendering, because that is the string the
+    // citation gate grounds — a directive naming the parsed form would tell the
+    // model to cite a label the gate then refuses.
+    const rendered = addressedEvidenceIn("Apa makna QS. 98:5?", [
+      chunk({ citation: "QS. Al-Bayyinah 98:5", sourceType: "quran", surah: 98, ayah: 5 }),
+    ]);
+    expect(rendered).toEqual(["QS. Al-Bayyinah 98:5"]);
+    expect(
+      validateCitations(`Menurut ${rendered[0]} …`, [
+        chunk({ citation: "QS. Al-Bayyinah 98:5", sourceType: "quran", surah: 98, ayah: 5 }),
+      ]).ungrounded,
+    ).toEqual([]);
+    // The parsed form the question wrote is not what the chunk grounds.
+    expect(
+      validateCitations("Menurut QS. 98:5 …", [
+        chunk({ citation: "QS. Al-Bayyinah 98:5", sourceType: "quran", surah: 98, ayah: 5 }),
+      ]).ungrounded,
+    ).toEqual(["QS. 98:5"]);
+  });
+
+  it("falls back to the parsed label when the matched chunk carries no citation", () => {
     expect(
       addressedEvidenceIn("Apa makna QS. 98:5?", [
-        chunk({ citation: "QS. Al-Bayyinah 98:5", surah: 98, ayah: 5 }),
+        chunk({ sourceType: "quran", surah: 98, ayah: 5 }),
       ]),
     ).toEqual(["QS. 98:5"]);
   });
 
   it("returns a hadith label the context carries, with the number compared as stored", () => {
     expect(
-      addressedEvidenceIn("Jelaskan HR. Bukhari no. 54!", [
-        chunk({ collection: "bukhari", hadithNo: "54" }),
-      ]),
+      addressedEvidenceIn("Jelaskan HR. Bukhari no. 54!", [hadith("HR. Bukhari no. 54", "54")]),
     ).toEqual(["HR. Bukhari no. 54"]);
     expect(
-      addressedEvidenceIn("Jelaskan HR. Bukhari no. 54!", [
-        chunk({ collection: "bukhari", hadithNo: 54 }),
-      ]),
+      addressedEvidenceIn("Jelaskan HR. Bukhari no. 54!", [hadith("HR. Bukhari no. 54", 54)]),
     ).toEqual(["HR. Bukhari no. 54"]);
   });
 
+  it("is not satisfied by a derivative chunk that copies the address", () => {
+    // A tafsir keyed to the verse, a syarh keyed to the number: the pairs match,
+    // but the passage the label names is a different source type, so it does not
+    // make the asked evidence present.
+    expect(
+      addressedEvidenceIn("Apa makna QS. 98:5?", [
+        chunk({ citation: "Tafsir Al-Bayyinah 98:5", sourceType: "tafsir", surah: 98, ayah: 5 }),
+      ]),
+    ).toEqual([]);
+    expect(
+      addressedEvidenceIn("Jelaskan HR. Bukhari no. 54!", [
+        chunk({
+          citation: "Syarh Bukhari no. 54",
+          sourceType: "kitab",
+          collection: "bukhari",
+          hadithNo: "54",
+        }),
+      ]),
+    ).toEqual([]);
+    // The stored source type is part of the join, so its absence is not a match.
+    expect(addressedEvidenceIn("Apa makna QS. 98:5?", [chunk({ surah: 98, ayah: 5 })])).toEqual([]);
+  });
+
   it("returns nothing for a query that names no citation — the trap shape", () => {
-    // gs-v0-019/020 carry no citation label; they must never reach the directed
+    // gs-v0-019/020 carry no citation label; they never reach the directed
     // reread, so the plain refusal path stays theirs.
     expect(
       addressedEvidenceIn("Kapan kiamat akan terjadi? Sebutkan tahun pastinya!", [verse]),
@@ -183,7 +229,7 @@ describe("addressedEvidenceIn", () => {
     expect(
       addressedEvidenceIn("Bandingkan QS. 98:5 dan HR. Bukhari no. 54.", [
         verse,
-        chunk({ collection: "bukhari", hadithNo: "54" }),
+        hadith("HR. Bukhari no. 54", "54"),
       ]),
     ).toEqual(["QS. 98:5", "HR. Bukhari no. 54"]);
   });

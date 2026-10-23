@@ -33,10 +33,11 @@ export type StubChatProviderOverrides = {
   /** Explicit delta sequence (overrides `answerText` chunking). */
   streamDeltas?: readonly string[];
   /**
-   * Scripted readings, one per generator call: the nth call reads
-   * `generatorReplies[n]`, and a call past the script reuses `answerText`. A
-   * refusal path needs two different readings from one provider (the refusal,
-   * then the reread), which a single `answerText` cannot express.
+   * Scripted readings, one per generator call, in call order. Supplying it
+   * means the test expects exactly these readings: a call past the script fails
+   * the test rather than being served `answerText`. A refusal path scripts the
+   * first reading and the reread differently, which one `answerText` cannot
+   * express.
    */
   generatorReplies?: readonly string[];
   /** The reviewer stub's verdict (default `pass`). */
@@ -88,11 +89,17 @@ function stubAnswers(
   );
 }
 
+export type StubGeneratorCall = readonly { role: string; content: string }[];
+
 export function createStubChatProviders(overrides: StubChatProviderOverrides = {}): {
   routerProvider: RouterProvider;
   generatorProvider: GeneratorProvider;
   reviewerProvider: ReviewerProvider;
   embedder: RetrieverEmbedder;
+  /** The turns each generator call received, in call order — the directed
+   * reread is a different user turn, so this is how a caller asserts which
+   * reading it got without re-plumbing the stub. */
+  generatorCalls: readonly StubGeneratorCall[];
   /**
    * The decision-model screens are unwired by default: the stub models an
    * environment where the decision vendor's key is absent, so pipeline tests
@@ -102,29 +109,44 @@ export function createStubChatProviders(overrides: StubChatProviderOverrides = {
   rerankDecider: import("@app/rag-core").Decider | null;
 } {
   const answerText = overrides.answerText ?? "Jawaban berdasar konteks.";
-  const scripted = overrides.generatorReplies ?? [];
+  const scripted = overrides.generatorReplies;
   let readings = 0;
-  const nextReading = (): string => scripted[readings++] ?? answerText;
+  const nextReading = (): string => {
+    if (scripted === undefined) return answerText;
+    const reading = scripted[readings];
+    if (reading === undefined) {
+      throw new Error(
+        `stub generator: call ${readings + 1} has no scripted reading (scripted ${scripted.length})`,
+      );
+    }
+    readings += 1;
+    return reading;
+  };
   const deltasFor = (): readonly string[] => overrides.streamDeltas ?? [nextReading()];
+  const generatorCalls: StubGeneratorCall[] = [];
   const generatorFails = overrides.generatorFails === true;
   const generatorProvider: GeneratorProvider = {
-    generate: () =>
-      generatorFails
+    generate: (spec) => {
+      generatorCalls.push(spec.turns);
+      return generatorFails
         ? Effect.fail(new Error("stub generator failure"))
         : Effect.succeed({
             text: nextReading(),
             cost: cost("stub-generator", 2),
-          }),
+          });
+    },
     ...(overrides.noStream === true
       ? {}
       : {
-          stream: () =>
-            generatorFails
+          stream: (spec) => {
+            generatorCalls.push(spec.turns);
+            return generatorFails
               ? Effect.fail(new Error("stub generator failure"))
               : Effect.succeed({
                   deltas: Stream.fromIterable(deltasFor()),
                   cost: () => Effect.succeed(cost("stub-generator", 2)),
-                }),
+                });
+          },
         }),
   };
   return {
@@ -144,6 +166,7 @@ export function createStubChatProviders(overrides: StubChatProviderOverrides = {
         }),
     },
     generatorProvider,
+    generatorCalls,
     // The cross-vendor reviewer stub: passes by default, so tests exercise the
     // deterministic validator (the gate that must hold without any LLM).
     reviewerProvider: {

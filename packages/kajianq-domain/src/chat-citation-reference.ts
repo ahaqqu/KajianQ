@@ -1,5 +1,6 @@
 import type { Chunk } from "@app/rag-core";
 import { citationSpansIn } from "./chat-citation-normalize";
+import { citationLabelsOf } from "./chat-citation-validator";
 import { parseHadithCitation } from "./hadith-source";
 import { parseQuranCitation } from "./quran-source";
 
@@ -46,6 +47,10 @@ export const MAX_CITATION_REFERENCES = 4;
 export type CitationReference = {
   /** The label as the citation grammar normalized it — the comparison form. */
   label: string;
+  /** The source type whose chunk owns that address. A derivative row — commentary
+   * or a parallel ingest — may copy the same pairs without being the passage the
+   * label names, so the lookup join is scoped to the reference's own source type. */
+  sourceType: "quran" | "hadith";
   /** Exact-match metadata pairs the store read is keyed on; opaque to the store. */
   match: Readonly<Record<string, string | number>>;
 };
@@ -148,6 +153,7 @@ export function citationLabelScan(sourceText: string): CitationLabelScan {
       }
       references.push({
         label: span.label,
+        sourceType: hadith.sourceType,
         match: { collection: hadith.collection, hadithNo: hadith.hadithNo },
       });
       continue;
@@ -168,6 +174,7 @@ export function citationLabelScan(sourceText: string): CitationLabelScan {
       }
       references.push({
         label: span.label,
+        sourceType: quran.sourceType,
         match: { surah: quran.surah, ayah: quran.ayah },
       });
       continue;
@@ -181,20 +188,26 @@ export function citationLabelScan(sourceText: string): CitationLabelScan {
 }
 
 /**
- * The citation labels the verbatim question names that the assembled context
- * carries — the deterministic "the asked evidence is present" signal.
+ * The citation labels the assembled context carries for the addresses the
+ * verbatim question names — the deterministic "the asked passage is present"
+ * signal.
  *
  * A refusal is the generator's claim that the evidence cannot answer. When the
- * question names an address and the context holds the chunk at that address, a
- * refusal is contradicted by a fact the pipeline read, not by another sample of
- * the same model (ADR-0055). This is not the retrieval lookup: the lookup reads
- * the corpus for a label the fused hits missed, while this joins the same
- * parsed identity to the chunks already assembled. A label the context does not
- * carry is not addressed evidence, so the refusal remains the delivered answer.
+ * question names an address and the context holds a chunk of that address's own
+ * source type, a refusal is contradicted by a fact the pipeline read, not by
+ * another sample of the same model (ADR-0055). This is not the retrieval lookup:
+ * the lookup reads the corpus for a label the fused hits missed, while this
+ * joins the same parsed identity to the chunks already assembled. A label the
+ * context does not carry is not addressed evidence, so the refusal remains the
+ * delivered answer.
  *
  * Matching uses the opaque identity pairs the lookup reads — a hadith's
- * collection and number, an ayah's surah and ayah — compared against the
- * chunk's stored metadata, never against its rendered label.
+ * collection and number, an ayah's surah and ayah — against the chunk's stored
+ * metadata, and requires the chunk's stored `sourceType` to be the reference's
+ * own: a derivative row that copies the pairs is not the passage the label
+ * names. The label returned is the matched chunk's rendered citation, the
+ * string the citation gate grounds; the question's parsed label is only the
+ * fallback for a matched chunk that carries none.
  */
 export function addressedEvidenceIn(
   sourceText: string,
@@ -203,17 +216,21 @@ export function addressedEvidenceIn(
   if (chunks.length === 0) return [];
   const labels: string[] = [];
   for (const reference of citationLabelScan(sourceText).references) {
-    if (labels.includes(reference.label)) continue;
-    if (chunks.some((chunk) => carriesAddress(chunk, reference.match)))
-      labels.push(reference.label);
+    const matched = chunks.filter((chunk) => carriesAddress(chunk, reference));
+    if (matched.length === 0) continue;
+    const rendered = matched.flatMap((chunk) => citationLabelsOf(chunk));
+    for (const label of rendered.length > 0 ? rendered : [reference.label]) {
+      if (!labels.includes(label)) labels.push(label);
+    }
   }
   return labels;
 }
 
-/** True when a chunk's stored metadata carries every identity pair of a reference. */
-function carriesAddress(chunk: Chunk, match: Readonly<Record<string, string | number>>): boolean {
+/** True when a chunk of the reference's own source type carries every identity pair. */
+function carriesAddress(chunk: Chunk, reference: CitationReference): boolean {
   const metadata = chunk.metadata ?? {};
-  return Object.entries(match).every(([key, value]) => {
+  if (metadata["sourceType"] !== reference.sourceType) return false;
+  return Object.entries(reference.match).every(([key, value]) => {
     const carried = metadata[key];
     return (
       (typeof carried === "string" || typeof carried === "number") &&

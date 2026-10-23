@@ -189,6 +189,10 @@ export const TraceEventSchema = v.variant("kind", [
       v.object({
         /** Caller-supplied label (e.g. "intent", "translate", "generate"). */
         purpose: v.optional(v.string()),
+        /** The citation labels a directed second reading was pointed at. Present
+         * only on that reading, so a refusal can be segmented by whether its
+         * second reading named the addressed evidence or repeated the plain one. */
+        addressed: v.optional(v.array(v.string())),
       }),
     ),
     cost: v.optional(CostRecordSchema),
