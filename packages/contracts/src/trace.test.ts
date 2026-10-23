@@ -93,6 +93,14 @@ describe("trace contract", () => {
       },
       { stage: "router", kind: "subquery", detail: { text: "sub" }, at: 2 },
       {
+        // The routing decision: the sources selected and the filter record the
+        // searches ran with, both opaque labels the domain pack named.
+        stage: "router",
+        kind: "source_routing",
+        detail: { sources: ["src_a"], filters: {} },
+        at: 2,
+      },
+      {
         stage: "retriever",
         kind: "retrieval",
         detail: {
@@ -102,7 +110,7 @@ describe("trace contract", () => {
       },
       {
         // One raw per-sub-query × track search: the sub-query's identity (never
-        // its text), the track, the full hit count, and the leading ids/ranks.
+        // its text), the track, the full hit count, and the rows it returned.
         stage: "retriever",
         kind: "search_hits",
         detail: {
@@ -222,11 +230,13 @@ describe("trace contract", () => {
     ];
     const trace = parseTrace({ id: "t", createdAt: 0, events });
     // The kinds are named, not just counted: a count cannot tell "both variants
-    // are in the union" from "one replaced the other".
-    expect(trace.events).toHaveLength(15);
+    // are in the union" from "one replaced the other", and the union is closed at
+    // sixteen, so a variant missing here is a variant the fixture never proved.
+    expect(trace.events).toHaveLength(16);
     expect(trace.events.map((event) => event.kind)).toEqual([
       "intent",
       "subquery",
+      "source_routing",
       "retrieval",
       "search_hits",
       "filter_relaxed",
@@ -670,20 +680,62 @@ describe("the search_hits event", () => {
     expect(trace.events[0]).toMatchObject({ detail: { hits: 0, topHits: [] } });
   });
 
-  it("bounds the list to the shared trace limit", () => {
-    // The limit is the contract's, not a writer's convention: a sixth id is
-    // refused, so no producer can grow the event past what a reader budgets.
-    expect(SEARCH_HITS_TRACE_LIMIT).toBe(5);
-    const six = Array.from({ length: SEARCH_HITS_TRACE_LIMIT + 1 }, (_, i) => ({
+  it("bounds the list to the store's per-search limit", () => {
+    // The limit is the contract's, not a writer's convention: a full default-size
+    // search parses, one id more is refused, so no producer can grow the event
+    // past the list a serving search can return.
+    expect(SEARCH_HITS_TRACE_LIMIT).toBe(10);
+    const tooMany = Array.from({ length: SEARCH_HITS_TRACE_LIMIT + 1 }, (_, i) => ({
       id: `c${i}`,
       rankDense: i + 1,
     }));
     expect(
       v.safeParse(TraceSchema, {
         ...base,
-        events: [searchEvent({ track: "primary", hits: 6, topHits: six })],
+        events: [searchEvent({ track: "primary", hits: tooMany.length, topHits: tooMany })],
       }).success,
     ).toBe(false);
+    // Inclusive: the complete list of a full-size search is representable.
+    expect(
+      v.safeParse(TraceSchema, {
+        ...base,
+        events: [
+          searchEvent({
+            track: "primary",
+            hits: SEARCH_HITS_TRACE_LIMIT,
+            topHits: tooMany.slice(0, SEARCH_HITS_TRACE_LIMIT),
+          }),
+        ],
+      }).success,
+    ).toBe(true);
+  });
+
+  it("refuses a list that claims more rows than the search returned", () => {
+    // `hits` and `topHits` are one record: a zero count with rows, or a list
+    // longer than the count, describes a search that never happened. The pairing
+    // is what makes "returned nothing" and "returned these rows" distinguishable.
+    for (const detail of [
+      { track: "primary", hits: 0, topHits: [{ id: "c1", rankDense: 1 }] },
+      {
+        track: "primary",
+        hits: 1,
+        topHits: [
+          { id: "c1", rankDense: 1 },
+          { id: "c2", rankDense: 2 },
+        ],
+      },
+    ]) {
+      expect(v.safeParse(TraceSchema, { ...base, events: [searchEvent(detail)] }).success).toBe(
+        false,
+      );
+    }
+    // A shorter list within the count stays readable (a bounded sample).
+    expect(
+      v.safeParse(TraceSchema, {
+        ...base,
+        events: [searchEvent({ track: "primary", hits: 3, topHits: [{ id: "c1", rankDense: 1 }] })],
+      }).success,
+    ).toBe(true);
   });
 
   it("refuses a dense rank that is not a positive integer", () => {

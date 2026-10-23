@@ -139,28 +139,28 @@ describe("the retriever records every sub-query × track search", () => {
         origin: "rule",
         track: "primary",
         hits: 8,
-        topHits: top("p"),
+        topHits: top("p", 8),
       },
       {
         role: "factual",
         origin: "rule",
         track: "fallback",
         hits: 7,
-        topHits: top("f"),
+        topHits: top("f", 7),
       },
       {
         role: "dalil",
         origin: "model",
         track: "primary",
         hits: 8,
-        topHits: top("p"),
+        topHits: top("p", 8),
       },
       {
         role: "dalil",
         origin: "model",
         track: "fallback",
         hits: 7,
-        topHits: top("f"),
+        topHits: top("f", 7),
       },
     ]);
   });
@@ -226,12 +226,44 @@ describe("the retriever records every sub-query × track search", () => {
     // one for fallback, which inherits the drop for the run.
     expect(calls.map((call) => call.track)).toEqual(["primary", "primary", "fallback"]);
   });
+
+  it("records a search's rows in dense-rank order, not the adapter's array order", async () => {
+    // The seam promises no array order, so the same ten rows come back shuffled
+    // with `rankDense` stating the ranks. The record must be ranks 1..10 in
+    // order: a position-based record would present rank 7 as the leading row
+    // while fusion — which sums ranks, not positions — returned the same chunks.
+    const shuffled = [7, 2, 10, 1, 5, 9, 3, 8, 4, 6].map((rankDense) => ({
+      row: child(`r${rankDense}`),
+      rankDense,
+    }));
+    const store = {
+      similaritySearch: (track: "primary" | "fallback") =>
+        Effect.succeed(
+          track === "primary"
+            ? shuffled.map(({ row, rankDense }) => ({ child: row, distance: 0.1, rankDense }))
+            : [],
+        ),
+      listDocChildNeighboursByChildIds: () => Effect.succeed([]),
+    };
+
+    const recorded: Recorded[] = [];
+    await run(store, (event) => recorded.push(event as Recorded), [SUB_QUERIES[0]!]);
+
+    const [primary] = searchEvents(recorded);
+    expect(primary?.detail.hits).toBe(SEARCH_HITS_TRACE_LIMIT);
+    expect(primary?.detail.topHits).toEqual(
+      Array.from({ length: SEARCH_HITS_TRACE_LIMIT }, (_, i) => ({
+        id: `r${i + 1}`,
+        rankDense: i + 1,
+      })),
+    );
+  });
 });
 
 /**
- * The observation must be just that. The two proofs below: the returned chunks
- * are byte-identical whether the run's sink keeps the per-search events or
- * discards them, and they are exactly the pure fusion of the same searches.
+ * The observation must be just that: the returned chunks are byte-identical
+ * whether the run's sink keeps the per-search events or discards them, and the
+ * sink itself adds no store read and no embed call.
  */
 describe("the per-search record does not change retrieval", () => {
   it("returns byte-identical chunks with the event kept and with it discarded", async () => {
@@ -284,28 +316,175 @@ describe("the per-search record does not change retrieval", () => {
     expect(calls).toHaveLength(SUB_QUERIES.length * 2);
     expect(calls.every((call) => call.limit === 10)).toBe(true);
   });
+});
 
-  it("returns exactly the pure RRF fusion of the searches it recorded", async () => {
-    const primary = rows("p", 6);
-    const fallback = rows("f", 4);
-    const { store } = makeStore((track) => (track === "primary" ? primary : fallback));
-    const chunks = await run(store, () => {});
+const SAHIH = { sourceType: "hadith", collection: "bukhari", grade: "sahih" } as const;
+const QURAN = { sourceType: "quran", surah: 1 } as const;
+const KITAB = { sourceType: "kitab", collection: "adab" } as const;
+const PRINCIPLE = { sourceType: "principle" } as const;
 
-    const chunkOf = (row: ChildRow) => ({
-      id: row.id,
-      text: row.textAr,
-      metadata: row.metadata,
-    });
-    const expected = rrfFuse(
-      [
-        primary.map((row, i) => ({ chunk: chunkOf(row), rank: i + 1 })),
-        fallback.map((row, i) => ({ chunk: chunkOf(row), rank: i + 1 })),
-      ],
-      (chunk) => hierarchyBonus(chunk),
+/** A row with metadata of its own, so the hierarchy bonus is exercised. */
+const rankedRow = (id: string, metadata: Record<string, unknown> = HADITH): ChildRow => ({
+  id,
+  textAr: `arab-${id}`,
+  textId: `id-${id}`,
+  metadata,
+});
+
+type RankedRow = { row: ChildRow; rankDense: number };
+type SearchHits = { primary: RankedRow[]; fallback: RankedRow[] };
+
+/**
+ * Non-uniform on purpose: different counts per track and per sub-query, ids
+ * shared across tracks and sub-queries, and rows carrying all five hierarchy
+ * bonuses — so a dropped list, a doubled score or a lost rank moves a number.
+ */
+const ORACLE_HITS: SearchHits[] = [
+  {
+    primary: [
+      { row: rankedRow("a1", SAHIH), rankDense: 1 },
+      { row: rankedRow("a2", QURAN), rankDense: 2 },
+      { row: rankedRow("a3", KITAB), rankDense: 3 },
+      { row: rankedRow("b1", PRINCIPLE), rankDense: 4 },
+      { row: rankedRow("a4"), rankDense: 5 },
+      { row: rankedRow("a5"), rankDense: 6 },
+    ],
+    fallback: [
+      { row: rankedRow("a2", QURAN), rankDense: 1 },
+      { row: rankedRow("b1", PRINCIPLE), rankDense: 2 },
+      { row: rankedRow("b2", SAHIH), rankDense: 3 },
+      { row: rankedRow("a4"), rankDense: 4 },
+    ],
+  },
+  {
+    primary: [
+      { row: rankedRow("b2", SAHIH), rankDense: 1 },
+      { row: rankedRow("a1", SAHIH), rankDense: 2 },
+      { row: rankedRow("c1", QURAN), rankDense: 3 },
+      { row: rankedRow("c2"), rankDense: 4 },
+      { row: rankedRow("b1", PRINCIPLE), rankDense: 5 },
+    ],
+    fallback: [
+      { row: rankedRow("a1", SAHIH), rankDense: 1 },
+      { row: rankedRow("c1", QURAN), rankDense: 2 },
+      { row: rankedRow("b3", KITAB), rankDense: 3 },
+    ],
+  },
+];
+
+/** The intent that turns the Principle chunk's bonus on, so all five bonuses count. */
+const ORACLE_INTENT = "analogy";
+
+/** The oracle's store double: hits are selected by sub-query (its vector) × track. */
+function oracleStore() {
+  return {
+    similaritySearch: (
+      track: "primary" | "fallback",
+      embedding: readonly number[],
+      _opts: SearchOptions,
+    ) => {
+      const sub = (embedding[0] ?? 0) - 1;
+      const found = ORACLE_HITS[sub]?.[track] ?? [];
+      return Effect.succeed(
+        found.map(({ row: foundRow, rankDense }, i) => ({
+          child: foundRow,
+          distance: 0.1 + i / 100,
+          rankDense,
+        })),
+      );
+    },
+    listDocChildNeighboursByChildIds: () => Effect.succeed([]),
+    // The fixture carries Quran rows, so the short-surah completion arm reads;
+    // it returns nothing, keeping the fused set the only source of chunks.
+    listDocChildrenByParentSourceKey: () => Effect.succeed([]),
+  };
+}
+
+/** One run over the oracle fixture; the sink keeps every event. */
+async function runOracle() {
+  const recorded: Recorded[] = [];
+  const retriever = createKajianQRetriever({
+    store: oracleStore() as never,
+    embedder: {
+      // A distinct vector per sub-query is what lets the double answer per search.
+      embed: ({ texts }) => Effect.succeed({ vectors: texts.map((_, i) => [i + 1, 0]), cost }),
+    },
+    bridge: ((e: unknown) => Effect.runPromise(e as never)) as never,
+    limit: SEARCH_HITS_TRACE_LIMIT,
+  });
+  const chunks = (await Effect.runPromise(
+    Effect.provideService(
+      retriever.retrieve(
+        routedQuery("apa keutamaan menuntut ilmu", {
+          subQueries: SUB_QUERIES,
+          intent: ORACLE_INTENT,
+        }),
+      ),
+      RunContext,
+      {
+        config: {},
+        now: () => 1,
+        record: (event: unknown) => recorded.push(event as Recorded),
+      } as never,
+    ) as never,
+  )) as Chunk[];
+  return { chunks, events: searchEvents(recorded) };
+}
+
+/**
+ * The differential oracle. The store double returns a known list per
+ * sub-query × track, the sink keeps every event, and the expected fusion is
+ * built from the events themselves in the shape production fuses — one
+ * single-hit list per hit — with the retriever's own bonus function. Ids **and**
+ * scores are compared, so a doubled or lost list changes the assertion even
+ * where the id order does not; and the fixture is non-uniform, so dropping any
+ * one sub-query's lists changes the numbers.
+ */
+describe("the fused set is the pure fusion of the searches it recorded", () => {
+  it("reproduces the events' own hit lists, ids and scores alike", async () => {
+    const { chunks, events } = await runOracle();
+
+    // Every search returned at most the store's bound, so each event carries its
+    // whole list: the events are the fusion's input, not a sample of it.
+    expect(events).toHaveLength(SUB_QUERIES.length * 2);
+    for (const event of events) expect(event.detail.topHits).toHaveLength(event.detail.hits);
+
+    const rowById = new Map<string, ChildRow>();
+    for (const perSub of ORACLE_HITS) {
+      for (const found of [...perSub.primary, ...perSub.fallback]) {
+        rowById.set(found.row.id, found.row);
+      }
+    }
+    const chunkOf = (id: string): Chunk => {
+      const found = rowById.get(id);
+      if (!found) throw new Error(`an event recorded an id the fixture never returned: ${id}`);
+      return { id, text: found.textAr, metadata: found.metadata };
+    };
+    // Production fuses one single-hit list per hit — not one list per track — so
+    // this rebuilds exactly that shape from the events. A per-track list would
+    // reproduce the id order while halving every chunk's score.
+    const listsOf = (chosen: readonly SearchEvent[]) =>
+      chosen.flatMap((event) =>
+        event.detail.topHits.map((hit) => [{ chunk: chunkOf(hit.id), rank: hit.rankDense }]),
+      );
+    const expected = rrfFuse(listsOf(events), (chunk) => hierarchyBonus(chunk, ORACLE_INTENT));
+
+    expect(chunks.map(({ id, score, rankDense }) => ({ id, score, rankDense }))).toEqual(
+      expected.map(({ id, score, rankDense }) => ({ id, score, rankDense })),
     );
 
-    expect(chunks.map((chunk) => [chunk.id, chunk.rankDense])).toEqual(
-      expected.map((chunk) => [chunk.id, chunk.rankDense]),
-    );
+    // The fixture is discriminating: dropping any one sub-query's lists changes
+    // the fusion, so a run that consumed fewer searches than its record shows
+    // cannot pass. Production records a sub-query's two tracks back to back.
+    for (let sub = 0; sub < SUB_QUERIES.length; sub += 1) {
+      const own = events.slice(sub * 2, sub * 2 + 2);
+      expect(own.map((event) => event.detail.track)).toEqual(["primary", "fallback"]);
+      const dropped = rrfFuse(listsOf(events.filter((event) => !own.includes(event))), (chunk) =>
+        hierarchyBonus(chunk, ORACLE_INTENT),
+      );
+      expect(dropped.map((chunk) => [chunk.id, chunk.score])).not.toEqual(
+        expected.map((chunk) => [chunk.id, chunk.score]),
+      );
+    }
   });
 });

@@ -260,7 +260,7 @@ export const TraceEventSchema = v.variant("kind", [
     cost: v.optional(CostRecordSchema),
     at: v.pipe(v.number(), v.integer()),
   }),
-  /** The decision-model reorder of retrieval candidates; owner `./trace-rerank`. */
+  /** The decision-model reorder of retrieval candidates; owner `./trace-retriever`. */
   rerankEventSchema,
   v.object({
     /**
