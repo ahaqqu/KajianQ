@@ -30,15 +30,16 @@ import { nextRelaxation, type FilterEntry } from "./chat-filter-policy";
  * a sweep already made holds for the searches after it — a request the filters
  * cannot serve pays for the probing once, not once per sub-query per track.
  *
- * **The record-level last resort.** A per-dimension probe can only help when
- * *exactly one* dimension is unsatisfiable: with two, every probe still carries
- * the other and every probe returns nothing. Two dimensions can be jointly
- * unsatisfiable while each matches rows on its own — a source selection and a
- * grade need not overlap — so when the sweep exhausts with nothing adopted, the
- * policy hands out **one more** probe that omits every live dimension at once:
- * the retry runs with `{}`, and the earlier `adopted: false` probes stay on the
- * trace as the evidence that no single dimension was at fault. Without it a
- * wrong hint turns into a refusal for a question the corpus can serve.
+ * **The record-level last resort.** Every probe keeps all but one dimension, so
+ * a sweep rescues a run only when dropping one dimension leaves a set that
+ * matches rows. When every one of those probes returns nothing — a source no row
+ * carries and a grade no row carries — the record as a whole matches nothing
+ * too, and the one record no probe has run yet is the empty one. So when the
+ * sweep exhausts with nothing adopted, the policy hands out **one more** probe
+ * that omits every live dimension at once: the retry runs with `{}`, and the
+ * earlier `adopted: false` probes stay on the trace as the evidence that no
+ * single dimension was at fault. Without it a wrong hint turns into a refusal
+ * for a question the corpus can serve.
  *
  * **The last resort runs a record nothing has run yet, or it does not run.**
  * It is issued only with two or more live dimensions. One live dimension's own
@@ -85,13 +86,12 @@ export function createFilterRelaxation(intended: readonly FilterEntry[]): Filter
         tried.push(drop);
         return { dropped: [drop], retained: record(live.filter((entry) => entry !== drop)) };
       }
-      // Every dimension in play survived its own probe, so the record as a SET
-      // matched nothing. Reaching here means no untried live dimension is left,
-      // so a lone live dimension's own probe has already run exactly `{}` (and
-      // with none, the run's first search did): firing again would repeat a
-      // byte-identical search, record a duplicate `filter_relaxed` event, and
-      // leave the trace unable to tell a lone dimension's probe from the last
-      // resort.
+      // No untried live dimension is left: every probe returned nothing, so the
+      // record as a SET matched nothing. A lone live dimension's own probe has
+      // already run exactly `{}` (and with none, the run's first search did):
+      // firing again would repeat a byte-identical search, record a duplicate
+      // `filter_relaxed` event, and leave the trace unable to tell a lone
+      // dimension's probe from the last resort.
       settled = true;
       if (live.length <= 1) return undefined;
       return { dropped: [...live], retained: record([]) };

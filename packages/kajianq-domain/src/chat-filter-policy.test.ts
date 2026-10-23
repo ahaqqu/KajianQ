@@ -104,12 +104,35 @@ describe("the dimension map is exhaustive over the filter type", () => {
  * (`surah`, `collection`, `citation`, …), while every FILTER_DIMENSIONS entry
  * must be a key that exists. The retired set has its own reverse guard below,
  * so ingestion starting to write one of those keys is also a deliberate change.
+ * Between them they partition the pack's filter vocabulary, so removing a live
+ * dimension is as visible as restoring a retired one.
  */
 const FIXTURES = resolve(import.meta.dirname, "fixtures");
 const readFixture = (relative: string) => readFile(resolve(FIXTURES, relative), "utf8");
 
+/**
+ * Every dimension the pack's filter vocabulary declares, live or retired. The
+ * two sets below must partition it, so either direction of retirement is an
+ * edit to this committed list rather than a one-line change the corpus pins
+ * cannot see.
+ */
+const FILTER_VOCABULARY = ["sourceType", "grade", "madzhab", "textLayer", "principleTags"] as const;
+
 /** Dimensions the corpus cannot satisfy; they may return only when ingestion writes their keys. */
 const RETIRED_FILTER_KEYS = ["madzhab", "textLayer", "principleTags"] as const;
+
+describe("the live and retired sets name every declared dimension", () => {
+  it("partitions the filter vocabulary between the live dimensions and the retired set", () => {
+    const live: readonly string[] = Object.keys(FILTER_DIMENSIONS);
+    const retired: readonly string[] = RETIRED_FILTER_KEYS;
+    // Disjoint: no dimension is both a filter and retired.
+    expect(live.filter((key) => retired.includes(key))).toEqual([]);
+    // Total: deleting `grade` without retiring it, or restoring a retired key
+    // without taking it off this list, leaves a dimension named by neither set
+    // and fails here. Adding a dimension is a deliberate edit to all three.
+    expect([...live, ...retired].sort()).toEqual([...FILTER_VOCABULARY].sort());
+  });
+});
 
 async function ingestedMetadataKeys(): Promise<Set<string>> {
   const surahFiles = ["surah_1.json", "surah_112.json", "surah_113.json", "surah_114.json"];

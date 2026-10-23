@@ -2,7 +2,7 @@ import { FILTER_DIMENSIONS, type KajianQFilters } from "./filters";
 
 /**
  * The domain→store filter mapping — Smart Router stage 3 (spec §3.3 item 3:
- * "index selection + SQL metadata filters (`sourceType`, `grade IN …`)").
+ * source selection and SQL metadata filters over `sourceType` and `grade`).
  *
  * **The invariant this module owns** (the reason it exists as its own file):
  * *the routing decision the trace publishes and the filter record the store

@@ -1,7 +1,7 @@
 /**
  * KajianQ retrieval filter dimensions — the domain vocabulary the domain pack
  * supplies to the engine's generic `Query<TFilters>` (CONTEXT.md: Grade,
- * Source type). Re-exported from the pack's barrel so chat stages and callers
+ * Source routing). Re-exported from the pack's barrel so chat stages and callers
  * share one type.
  *
  * **Only dimensions the corpus carries are filters.** Madzhab, TextLayer and
@@ -10,10 +10,10 @@
  * filter dimensions: a route may not ask for a constraint the corpus cannot
  * satisfy.
  *
- * **Every dimension is a set** (spec §3.3 item 3: `sourceType`, `grade IN …`).
- * A one-value dimension is a one-element set, so the store's
- * `metadata->>key = ANY($n::text[])` mapping in `chat-filter-policy.ts` is the
- * single shape every dimension takes — there is no second, single-valued
+ * **Every dimension is a set** (spec §3.3 item 3 binds `sourceType` and `grade`
+ * as exact value matches). A one-value dimension is a one-element set, so the
+ * store's `metadata->>key = ANY($n::text[])` mapping in `chat-filter-policy.ts`
+ * is the single shape every dimension takes — there is no second, single-valued
  * spelling that could quietly disagree with it.
  */
 
@@ -53,7 +53,7 @@ export type RoutableSource = (typeof ROUTABLE_SOURCES)[number];
 export type KajianQFilters = {
   /** Source types to search; empty = every source. Selects the index. */
   sourceType?: readonly RoutableSource[];
-  /** Spec §3.3 item 3's `grade IN …` — the grades a hadith may carry. */
+  /** The grades a hadith may carry. */
   grade?: readonly Grade[];
 };
 
