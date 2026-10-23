@@ -66,10 +66,11 @@ export type SubQueryRole = (typeof SUB_QUERY_ROLES)[number];
 
 /**
  * Sub-query origin — what produced a sub-query. `model` is the router LLM's
- * own phrasing; `rule` is one the domain added because a composition rule was
- * left uncovered; `fallback` is the single sub-query used when the router's
- * reply was unusable. The trace carries the label, so a rule-added or
- * fallback sub-query is never read as the model's own judgment.
+ * own phrasing; `rule` is one the domain added for a composition rule — a
+ * missing rule's template, or the caller's verbatim question as the `factual`
+ * rule's own text; `fallback` is the single sub-query used when the router's
+ * reply was unusable. The trace carries the label, so a rule-derived, caller's
+ * or fallback sub-query is never read as the model's own judgment.
  */
 export const SUB_QUERY_ORIGINS = ["model", "rule", "fallback"] as const;
 export type SubQueryOrigin = (typeof SUB_QUERY_ORIGINS)[number];

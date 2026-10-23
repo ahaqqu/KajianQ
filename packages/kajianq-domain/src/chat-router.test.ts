@@ -99,11 +99,14 @@ describe("createKajianQRouter", () => {
       madzhab: "syafii",
       sourceType: ["quran", "hadith", "kitab", "principle"],
     });
+    // The caller's question keeps the `factual` slot; the reply's factual
+    // paraphrase is the extra the ceiling spends, while its sanad entry and the
+    // fired principle/dalil rules keep their slots.
     expect(routed.subQueries.map((s) => [s.role, s.origin])).toEqual([
-      ["factual", "model"],
-      ["sanad", "model"],
+      ["factual", "rule"],
       ["principle", "rule"],
       ["dalil", "rule"],
+      ["sanad", "model"],
     ]);
   });
 
@@ -167,10 +170,10 @@ describe("createKajianQRouter", () => {
     };
 
     // The union reads the set retrieval fans out over, not the reply's raw list —
-    // the `hadith` category's own `sanad` rule included.
+    // the caller's question and the `hadith` category's own `sanad` rule included.
     expect(routed.subQueries.map((s) => [s.role, s.origin])).toEqual([
-      ["principle", "model"],
       ["factual", "rule"],
+      ["principle", "model"],
       ["sanad", "rule"],
     ]);
     expect(routed.filters.sourceType).toEqual(["hadith", "principle"]);
@@ -357,17 +360,17 @@ describe("createKajianQRouter", () => {
     }
   });
 
-  it("stamps the factual rule onto a model echo of the question with no role", async () => {
+  it("keeps the caller's own entry when the reply echoes the question", async () => {
     // Reachable from the wire: `SubQueryReplySchema` accepts a bare string, so a cheap
-    // reply can hand over exactly the question with no role. The stage must still label
-    // the rule it fired, without duplicating the retrieval text (see
-    // chat-router-decompose.test.ts).
+    // reply can hand over exactly the question with no role. The caller's entry is
+    // already in the set as the `factual` rule's text; the echo adds no duplicate and
+    // the entry stays the rule's, never the model's (see chat-router-decompose.test.ts).
     const h = harness(JSON.stringify({ intent: "factual", subQueries: ["Apa hukum riba?"] }));
     const routed = (await h.route({ text: "Apa hukum riba?" })) as {
       subQueries: readonly { text: string; role?: string; origin?: string }[];
     };
     expect(routed.subQueries).toEqual([
-      { text: "Apa hukum riba?", role: "factual", origin: "model" },
+      { text: "Apa hukum riba?", role: "factual", origin: "rule" },
     ]);
   });
 

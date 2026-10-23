@@ -21,17 +21,25 @@ export { admitSubQueryText };
  * What a cheap model does *not* do reliably is obey a count or cover a rule it
  * was given, so the domain repairs the reply here, deterministically:
  *
- *   1. every composition rule that fired has a sub-query with its role
- *      (factual always; principle when the question needs a lens; dalil for
- *      fikih; sanad for hadith) — a missing one is added from a template, and
- *      when that rule's text is already in the set under no role of its own
- *      (the model echoed the question, or labelled it outside the vocabulary)
- *      the rule's role is stamped onto that entry instead of a duplicate text
- *      being added, so the duplicate filter never costs a rule its coverage.
- *      One exception, because the model's label is never overwritten: an entry
- *      that already carries a *different* declared role keeps it, and that
- *      rule's coverage is not shown;
- *   2. every entry is trimmed, and a text with no letter and no digit in any
+ *   1. the caller's verbatim question is always one of the texts retrieval
+ *      runs, as its own entry carrying the `factual` rule's role. The model's
+ *      phrasings are additive angles beside it: an entry the reply labels
+ *      `factual` never stands in for the caller's words, because a paraphrase
+ *      can land in vocabulary the corpus does not use while the caller's
+ *      question is the one text phrased for this question. It is added before
+ *      the reply's own, keeps the rule's origin rather than the model's, and
+ *      passes the same duplicate filter, so an echo adds no second entry;
+ *   2. every composition rule that fired has a sub-query with its role (the
+ *      `factual` one is the entry above; `principle` when the question needs a
+ *      lens; `dalil` for fikih; `sanad` for hadith) — a missing one is added
+ *      from a template, and when that rule's text is already in the set under
+ *      no role of its own (the model echoed a template, or labelled it outside
+ *      the vocabulary) the rule's role is stamped onto that entry instead of a
+ *      duplicate text being added, so the duplicate filter never costs a rule
+ *      its coverage. One exception, because the model's label is never
+ *      overwritten: an entry that already carries a *different* declared role
+ *      keeps it, and that rule's coverage is not shown;
+ *   3. every entry is trimmed, and a text with no letter and no digit in any
  *      script — whitespace, punctuation, an emoji, a zero-width space or
  *      joiner, a C0 control — is dropped rather than embedded, **whatever its
  *      origin**: the reply's phrasing and a composition rule's own text alike.
@@ -48,10 +56,11 @@ export { admitSubQueryText };
  *      offered it, which is what keeps the reply's echo of a content-free
  *      question and the rule's own add of that same text in agreement on the
  *      next pass;
- *   3. the total stays within the stage's bound, dropping the model's extra
- *      phrasings before any rule-derived one — and never the entry a fired
- *      rule's own text lives in, which is that rule's coverage;
- *   4. every entry says where it came from, so the Trace shows a repaired set
+ *   4. the total stays within the stage's bound, dropping the model's extra
+ *      phrasings before the caller's entry or any rule-derived one: the
+ *      caller's words win a slot over a model paraphrase when the ceiling
+ *      forces a choice, and a fired rule's coverage is never spent;
+ *   5. every entry says where it came from, so the Trace shows a repaired set
  *      instead of passing the repair off as the model's judgment.
  *
  * Pure: same input, same sub-queries, no clock, no model, no store — and the
@@ -103,14 +112,15 @@ export type DecompositionInput = {
 };
 
 /**
- * The sub-queries retrieval fans out over: the model's own, plus the ones the
- * rules require, bounded and role-labelled.
+ * The sub-queries retrieval fans out over: the caller's verbatim question, the
+ * model's own, and the ones the rules require, bounded and role-labelled.
  *
- * The floor is a floor on distinct texts (see `MIN_SUB_QUERIES`): it adds the
- * caller's verbatim question — a genuinely different retrieval query from the
- * model's paraphrase, the same reason the engine carries `sourceText` — but it
- * is deduplicated like every other entry, so a model that only echoed the
- * question leaves exactly one entry rather than two spellings of one query.
+ * The caller's question leads the set as the `factual` rule's own entry — a
+ * genuinely different retrieval query from the model's paraphrase, the same
+ * reason the engine carries `sourceText` — and the model's phrasings are
+ * additive angles beside it. It is deduplicated like every other entry, so a
+ * model that only echoed the question leaves exactly one entry rather than two
+ * spellings of one query.
  */
 export function decomposeQuery(input: DecompositionInput): SubQuery[] {
   const kept: SubQuery[] = [];
@@ -134,11 +144,22 @@ export function decomposeQuery(input: DecompositionInput): SubQuery[] {
     kept.push({ ...sub, text });
   };
 
+  // The caller's question is the set's first entry: the `factual` rule's own
+  // text, added before the reply's, so a model entry labelled `factual` can never
+  // occupy the only factual slot and displace the caller's words. It keeps the
+  // rule's origin, never the model's — the Trace must not publish the caller's
+  // words as the model's judgment — and the duplicate filter collapses an echo
+  // into it. It takes the same admission, so a content-free question adds nothing.
+  const question = admitSubQueryText(input.question);
+  if (question !== undefined) {
+    push({ text: question, role: "factual", origin: "rule" });
+  }
+
   // The texts the rules below will add, keyed the way the duplicate filter keys
   // them — one concept, derived once, so the rule loop and the ceiling's stand-in
   // protection cannot drift apart. One of them is the caller's own question — the
-  // `factual` rule's text, and the floor's — which is the text a content-free
-  // question contributes, and `push` drops it.
+  // `factual` rule's text, already in the set above unless the question carries
+  // nothing to search with — and `push` drops it a second time at the same gate.
   const ruleTexts = new Map<SubQueryRole, string>(
     firedRoles.map((role): [SubQueryRole, string] => [role, ruleText(role, input)]),
   );
@@ -155,17 +176,16 @@ export function decomposeQuery(input: DecompositionInput): SubQuery[] {
 
   for (const [role, text] of ruleTexts) {
     if (kept.some((sub) => sub.role === role)) continue;
-    // The rule's text may already be in the set — most often `factual`, whose text
-    // *is* the caller's question, which the model may have echoed. Adding it would
-    // put one retrieval text in twice (two embed slots for one search); dropping it
-    // would leave the fired rule uncovered and the Trace unable to explain the
-    // route. So when the entry carrying that text has no role of its own — the
-    // model gave none, or gave one the vocabulary drops — the rule's role is
-    // stamped onto it: the text stays the model's phrasing and keeps its `model`
-    // origin, and the rule's coverage becomes visible. An entry the model labelled
-    // with a *different* declared role keeps that label — overwriting it would pass
-    // the rule's role off as the model's own — so that coincidence stays the
-    // exception the header states.
+    // The rule's text may already be in the set — a non-factual template the model
+    // echoed. Adding it would put one retrieval text in twice (two embed slots for
+    // one search); dropping it would leave the fired rule uncovered and the Trace
+    // unable to explain the route. So when the entry carrying that text has no role
+    // of its own — the model gave none, or gave one the vocabulary drops — the
+    // rule's role is stamped onto it: the text stays the model's phrasing and keeps
+    // its `model` origin, and the rule's coverage becomes visible. An entry the
+    // model labelled with a *different* declared role keeps that label —
+    // overwriting it would pass the rule's role off as the model's own — so that
+    // coincidence stays the exception the header states.
     const holder = kept.find(
       (sub) => sub.role === undefined && normalize(sub.text) === normalize(text),
     );
@@ -174,22 +194,6 @@ export function decomposeQuery(input: DecompositionInput): SubQuery[] {
       continue;
     }
     push({ text, role, origin: "rule" });
-  }
-
-  // The floor, on distinct texts: the model phrased one sub-query and no rule
-  // beyond the factual one fired (a plain factual question outside
-  // fikih/hadith). The verbatim question is a genuinely different retrieval
-  // query from the model's paraphrase — the same reason the engine carries
-  // `sourceText` — so it is added rather than leaving the stage at a single
-  // query. It runs through the same dedup as everything else: when the model's
-  // only entry already *is* the question there is no second distinct text to
-  // add, and one entry is the honest answer (`MIN_SUB_QUERIES`). It is the
-  // caller's own text, but not exempt from the content gate: a question with no
-  // letter and no digit is not a query either, and the `factual` rule above has
-  // already declined to add that same text — the two arms of the drop agree.
-  // Only a question that carries content reaches the floor at all.
-  if (kept.length < MIN_SUB_QUERIES) {
-    push({ text: input.question.trim(), role: "factual", origin: "rule" });
   }
 
   if (kept.length <= MAX_SUB_QUERIES) return kept;
@@ -217,8 +221,11 @@ export function decomposeQuery(input: DecompositionInput): SubQuery[] {
   // sub-queries "factual" push the rule-derived principle one out, so the
   // budget is spent on ONE sub-query per distinct role first — the sub-queries
   // the composition rules are about — and only then on the model's extra
-  // angles, in its own order. Ordering never rewrites a label, which is what
-  // keeps the repair idempotent over its own output.
+  // angles, in its own order. The caller's entry is the first `factual` entry,
+  // so a model paraphrase labelled `factual` repeats a role already spent and
+  // becomes an extra: when the cap forces a choice, the caller's words keep the
+  // slot and the model's phrasing is what goes. Ordering never rewrites a
+  // label, which is what keeps the repair idempotent over its own output.
   const ordered = kept
     .map((sub, index) => ({ sub, index }))
     .sort((a, b) => priority(a.sub) - priority(b.sub) || a.index - b.index)
