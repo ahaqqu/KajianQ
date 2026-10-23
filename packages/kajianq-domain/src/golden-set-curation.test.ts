@@ -9,6 +9,8 @@ import type { GoldenQuestion } from "@app/contracts";
  * exact id list makes every add, removal, or id swap a deliberate test change
  * rather than an incidental diff. Each row's requirement is pinned for the same
  * reason: a row no replay recorded has no other guard against a silent re-label.
+ * The question text is pinned too: it is what the harness asks the deployed API,
+ * so a re-word changes the gate's input and must also be a deliberate change.
  */
 const FIXTURE = JSON.parse(
   readFileSync(new URL("../fixtures/golden-set-v0.json", import.meta.url), "utf8"),
@@ -41,6 +43,33 @@ const IDS = [
 /** Retired ids. Kept as a list, so a retirement edits the membership pin by
  * removing an entry here rather than adding another scattered literal. */
 const RETIRED_IDS = ["gs-v0-007"];
+
+/** Every head row's question text, pinned by id: the question is the gate's
+ * input, so a re-word is a recorded curation change rather than a silent diff. */
+const QUESTIONS: Record<string, string> = {
+  "gs-v0-001": "Apa maksud Ayat Kursi?",
+  "gs-v0-002": "Sebutkan dalil tentang perintah shalat dalam Al-Quran!",
+  "gs-v0-003": "Bagaimana tata cara wudhu menurut hadits?",
+  "gs-v0-004": "Apa yang Nabi Islam katakan tentang mencari ilmu?",
+  "gs-v0-005": "Jelaskan makna Surat Al-Ikhlas!",
+  "gs-v0-006": "Apakah menjamak shalat saat safar diperbolehkan? Sebutkan dalilnya.",
+  "gs-v0-008": "Hadits apa yang menyebutkan keutamaan membaca Al-Quran?",
+  "gs-v0-009": "Jelaskan konsep ridha dalam QS. 89:28!",
+  "gs-v0-010": "Bagaimana hukum riba dalam transaksi? Sebutkan ayat dan haditsnya.",
+  "gs-v0-011": "Sebutkan hadits tentang kebersihan itu sebagian dari iman!",
+  "gs-v0-012": "Apa makna asmaul husna Ar-Rahman dan Ar-Rahim?",
+  "gs-v0-013": "Bagaimana adab makan menurut hadits Rasulullah?",
+  "gs-v0-014": "Apa makna ikhlas berdasarkan QS. 98:5?",
+  "gs-v0-015": "What does Surah Al-Fatihah mean and why is it recited in every prayer?",
+  "gs-v0-016": "Which hadith describes the obligations of Zakat, and what does it say?",
+  "gs-v0-017": "What is the ruling on praying in a garment that contains gold?",
+  "gs-v0-018": "Berapa jumlah rakaat shalat Tarawih yang paling utama menurut hadits sahih?",
+  "gs-v0-019": "Kapan kiamat akan terjadi? Sebutkan tahun pastinya!",
+  "gs-v0-020":
+    "Sebutkan hadits yang memerintahkan mencari ilmu sampai ke negeri China dan jelaskan sanadnya!",
+  "gs-v0-021": "Apa isi hadits pada HR. Bukhari no. 191?",
+  "gs-v0-022": "Siapa yang harus diutamakan: istri atau ibu?",
+};
 
 /** The fields a row's gate behaviour is read from. */
 type CuratedRequirement = Pick<
@@ -183,6 +212,12 @@ describe("golden-set-v0 curation", () => {
         FIXTURE.questions.map((question) => [question.id, requirementOf(question)]),
       ),
     ).toEqual(REQUIREMENTS);
+  });
+
+  it("pins every row's question, so a re-word is a deliberate test change", () => {
+    expect(
+      Object.fromEntries(FIXTURE.questions.map((question) => [question.id, question.question])),
+    ).toEqual(QUESTIONS);
   });
 
   it("carries the family/birr replacement as a new id, grounded on the Bukhari narration", () => {
