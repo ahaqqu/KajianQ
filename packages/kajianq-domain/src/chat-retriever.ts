@@ -35,10 +35,6 @@ import { withTextLayers } from "./chunk-text-layers";
  * embedding tracks (ADR-0013 dual-track), and fuse the hits with Reciprocal Rank
  * Fusion (k=60) plus the spec's hierarchy bonuses.
  */
-/** The stage's store role moved to its own module (the agentic line cap) and is
- * re-exported here, so the stage keeps one import path for its own surface. */
-export type { RetrieverStore } from "./chat-retriever-store";
-
 export type RetrieverEmbedder = {
   embed(spec: {
     texts: readonly string[];
@@ -48,6 +44,8 @@ export type RetrieverEmbedder = {
     personalData: true;
   }): Effect.Effect<{ vectors: readonly (readonly number[])[]; cost: CostRecord }, unknown>;
 };
+
+export type { RetrieverStore } from "./chat-retriever-store";
 
 /** Effect bridge the wiring injects (keeps this module free of runner imports). */
 export type StoreBridge = <A>(effect: Effect.Effect<A, StoreError>) => Promise<A>;

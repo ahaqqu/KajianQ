@@ -58,6 +58,7 @@ export {
 } from "./providers/retry-schedule";
 export {
   canonicalMessageId,
+  filterMatchOf,
   type AlignedPairInsert,
   type AnswerFeedbackTarget,
   type ChatMessage,

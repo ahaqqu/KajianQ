@@ -143,6 +143,20 @@ export type MetadataFilterMatch = {
 /** One filter dimension's value: a single value, a set, or a set with a derived case. */
 export type MetadataFilterValue = string | readonly string[] | MetadataFilterMatch;
 
+/**
+ * Read one filter value into its match shape: a single value becomes a one-element
+ * set, a set is copied, and a match passes through unchanged. The seam's one reader
+ * for the union's three spellings, so the adapter, the in-memory double and the
+ * retriever's tests cannot disagree about how a value arrives.
+ */
+export function filterMatchOf(value: MetadataFilterValue): MetadataFilterMatch {
+  if (typeof value === "string") return { values: [value] };
+  // `Array.isArray` does not narrow a `readonly string[]` in the false branch, so
+  // the non-array branch restates the seam's own type rather than guessing one.
+  if (Array.isArray(value)) return { values: [...(value as string[])] };
+  return value as MetadataFilterMatch;
+}
+
 export interface RagStore
   extends
     RagStoreCorpus,

@@ -1,4 +1,4 @@
-import type { MetadataFilterMatch, MetadataFilterValue, RetrievalTrack } from "./rag-store";
+import { filterMatchOf, type MetadataFilterValue, type RetrievalTrack } from "./rag-store";
 
 /**
  * Postgres-specific similarity-search SQL builder.
@@ -49,7 +49,7 @@ export function filterBindings(filters: Record<string, MetadataFilterValue>): {
   const clauses: FilterClause[] = [];
   const values: unknown[] = [];
   for (const [key, value] of Object.entries(filters)) {
-    const match = matchOf(value);
+    const match = filterMatchOf(value);
     values.push(key, match.values);
     if (match.whenAbsent === undefined) {
       clauses.push("exact");
@@ -59,15 +59,6 @@ export function filterBindings(filters: Record<string, MetadataFilterValue>): {
     values.push(match.whenAbsent.key, match.whenAbsent.values);
   }
   return { clauses, values };
-}
-
-/** The three value spellings a dimension can arrive as, read into one shape. */
-function matchOf(value: MetadataFilterValue): MetadataFilterMatch {
-  if (typeof value === "string") return { values: [value] };
-  // `Array.isArray` does not narrow a `readonly string[]` in the false branch, so
-  // the non-array branch restates the seam's own type rather than guessing one.
-  if (Array.isArray(value)) return { values: [...(value as string[])] };
-  return value as MetadataFilterMatch;
 }
 
 /**

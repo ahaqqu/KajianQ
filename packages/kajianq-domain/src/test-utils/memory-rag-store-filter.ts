@@ -1,4 +1,4 @@
-import type { MetadataFilterMatch, MetadataFilterValue } from "@app/infra";
+import { filterMatchOf, type MetadataFilterValue } from "@app/infra";
 
 /**
  * The adapter binds each filter dimension as `metadata->>$k = ANY($v::text[])`,
@@ -25,14 +25,7 @@ export function matchesMetadataFilters(
         : JSON.stringify(raw);
   };
   for (const [key, wanted] of Object.entries(filters ?? {})) {
-    // `Array.isArray` does not narrow a `readonly string[]` in the false branch,
-    // so the non-array branch restates the seam's own type.
-    const match: MetadataFilterMatch =
-      typeof wanted === "string"
-        ? { values: [wanted] }
-        : Array.isArray(wanted)
-          ? { values: [...(wanted as string[])] }
-          : (wanted as MetadataFilterMatch);
+    const match = filterMatchOf(wanted);
     const text = textOf(key);
     if (text !== null) {
       if (match.values.includes(text)) continue;
