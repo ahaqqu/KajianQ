@@ -254,7 +254,8 @@ Baselines: 007 reported 5,352 → measured **5,352**; 008 397 → **397**; 016 4
 evidence; the protocol must compare per-row outcomes and rank bands across three deployed draws
 (§6 of the brief). Next: blast radius and cost (E7).
 
-**Cost.** 6 embedding calls free-tier, $0; wall clock 36 s.
+**Cost.** 6 embedding calls, all cache hits from E2, so 0 vendor HTTP calls; $0. Wall clock
+36 s.
 
 ---
 

@@ -501,7 +501,7 @@ seed and temperature 0 across every stage) would let one run stand — not measu
 
 ## 9. Spend and limits
 
-**Paid spend: $0.0064 measured** (vendor `usage` × recorded peak price), against the $0.50 cap:
+**Paid spend: $0.00644 measured** (vendor `usage` × recorded peak price), against the $0.50 cap:
 
 | experiment                       | LLM calls | prompt + completion tokens |          cost |
 | -------------------------------- | --------: | -------------------------: | ------------: |
@@ -509,10 +509,10 @@ seed and temperature 0 across every stage) would let one run stand — not measu
 | E2 (4 HyDE + 4 quote-shaped)     |         8 |                  592 + 484 |     $0.000758 |
 | E4 (9 paraphrase calls)          |         9 |                  795 + 276 |     $0.000570 |
 | E5 (47 classifier calls)         |        47 |                6,859 + 168 |     $0.002259 |
-| **total**                        |    **69** |                            | **$0.006437** |
+| **total**                        |    **69** |                            | **$0.006440** |
 
 Embeddings ran on the free-tier key (`GEMINI_API_KEY`, configured price 0); the number of
-embedding HTTP calls is ~120 with ~30-token inputs, a list-price equivalent of **< $0.001
+embedding HTTP calls is 94 (E1 5, E2 25, E4 64) with ~30-token inputs, a list-price equivalent of **< $0.001
 (estimate)**. No corpus embedding was recomputed.
 
 **Limits.** (1) Everything here is exact cosine over `embedding_primary`; the deployed pipeline's
