@@ -20,6 +20,7 @@ import type {
 } from "./harness-types";
 import { CitationGrammarError } from "./citation-grammar";
 import { CitationIdentityError } from "./citation-identity";
+import { identitySatisfiedCitationAddressRecall } from "./scorers-address";
 
 const question: GoldenQuestion = {
   id: "gs-test-1",
@@ -1109,5 +1110,156 @@ describe("budgetCapFromEnv", () => {
   it("rejects non-integer or negative caps", () => {
     expect(() => budgetCapFromEnv("1.5")).toThrow();
     expect(() => budgetCapFromEnv("-1")).toThrow();
+  });
+});
+
+describe("the opt-in any-of alternative set (D3)", () => {
+  const frame = (...labels: string[]): CitationFrameLike => ({
+    citations: labels.map((label) => ({ label })),
+  });
+  const retrieved = (...labels: string[]) => labels.map((label, index) => ({ id: `c${index}` }));
+  const citationOfFor = (labels: string[]) => (id: string) => labels[Number(id.slice(1))];
+
+  it("keeps the all-required default: two requirements, one present, validity 0.5", () => {
+    expect(citationValidity(["label-1", "label-2"], "", { frame: frame("label-1") })).toBe(0.5);
+  });
+
+  it("keeps the all-required default in the address dimension too", () => {
+    const labels = ["label-1"];
+    expect(
+      citationAddressRecall(["label-1", "label-2"], retrieved(...labels), citationOfFor(labels)),
+    ).toBe(0.5);
+  });
+
+  it("accepts a curated alternative as the requirement, in validity and in address recall", () => {
+    expect(
+      citationValidity(["label-1"], "", {
+        frame: frame("label-2"),
+        alternatives: ["label-2", "label-3"],
+      }),
+    ).toBe(1);
+    const labels = ["label-2"];
+    expect(
+      citationAddressRecall(["label-1"], retrieved(...labels), citationOfFor(labels), undefined, [
+        "label-2",
+        "label-3",
+      ]),
+    ).toBe(1);
+    // Without the opt-in set neither dimension moves: the alternative is not
+    // silently accepted.
+    expect(citationValidity(["label-1"], "", { frame: frame("label-2") })).toBe(0);
+    expect(citationAddressRecall(["label-1"], retrieved(...labels), citationOfFor(labels))).toBe(0);
+  });
+
+  it("still scores a non-member of the set as missing", () => {
+    expect(
+      citationValidity(["label-1"], "", {
+        frame: frame("label-9"),
+        alternatives: ["label-2", "label-3"],
+      }),
+    ).toBe(0);
+  });
+});
+
+describe("identitySatisfiedCitationAddressRecall — the reported address figure", () => {
+  const family: CitationIdentity = {
+    identityOf: (label) =>
+      label === "label-required" || label === "label-parallel" ? "family-1" : null,
+  };
+  const retrieved = (labels: string[]) => labels.map((label, index) => ({ id: `c${index}` }));
+  const citationOfFor = (labels: string[]) => (id: string) => labels[Number(id.slice(1))];
+
+  it("counts the required address itself", () => {
+    const labels = ["label-required"];
+    expect(
+      identitySatisfiedCitationAddressRecall({
+        requiredCitations: ["label-required"],
+        retrieved: retrieved(labels),
+        citationOf: citationOfFor(labels),
+        identity: family,
+      }),
+    ).toBe(1);
+  });
+
+  it("counts a retrieved identity where the exact metric reads 0", () => {
+    const labels = ["label-parallel"];
+    expect(
+      identitySatisfiedCitationAddressRecall({
+        requiredCitations: ["label-required"],
+        retrieved: retrieved(labels),
+        citationOf: citationOfFor(labels),
+        identity: family,
+      }),
+    ).toBe(1);
+    // The exact metric is a different function with a different meaning; it must
+    // stay 0 for the same input, so the gate's number keeps its comparability.
+    expect(
+      citationAddressRecall(["label-required"], retrieved(labels), citationOfFor(labels)),
+    ).toBe(0);
+  });
+
+  it("stays fail-closed for a required label the map does not carry", () => {
+    const labels = ["label-parallel"];
+    expect(
+      identitySatisfiedCitationAddressRecall({
+        requiredCitations: ["label-unmapped"],
+        retrieved: retrieved(labels),
+        citationOf: citationOfFor(labels),
+        identity: family,
+      }),
+    ).toBe(0);
+    // Its own exact address still counts.
+    const own = ["label-unmapped"];
+    expect(
+      identitySatisfiedCitationAddressRecall({
+        requiredCitations: ["label-unmapped"],
+        retrieved: retrieved(own),
+        citationOf: citationOfFor(own),
+        identity: family,
+      }),
+    ).toBe(1);
+  });
+
+  it("keeps an unrelated retrieved label from satisfying the requirement", () => {
+    const labels = ["label-unrelated"];
+    expect(
+      identitySatisfiedCitationAddressRecall({
+        requiredCitations: ["label-required"],
+        retrieved: retrieved(labels),
+        citationOf: citationOfFor(labels),
+        identity: family,
+      }),
+    ).toBe(0);
+  });
+
+  it("averages over the requirements and scores an empty requirement list 1", () => {
+    const labels = ["label-required"];
+    expect(
+      identitySatisfiedCitationAddressRecall({
+        requiredCitations: ["label-required", "label-missing"],
+        retrieved: retrieved(labels),
+        citationOf: citationOfFor(labels),
+        identity: family,
+      }),
+    ).toBe(0.5);
+    expect(
+      identitySatisfiedCitationAddressRecall({
+        requiredCitations: [],
+        retrieved: [],
+        citationOf: () => undefined,
+        identity: family,
+      }),
+    ).toBe(1);
+  });
+
+  it("fails loudly on a malformed resolver instead of guessing", () => {
+    expect(() =>
+      identitySatisfiedCitationAddressRecall({
+        requiredCitations: ["label-required"],
+        retrieved: [{ id: "c1" }],
+        citationOf: () => "label-required",
+        identity: { identityOf: () => undefined as unknown as string | null },
+      }),
+    ).toThrow(CitationIdentityError);
   });
 });

@@ -1,0 +1,13 @@
+{
+  "id": "quran-identities-v0",
+  "status": "v0-draft",
+  "$comment": "Curated Qur'an verse identities for the Golden Set. A pair names verses that are the same evidence for a question about the names they carry; each pair states its `rationale`, which is the rule it is signed under. The pair is the unit on purpose: several verses carry ar-Rahman and ar-Rahim, and only 1:1/1:3 are the basmalah pair the owner signed, so a 'shares both names' rule would admit verses this map does not claim. Owner-signed gate data: adding a pair changes what citation validity accepts.",
+  "pairs": [
+    {
+      "id": "ar-rahman-ar-rahim-name-meaning",
+      "canonical": "QS. 1:1",
+      "members": ["QS. 1:3"],
+      "rationale": "For a question about the meaning of the names ar-Rahman and ar-Rahim, QS. 1:3 is literally the pair of names and QS. 1:1 is that same pair plus the basmalah; the two verses are the same evidence. The relation is signed for this pair only — a verse that merely shares both names is not the same evidence."
+    }
+  ]
+}

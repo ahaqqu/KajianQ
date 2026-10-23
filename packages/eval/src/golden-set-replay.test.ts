@@ -2,7 +2,11 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vite-plus/test";
 import type { GoldenQuestion } from "@app/contracts";
-import { addressesNamedBy, normalizeCitationLabel } from "@app/kajianq-domain";
+import {
+  addressesNamedBy,
+  curatedIdentityResolvers,
+  normalizeCitationLabel,
+} from "@app/kajianq-domain";
 import { scoreQuestion } from "./harness";
 import type { CitationGrammar, TraceEventLike } from "./harness-types";
 
@@ -49,8 +53,15 @@ const ROWS = FIXTURE.rows;
 
 const HEAD = JSON.parse(
   readFileSync(new URL("packages/kajianq-domain/fixtures/golden-set-v0.json", ROOT), "utf8"),
-) as { questions: { id: string; requiredCitations: string[] }[] };
+) as {
+  questions: { id: string; requiredCitations: string[]; citationAlternatives?: string[] }[];
+};
 const HEAD_REQUIRED = new Map(HEAD.questions.map((q) => [q.id, q.requiredCitations]));
+const HEAD_ALTERNATIVES = new Map(
+  HEAD.questions.flatMap((q) =>
+    q.citationAlternatives === undefined ? [] : [[q.id, q.citationAlternatives] as const],
+  ),
+);
 
 /** The real comparison form, injected exactly as the staging composition root does. */
 const GRAMMAR: CitationGrammar = {
@@ -58,6 +69,13 @@ const GRAMMAR: CitationGrammar = {
   labelsInText: () => [],
   addressesNamedBy,
 };
+
+/**
+ * The domain's two signed relation sets, loaded exactly as the staging harness
+ * loads them: the gate's same-report resolver and the broader reported resolver
+ * that also reads the same-ruling groups.
+ */
+const { gating: GATE_IDENTITY, reported: REPORTED_IDENTITY } = curatedIdentityResolvers();
 
 /** The requirement the Golden Set carries at head for this row. */
 function requiredOf(row: Row): string[] {
@@ -111,6 +129,36 @@ function headOutcome(row: Row): ReturnType<typeof scoreQuestion> {
 
 const mean = (values: readonly number[]): number =>
   values.reduce((sum, value) => sum + value, 0) / values.length;
+
+/** The question as the head instruments read it: the requirement plus any curated
+ * alternative set the Golden Set carries at head. Kept apart from `questionOf` so
+ * the fold's own replay keeps the requirement shape it was measured with. */
+function instrumentQuestionOf(row: Row): GoldenQuestion {
+  const question = questionOf(row);
+  const alternatives = HEAD_ALTERNATIVES.get(row.questionId);
+  return alternatives === undefined
+    ? question
+    : { ...question, citationAlternatives: [...alternatives] };
+}
+
+/** One row scored with the head identity instruments — the gate's resolver and the
+ * broader reported resolver — over the same recorded evidence. */
+function instrumentOutcome(row: Row): ReturnType<typeof scoreQuestion> {
+  return scoreQuestion(
+    instrumentQuestionOf(row),
+    row.answer,
+    eventsOf(row),
+    {
+      sourceTypeOf: (id) => row.retrieved[Number(id.slice(1))]?.sourceType ?? undefined,
+      citationOf: (id) => row.retrieved[Number(id.slice(1))]?.label ?? undefined,
+      refusalMarkers: [],
+      citationGrammar: GRAMMAR,
+      citationIdentity: GATE_IDENTITY,
+      reportedCitationIdentity: REPORTED_IDENTITY,
+    },
+    { citations: row.evidence.map((label) => ({ label })) },
+  );
+}
 
 describe("golden-set-v0 replay — the collection fold measured on the recorded run", () => {
   it("stores every replay requirement in the comparison form the head fixture defines", () => {
@@ -172,5 +220,61 @@ describe("golden-set-v0 replay — the collection fold measured on the recorded 
     expect(row.required).toEqual(["HR. Ibn Majah no. 224"]);
     expect(row.evidence).toContain("HR. Ibn Majah no. 224");
     expect(row.recorded.refused).toBe(false);
+  });
+});
+
+describe("the head identity instruments on the recorded run", () => {
+  it("flips no recorded passing row", () => {
+    // The replay's recorded outcomes are the base build's; every row that passed
+    // there must still pass under the head scorers and the signed relation sets.
+    // This is the blast radius that matters: a gate that gains a relation must
+    // never lose a passing row.
+    const recordedPassing = ROWS.filter((row) => row.recorded.passed);
+    expect(recordedPassing.length).toBe(8);
+    for (const row of recordedPassing) {
+      expect(instrumentOutcome(row).passed, row.questionId).toBe(true);
+    }
+  });
+
+  it("recovers the recorded rows whose evidence cites a signed same-report identity", () => {
+    // 003's draft cited the wudu group's canonical 186 for a requirement of 191, and
+    // 013's cited 5264 (and Tirmidhi 1800) for a requirement of 5265 — both are
+    // pre-existing same-report groups, so the gate accepts them. The fold's own
+    // replay never injected the identity resolver, which is why these did not show
+    // there. Every recovered row was recorded as a failure.
+    const recovered = ROWS.filter(
+      (row) => instrumentOutcome(row).passed && !headOutcome(row).passed,
+    );
+    expect(recovered.map((row) => row.questionId)).toEqual(["gs-v0-003", "gs-v0-013"]);
+    for (const row of recovered) expect(row.recorded.passed).toBe(false);
+  });
+
+  it("keeps 012 red on the exact address this run never retrieved, and reports it reached", () => {
+    // The pair validates 012's citation (1:3 is the same evidence as 1:1), but this
+    // recorded run's fused set never surfaced 1:1, so the exact-address gate keeps
+    // the row red. The identity-satisfied figure reads the retrieved 1:3 as the
+    // pair's identity — the reported, non-gating residual D4 exists to show.
+    const row = ROWS.find((candidate) => candidate.questionId === "gs-v0-012")!;
+    const scored = instrumentOutcome(row);
+    expect(scored.citationValidity).toBe(1);
+    expect(scored.citationAddressRecall).toBe(0);
+    expect(scored.passed).toBe(false);
+    expect(scored.identitySatisfied).toEqual({
+      citationAddressRecall: 1,
+      citationValidity: 1,
+      passed: true,
+    });
+  });
+
+  it("does not reach the rows whose recorded evidence carries no signed relation", () => {
+    // 006 and 017 REFUSED in this run (their frames carry no label at all), and
+    // 016's draft cited no member of the zakat group — the identity instruments
+    // cannot reach a citation the run never made. 007 is unreached by both.
+    for (const id of ["gs-v0-006", "gs-v0-007", "gs-v0-016", "gs-v0-017"]) {
+      const row = ROWS.find((candidate) => candidate.questionId === id)!;
+      const scored = instrumentOutcome(row);
+      expect(scored.passed, id).toBe(false);
+      expect(scored.identitySatisfied?.passed, id).toBe(false);
+    }
   });
 });

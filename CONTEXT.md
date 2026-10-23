@@ -25,8 +25,16 @@ The original authorial text of a kitab, as opposed to commentary written about i
 _Avoid_: original text (ambiguous)
 
 **Matn identity**:
-The canonical hadith a narration belongs to: every chain that carries the same report or instruction, allowing different wording, shares one identity; a hadith that shares only a subject or a theme does not. Recorded in a curated, owner-signed map, not inferred from the citation number, so citation validity can accept a parallel chain without accepting an unrelated hadith.
+The canonical hadith a narration belongs to: every chain that narrates the same report, allowing different wording, shares one identity; a hadith that shares only a subject, a theme, or a ruling does not. Recorded in a curated, owner-signed map whose entries state their **relation** — a `same-report` relation is the gate's identity, a `same-ruling` relation is the same ruling carried by a different narration and is reported only — never inferred from the citation number, so citation validity can accept a parallel chain without accepting an unrelated hadith.
 _Avoid_: citation number, hadith ID (ambiguous with the corpus row)
+
+**Same report**:
+The relation between two addresses that narrate one report, allowing different wording and a different chain. Recorded as `same-report` in the curated identity map, and the only relation a citation gate treats as an identity.
+_Avoid_: same hadith (ambiguous with the corpus row), parallel (unqualified)
+
+**Same ruling**:
+Two addresses that carry the same ruling or instruction but are not the same report — a different wording, occasion, or chain, so neither is a parallel chain of the other. Recorded as `same-ruling`: reported by the identity-satisfied measure, never a citation gate identity.
+_Avoid_: parallel chain (that is a same-report relation)
 
 **Sharh**:
 A commentary written to explain a matn. Ingestion must distinguish sharh from matn and never mix them in one chunk.

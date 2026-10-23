@@ -16,7 +16,6 @@
  * `DEFAULT_REFUSALS`, so the scripts, the pipeline, and the scorer cannot
  * disagree about what counts as a refusal.
  */
-import { readFileSync } from "node:fs";
 import { Effect } from "effect";
 import { createLogger, resolvePostgresStore } from "@app/infra";
 import { BudgetExceededError, postChatSse } from "@app/eval";
@@ -27,9 +26,8 @@ import {
   SCOPE_EXPANSION_ORIGIN,
   addressesNamedBy,
   citationCandidatesIn,
-  identityResolver,
+  curatedIdentityResolvers,
   normalizeCitationLabel,
-  parseHadithIdentitySet,
 } from "@app/kajianq-domain";
 
 /** The generator's refusal text in each answer language (domain-owned). */
@@ -72,27 +70,21 @@ export const CITATION_GRAMMAR = {
 };
 
 /**
- * The Matn identity resolver the scorer compares citations with.
- * The map is the DOMAIN's curated, owner-signed data (`hadith-identities-v0`);
- * the composition root loads it here and hands the engine an opaque resolver,
- * so the engine learns no hadith vocabulary and cannot drift from the map. A
- * label the map does not carry resolves to `null`, which keeps the scorer on
- * its exact-label comparison — an unmapped or fabricated citation can satisfy
- * only the identical required label, never another.
+ * The citation-identity resolvers the scorer reads, loaded by the DOMAIN pack from
+ * its own curated, owner-signed maps. The composition root hands the engine opaque
+ * resolvers, so the engine learns no narration or verse vocabulary and cannot
+ * drift from the maps. A label the maps do not carry resolves to `null`, which
+ * keeps the scorer on its exact-label comparison — an unmapped or fabricated
+ * citation can satisfy only the identical required label, never another.
+ *
+ * Two resolvers, one relation apart: the gate reads same-report groups only, while
+ * the REPORTED identity-satisfied block also reads the signed same-ruling groups.
+ * The gate's number therefore stays the exact-address number it has always been.
  */
-const HADITH_IDENTITY_FIXTURE = new URL(
-  "../../kajianq-domain/fixtures/hadith-identities-v0.json",
-  import.meta.url,
-);
+const IDENTITY_RESOLVERS = curatedIdentityResolvers();
 
-export const CITATION_IDENTITY = {
-  identityOf: identityResolver(
-    parseHadithIdentitySet(
-      JSON.parse(readFileSync(HADITH_IDENTITY_FIXTURE, "utf8")),
-      "hadith-identities-v0",
-    ),
-  ),
-};
+export const CITATION_IDENTITY = IDENTITY_RESOLVERS.gating;
+export const REPORTED_CITATION_IDENTITY = IDENTITY_RESOLVERS.reported;
 
 /**
  * Build the staging seams one eval run needs. The store is resolved from the
@@ -208,6 +200,7 @@ export async function createStagingHarness(config, budget) {
     refusalMarkers: REFUSAL_MARKERS,
     citationGrammar: CITATION_GRAMMAR,
     citationIdentity: CITATION_IDENTITY,
+    reportedCitationIdentity: REPORTED_CITATION_IDENTITY,
     expansionOrigin: EXPANSION_ORIGIN,
     lookupOrigin: LOOKUP_ORIGIN,
     // The language's own quote-normalisation equivalences, owned by the domain pack

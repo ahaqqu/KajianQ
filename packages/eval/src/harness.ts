@@ -79,6 +79,12 @@ export type HarnessDeps = {
    * exact-label comparison; supplied, a required citation is also satisfied by
    * a parallel narration of it. */
   citationIdentity?: CitationIdentity;
+  /** The broader resolver the REPORTED identity-satisfied block reads: every group
+   * the gate may read plus those signed as the same ruling. Supplied only by a
+   * composition root that curates that relation; omitted, the reported block falls
+   * back to `citationIdentity`, so a same-report-only map reports the same relation
+   * it gates. Never read by `passed`. */
+  reportedCitationIdentity?: CitationIdentity;
   /** The opaque `origin` label the domain pack puts on chunks its scope expansion
    * added (ADR-0045), supplied by the composition root — the engine must not
    * hard-code a caller's label. When set, each outcome records the scope path's
@@ -211,6 +217,9 @@ export function buildReport(set: GoldenSet, run: BuildReportRun): EvalRunReport 
   const quoteFidelity = run.scored.flatMap((r) =>
     r.quoteFidelity === undefined ? [] : [r.quoteFidelity],
   );
+  const identitySatisfied = run.scored.flatMap((r) =>
+    r.identitySatisfied === undefined ? [] : [r.identitySatisfied],
+  );
   return {
     runId: run.runId,
     setId: set.id,
@@ -233,6 +242,17 @@ export function buildReport(set: GoldenSet, run: BuildReportRun): EvalRunReport 
     // The mean's denominator, so a perfect mean over two answers cannot read as one over
     // a hundred; absent when no answer was measured, like the mean's own null.
     ...(quoteFidelity.length > 0 ? { quoteFidelityMeasured: quoteFidelity.length } : {}),
+    // REPORTED, never gating: the exact numbers above stay the gate's; these say what
+    // the same run would read if a signed identity satisfied the requirement. Absent
+    // when no row carried the block (no identity map was injected).
+    ...(identitySatisfied.length > 0
+      ? {
+          identitySatisfiedPassed: identitySatisfied.filter((row) => row.passed).length,
+          meanIdentitySatisfiedCitationAddressRecall: mean(
+            identitySatisfied.map((row) => row.citationAddressRecall),
+          ),
+        }
+      : {}),
     costMicroUsd: run.costMicroUsd,
     budgetExceeded: run.budgetExceeded,
     results: [...run.results],

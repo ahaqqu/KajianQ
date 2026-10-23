@@ -78,13 +78,8 @@ export {
   type HadithRecord,
   type HadithSourceType,
 } from "./hadith-source";
-export {
-  HadithIdentityError,
-  identityResolver,
-  parseHadithIdentitySet,
-  type HadithIdentityGroup,
-  type HadithIdentitySet,
-} from "./hadith-identity";
+/** One loader for the signed maps: the gate's resolver and the reported resolver. */
+export { curatedIdentityResolvers, type CuratedIdentityResolvers } from "./curated-identities";
 export { alignEditions, type AlignmentStats } from "./hadith-align";
 export {
   assertHadithIntegrity,
