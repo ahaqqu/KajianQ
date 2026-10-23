@@ -225,27 +225,26 @@ describe("the evidence-present answer rule", () => {
 /**
  * The addressed-evidence line a second reading carries (ADR-0055): the question
  * names a citation address the assembled context carries, so the reading is
- * pointed at that passage. The line is scoped to the passage, not the question:
- * the canonical insufficiency sentence stays the answer for whatever the
- * passage does not state, so the reread can still decline and never explains
- * the gap.
+ * pointed at that passage and ordered to answer from what it says. The
+ * canonical insufficiency sentence stays the answer for whatever the context
+ * does not state, so the reread can still decline and never explains the gap.
  */
 describe("the addressed-evidence reread instruction", () => {
   const question = "Jelaskan perbedaan niat dan ikhlas berdasarkan QS. 98:5!";
   const evidence = "QS. 98:5 — wahyu";
 
-  it("names the carried passage and keeps the canonical refusal for what it does not state", () => {
+  it("names the carried passage and keeps the canonical refusal for what the context does not state", () => {
     const prompt = chatUserPrompt(question, evidence, {
       language: "id",
       addressed: ["QS. 98:5"],
     });
     expect(prompt).toContain("QS. 98:5");
-    // The sentence survives: it still applies where the passage does not state
+    // The sentence survives: it still applies where the context does not state
     // the asked thing, so a reread pointed at the evidence can still decline.
     expect(prompt).toContain(`"${DEFAULT_REFUSALS.id}" tetap berlaku`);
     expect(prompt).toMatch(/bila konteks tidak menyatakan hal yang ditanyakan/);
-    // The instruction is scoped to the passage and never orders the gap
-    // explanation the product forbids; the old whole-question override is gone.
+    // The instruction points the reading at the passage, orders no gap
+    // explanation, and conditions the sentence on the context, not the question.
     expect(prompt).toMatch(/Bila bagian itu menjawab hal yang ditanyakan/);
     expect(prompt).toMatch(/jangan menyatakan apa yang tidak dinyatakan bagian itu/);
     expect(prompt).not.toMatch(/tidak berlaku untuk pertanyaan ini/);
@@ -255,7 +254,7 @@ describe("the addressed-evidence reread instruction", () => {
     expect(prompt).toContain(`Konteks / Context:\n${evidence}`);
   });
 
-  it("uses the answer language's copy with the same scoping", () => {
+  it("uses the answer language's copy with the same context condition", () => {
     const prompt = chatUserPrompt(question, evidence, {
       language: "en",
       addressed: ["QS. 98:5"],
@@ -287,7 +286,7 @@ describe("the addressed-evidence reread instruction", () => {
 });
 
 /**
- * The directed reread decision (ADR-0055, review B2): one helper owns the
+ * The directed reread decision (ADR-0055): one helper owns the
  * trigger, the prompt and the trace purpose, so the generator cannot send a
  * directed prompt under the plain reading's label. `null` is the plain reread:
  * the question names no address, or names one the assembled context does not

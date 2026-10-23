@@ -12,7 +12,7 @@ defines.
 The second reading is the same assembled evidence, except when the **verbatim
 question names a citation address the assembled context carries**. There it is
 **directed** at that passage, the canonical insufficiency sentence staying
-available for what the passage does not state. The deterministic trigger — the
+available for what the context does not state. The deterministic trigger — the
 grammar's scan of the question joined to the chunks' metadata — keeps the plain
 reading for a question naming no address, or one the context does not hold.
 

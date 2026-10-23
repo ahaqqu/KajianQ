@@ -72,8 +72,8 @@ export function chatSystemPrompt(language: ChatLanguage): string {
  * The instruction a reread carries when the question names a citation address
  * the assembled context carries (ADR-0055). It points the reading at that
  * passage and at nothing beyond it: the canonical insufficiency sentence stays
- * available for what the passage does not state, and a gap is declined with
- * that sentence rather than explained.
+ * available for what the context does not state, and such a gap is declined
+ * with that sentence rather than explained.
  */
 export const ADDRESSED_EVIDENCE_PROMPT = {
   id: (labels: string) =>
