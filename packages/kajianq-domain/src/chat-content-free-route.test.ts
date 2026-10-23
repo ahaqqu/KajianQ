@@ -80,7 +80,13 @@ async function seedChunk(store: ReturnType<typeof createMemoryRagStore>): Promis
 }
 
 /** The pipeline deps with a spy on every seam that can spend or read. */
-function harness(options: { generatorText?: string; decliner?: Decliner<KajianQFilters> } = {}) {
+function harness(
+  options: {
+    generatorText?: string;
+    decliner?: Decliner<KajianQFilters>;
+    routerReply?: string;
+  } = {},
+) {
   const store = createMemoryRagStore();
   const routerCalls: string[] = [];
   const embedded: (readonly string[])[] = [];
@@ -91,7 +97,10 @@ function harness(options: { generatorText?: string; decliner?: Decliner<KajianQF
   const routerProvider: RouterProvider = {
     generate: (spec) => {
       routerCalls.push(spec.turns.at(-1)?.content ?? "");
-      return Effect.succeed({ text: ROUTER_REPLY, cost: cost("stub-router") });
+      return Effect.succeed({
+        text: options.routerReply ?? ROUTER_REPLY,
+        cost: cost("stub-router"),
+      });
     },
   };
   const embedder: RetrieverEmbedder = {
@@ -346,5 +355,46 @@ describe("a content-free question is not routed", () => {
     const retrieval = eventsOf(answer).find((event) => event.kind === "retrieval");
     const chunks = (retrieval?.detail?.["chunks"] ?? []) as unknown[];
     expect(chunks.length).toBeGreaterThan(0);
+  });
+});
+
+/**
+ * The pipeline-level form of the router invariant: the caller's verbatim question
+ * is a sub-query on the persisted trace and one of the texts retrieval embeds,
+ * even when the router's reply phrases only paraphrases and labels one of them
+ * `factual`. The trace's own events are the assertion source — not the router's
+ * return value — so the runner's stamps are what a trace reader sees.
+ */
+describe("the caller's words reach retrieval", () => {
+  it("is a traced sub-query and one of the embedded texts when the reply paraphrases it", async () => {
+    const question = "Apa yang Nabi Islam katakan tentang mencari ilmu?";
+    const h = harness({
+      routerReply: JSON.stringify({
+        intent: "ruling",
+        category: "hadith",
+        needsPrinciple: false,
+        subQueries: [
+          { text: "hadis Nabi tentang keutamaan mencari ilmu طلب العلم", role: "factual" },
+          { text: "sanad hadith man salaka tariqan yaltamisu fihi ilman", role: "factual" },
+        ],
+      }),
+    });
+
+    await h.seed();
+    const answer = await h.run(question);
+
+    // The trace carries the caller's words as its own sub-query, labelled from the
+    // rule rather than published as the model's judgment.
+    expect(subQueriesOf(answer)).toContainEqual({
+      text: question,
+      role: "factual",
+      origin: "rule",
+    });
+    // Retrieval saw that same set: one embed for the whole fan-out, the caller's
+    // text included, and a search per sub-query.
+    expect(h.embedded).toHaveLength(1);
+    expect(h.embedded[0]).toContain(question);
+    expect(h.embedded[0]).toEqual(subQueriesOf(answer).map((sub) => sub.text));
+    expect(h.searches).toEqual(subQueriesOf(answer).flatMap(() => ["primary", "fallback"]));
   });
 });
