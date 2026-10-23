@@ -10,6 +10,14 @@
 
 import { DEFAULT_REFUSALS } from "./chat-refusal";
 
+/**
+ * The addressed-evidence matcher is re-exported here so the generator reads its
+ * prompt and the signal that selects the directed reread through one import
+ * (the agentic import cap). The matcher lives with the citation grammar; this
+ * module owns the instruction that consumes it.
+ */
+export { addressedEvidenceIn } from "./chat-citation-reference";
+
 export type ChatLanguage = "id" | "en";
 
 /**
@@ -66,7 +74,39 @@ export function chatSystemPrompt(language: ChatLanguage): string {
   ].join("\n");
 }
 
-/** The user turn: the routed question plus the assembled context. */
-export function chatUserPrompt(question: string, context: string): string {
-  return [`Pertanyaan / Question: ${question}`, "", "Konteks / Context:", context].join("\n");
+/**
+ * The one-line instruction a reread carries when the question names evidence
+ * the context holds (ADR-0055). It is not a new refusal rule and not a licence
+ * to invent: it points the reading at the passage the question asked for, and
+ * keeps the honest decline — what the context does not state is said plainly
+ * instead of the insufficiency sentence, which is false about the named
+ * passage.
+ */
+export const ADDRESSED_EVIDENCE_PROMPT = {
+  id: (labels: string) =>
+    `Bukti yang ditanyakan sudah ada di konteks ini: ${labels}. Jawab dari konteks dan sebutkan bukti itu; kalimat "${DEFAULT_REFUSALS.id}" tidak berlaku untuk pertanyaan ini. Bila konteks tidak merinci sesuatu, nyatakan itu terus terang dari apa yang konteks berikan, tanpa menambah tafsir.`,
+  en: (labels: string) =>
+    `The evidence asked about is already in this context: ${labels}. Answer from the context and cite that evidence; the "${DEFAULT_REFUSALS.en}" sentence does not apply to this question. Where the context does not spell something out, state that plainly from what the context provides, without adding interpretation.`,
+} as const;
+
+export type ChatUserPromptOptions = {
+  /** The answer language, whose instruction copy the directed line uses. */
+  language?: ChatLanguage;
+  /** Citation labels the context carries that the question names (ADR-0055). */
+  addressed?: readonly string[];
+};
+
+/** The user turn: the routed question, an optional addressed-evidence line, and the assembled context. */
+export function chatUserPrompt(
+  question: string,
+  context: string,
+  options: ChatUserPromptOptions = {},
+): string {
+  const lines = [`Pertanyaan / Question: ${question}`];
+  const addressed = options.addressed ?? [];
+  if (addressed.length > 0) {
+    lines.push("", ADDRESSED_EVIDENCE_PROMPT[options.language ?? "id"](addressed.join(", ")));
+  }
+  lines.push("", "Konteks / Context:", context);
+  return lines.join("\n");
 }

@@ -3,10 +3,11 @@ import { describe, expect, it } from "vite-plus/test";
 import { ProviderError, RunContext, type AssembledContext, type Chunk } from "@app/rag-core";
 import type { CostRecord } from "@app/contracts";
 import { createKajianQGenerator, REFUSAL_REREAD_LIMIT } from "./chat-generator";
-import { createKajianQReviewer } from "./chat-reviewer";
+import { DEFAULT_REFUSALS, createKajianQReviewer } from "./chat-reviewer";
 import type { KajianQFilters } from "./filters";
 import { runChatPipeline } from "./chat-pipeline";
 import { createStubChatProviders } from "./test-utils/stub-chat-providers";
+import { createMemoryRagStore } from "./test-utils/memory-rag-store";
 import { routedQuery } from "./test-utils/routed-query";
 
 /**
@@ -412,6 +413,145 @@ describe("createKajianQGenerator — the refusal reread", () => {
   });
 });
 
+/**
+ * The addressed-evidence reread (ADR-0055): when the question names a citation
+ * address the assembled context carries, the second reading is pointed at that
+ * evidence instead of repeating the same reading. It is the deterministic
+ * signal that separates an answerable named-verse question from the trap shape
+ * (no named address) — the model still writes the answer, so these tests pin
+ * the code's signal and what ships, never the model's wording.
+ */
+describe("createKajianQGenerator — the addressed-evidence reread", () => {
+  const refusal = DEFAULT_REFUSALS.id;
+  const question = "Jelaskan perbedaan niat dan ikhlas berdasarkan QS. 98:5!";
+  const evidence = "QS. 98:5 — wa ma umiru illa liya'budu Allah …";
+
+  /** A chunk whose stored identity is the address the question names. */
+  const verse = (): Chunk => ({
+    id: "c-qs-98-5",
+    text: evidence,
+    metadata: { citation: "QS. 98:5", sourceType: "quran", surah: 98, ayah: 5 },
+  });
+  /** A hadith the context carries but the question names no address for. */
+  const unaddressed = (): Chunk => ({
+    id: "c-hr-ibn-majah-224",
+    text: "hadith text",
+    metadata: {
+      citation: "HR. Ibn Majah no. 224",
+      sourceType: "hadith",
+      collection: "ibnmajah",
+      hadithNo: "224",
+    },
+  });
+
+  type StageRun = {
+    draft: { text: string };
+    seen: string[][];
+    events: { kind: string; detail?: { purpose?: string }; cost?: CostRecord }[];
+  };
+
+  const runScripted = async (
+    ctx: AssembledContext<KajianQFilters>,
+    replies: readonly string[],
+  ): Promise<StageRun> => {
+    const seen: string[][] = [];
+    const events: StageRun["events"] = [];
+    const gen = createKajianQGenerator({
+      provider: {
+        generate: (spec) => {
+          seen.push(spec.turns.map((turn) => turn.content));
+          return Effect.succeed({
+            text: replies[seen.length - 1] ?? refusal,
+            cost: cost("stub", 7),
+          });
+        },
+      },
+      language: "id",
+    });
+    const { RunContext } = await import("@app/rag-core");
+    const draft = (await Effect.runPromise(
+      Effect.provideService(gen.generate(ctx) as never, RunContext, {
+        config: {},
+        now: () => 1,
+        record: (e: never) => events.push(e),
+      } as never) as never,
+    )) as { text: string };
+    return { draft, seen, events };
+  };
+
+  it("points the reread at the evidence the question names and ships its answer", async () => {
+    const { draft, seen, events } = await runScripted(context([verse(), unaddressed()], question), [
+      refusal,
+      "Menurut QS. 98:5, ikhlas adalah …",
+    ]);
+    expect(draft.text).toBe("Menurut QS. 98:5, ikhlas adalah …");
+    expect(seen).toHaveLength(2);
+    // The second reading is the same question and evidence, with the addressed
+    // passage named and the insufficiency sentence ruled out for it.
+    expect(seen[1]?.[1]).toContain(question);
+    expect(seen[1]?.[1]).toContain(evidence);
+    expect(seen[1]?.[1]).toContain("QS. 98:5");
+    expect(seen[1]?.[1]).toContain(`kalimat "${DEFAULT_REFUSALS.id}" tidak berlaku`);
+    // The first reading is the plain prompt: an answer never pays the directive.
+    expect(seen[0]?.[1]).not.toContain("tidak berlaku");
+    const calls = events.filter((e) => e.kind === "llm_call");
+    expect(calls.map((e) => e.detail?.purpose)).toEqual(["generate", "generate_addressed_reread"]);
+    expect(calls.map((e) => e.cost?.costMicroUsd)).toEqual([7, 7]);
+  });
+
+  it("ships the refusal when the directed reread declines too", async () => {
+    // The model is still the writer: a refusal that survives a reading pointed
+    // at the named evidence is the recorded residual, never a licence to
+    // fabricate an answer.
+    const { draft, events } = await runScripted(context([verse()], question), [refusal, refusal]);
+    expect(draft.text).toBe(refusal);
+    expect(events.filter((e) => e.kind === "llm_call").map((e) => e.detail?.purpose)).toEqual([
+      "generate",
+      "generate_addressed_reread",
+    ]);
+  });
+
+  it("keeps the plain reread when the question names no address — the trap shape", async () => {
+    const trapQuestion =
+      "Sebutkan hadits yang memerintahkan mencari ilmu sampai ke negeri China dan jelaskan sanadnya!";
+    const { draft, seen, events } = await runScripted(context([unaddressed()], trapQuestion), [
+      refusal,
+      refusal,
+    ]);
+    expect(draft.text).toBe(refusal);
+    expect(seen[1]).toEqual(seen[0]);
+    expect(seen[0]?.[1]).not.toContain("tidak berlaku");
+    expect(events.filter((e) => e.kind === "llm_call").map((e) => e.detail?.purpose)).toEqual([
+      "generate",
+      "generate_reread",
+    ]);
+  });
+
+  it("keeps the plain reread when the named address is absent from the context", async () => {
+    // A label the corpus does not carry is not addressed evidence (ADR-0058):
+    // the refused question stays on the ordinary reread.
+    const { seen, events } = await runScripted(context([unaddressed()], "Apa makna QS. 98:5?"), [
+      refusal,
+      refusal,
+    ]);
+    expect(seen[1]).toEqual(seen[0]);
+    expect(events.filter((e) => e.kind === "llm_call").map((e) => e.detail?.purpose)).toEqual([
+      "generate",
+      "generate_reread",
+    ]);
+  });
+
+  it("stamps no directive on a first reading that answers", async () => {
+    const { draft, seen, events } = await runScripted(context([verse()], question), [
+      "Menurut QS. 98:5 …",
+    ]);
+    expect(draft.text).toBe("Menurut QS. 98:5 …");
+    expect(seen).toHaveLength(1);
+    expect(seen[0]?.[1]).not.toContain("tidak berlaku");
+    expect(events.filter((e) => e.kind === "llm_call")).toHaveLength(1);
+  });
+});
+
 describe("createKajianQReviewer — the deterministic gate", () => {
   const draft = (text: string): { text: string } => ({ text });
 
@@ -664,5 +804,114 @@ describe("runChatPipeline — end-to-end trace", () => {
       expect(typeof call.cost?.tokensIn).toBe("number");
       expect(typeof call.cost?.tokensOut).toBe("number");
     }
+  });
+});
+
+/**
+ * INTEGRATION — the trust invariant on the path the wiring runs: an answerable
+ * question whose named evidence is in the assembled context must not ship a
+ * refusal, and a trap question that names no citation address keeps its
+ * refusal. The generator's first reading is scripted to decline in both cases;
+ * only the addressed case gets the directed second reading, and the trace is
+ * the signal the eval harness reads.
+ */
+describe("runChatPipeline — the addressed-evidence invariant", () => {
+  const refusal = DEFAULT_REFUSALS.id;
+  const ARABIC = "وَمَا أُمِرُوا إِلَّا لِيَعْبُدُوا اللَّهَ";
+  const TRANSLATION = "Mereka tidak diperintah, kecuali untuk menyembah Allah …";
+  const question = "Jelaskan perbedaan niat dan ikhlas berdasarkan QS. 98:5!";
+
+  /** Seed one corpus chunk exactly as ingestion writes it. */
+  async function seedChild(
+    store: ReturnType<typeof createMemoryRagStore>,
+    metadata: Record<string, unknown>,
+    ordinal: number,
+  ): Promise<string> {
+    const parentId = await Effect.runPromise(
+      store.insertDocParent({
+        sourceKey: `source/${String(metadata["sourceType"])}`,
+        title: String(metadata["citation"] ?? "Source"),
+        metadata: {},
+      }),
+    );
+    return Effect.runPromise(
+      store.insertDocChild({
+        parentId,
+        textRaw: ARABIC,
+        textAr: ARABIC,
+        textId: TRANSLATION,
+        citation: { sourceType: String(metadata["sourceType"]) },
+        embeddingPrimary: [1, 0, 0],
+        embeddingFallback: [1, 0, 0],
+        ordinal,
+        metadata,
+      }),
+    );
+  }
+
+  const run = (
+    store: ReturnType<typeof createMemoryRagStore>,
+    replies: readonly string[],
+    text: string,
+  ) =>
+    Effect.runPromise(
+      runChatPipeline(
+        {
+          ...createStubChatProviders({ generatorReplies: replies }),
+          store: store as never,
+          bridge: (e) => Effect.runPromise(e as never),
+          language: "id",
+          retrieval: {},
+        },
+        { text },
+      ) as never,
+    ) as Promise<{
+      text: string;
+      trace: { events: { kind: string; stage?: string; detail?: Record<string, unknown> }[] };
+    }>;
+
+  const generatorPurposes = (answer: {
+    trace: { events: { kind: string; stage?: string; detail?: Record<string, unknown> }[] };
+  }): unknown[] =>
+    answer.trace.events
+      .filter((e) => e.kind === "llm_call" && e.stage === "generator")
+      .map((e) => e.detail?.["purpose"]);
+
+  it("answers when the named verse is in the context and the first reading declined", async () => {
+    const store = createMemoryRagStore();
+    await seedChild(store, { citation: "QS. 98:5", sourceType: "quran", surah: 98, ayah: 5 }, 0);
+    const answer = await run(store, [refusal, "Menurut QS. 98:5, ikhlas adalah …"], question);
+
+    // The shipped text is the answer, and the trace records no refusal — the
+    // exact two signals the eval scores.
+    expect(answer.text).toContain("QS. 98:5");
+    expect(answer.trace.events.some((e) => e.kind === "refusal")).toBe(false);
+    expect(generatorPurposes(answer)).toEqual(["generate", "generate_addressed_reread"]);
+  });
+
+  it("keeps the refusal for a trap question that names no address", async () => {
+    const store = createMemoryRagStore();
+    await seedChild(
+      store,
+      {
+        citation: "HR. Ibn Majah no. 224",
+        sourceType: "hadith",
+        collection: "ibnmajah",
+        hadithNo: "224",
+        grade: "dhaif",
+      },
+      0,
+    );
+    const trapQuestion =
+      "Sebutkan hadits yang memerintahkan mencari ilmu sampai ke negeri China dan jelaskan sanadnya!";
+    const answer = await run(store, [refusal, refusal], trapQuestion);
+
+    expect(answer.text).toBe(refusal);
+    const refusalEvents = answer.trace.events.filter((e) => e.kind === "refusal");
+    expect(refusalEvents).toHaveLength(1);
+    expect(refusalEvents[0]?.detail).toMatchObject({ trigger: "generator_refusal" });
+    // The trap never gets the addressed reread: its second reading is the plain
+    // ADR-0055 one, so the dhaif trap's behaviour is unchanged.
+    expect(generatorPurposes(answer)).toEqual(["generate", "generate_reread"]);
   });
 });

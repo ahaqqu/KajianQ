@@ -1,3 +1,4 @@
+import type { Chunk } from "@app/rag-core";
 import { citationSpansIn } from "./chat-citation-normalize";
 import { parseHadithCitation } from "./hadith-source";
 import { parseQuranCitation } from "./quran-source";
@@ -177,4 +178,46 @@ export function citationLabelScan(sourceText: string): CitationLabelScan {
     });
   }
   return { references, dropped };
+}
+
+/**
+ * The citation labels the verbatim question names that the assembled context
+ * carries — the deterministic "the asked evidence is present" signal.
+ *
+ * A refusal is the generator's claim that the evidence cannot answer. When the
+ * question names an address and the context holds the chunk at that address, a
+ * refusal is contradicted by a fact the pipeline read, not by another sample of
+ * the same model (ADR-0055). This is not the retrieval lookup: the lookup reads
+ * the corpus for a label the fused hits missed, while this joins the same
+ * parsed identity to the chunks already assembled. A label the context does not
+ * carry is not addressed evidence, so the refusal remains the delivered answer.
+ *
+ * Matching uses the opaque identity pairs the lookup reads — a hadith's
+ * collection and number, an ayah's surah and ayah — compared against the
+ * chunk's stored metadata, never against its rendered label.
+ */
+export function addressedEvidenceIn(
+  sourceText: string,
+  chunks: readonly Chunk[],
+): readonly string[] {
+  if (chunks.length === 0) return [];
+  const labels: string[] = [];
+  for (const reference of citationLabelScan(sourceText).references) {
+    if (labels.includes(reference.label)) continue;
+    if (chunks.some((chunk) => carriesAddress(chunk, reference.match)))
+      labels.push(reference.label);
+  }
+  return labels;
+}
+
+/** True when a chunk's stored metadata carries every identity pair of a reference. */
+function carriesAddress(chunk: Chunk, match: Readonly<Record<string, string | number>>): boolean {
+  const metadata = chunk.metadata ?? {};
+  return Object.entries(match).every(([key, value]) => {
+    const carried = metadata[key];
+    return (
+      (typeof carried === "string" || typeof carried === "number") &&
+      String(carried) === String(value)
+    );
+  });
 }

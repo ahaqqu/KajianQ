@@ -32,6 +32,13 @@ export type StubChatProviderOverrides = {
   answerText?: string;
   /** Explicit delta sequence (overrides `answerText` chunking). */
   streamDeltas?: readonly string[];
+  /**
+   * Scripted readings, one per generator call: the nth call reads
+   * `generatorReplies[n]`, and a call past the script reuses `answerText`. A
+   * refusal path needs two different readings from one provider (the refusal,
+   * then the reread), which a single `answerText` cannot express.
+   */
+  generatorReplies?: readonly string[];
   /** The reviewer stub's verdict (default `pass`). */
   reviewerVerdict?: "pass" | "fail";
   /** Omit `stream` so the generator's non-streaming fallback is exercised. */
@@ -95,14 +102,17 @@ export function createStubChatProviders(overrides: StubChatProviderOverrides = {
   rerankDecider: import("@app/rag-core").Decider | null;
 } {
   const answerText = overrides.answerText ?? "Jawaban berdasar konteks.";
-  const deltas = overrides.streamDeltas ?? [answerText];
+  const scripted = overrides.generatorReplies ?? [];
+  let readings = 0;
+  const nextReading = (): string => scripted[readings++] ?? answerText;
+  const deltasFor = (): readonly string[] => overrides.streamDeltas ?? [nextReading()];
   const generatorFails = overrides.generatorFails === true;
   const generatorProvider: GeneratorProvider = {
     generate: () =>
       generatorFails
         ? Effect.fail(new Error("stub generator failure"))
         : Effect.succeed({
-            text: answerText,
+            text: nextReading(),
             cost: cost("stub-generator", 2),
           }),
     ...(overrides.noStream === true
@@ -112,7 +122,7 @@ export function createStubChatProviders(overrides: StubChatProviderOverrides = {
             generatorFails
               ? Effect.fail(new Error("stub generator failure"))
               : Effect.succeed({
-                  deltas: Stream.fromIterable(deltas),
+                  deltas: Stream.fromIterable(deltasFor()),
                   cost: () => Effect.succeed(cost("stub-generator", 2)),
                 }),
         }),

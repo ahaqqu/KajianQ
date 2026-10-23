@@ -10,7 +10,12 @@ import {
   type RunContextService,
 } from "@app/rag-core";
 import type { KajianQFilters } from "./filters";
-import { chatSystemPrompt, chatUserPrompt, type ChatLanguage } from "./chat-prompts";
+import {
+  addressedEvidenceIn,
+  chatSystemPrompt,
+  chatUserPrompt,
+  type ChatLanguage,
+} from "./chat-prompts";
 import { isRefusalOnly } from "./chat-refusal";
 
 /** The answer stage's language, re-exported for the barrel that wires its stages. */
@@ -100,19 +105,33 @@ export function createKajianQGenerator(deps: KajianQGeneratorDeps): Generator<Ka
         "generator",
         Effect.gen(function* () {
           const run = yield* RunContext;
-          const turns = [
-            { role: "system", content: chatSystemPrompt(deps.language) },
-            {
-              role: "user",
-              content: chatUserPrompt(
-                // The verbatim question the user asked — not the router's
-                // intent: the engine stamps `sourceText` from the caller's
-                // query (ADR-0018).
-                context.query.sourceText,
-                context.turns.map((t) => t.content).join("\n"),
-              ),
-            },
-          ];
+          // The verbatim question the user asked — not the router's intent:
+          // the engine stamps `sourceText` from the caller's query (ADR-0018).
+          const question = context.query.sourceText;
+          const evidence = context.turns.map((t) => t.content).join("\n");
+          const system = { role: "system", content: chatSystemPrompt(deps.language) };
+          const turns = [system, { role: "user", content: chatUserPrompt(question, evidence) }];
+          // A refusal is contradicted when the question names a citation
+          // address the assembled context carries; the second reading is then
+          // pointed at that evidence instead of repeating the same reading
+          // (ADR-0055). A question naming no address, or naming one the
+          // context does not carry, keeps the plain second reading.
+          const addressed = addressedEvidenceIn(question, context.chunks);
+          const rereadTurns =
+            addressed.length > 0
+              ? [
+                  system,
+                  {
+                    role: "user",
+                    content: chatUserPrompt(question, evidence, {
+                      language: deps.language,
+                      addressed,
+                    }),
+                  },
+                ]
+              : turns;
+          const rereadPurpose =
+            addressed.length > 0 ? "generate_addressed_reread" : "generate_reread";
           // Bind the provider's own method before narrowing it. `Provider`
           // methods are class members on the fallback chain, so extracting
           // `stream` into a variable detaches `this` — and the chain's first
@@ -123,12 +142,12 @@ export function createKajianQGenerator(deps: KajianQGeneratorDeps): Generator<Ka
           const stream = provider.stream?.bind(provider);
           // One attempt is one paid reading of the same turns; its cost is
           // recorded whether or not the draft it produced is the one that ships.
-          const attempt = (purpose: string) =>
+          const attempt = (purpose: string, reading: typeof turns) =>
             Effect.gen(function* () {
               const streamed =
                 stream !== undefined
-                  ? yield* streamDraft(deps, stream, turns)
-                  : yield* generateDraft(deps, turns);
+                  ? yield* streamDraft(deps, stream, reading)
+                  : yield* generateDraft(deps, reading);
               run.record({
                 stage: "generator",
                 kind: "llm_call",
@@ -138,7 +157,7 @@ export function createKajianQGenerator(deps: KajianQGeneratorDeps): Generator<Ka
               });
               return streamed;
             });
-          let streamed = yield* attempt("generate");
+          let streamed = yield* attempt("generate", turns);
           // Only a pure refusal is reread: a draft that answered is final. A
           // refusal ships only when the reread declines too, and an empty
           // context has nothing to reread, so it is not paid for twice.
@@ -153,7 +172,7 @@ export function createKajianQGenerator(deps: KajianQGeneratorDeps): Generator<Ka
             // an optional second opinion must never become a run-level failure,
             // and the refusal is the safe direction. Its estimated spend stays
             // on the trace when the provider reports one.
-            const next = yield* Effect.catch(attempt("generate_reread"), (failure) => {
+            const next = yield* Effect.catch(attempt(rereadPurpose, rereadTurns), (failure) => {
               recordFailedAttempt(run, failure.cause);
               return Effect.succeed(undefined);
             });

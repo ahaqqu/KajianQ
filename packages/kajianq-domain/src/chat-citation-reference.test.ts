@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vite-plus/test";
-import { MAX_CITATION_REFERENCES, citationLabelScan } from "./chat-citation-reference";
+import type { Chunk } from "@app/rag-core";
+import {
+  MAX_CITATION_REFERENCES,
+  addressedEvidenceIn,
+  citationLabelScan,
+} from "./chat-citation-reference";
 
 /** The read list alone — what the lookup would spend its reads on. */
 const referencesIn = (text: string) => citationLabelScan(text).references;
@@ -104,5 +109,86 @@ describe("citationReferencesIn", () => {
       { label: "HR. Bukhari no. 105", reason: "budget" },
       { label: "HR. Bukhari no. 106", reason: "budget" },
     ]);
+  });
+});
+
+/**
+ * The addressed-evidence read: the labels a question names that the assembled
+ * context actually carries. It is the deterministic fact a refusal is
+ * contradicted by (ADR-0055), so it is read off the stored identity pairs —
+ * never the rendered label — and it is empty for a question that names no
+ * label (the trap shape) or a label the context does not hold.
+ */
+describe("addressedEvidenceIn", () => {
+  const chunk = (metadata: Record<string, unknown>): Chunk => ({
+    id: `chunk-${JSON.stringify(metadata)}`,
+    text: "evidence",
+    metadata,
+  });
+  const ayah = (surah: number, ayahNo: number, citation: string): Chunk =>
+    chunk({ citation, sourceType: "quran", surah, ayah: ayahNo });
+  const verse = ayah(98, 5, "QS. 98:5");
+
+  it("returns the ayah label the question names and the context carries", () => {
+    expect(
+      addressedEvidenceIn("Jelaskan perbedaan niat dan ikhlas berdasarkan QS. 98:5!", [verse]),
+    ).toEqual(["QS. 98:5"]);
+  });
+
+  it("matches the stored identity pairs, not the chunk's rendered label", () => {
+    // The row's citation metadata can carry another rendering; the identity the
+    // grammar parsed is what says the question's passage is in hand.
+    expect(
+      addressedEvidenceIn("Apa makna QS. 98:5?", [
+        chunk({ citation: "QS. Al-Bayyinah 98:5", surah: 98, ayah: 5 }),
+      ]),
+    ).toEqual(["QS. 98:5"]);
+  });
+
+  it("returns a hadith label the context carries, with the number compared as stored", () => {
+    expect(
+      addressedEvidenceIn("Jelaskan HR. Bukhari no. 54!", [
+        chunk({ collection: "bukhari", hadithNo: "54" }),
+      ]),
+    ).toEqual(["HR. Bukhari no. 54"]);
+    expect(
+      addressedEvidenceIn("Jelaskan HR. Bukhari no. 54!", [
+        chunk({ collection: "bukhari", hadithNo: 54 }),
+      ]),
+    ).toEqual(["HR. Bukhari no. 54"]);
+  });
+
+  it("returns nothing for a query that names no citation — the trap shape", () => {
+    // gs-v0-019/020 carry no citation label; they must never reach the directed
+    // reread, so the plain refusal path stays theirs.
+    expect(
+      addressedEvidenceIn("Kapan kiamat akan terjadi? Sebutkan tahun pastinya!", [verse]),
+    ).toEqual([]);
+    expect(
+      addressedEvidenceIn(
+        "Sebutkan hadits yang memerintahkan mencari ilmu sampai ke negeri China dan jelaskan sanadnya!",
+        [verse],
+      ),
+    ).toEqual([]);
+  });
+
+  it("returns nothing when the named address is absent from the context", () => {
+    expect(addressedEvidenceIn("Apa makna QS. 98:5?", [ayah(2, 255, "QS. 2:255")])).toEqual([]);
+  });
+
+  it("returns only the labels the context carries when the question names several", () => {
+    expect(addressedEvidenceIn("Bandingkan QS. 98:5 dan HR. Bukhari no. 54.", [verse])).toEqual([
+      "QS. 98:5",
+    ]);
+    expect(
+      addressedEvidenceIn("Bandingkan QS. 98:5 dan HR. Bukhari no. 54.", [
+        verse,
+        chunk({ collection: "bukhari", hadithNo: "54" }),
+      ]),
+    ).toEqual(["QS. 98:5", "HR. Bukhari no. 54"]);
+  });
+
+  it("returns nothing for an empty context", () => {
+    expect(addressedEvidenceIn("Apa makna QS. 98:5?", [])).toEqual([]);
   });
 });

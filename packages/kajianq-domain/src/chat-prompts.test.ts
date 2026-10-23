@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import { chatSystemPrompt } from "./chat-prompts";
+import { ADDRESSED_EVIDENCE_PROMPT, chatSystemPrompt, chatUserPrompt } from "./chat-prompts";
 import { DEFAULT_REFUSALS } from "./chat-reviewer";
 
 /**
@@ -212,5 +212,58 @@ describe("the evidence-present answer rule", () => {
     expect(ruleOne("en")).toMatch(/is absent from the context/);
     expect(chatSystemPrompt("id")).toMatch(/Jangan menambahkan tafsir/);
     expect(chatSystemPrompt("en")).toMatch(/Do not add tafsir/);
+  });
+});
+
+/**
+ * The addressed-evidence line a second reading carries (ADR-0055): the question
+ * names a citation address the context holds, so the insufficiency sentence is
+ * false about the named passage. The line points the reading at that evidence
+ * and keeps the honest decline for what the context does not state.
+ */
+describe("the addressed-evidence reread instruction", () => {
+  const question = "Jelaskan perbedaan niat dan ikhlas berdasarkan QS. 98:5!";
+  const evidence = "QS. 98:5 — wahyu";
+
+  it("names the carried evidence and rules the insufficiency sentence out", () => {
+    const prompt = chatUserPrompt(question, evidence, {
+      language: "id",
+      addressed: ["QS. 98:5"],
+    });
+    expect(prompt).toContain("QS. 98:5");
+    expect(prompt).toContain(`kalimat "${DEFAULT_REFUSALS.id}" tidak berlaku`);
+    // The honest decline survives: what the context does not state is said
+    // plainly, and the no-gloss ban is restated rather than relaxed.
+    expect(prompt).toMatch(/nyatakan itu terus terang/);
+    expect(prompt).toMatch(/tanpa menambah tafsir/);
+    // The question and the assembled context stay in the same turn.
+    expect(prompt).toContain(`Pertanyaan / Question: ${question}`);
+    expect(prompt).toContain(`Konteks / Context:\n${evidence}`);
+  });
+
+  it("uses the answer language's copy", () => {
+    const prompt = chatUserPrompt(question, evidence, {
+      language: "en",
+      addressed: ["QS. 98:5"],
+    });
+    expect(prompt).toContain(`"${DEFAULT_REFUSALS.en}" sentence does not apply`);
+    expect(prompt).toMatch(/without adding interpretation/);
+  });
+
+  it("is absent when the question named no carried evidence — every trap shape", () => {
+    // The plain user turn is byte-identical to the pre-existing form: a trap
+    // question and a missing label carry no instruction and no new licence.
+    expect(chatUserPrompt(question, evidence)).toBe(
+      `Pertanyaan / Question: ${question}\n\nKonteks / Context:\n${evidence}`,
+    );
+    expect(chatUserPrompt(question, evidence, { addressed: [] })).toBe(
+      chatUserPrompt(question, evidence),
+    );
+    expect(chatUserPrompt(question, evidence)).not.toContain(DEFAULT_REFUSALS.id);
+  });
+
+  it("keeps the instruction per language, both pinned by the exported owner", () => {
+    expect(ADDRESSED_EVIDENCE_PROMPT.id("QS. 98:5")).toContain(DEFAULT_REFUSALS.id);
+    expect(ADDRESSED_EVIDENCE_PROMPT.en("QS. 98:5")).toContain(DEFAULT_REFUSALS.en);
   });
 });
