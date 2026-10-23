@@ -1,0 +1,13 @@
+{"at": 1792733626.884924, "stage": "embed", "model": "gemini-embedding-001", "prompt_tokens": 13, "completion_tokens": 0, "usd": 2.6e-06, "estimated": true}
+{"at": 1792733705.0100322, "stage": "embed", "model": "gemini-embedding-001", "prompt_tokens": 15, "completion_tokens": 0, "usd": 3e-06, "estimated": true}
+{"at": 1792733706.862319, "stage": "embed", "model": "gemini-embedding-001", "prompt_tokens": 15, "completion_tokens": 0, "usd": 3e-06, "estimated": true}
+{"at": 1792733707.7477682, "stage": "embed", "model": "gemini-embedding-001", "prompt_tokens": 6, "completion_tokens": 0, "usd": 1.2e-06, "estimated": true}
+{"at": 1792733708.3902917, "stage": "rerank", "model": "jev-1.13.0", "prompt_tokens": 7224, "completion_tokens": 134, "usd": 0.000303408, "estimated": false}
+{"at": 1792733710.2251098, "stage": "router", "model": "deepseek-v4-flash", "prompt_tokens": 357, "completion_tokens": 185, "usd": 0.00032910000000000003, "estimated": false}
+{"at": 1792733718.916138, "stage": "embed", "model": "gemini-embedding-001", "prompt_tokens": 48, "completion_tokens": 0, "usd": 9.6e-06, "estimated": true}
+{"at": 1792733719.8658621, "stage": "rerank", "model": "jev-1.13.0", "prompt_tokens": 12969, "completion_tokens": 224, "usd": 0.0005446979999999999, "estimated": false}
+{"at": 1792733743.3050985, "stage": "router", "model": "deepseek-v4-flash", "prompt_tokens": 365, "completion_tokens": 188, "usd": 0.0003351, "estimated": false}
+{"at": 1792733743.9549415, "stage": "embed", "model": "gemini-embedding-001", "prompt_tokens": 39, "completion_tokens": 0, "usd": 7.8e-06, "estimated": true}
+{"at": 1792733764.478004, "stage": "rerank", "model": "jev-1.13.0", "prompt_tokens": 14349, "completion_tokens": 386, "usd": 0.0006026580000000001, "estimated": false}
+{"at": 1792733765.75688, "stage": "validator", "model": "deepseek-v4-flash", "prompt_tokens": 202, "completion_tokens": 62, "usd": 0.000135, "estimated": false}
+{"at": 1792733766.684695, "stage": "validator", "model": "deepseek-v4-flash", "prompt_tokens": 202, "completion_tokens": 56, "usd": 0.00012780000000000002, "estimated": false}
