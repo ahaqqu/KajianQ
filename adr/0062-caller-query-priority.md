@@ -4,11 +4,11 @@
 
 The caller's verbatim question is a retrieval angle with priority of its own.
 The leading dense hits of the caller's own sub-query enter the context whatever
-their fusion rank, carry a provenance label of their own, and keep the position
-retrieval gave them through the decision-model rerank. The guarantee is bounded
-by one small fixed number, and it is recorded on the answer's Trace as its own
-typed event naming the bound, the ids, and which of them the returned set
-already held.
+their fusion rank, are labelled so the decision-model rerank keeps the position
+retrieval gave them, and lead the returned set. The guarantee is bounded by one
+small fixed number, and it is recorded on the answer's Trace as its own typed
+event naming the bound, the ids, and which of them the returned set already
+held.
 
 It issues no search. The caller's sub-query is embedded and searched by the
 ordinary fan-out; this rule only selects from the list that search already
