@@ -159,7 +159,11 @@ const CONTENT_FREE_QUESTION_UNITS = [
  *      generators at the same budget as law 7, for every fired rule whose own
  *      text is itself a query (the `factual` rule's bare content-free question
  *      has no entry to protect);
- *  11. every entry is marked as the model's or a rule's.
+ *  11. every entry is marked as the model's or a rule's;
+ *  12. the caller's question itself is in the set — exactly once, first, with the
+ *      `factual` rule's role and origin — whenever the question is a query; a
+ *      reply labelling a paraphrase `factual` adds an angle beside it and never
+ *      takes its place.
  */
 
 const subQueryArb: fc.Arbitrary<{ text: string; role?: string }> = fc
@@ -522,8 +526,9 @@ describe("decomposeQuery laws", () => {
   // of the seed draw: `fc.oneof` splits the run count between the two generators, so the
   // budget keeps each generator above fast-check's default draw count. The example
   // `keeps the entry a fired rule's coverage lives in when the ceiling spends its budget`
-  // and the stand-in law below redden deterministically at any budget, which is what
-  // makes the pair robust rather than lucky.
+  // — a fired rule's own text under another declared role, which is the stand-in's
+  // class — and the stand-in law below redden deterministically at any budget, which is
+  // what makes the pair robust rather than lucky.
   fcTest.prop([fc.oneof(inputArb, collisionArb)], { numRuns: 2000 })(
     "is idempotent over the sub-queries it produced",
     (input) => {
@@ -612,4 +617,25 @@ describe("decomposeQuery laws", () => {
     const origins = decomposeQuery(input).map((sub) => sub.origin);
     expect(origins.every((origin) => origin === "model" || origin === "rule")).toBe(true);
   });
+
+  // The invariant the caller's-words repair exists for, as a law rather than an
+  // example: for every reply, the caller's question is one of the texts retrieval
+  // runs — exactly once, first in the set, carrying the `factual` rule's role and
+  // origin. Neither law above covers it. The floor law holds whenever the set falls
+  // to one entry, and the rule loop's `factual` template *is* the question, so a
+  // reply that labels a paraphrase `factual` and phrases something else leaves that
+  // law green while the caller's words are gone; the rule-coverage law accepts the
+  // rule's own add as coverage for the same reason. This law is the removal
+  // direction for the caller's push: without it, a reply that covers `factual` with
+  // another text drops the caller's question entirely, and a reply that phrases
+  // anything before the rule's entry moves it off the front.
+  fcTest.prop([searchableQuestionArb])(
+    "keeps the caller's question once and first as the factual rule's entry",
+    (input) => {
+      const subs = decomposeQuery(input);
+      expect(subs[0]).toEqual({ text: input.question.trim(), role: "factual", origin: "rule" });
+      const question = norm(input.question);
+      expect(subs.filter((sub) => norm(sub.text) === question)).toHaveLength(1);
+    },
+  );
 });

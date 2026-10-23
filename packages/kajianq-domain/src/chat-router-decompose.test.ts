@@ -55,7 +55,7 @@ describe("decomposeQuery", () => {
     ]);
   });
 
-  it("adds the verbatim question when the model labelled no factual sub-query", () => {
+  it("keeps the caller's question beside a model entry that carries no role", () => {
     const subs = decomposeQuery(input({ modelSubQueries: [{ text: "keringanan shalat" }] }));
     expect(subs).toEqual([
       { text: QUESTION, role: "factual", origin: "rule" },
@@ -378,27 +378,30 @@ describe("decomposeQuery — what it keeps from the reply (#450)", () => {
     expect(subs.map((sub) => sub.text)).toEqual([Q, "spaced   text"]);
   });
 
-  it("keeps the caller's entry when the ceiling spends its budget", () => {
-    // The reply over-produces and echoes the question under `sanad`. The caller's
-    // entry is first and carries `factual`, so it owns that role's slot before the
-    // model's duplicate-role extras are considered; the echo adds no second text.
-    // The ceiling spends `x` — a repeated `principle` — instead.
+  it("keeps the entry a fired rule's coverage lives in when the ceiling spends its budget", () => {
+    // The stand-in path: the reply over-produces and the `sanad` rule's own text
+    // arrives under `principle` — a declared role the repair never overwrites, so
+    // `sanad` stays uncovered and that entry is the rule's only evidence. The entry
+    // repeats `principle`, so it is an extra like `b` and `c`; the ceiling keeps it
+    // anyway, ahead of both, or the budget is spent on them and the rule's text is
+    // gone. That is also why the second pass must keep the same set: a dropped
+    // stand-in makes the next pass re-add the `sanad` entry and change the answer.
     const source = input({
       question: Q,
+      category: "hadith",
       modelSubQueries: [
         { text: "a", role: "principle" },
-        { text: "x", role: "principle" },
-        { text: "b", role: "dalil" },
-        { text: "c", role: "sanad" },
-        { text: Q, role: "sanad" },
+        { text: "b", role: "principle" },
+        { text: "c", role: "principle" },
+        { text: "sanad dan derajat hadis tentang: hukum riba?", role: "principle" },
       ],
     });
     const subs = decomposeQuery(source);
     expect(subs).toEqual([
       { text: Q, role: "factual", origin: "rule" },
       { text: "a", role: "principle", origin: "model" },
-      { text: "b", role: "dalil", origin: "model" },
-      { text: "c", role: "sanad", origin: "model" },
+      { text: "sanad dan derajat hadis tentang: hukum riba?", role: "principle", origin: "model" },
+      { text: "b", role: "principle", origin: "model" },
     ]);
     // The headline law as an example: the second pass keeps the same set.
     expect(again(source, subs)).toEqual(shape(subs));
