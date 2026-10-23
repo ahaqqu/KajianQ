@@ -20,7 +20,8 @@ import type { CitationGrammar, TraceEventLike } from "./harness-types";
  * head, not from the replay snapshot's pre-folded copy: a stub that stripped only
  * the grade would flip `gs-v0-004` red, so a normaliser weaker than production
  * cannot pass this test. The snapshot's own `required` entries are asserted to be
- * the comparison form of the head fixture below. The domain-side
+ * the comparison form of the head fixture below; a row the set has since retired
+ * keeps the requirement the run was recorded with. The domain-side
  * `chat-citation-replay` test re-derives both sides from the recorded answer texts
  * and retrieved chunks; this file only replays them. With a frame on every row, the
  * text path is unreachable, which is why `labelsInText` is empty.
@@ -77,11 +78,24 @@ const GRAMMAR: CitationGrammar = {
  */
 const { gating: GATE_IDENTITY, reported: REPORTED_IDENTITY } = curatedIdentityResolvers();
 
-/** The requirement the Golden Set carries at head for this row. */
+/**
+ * The ids the Golden Set has retired since this run was recorded. A recorded row
+ * the head set no longer carries keeps the requirement it was scored against; any
+ * other missing id is a fixture defect, not history.
+ *
+ * Kept per file rather than exported from the domain pack: each assertion fails
+ * closed on its own, a shared constant would let one edit retire an id in every
+ * consumer at once, and a test-only export would enter the product for no runtime
+ * caller.
+ */
+const RETIRED_IDS = new Set(["gs-v0-007"]);
+
+/** The requirement the head Golden Set carries, or the recorded one for a retired row. */
 function requiredOf(row: Row): string[] {
   const required = HEAD_REQUIRED.get(row.questionId);
-  if (required === undefined) throw new Error(`the Golden Set carries no ${row.questionId}`);
-  return required;
+  if (required !== undefined) return required;
+  if (RETIRED_IDS.has(row.questionId)) return row.required;
+  throw new Error(`the Golden Set carries no ${row.questionId}`);
 }
 
 /** The trace events the scorer reads, rebuilt from the fixture's own fields. */
@@ -161,9 +175,19 @@ function instrumentOutcome(row: Row): ReturnType<typeof scoreQuestion> {
 }
 
 describe("golden-set-v0 replay — the collection fold measured on the recorded run", () => {
-  it("stores every replay requirement in the comparison form the head fixture defines", () => {
+  it("stores every replay requirement in the comparison form the gate compares", () => {
     for (const row of ROWS) {
-      expect(row.required, row.questionId).toEqual(requiredOf(row).map(GRAMMAR.normalizeLabel));
+      const required = HEAD_REQUIRED.get(row.questionId);
+      if (required !== undefined) {
+        expect(row.required, row.questionId).toEqual(required.map(GRAMMAR.normalizeLabel));
+      } else {
+        // A retired row's requirement is the recorded one; an id the set neither
+        // carries nor has retired is a replay fixture defect.
+        expect(
+          RETIRED_IDS.has(row.questionId),
+          `${row.questionId}: not in the set, not retired`,
+        ).toBe(true);
+      }
       for (const entry of row.required) expect(GRAMMAR.normalizeLabel(entry), entry).toBe(entry);
     }
   });

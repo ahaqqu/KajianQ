@@ -31,14 +31,32 @@ const GOLDEN = JSON.parse(
   readFileSync(new URL("packages/kajianq-domain/fixtures/golden-set-v0.json", ROOT), "utf8"),
 ) as { questions: { id: string; requiredCitations: string[] }[] };
 
+/**
+ * The ids the Golden Set has retired since this run was recorded. A recorded row
+ * the head set no longer carries keeps the requirement it was scored against; any
+ * other missing id is a fixture defect, not history.
+ */
+const RETIRED_IDS = new Set(["gs-v0-007"]);
+
 describe("golden-set-v0 replay fixture — the head build's comparison form", () => {
   it("carries every requirement in the comparison form the gate compares", () => {
     for (const row of REPLAY.rows) {
       const question = GOLDEN.questions.find((candidate) => candidate.id === row.questionId);
-      expect(question, `${row.questionId}: no such question in the Golden Set`).toBeDefined();
-      expect(row.required, `${row.questionId}: the required citation`).toEqual(
-        (question?.requiredCitations ?? []).map(normalizeCitationLabel),
-      );
+      if (question === undefined) {
+        expect(
+          RETIRED_IDS.has(row.questionId),
+          `${row.questionId}: not in the Golden Set, not retired`,
+        ).toBe(true);
+      } else {
+        expect(row.required, `${row.questionId}: the required citation`).toEqual(
+          question.requiredCitations.map(normalizeCitationLabel),
+        );
+      }
+      // A retired row's requirement is its recorded one; both forms are checked in
+      // the gate's own comparison form so the replay cannot re-score a re-spelling.
+      for (const entry of row.required) {
+        expect(normalizeCitationLabel(entry), `${row.questionId}: ${entry}`).toBe(entry);
+      }
     }
   });
 

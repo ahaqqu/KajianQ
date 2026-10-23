@@ -48,6 +48,21 @@ const requiredById = new Map(
   FIXTURE.questions.map((question) => [question.id, question.requiredCitations]),
 );
 
+/**
+ * The ids the Golden Set has retired since this run was recorded. A recorded row
+ * the head set no longer carries keeps the requirement it was scored against; any
+ * other missing id is a parity-fixture defect, not history.
+ */
+const RETIRED_IDS = new Set(["gs-v0-007"]);
+
+const requiredOf = (questionId) => {
+  const required = requiredById.get(questionId);
+  if (required !== undefined) return required;
+  const row = REPLAY.find((candidate) => candidate.questionId === questionId);
+  if (row !== undefined && RETIRED_IDS.has(questionId)) return row.required;
+  throw new Error(`${questionId}: not in the Golden Set, not a retired replay row`);
+};
+
 const refsOf = (row) => row.retrieved.map((_, index) => ({ id: `c${index}` }));
 const sourceTypeOf = (row) => (id) => row.retrieved[Number(id.slice(1))]?.sourceType ?? undefined;
 const citationOf = (row) => (id) => row.retrieved[Number(id.slice(1))]?.label ?? undefined;
@@ -57,7 +72,7 @@ const mean = (values) => values.reduce((sum, value) => sum + value, 0) / values.
 const typeRecallOf = (row) =>
   sourceTypeRecall(row.expectedSourceTypes, refsOf(row), sourceTypeOf(row));
 const addressRecallOf = (row) =>
-  citationAddressRecall(requiredById.get(row.questionId), refsOf(row), citationOf(row), {
+  citationAddressRecall(requiredOf(row.questionId), refsOf(row), citationOf(row), {
     grammar: GRAMMAR,
   });
 
@@ -91,11 +106,12 @@ describe("recorded run — the two retrieval metrics", () => {
     }
   });
 
-  it("breaks out the eight rows the issue names, under the fixture at head", () => {
+  it("breaks out the eight rows the issue names, under the head requirements", () => {
     // The recorded run's own fixture has since been re-curated on five rows; this
-    // table scores the recorded retrieval against the addresses the set requires
-    // now. Three of the eight (003, 013, 017) name an address the run did return;
-    // five still miss it.
+    // table scores the recorded retrieval against the addresses the set requires,
+    // and a row the set has retired keeps the requirement it was recorded with.
+    // Three of the eight (003, 013, 017) name an address the run did return; five
+    // still miss it.
     const expected = new Map([
       ["gs-v0-003", "HR. Bukhari no. 191"],
       ["gs-v0-007", "QS. 42:11"],
@@ -108,7 +124,7 @@ describe("recorded run — the two retrieval metrics", () => {
     ]);
     const hits = [];
     for (const [questionId, required] of expected) {
-      expect(requiredById.get(questionId), questionId).toEqual([required]);
+      expect(requiredOf(questionId), questionId).toEqual([required]);
       const row = REPLAY.find((candidate) => candidate.questionId === questionId);
       const hit = addressRecallOf(row) === 1;
       expect(typeRecallOf(row), `${questionId}: the source type was still reached`).toBe(1);
@@ -157,7 +173,7 @@ describe("recorded run — the two retrieval metrics", () => {
         id.startsWith("a")
           ? added[Number(id.slice(1))]
           : (row.retrieved[Number(id.slice(1))]?.label ?? undefined);
-      const recall = citationAddressRecall(requiredById.get(row.questionId), refs, labelOf, {
+      const recall = citationAddressRecall(requiredOf(row.questionId), refs, labelOf, {
         grammar: GRAMMAR,
       });
       return { questionId: row.questionId, recall };
