@@ -24,6 +24,7 @@ import {
   hierarchyBonus,
   lookupCitationLabels,
   rrfFuse,
+  SEARCH_HITS_TRACE_LIMIT,
   type NeighbourChildRow,
   type RetrieverStore,
   type ScopeChildRow,
@@ -103,8 +104,9 @@ export function createKajianQRetriever(deps: KajianQRetrieverDeps): Retriever<Ka
           const relaxation = createFilterRelaxation(intended);
           const lists: TrackHit[][] = [];
           for (let i = 0; i < routed.subQueries.length; i += 1) {
+            const sub = routed.subQueries[i];
             const vector = embedded.vectors[i];
-            if (!vector) continue;
+            if (!sub || !vector) continue;
             for (const track of ["primary", "fallback"] as const) {
               const search = (withFilters: Record<string, string[]>) =>
                 Effect.tryPromise({
@@ -155,6 +157,25 @@ export function createKajianQRetriever(deps: KajianQRetrieverDeps): Retriever<Ka
               }
               // Whatever this search concluded, it is the run's one diagnosis.
               relaxation.settle();
+              // The raw list this search returned, beside the fused `retrieval` event:
+              // the fused set cannot say whether a row was never returned or was
+              // dropped after the search, and `filter_relaxed` records only probes.
+              // Ids and dense ranks only — the text already rides the fused event —
+              // and the leading slice keeps a per-search record cheap.
+              run.record({
+                stage: "retriever",
+                kind: "search_hits",
+                detail: {
+                  ...(sub.role !== undefined ? { role: sub.role } : {}),
+                  ...(sub.origin !== undefined ? { origin: sub.origin } : {}),
+                  track,
+                  hits: hits.length,
+                  topHits: hits
+                    .slice(0, SEARCH_HITS_TRACE_LIMIT)
+                    .map((hit) => ({ id: hit.child.id, rankDense: hit.rankDense })),
+                },
+                at: run.now(),
+              });
               for (const hit of hits) {
                 lists.push([
                   {

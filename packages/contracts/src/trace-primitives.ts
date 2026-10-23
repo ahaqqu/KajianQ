@@ -74,3 +74,12 @@ export const ChunkRefSchema = v.object({
 
 /** The persisted trace's retrieval ref shape (the one owner). */
 export type ChunkRef = v.InferOutput<typeof ChunkRefSchema>;
+
+/**
+ * How many chunk ids a single search's trace record carries. The record keeps
+ * the search's full `hits` count beside a leading slice of ids and ranks, so a
+ * per-search event costs the same whatever `limit` the store ran with. The
+ * writer slices with this value; the schema refuses a longer list, so the
+ * bound is the contract's, not a writer's convention.
+ */
+export const SEARCH_HITS_TRACE_LIMIT = 5;

@@ -1,5 +1,66 @@
 import * as v from "valibot";
-import { CostRecordSchema } from "./trace-primitives";
+import { CostRecordSchema, SEARCH_HITS_TRACE_LIMIT } from "./trace-primitives";
+
+/**
+ * The retriever's trace variants that do not fit in the union's own file: the
+ * raw per-search hit list (`search_hits`) and the decision-model reorder
+ * (`rerank`) of the fused candidates.
+ *
+ * Owner module, composed verbatim into the closed {@link TraceEventSchema}
+ * union: `kind` stays the only discriminator and no reader branches on a
+ * module (the split `trace-product-rules` takes, for the same 300-line cap).
+ */
+
+/**
+ * The `search_hits` trace event variant: one record per sub-query × embedding-
+ * track search, carrying the raw list that search returned — distinct from the
+ * fused `retrieval` event, which carries the set fusion produced.
+ *
+ * **Why it exists.** The fused set cannot answer "did the search ever see this
+ * row?": a row absent from it may never have been returned, or may have been
+ * dropped between the search and the fusion. `hits` is the search's full count
+ * and `topHits` its leading slice, so the two states are distinguishable. The
+ * slice is ids and dense ranks only — never text or metadata, because a
+ * chunk's text already rides the fused `retrieval` event.
+ *
+ * **Identity, not text.** `role`/`origin` are the same caller-chosen labels
+ * the sub-query's `subquery` event carries; the text is deliberately not
+ * repeated. Both are optional because the engine's `SubQuery` carries them
+ * optionally; their absence is not a third value.
+ *
+ * `topHits` is in the search's own rank order, never re-sorted, and is capped
+ * at {@link SEARCH_HITS_TRACE_LIMIT} so a per-search record stays cheap
+ * whatever `limit` the store ran with. A search that returned nothing records
+ * `hits: 0` with an empty list: "the search saw nothing" is a result, and the
+ * record must not read the same as a search that never ran.
+ */
+export const searchHitsEventSchema = v.object({
+  stage: v.literal("retriever"),
+  kind: v.literal("search_hits"),
+  detail: v.object({
+    /** The sub-query's caller-chosen role, as on its `subquery` event. */
+    role: v.optional(v.pipe(v.string(), v.minLength(1))),
+    /** What produced the sub-query, as on its `subquery` event. */
+    origin: v.optional(v.pipe(v.string(), v.minLength(1))),
+    /** The embedding track this search ran on (opaque label). */
+    track: v.pipe(v.string(), v.minLength(1)),
+    /** How many rows this search returned before fusion or reranking. */
+    hits: v.pipe(v.number(), v.integer(), v.minValue(0)),
+    /** The search's leading rows, in its own rank order — raw, pre-fusion. */
+    topHits: v.pipe(
+      v.array(
+        v.object({
+          id: v.pipe(v.string(), v.minLength(1)),
+          /** The row's 1-based dense rank in this search. */
+          rankDense: v.pipe(v.number(), v.integer(), v.minValue(1)),
+        }),
+      ),
+      v.maxLength(SEARCH_HITS_TRACE_LIMIT),
+    ),
+  }),
+  cost: v.optional(CostRecordSchema),
+  at: v.pipe(v.number(), v.integer()),
+});
 
 /**
  * The `rerank` trace event variant: a decision-model reorder of the retrieval
@@ -28,10 +89,6 @@ import { CostRecordSchema } from "./trace-primitives";
  * reorder from the trace alone, without re-running a vendor that may have
  * changed. `rerankScore` is absent on a preserved event: an unusable answer is
  * not partially trusted.
- *
- * Owner module, composed verbatim into the closed {@link TraceEventSchema}
- * union: `kind` stays the only discriminator and no reader branches on a
- * module (the split `trace-product-rules` takes, for the same 300-line cap).
  */
 export const rerankEventSchema = v.object({
   stage: v.literal("retriever"),

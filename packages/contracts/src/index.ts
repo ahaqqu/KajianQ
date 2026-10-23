@@ -106,6 +106,7 @@ export { describeIssue, issuePath, type ValidationIssue } from "./issue-path";
 export {
   ChunkRefSchema,
   CostRecordSchema,
+  SEARCH_HITS_TRACE_LIMIT,
   StageSchema,
   TraceEventSchema,
   TraceSchema,
