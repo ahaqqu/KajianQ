@@ -17,7 +17,8 @@
  * they do not share a trigger.
  */
 export { HIERARCHY_BONUS, RRF_K, hierarchyBonus, rrfFuse, type TrackHit } from "./chat-fusion";
-export type { MetadataFilterValue } from "@app/infra";
+export type { MetadataFilterMatch, MetadataFilterValue } from "@app/infra";
+export type { RetrieverStore } from "./chat-retriever-store";
 export {
   FilterNotExpressibleError,
   RELAXATION_ORDER,

@@ -75,21 +75,14 @@ describe("rag-store-postgres-query: a filter's derived case", () => {
 
   it("binds four values for a derived clause and two for an exact one, in slot order", () => {
     const { clauses, values } = filterBindings({
-      sourceType: ["hadith"],
-      grade: {
-        values: ["sahih"],
-        whenAbsent: { key: "collection", values: ["bukhari", "muslim"] },
+      alpha: ["a"],
+      beta: {
+        values: ["x"],
+        whenAbsent: { key: "gamma", values: ["m", "n"] },
       },
     });
     expect(clauses).toEqual(["exact", "derived"]);
-    expect(values).toEqual([
-      "sourceType",
-      ["hadith"],
-      "grade",
-      ["sahih"],
-      "collection",
-      ["bukhari", "muslim"],
-    ]);
+    expect(values).toEqual(["alpha", ["a"], "beta", ["x"], "gamma", ["m", "n"]]);
     // The builder's slots and the bound values are one reading of the record: a
     // derived clause's last slot is the alternative's value array.
     const q = buildSimilarityQuery("primary", clauses);

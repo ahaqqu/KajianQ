@@ -24,8 +24,8 @@ import {
   hierarchyBonus,
   lookupCitationLabels,
   rrfFuse,
-  type MetadataFilterValue,
   type NeighbourChildRow,
+  type RetrieverStore,
   type ScopeChildRow,
   type TrackHit,
 } from "./chat-retriever-parts";
@@ -35,6 +35,9 @@ import { withTextLayers } from "./chunk-text-layers";
  * embedding tracks (ADR-0013 dual-track), and fuse the hits with Reciprocal Rank
  * Fusion (k=60) plus the spec's hierarchy bonuses.
  */
+/** The stage's store role moved to its own module (the agentic line cap) and is
+ * re-exported here, so the stage keeps one import path for its own surface. */
+export type { RetrieverStore } from "./chat-retriever-store";
 
 export type RetrieverEmbedder = {
   embed(spec: {
@@ -44,47 +47,6 @@ export type RetrieverEmbedder = {
      * provider seam then skips free-tier candidates. */
     personalData: true;
   }): Effect.Effect<{ vectors: readonly (readonly number[])[]; cost: CostRecord }, unknown>;
-};
-
-/** Wiring-level store role: search one track; filters are opaque metadata keys,
- * plus the derived case a value can carry (`MetadataFilterValue`). */
-export type RetrieverStore = {
-  similaritySearch(
-    track: "primary" | "fallback",
-    embedding: readonly number[],
-    opts: { limit: number; filters?: Record<string, MetadataFilterValue> },
-  ): Effect.Effect<
-    readonly {
-      child: {
-        id: string;
-        textAr: string;
-        textId: string | null;
-        metadata: Record<string, unknown>;
-      };
-      distance: number;
-      rankDense: number;
-    }[],
-    StoreError
-  >;
-  /** The bounded, capped read of a surah's children, in the corpus's order,
-   * optionally beginning at an ordinal lower bound — a named verse's position. */
-  listDocChildrenByParentSourceKey(
-    parentSourceKey: string,
-    opts: { limit: number; fromOrdinal?: number },
-  ): Effect.Effect<readonly ScopeChildRow[], StoreError>;
-  /** The bounded read of the children within `radius` ordinals of each anchor child, in
-   * the caller's priority order; anchors are opaque child ids, so the window cannot be
-   * mis-anchored. */
-  listDocChildNeighboursByChildIds(
-    anchorChildIds: readonly string[],
-    opts: { radius: number; limit: number },
-  ): Effect.Effect<readonly NeighbourChildRow[], StoreError>;
-  /** The bounded exact-match read of the children carrying a label's opaque metadata
-   * pairs — the one read the citation-label arm issues. */
-  findDocChildrenByMetadata(
-    match: Readonly<Record<string, string | number>>,
-    opts: { limit: number },
-  ): Effect.Effect<readonly ScopeChildRow[], StoreError>;
 };
 
 /** Effect bridge the wiring injects (keeps this module free of runner imports). */

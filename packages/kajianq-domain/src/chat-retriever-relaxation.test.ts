@@ -3,7 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 import { RunContext } from "@app/rag-core";
 import { createKajianQRetriever } from "./chat-retriever";
 import type { KajianQFilters } from "./filters";
-import type { MetadataFilterValue } from "./chat-retriever-parts";
+import type { MetadataFilterMatch, MetadataFilterValue } from "./chat-retriever-parts";
 import { routedQuery } from "./test-utils/routed-query";
 
 /**
@@ -29,17 +29,25 @@ const hit = (id: string) => ({
  * business, pinned in `chat-filter-policy.test.ts`, and relaxation's contract is
  * which dimensions survive.
  */
-const decisionOf = (filters: Record<string, MetadataFilterValue>): Record<string, string[]> =>
-  Object.fromEntries(
-    Object.entries(filters).map(([key, value]) => [
-      key,
-      typeof value === "string" ? [value] : Array.isArray(value) ? [...value] : [...value.values],
-    ]),
-  );
+const isMatch = (value: MetadataFilterValue): value is MetadataFilterMatch =>
+  typeof value === "object" && !Array.isArray(value);
+
+const decisionOf = (filters: Record<string, MetadataFilterValue>): Record<string, string[]> => {
+  const out: Record<string, string[]> = {};
+  for (const [key, value] of Object.entries(filters)) {
+    out[key] =
+      typeof value === "string"
+        ? [value]
+        : isMatch(value)
+          ? [...value.values]
+          : [...(value as string[])];
+  }
+  return out;
+};
 
 function makeRetriever(opts: { hitsWhenFiltered: number }) {
   const recorded: { kind: string }[] = [];
-  const calls: (Record<string, string> | undefined)[] = [];
+  const calls: (Record<string, string[]> | undefined)[] = [];
   const store = {
     similaritySearch: (
       _track: "primary" | "fallback",

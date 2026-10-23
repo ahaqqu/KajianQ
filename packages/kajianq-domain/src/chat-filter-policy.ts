@@ -30,8 +30,8 @@ import { sahihFilterExpansion } from "./sahihayn";
  *
  * Nothing here interprets what a value *means*: the keys and values are opaque
  * strings the domain pack owns. The one value whose meaning this module reads is
- * `grade`'s `sahih`, because {@link effectiveGrade} resolves it at read time —
- * see {@link storeFilters}.
+ * `grade`'s `sahih`, because `effectiveGrade` (`sahihayn.ts`) resolves it at read
+ * time — see {@link storeFilters}.
  */
 
 /** A filter dimension the store cannot express. Loud, typed, never a drop. */

@@ -340,11 +340,23 @@ describe("storeFilters — the decision's values, plus the derived case where on
     });
   });
 
-  it("drops a dimension wholesale, expansion included, when relaxation gives it up", () => {
-    // Relaxation works on the unexpanded record, so a dropped dimension is gone
-    // rather than leaving its alternative behind in the store record.
-    const active = storeFilters({ sourceType: ["hadith"] });
-    expect(active).toEqual({ sourceType: ["hadith"] });
-    expect(Object.keys(storeFilters({}))).toEqual([]);
+  it("carries the trace record's dimensions and values, expanding only the expression", () => {
+    // The trace publishes the decision and the search runs it: the two records
+    // must name the same dimensions with the same values, or the trace explains
+    // an answer to a different question. Relaxation drops dimensions from the
+    // unexpanded record, so a dropped one leaves no alternative behind.
+    const decision = metadataFilters({ sourceType: ["hadith"], grade: ["sahih"] });
+    expect(storeFilters(decision)).toEqual({
+      sourceType: ["hadith"],
+      grade: {
+        values: ["sahih"],
+        whenAbsent: { key: "collection", values: ["bukhari", "muslim"] },
+      },
+    });
+    expect(Object.keys(storeFilters(decision))).toEqual(Object.keys(decision));
+    expect(storeFilters({ grade: ["sahih"] }).grade).toEqual({
+      values: ["sahih"],
+      whenAbsent: { key: "collection", values: ["bukhari", "muslim"] },
+    });
   });
 });

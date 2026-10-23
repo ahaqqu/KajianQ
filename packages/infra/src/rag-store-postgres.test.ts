@@ -39,14 +39,7 @@ let cleanup: () => Promise<void>;
 // Every key this suite creates is `${PREFIX}${suffix}`, and cleanup deletes those
 // exact keys rather than a `LIKE ${PREFIX}-%` pattern, whose reach would exceed
 // the rows this suite owns in the shared database.
-const SOURCE_KEY_SUFFIXES = [
-  "",
-  "-upsert",
-  "-neigh-a",
-  "-neigh-b",
-  "-census",
-  "-sahihayn",
-] as const;
+const SOURCE_KEY_SUFFIXES = ["", "-upsert", "-neigh-a", "-neigh-b", "-census", "-derived"] as const;
 const TRACE_MESSAGE_SUFFIX = "-msg-1";
 const EVAL_RUN_LABEL_SUFFIX = "-run";
 
@@ -691,23 +684,24 @@ run("RagStore contract (real Postgres, Effect-shaped seam)", () => {
   });
 
   /**
-   * The derived filter case against the real schema: `metadata->>grade` reads
-   * JSON `null` and a missing key alike as SQL NULL, so `key IS NULL` is the one
+   * The derived filter case against the real schema: `metadata->>tag` reads JSON
+   * `null` and a missing key alike as SQL NULL, so `tag IS NULL` is the one
    * predicate that covers both, and the alternative must be OR-ed inside the
    * dimension's clause rather than AND-ed beside it. A text assertion cannot
-   * prove either; these rows do.
+   * prove either; these rows do. The keys and values are deliberately opaque —
+   * the domain pack owns what they mean, and the engine never learns it.
    */
   describe("a filter's derived case executes against real Postgres", () => {
-    // One row per behaviour the case must distinguish: the two collections whose
-    // absent grade is covered, an absent grade outside them, and grades that are
-    // stored — under a covered collection (weak, never upgraded) and outside it.
+    // One row per behaviour the case must distinguish: an absent tag under either
+    // covered bucket, an absent tag outside them, and tags that are stored —
+    // including one under a covered bucket.
     const ROWS = [
-      { slug: "bukhari-null", metadata: { grade: null, collection: "bukhari" } },
-      { slug: "muslim-missing", metadata: { collection: "muslim" } },
-      { slug: "nasai-null", metadata: { grade: null, collection: "nasai" } },
-      { slug: "bukhari-dhaif", metadata: { grade: "dhaif", collection: "bukhari" } },
-      { slug: "tirmidhi-sahih", metadata: { grade: "sahih", collection: "tirmidhi" } },
-      { slug: "malik-hasan", metadata: { grade: "hasan", collection: "malik" } },
+      { slug: "absent-null", metadata: { tag: null, bucket: "one" } },
+      { slug: "absent-missing", metadata: { bucket: "two" } },
+      { slug: "absent-other", metadata: { tag: null, bucket: "three" } },
+      { slug: "stored-covered", metadata: { tag: "weak", bucket: "one" } },
+      { slug: "stored-strong", metadata: { tag: "strong", bucket: "three" } },
+      { slug: "stored-mid", metadata: { tag: "mid", bucket: "four" } },
     ] as const;
     const idBySlug = new Map<string, string>();
 
@@ -715,8 +709,8 @@ run("RagStore contract (real Postgres, Effect-shaped seam)", () => {
       if (!URL) return;
       const program = Effect.gen(function* () {
         const parentId = yield* store.insertDocParent({
-          sourceKey: corpusKey("-sahihayn"),
-          title: `${PREFIX}-sahihayn-fixture`,
+          sourceKey: corpusKey("-derived"),
+          title: `${PREFIX}-derived-fixture`,
           metadata: { pfx: PREFIX },
         });
         yield* Effect.forEach(ROWS, (row, ordinal) =>
@@ -726,7 +720,7 @@ run("RagStore contract (real Postgres, Effect-shaped seam)", () => {
               textRaw: `raw-${row.slug}`,
               textAr: `ar-${row.slug}`,
               textId: `id-${row.slug}`,
-              citation: { fixture: "sahihayn", slug: row.slug },
+              citation: { fixture: "derived", slug: row.slug },
               embeddingPrimary: vec(1536, 950 + ordinal),
               embeddingFallback: null,
               ordinal,
@@ -746,20 +740,19 @@ run("RagStore contract (real Postgres, Effect-shaped seam)", () => {
     const search = (filters: Record<string, MetadataFilterValue>) =>
       Effect.runPromise(store.similaritySearch("primary", vec(1536, 950), { limit: 10, filters }));
 
-    it("admits an absent grade from either covered collection, and nothing else", async () => {
+    const slugsOf = (hits: readonly { child: { citation: Record<string, unknown> } }[]) =>
+      hits.map((h) => h.child.citation["slug"] as string).sort();
+
+    it("admits an absent value from either alternative bucket, and nothing else", async () => {
       if (!URL) return;
       const hits = await search({
         pfx: PREFIX,
-        grade: {
-          values: ["sahih"],
-          whenAbsent: { key: "collection", values: ["bukhari", "muslim"] },
-        },
+        tag: { values: ["strong"], whenAbsent: { key: "bucket", values: ["one", "two"] } },
       });
-      const slugs = hits.map((h) => (h.child.citation as { slug: string }).slug).sort();
-      expect(slugs).toEqual(["bukhari-null", "muslim-missing", "tirmidhi-sahih"]);
+      expect(slugsOf(hits)).toEqual(["absent-missing", "absent-null", "stored-strong"]);
       // The ids are the fixture's own rows, not a coincidence of shape.
       expect(hits.map((h) => h.child.id).sort()).toEqual(
-        ["bukhari-null", "muslim-missing", "tirmidhi-sahih"]
+        ["absent-missing", "absent-null", "stored-strong"]
           .map((slug) => idBySlug.get(slug)!)
           .sort(),
       );
@@ -767,20 +760,16 @@ run("RagStore contract (real Postgres, Effect-shaped seam)", () => {
 
     it("keeps exact-equality semantics for the same value without the derived case", async () => {
       if (!URL) return;
-      const hits = await search({ pfx: PREFIX, grade: ["sahih"] });
-      expect(hits.map((h) => (h.child.citation as { slug: string }).slug)).toEqual([
-        "tirmidhi-sahih",
-      ]);
+      expect(slugsOf(await search({ pfx: PREFIX, tag: ["strong"] }))).toEqual(["stored-strong"]);
     }, 60_000);
 
     it("keeps exact-equality semantics for a value set that has no derived case", async () => {
       if (!URL) return;
-      // A grade the domain never expands: `hasan` returns only a stored hasan row,
-      // and the ungraded sahihayn rows beside it stay out.
-      const hits = await search({ pfx: PREFIX, grade: ["hasan"] });
-      expect(hits.map((h) => (h.child.citation as { slug: string }).slug)).toEqual(["malik-hasan"]);
+      // A stored tag under a covered bucket is still returned by its exact value,
+      // and the absent tags beside it stay out.
+      expect(slugsOf(await search({ pfx: PREFIX, tag: ["mid"] }))).toEqual(["stored-mid"]);
       // A value no row stores is an empty search, not a widening.
-      expect(await search({ pfx: PREFIX, grade: ["mutawatir"] })).toEqual([]);
+      expect(await search({ pfx: PREFIX, tag: ["none"] })).toEqual([]);
     }, 60_000);
   });
 

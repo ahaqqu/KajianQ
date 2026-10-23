@@ -282,21 +282,14 @@ describe("rag-store-postgres adapter (fake runner)", () => {
       store.similaritySearch("primary", VEC1536, {
         limit: 5,
         filters: {
-          grade: { values: ["sahih"], whenAbsent: { key: "collection", values: ["bukhari"] } },
+          tag: { values: ["x"], whenAbsent: { key: "bucket", values: ["one"] } },
         },
       }),
     );
     const q = sql._calls.find((c) => c.kind === "query");
     // $1 embedding, $2 limit, then the dimension's key + values and the
     // alternative's key + values — bound, never interpolated.
-    expect(q?.values).toEqual([
-      expect.any(String),
-      5,
-      "grade",
-      ["sahih"],
-      "collection",
-      ["bukhari"],
-    ]);
+    expect(q?.values).toEqual([expect.any(String), 5, "tag", ["x"], "bucket", ["one"]]);
     expect(q?.text).toContain(
       "AND (metadata->>$3 = ANY($4::text[]) OR (metadata->>$3 IS NULL AND metadata->>$5 = ANY($6::text[])))",
     );
