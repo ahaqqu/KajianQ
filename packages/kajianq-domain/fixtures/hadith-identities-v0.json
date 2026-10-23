@@ -1,10 +1,11 @@
 {
   "id": "hadith-identities-v0",
   "status": "v0-draft",
-  "$comment": "Canonical matn identities for the hadith narrations the Golden Set requires. A group is one narration; its members are rows the corpus holds separately because each carries its own chain. Membership is the same report or instruction, not the same topic: wording and chain may differ, the operative content may not. The canonical label is the group's identity key; the Golden Set's required label need not be the canonical. A label outside every group is its own identity, so it can never match another. Owner-signed gate data: adding a group or a member changes what citation validity accepts.",
+  "$comment": "Canonical matn identities for the hadith narrations the Golden Set requires. A group names one narration (`same-report`) or one ruling stated by different narrations (`same-ruling`); its members are the corpus rows that carry it through another chain. Every group states its `rationale`, because the two claims are not interchangeable: `same-report` means one matn through different chains and is what citation validity may accept; `same-ruling` means one instruction where wording, chain or companion differ, and only the reported identity-satisfied figure reads it — the exact-address gate never does. A label outside every group is its own identity, so it can never match another. A label may be claimed once per relation (a canonical may anchor both kinds of group); two groups of one relation may not share a label. Owner-signed gate data: adding a group or a member changes what citation validity accepts or what the reported figure counts.",
   "groups": [
     {
       "id": "wudu-abdullah-bin-zaid",
+      "relation": "same-report",
       "canonical": "HR. Bukhari no. 186",
       "members": [
         "HR. Bukhari no. 185",
@@ -17,10 +18,12 @@
         "HR. Nasai no. 99",
         "HR. Abu Dawud no. 119",
         "HR. Tirmidhi no. 47"
-      ]
+      ],
+      "rationale": "One report — the Prophet's wudu, shown and described — narrated through different chains; wording differs, the operative content does not."
     },
     {
       "id": "eating-with-the-right-hand",
+      "relation": "same-report",
       "canonical": "HR. Muslim no. 5265",
       "members": [
         "HR. Muslim no. 5264",
@@ -31,22 +34,60 @@
         "HR. Tirmidhi no. 1800",
         "HR. Ibn Majah no. 3266",
         "HR. Ibn Majah no. 3268"
-      ]
+      ],
+      "rationale": "One instruction — eat with the right hand — narrated through different chains; the members state one operative rule."
     },
     {
       "id": "purity-is-half-of-faith",
+      "relation": "same-report",
       "canonical": "HR. Muslim no. 534",
-      "members": ["HR. Tirmidhi no. 3517", "HR. Ibn Majah no. 280", "HR. Nasai no. 2437"]
+      "members": ["HR. Tirmidhi no. 3517", "HR. Ibn Majah no. 280", "HR. Nasai no. 2437"],
+      "rationale": "One report — cleanliness is half of faith — narrated through different chains; the matn is one statement."
     },
     {
       "id": "combining-prayers-in-travel-maghrib-isha",
+      "relation": "same-report",
       "canonical": "HR. Bukhari no. 1108",
       "members": [
         "HR. Bukhari no. 1109",
         "HR. Bukhari no. 1110",
         "HR. Muslim no. 1621",
         "HR. Muslim no. 1624"
-      ]
+      ],
+      "rationale": "One report of the Prophet combining Maghrib and Isha while travelling, narrated through different chains; the members carry the same account, not merely the same ruling."
+    },
+    {
+      "id": "zakat-obligation-ibn-abbas",
+      "relation": "same-report",
+      "canonical": "HR. Bukhari no. 1395",
+      "members": [
+        "HR. Abu Dawud no. 1584",
+        "HR. Ibn Majah no. 1783",
+        "HR. Nasai no. 2522",
+        "HR. Nasai no. 2435"
+      ],
+      "rationale": "One report from Ibn Abbas — Allah obligated a sadaqah from wealth, taken from the rich and returned to the poor — carried by four collections under different numbers; the matn and the lower chain are one account."
+    },
+    {
+      "id": "combining-prayers-in-travel-ruling",
+      "relation": "same-ruling",
+      "canonical": "HR. Bukhari no. 1108",
+      "members": ["HR. Nasai no. 598"],
+      "rationale": "Bukhari 1108 and Nasai 598 state the same ruling — combining Maghrib and Isha while travelling — under different chains (Anas vs Ibn Umar/Nafi') and different wording. They are not one report, so the exact-address gate does not read this group."
+    },
+    {
+      "id": "gold-and-silk-prohibition",
+      "relation": "same-ruling",
+      "canonical": "HR. Nasai no. 5144",
+      "members": [
+        "HR. Nasai no. 5148",
+        "HR. Nasai no. 5149",
+        "HR. Nasai no. 5160",
+        "HR. Ibn Majah no. 3597",
+        "HR. Ibn Majah no. 3590",
+        "HR. Tirmidhi no. 1720"
+      ],
+      "rationale": "One instruction — gold and silk are prohibited to the men of this ummah and permitted to its women — narrated from different companions through different chains. The required 5144 states the prohibition without the prayer setting, so the relation is the ruling, not one report."
     }
   ]
 }

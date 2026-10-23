@@ -74,6 +74,23 @@ export type EvalResultOutcome = {
           | undefined;
       }
     | undefined;
+  /**
+   * REPORTED, NEVER GATING: the row's two citation dimensions and its verdict under
+   * the signed identity relation — the same report, or a curated same-ruling
+   * relation — instead of the exact-address requirement. `citationAddressRecall`
+   * here counts a retrieved identity as satisfying the requirement; `passed` is the
+   * counterfactual of the run's own gate with that address reading. It never
+   * contributes to `passed`, the run's `passed`, or the exit policy. Absent when no
+   * identity map was injected, so a run that gates on exact addresses only keeps its
+   * historical shape.
+   */
+  identitySatisfied?:
+    | {
+        citationAddressRecall: number;
+        citationValidity: number;
+        passed: boolean;
+      }
+    | undefined;
   /** Optional note (e.g. which required citation was missing, or how many quoted spans no
    * cited chunk carried). */
   notes?: string[] | undefined;
@@ -94,6 +111,13 @@ const EvalResultOutcomeInputSchema = v.object({
   citationAddressRecall: v.optional(v.pipe(v.number(), v.minValue(0), v.maxValue(1))),
   citationValidity: v.pipe(v.number(), v.minValue(0), v.maxValue(1)),
   quoteFidelity: v.optional(v.pipe(v.number(), v.minValue(0), v.maxValue(1))),
+  identitySatisfied: v.optional(
+    v.object({
+      citationAddressRecall: v.pipe(v.number(), v.minValue(0), v.maxValue(1)),
+      citationValidity: v.pipe(v.number(), v.minValue(0), v.maxValue(1)),
+      passed: v.boolean(),
+    }),
+  ),
   refused: v.boolean(),
   skipped: v.optional(v.boolean()),
   expansion: v.optional(
@@ -140,6 +164,9 @@ export const EvalResultOutcomeSchema = v.pipe(
         : {}),
       citationValidity: input.citationValidity,
       ...(input.quoteFidelity !== undefined ? { quoteFidelity: input.quoteFidelity } : {}),
+      ...(input.identitySatisfied !== undefined
+        ? { identitySatisfied: input.identitySatisfied }
+        : {}),
       refused: input.refused,
       ...(input.skipped !== undefined ? { skipped: input.skipped } : {}),
       ...(expansion !== undefined

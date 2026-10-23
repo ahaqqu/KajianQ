@@ -1,39 +1,31 @@
 /// <reference types="node" />
-import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vite-plus/test";
 import { citationValidity } from "../../packages/eval/src/scorers";
 import {
   addressesNamedBy,
   citationCandidatesIn,
-  identityResolver,
+  curatedIdentityResolvers,
   normalizeCitationLabel,
-  parseHadithIdentitySet,
 } from "../../packages/kajianq-domain/src/index";
 
 /**
  * The recorded full Golden Set run's citation evidence, replayed through the
- * head scorer and the curated hadith-identity map. The fixture snapshots the
- * labels the run's citations frame carried, not the answer prose: the frame is
- * the scorer's authoritative evidence path, so these are the labels the
- * recorded `citationValidity` was computed from.
+ * head scorer and the curated identity maps in the gate's own composition: the
+ * narration map's same-report groups only, plus the curated verse pairs. A label
+ * whose relation is "same ruling" is signed and reported, but it is not a gate
+ * identity — the gate's number stays the exact-address number it has always been.
+ *
+ * The resolver comes from the domain pack's one loader, the same wiring `eval:run`
+ * runs, so this replay cannot pass against a composition production does not use.
  *
  * The rows pin the boundary the identity rule has to hold: a parallel narration
- * of the required hadith scores 1, a different hadith on the same subject stays
- * 0, and a Quran citation is untouched by the hadith map. The last two rows are
- * the falsification: the required narration still scores 1, and an unrelated
- * hadith still scores 0.
+ * of the required report scores 1, a report on the same subject with a different
+ * wording stays 0, and the curated verse pair carries the two names of the
+ * basmalah. The last two rows are the falsification: the required narration still
+ * scores 1, and an unrelated report still scores 0.
  */
 
-const IDENTITIES = parseHadithIdentitySet(
-  JSON.parse(
-    readFileSync(
-      new URL("../../packages/kajianq-domain/fixtures/hadith-identities-v0.json", import.meta.url),
-      "utf8",
-    ),
-  ),
-  "hadith-identities-v0",
-);
-const identity = { identityOf: identityResolver(IDENTITIES) };
+const { gating: identity } = curatedIdentityResolvers();
 
 /** The domain's own citation grammar, injected here as the composition root does. */
 const grammar = {
@@ -131,8 +123,8 @@ const ROWS = [
       "HR. Abu Dawud no. 1694",
       "HR. Tirmidhi no. 1924",
     ],
-    expected: 0,
-    why: "the identity map is hadith-only; the absent Quran verse stays absent",
+    expected: 1,
+    why: "1:3 is the curated pair of 1:1 — the two names in the basmalah — and the frame carries it; the other labels are unrelated reports",
   },
   {
     questionId: "falsification — the required narration",
@@ -176,7 +168,12 @@ describe("recorded run replay — citation identity", () => {
           grammar,
         }),
     );
-    expect(moved.map((row) => row.questionId)).toEqual(["gs-v0-003", "gs-v0-006", "gs-v0-013"]);
+    expect(moved.map((row) => row.questionId)).toEqual([
+      "gs-v0-003",
+      "gs-v0-006",
+      "gs-v0-013",
+      "gs-v0-012",
+    ]);
   });
 
   it("flips the falsification row the rule exists to accept, and only with the map", () => {

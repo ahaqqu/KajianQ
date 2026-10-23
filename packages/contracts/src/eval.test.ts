@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 import * as v from "valibot";
-import { EvalResultOutcomeSchema, EvalRunReportSchema } from "./eval";
+import { EvalResultOutcomeSchema, EvalRunReportSchema, GoldenQuestionSchema } from "./eval";
 
 /**
  * The eval ledger's outcome contract (ADR-0007/ADR-0045): per-question
@@ -231,5 +231,140 @@ describe("EvalResultOutcomeSchema", () => {
     expect(parsed.meanSourceTypeRecall).toBe(1);
     expect(parsed.meanCitationAddressRecall).toBeUndefined();
     expect(parsed.results[0]?.citationAddressRecall).toBeUndefined();
+  });
+});
+
+describe("GoldenQuestionSchema — the opt-in any-of requirement (D3)", () => {
+  const question = {
+    id: "gs-v0-008",
+    question: "Apa keutamaan membaca?",
+    language: "id",
+    expectedSourceTypes: ["primary"],
+    requiredCitations: ["HR. Bukhari no. 5026"],
+    expectedBehavior: "answer" as const,
+  };
+
+  it("parses and preserves an alternative set on a single-requirement row", () => {
+    const parsed = v.parse(GoldenQuestionSchema, {
+      ...question,
+      citationAlternatives: ["HR. Bukhari no. 5027", "HR. Bukhari no. 4937"],
+    });
+    expect(parsed.requiredCitations).toEqual(["HR. Bukhari no. 5026"]);
+    expect(parsed.citationAlternatives).toEqual(["HR. Bukhari no. 5027", "HR. Bukhari no. 4937"]);
+  });
+
+  it("keeps a row without the field on the all-required default", () => {
+    const parsed = v.parse(GoldenQuestionSchema, question);
+    expect(parsed.citationAlternatives).toBeUndefined();
+  });
+
+  it("rejects an alternative set when the row has more than one requirement", () => {
+    expect(
+      v.safeParse(GoldenQuestionSchema, {
+        ...question,
+        requiredCitations: ["HR. Bukhari no. 5026", "HR. Bukhari no. 5027"],
+        citationAlternatives: ["HR. Bukhari no. 4937"],
+      }).success,
+    ).toBe(false);
+  });
+
+  it("rejects an empty alternative set and one that repeats the requirement", () => {
+    expect(
+      v.safeParse(GoldenQuestionSchema, { ...question, citationAlternatives: [] }).success,
+    ).toBe(false);
+    expect(
+      v.safeParse(GoldenQuestionSchema, {
+        ...question,
+        citationAlternatives: ["HR. Bukhari no. 5026"],
+      }).success,
+    ).toBe(false);
+  });
+});
+
+describe("the reported identity-satisfied block", () => {
+  it("parses and preserves the block on an outcome", () => {
+    const parsed = v.parse(EvalResultOutcomeSchema, {
+      ...CURRENT_OUTCOME,
+      identitySatisfied: { citationAddressRecall: 0.5, citationValidity: 1, passed: true },
+    });
+    expect(parsed.identitySatisfied).toEqual({
+      citationAddressRecall: 0.5,
+      citationValidity: 1,
+      passed: true,
+    });
+  });
+
+  it("rejects an impossible recall or a non-boolean verdict", () => {
+    expect(
+      v.safeParse(EvalResultOutcomeSchema, {
+        ...CURRENT_OUTCOME,
+        identitySatisfied: { citationAddressRecall: 1.5, citationValidity: 1, passed: true },
+      }).success,
+    ).toBe(false);
+    expect(
+      v.safeParse(EvalResultOutcomeSchema, {
+        ...CURRENT_OUTCOME,
+        identitySatisfied: { citationAddressRecall: 1, citationValidity: 1, passed: "yes" },
+      }).success,
+    ).toBe(false);
+  });
+
+  it("round-trips the reported run fields without touching the gate's passed count", () => {
+    const parsed = v.parse(EvalRunReportSchema, {
+      runId: "r1",
+      setId: "golden-set-v0",
+      startedAt: 1,
+      finishedAt: 2,
+      questions: 2,
+      passed: 1,
+      failed: 1,
+      skipped: 0,
+      meanSourceTypeRecall: 1,
+      meanCitationAddressRecall: 0.5,
+      meanCitationValidity: 0.75,
+      identitySatisfiedPassed: 2,
+      meanIdentitySatisfiedCitationAddressRecall: 1,
+      costMicroUsd: 0,
+      budgetExceeded: false,
+      results: [
+        {
+          ...CURRENT_OUTCOME,
+          identitySatisfied: { citationAddressRecall: 1, citationValidity: 1, passed: true },
+        },
+      ],
+      costs: [],
+    });
+    expect(parsed.passed).toBe(1);
+    expect(parsed.identitySatisfiedPassed).toBe(2);
+    expect(parsed.meanIdentitySatisfiedCitationAddressRecall).toBe(1);
+    expect(parsed.results[0]?.identitySatisfied?.passed).toBe(true);
+  });
+
+  it("rejects a negative identity-satisfied count and an out-of-range mean", () => {
+    const base = {
+      runId: "r1",
+      setId: "golden-set-v0",
+      startedAt: 1,
+      finishedAt: 2,
+      questions: 1,
+      passed: 1,
+      failed: 0,
+      skipped: 0,
+      meanSourceTypeRecall: 1,
+      meanCitationValidity: 1,
+      costMicroUsd: 0,
+      budgetExceeded: false,
+      results: [CURRENT_OUTCOME],
+      costs: [],
+    };
+    expect(v.safeParse(EvalRunReportSchema, { ...base, identitySatisfiedPassed: -1 }).success).toBe(
+      false,
+    );
+    expect(
+      v.safeParse(EvalRunReportSchema, {
+        ...base,
+        meanIdentitySatisfiedCitationAddressRecall: 2,
+      }).success,
+    ).toBe(false);
   });
 });

@@ -29,6 +29,7 @@ export {
   sourceTypeRecall,
 } from "./scorers";
 export { Budget, BudgetExceededError, budgetCapFromEnv } from "./budget";
+export { CitationAlternativesScopeError, requireAlternativesScope } from "./citation-alternatives";
 export { CitationGrammarError, requireCitationGrammar } from "./citation-grammar";
 export {
   CitationIdentityError,
@@ -48,6 +49,7 @@ export {
   runGoldenSet,
   scoreQuestion,
   buildReport,
+  identitySatisfiedSummary,
   type AnswerTraceSource,
   type ChatTransport,
   type HarnessDeps,

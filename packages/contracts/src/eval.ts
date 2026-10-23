@@ -26,13 +26,16 @@ export const GoldenSourceSchema = v.pipe(v.string(), v.minLength(1));
  * The deterministic scorer compares labels, so the harness stays
  * citation-format-agnostic.
  *
- * Every label in a question's `requiredCitations` is required — there is no
- * "any of" form. An empty list means the question has no citation requirement.
+ * Every label in a question's `requiredCitations` is required — the all-required
+ * (AND) form is the default and stays the default. A question may OPT IN, through
+ * `citationAlternatives`, to a curator's set of additional citations that satisfy
+ * its one requirement; no list in this contract is silently read as "any of".
+ * An empty list means the question has no citation requirement.
  */
 export const GoldenCitationSchema = v.pipe(v.string(), v.minLength(1));
 
 /** The behavior the harness expects from the pipeline for this question. */
-export const GoldenQuestionSchema = v.object({
+const GoldenQuestionShape = v.object({
   /** Stable question id within the set (e.g. "gs-v0-001"). */
   id: v.pipe(v.string(), v.minLength(1)),
   question: v.pipe(v.string(), v.minLength(1)),
@@ -42,11 +45,35 @@ export const GoldenQuestionSchema = v.object({
   expectedSourceTypes: v.array(GoldenSourceSchema),
   /** Citation labels (opaque strings) a correct answer must include; all are required. */
   requiredCitations: v.array(GoldenCitationSchema),
+  /**
+   * OPT-IN any-of requirement: citations that also satisfy this question's single
+   * required citation. A curator names a set when the question admits several valid
+   * answers that are different reports — an identity relation is the wrong vehicle
+   * for that, because identity means one report. Validity accepts any member, and
+   * address recall accepts a retrieved member; absent, the all-required default is
+   * unchanged. Legal only on a question with exactly one required citation, which
+   * is the requirement the set widens.
+   */
+  citationAlternatives: v.optional(v.pipe(v.array(GoldenCitationSchema), v.minLength(1))),
   /** Whether the pipeline should answer or refuse. */
   expectedBehavior: ExpectedBehaviorSchema,
   /** Trap/coverage tags (e.g. a weak-grade trap, a refusal case). Opaque. */
   tags: v.optional(v.array(v.pipe(v.string(), v.minLength(1)))),
 });
+
+/** A Golden Set question, with the opt-in alternative set bounded to one requirement. */
+export const GoldenQuestionSchema = v.pipe(
+  GoldenQuestionShape,
+  v.check(
+    (question) =>
+      question.citationAlternatives === undefined ||
+      (question.requiredCitations.length === 1 &&
+        !question.citationAlternatives.some((alternative) =>
+          question.requiredCitations.some((required) => required.trim() === alternative.trim()),
+        )),
+    "citationAlternatives widens exactly one required citation and may not repeat it",
+  ),
+);
 
 export type GoldenQuestion = v.InferOutput<typeof GoldenQuestionSchema>;
 
@@ -103,6 +130,22 @@ export type EvalRunReport = {
    * field existed.
    */
   quoteFidelityMeasured?: number | undefined;
+  /**
+   * REPORTED, NEVER GATING: how many scored rows would pass if a signed identity —
+   * the same report, or a curated same-ruling relation — satisfied the citation
+   * and address requirements. The gate's `passed` and the run's `passed` never read
+   * it, and it never contributes to the exit policy; it exists so the residual a
+   * strictly-exact address gate leaves behind is visible as a number. Absent when
+   * no identity map was injected.
+   */
+  identitySatisfiedPassed?: number | undefined;
+  /**
+   * REPORTED, NEVER GATING: mean identity-satisfied citation-address recall over
+   * the scored rows that carry the measurement (null when none did). The exact
+   * `meanCitationAddressRecall` stays the gate's number; this one answers what the
+   * same retrieval would score if a signed identity satisfied the address.
+   */
+  meanIdentitySatisfiedCitationAddressRecall?: number | null | undefined;
   /** Total spend (harness + pipeline traces triggered), in micro-USD. */
   costMicroUsd: number;
   /** True when the run aborted early because the budget cap was hit. */
@@ -134,6 +177,10 @@ const EvalRunReportInputSchema = v.object({
   meanCitationValidity: v.nullable(v.pipe(v.number(), v.minValue(0), v.maxValue(1))),
   meanQuoteFidelity: v.optional(v.nullable(v.pipe(v.number(), v.minValue(0), v.maxValue(1)))),
   quoteFidelityMeasured: v.optional(v.pipe(v.number(), v.integer(), v.minValue(0))),
+  identitySatisfiedPassed: v.optional(v.pipe(v.number(), v.integer(), v.minValue(0))),
+  meanIdentitySatisfiedCitationAddressRecall: v.optional(
+    v.nullable(v.pipe(v.number(), v.minValue(0), v.maxValue(1))),
+  ),
   costMicroUsd: v.pipe(v.number(), v.integer(), v.minValue(0)),
   budgetExceeded: v.boolean(),
   results: v.array(EvalResultOutcomeSchema),
@@ -172,6 +219,15 @@ export const EvalRunReportSchema = v.pipe(
       : {}),
     ...(input.quoteFidelityMeasured !== undefined
       ? { quoteFidelityMeasured: input.quoteFidelityMeasured }
+      : {}),
+    ...(input.identitySatisfiedPassed !== undefined
+      ? { identitySatisfiedPassed: input.identitySatisfiedPassed }
+      : {}),
+    ...(input.meanIdentitySatisfiedCitationAddressRecall !== undefined
+      ? {
+          meanIdentitySatisfiedCitationAddressRecall:
+            input.meanIdentitySatisfiedCitationAddressRecall,
+        }
       : {}),
     costMicroUsd: input.costMicroUsd,
     budgetExceeded: input.budgetExceeded,

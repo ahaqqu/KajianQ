@@ -7,6 +7,7 @@ import {
   CITATION_IDENTITY,
   createStagingHarness,
   REFUSAL_MARKERS,
+  REPORTED_CITATION_IDENTITY,
 } from "../../packages/eval/scripts/staging-harness.mjs";
 import { DEFAULT_REFUSALS } from "../../packages/kajianq-domain/src/chat-reviewer";
 import { QUOTE_EQUIVALENCES } from "../../packages/kajianq-domain/src/chat-quote-equivalences";
@@ -237,6 +238,118 @@ describe("CITATION_IDENTITY (shared staging harness)", () => {
     for (const script of ["eval-run.mjs", "eval-smoke.mjs"]) {
       const source = readFileSync(resolve(process.cwd(), "packages/eval/scripts", script), "utf8");
       expect(source).toMatch(/citationIdentity:\s*harness\.citationIdentity,/);
+    }
+  });
+});
+
+/**
+ * The composition root's REPORTED identity resolver. The harness is JavaScript and
+ * `reportedCitationIdentity` is optional, so deleting the one property line that
+ * hands it to the CLIs compiles and leaves every package test green: the scorer
+ * then writes no reported block, and a run that should publish the
+ * identity-satisfied figure silently publishes none. The seam is pinned here like
+ * the gate resolver — the relation split, the delivery by identity, the scorer's
+ * readings through the delivered references, and the pass-through in both CLI
+ * sources — because the broader-relation number exists only if this delivery does.
+ */
+describe("REPORTED_CITATION_IDENTITY (shared staging harness)", () => {
+  const frameOf = (labels) => ({ citations: labels.map((label) => ({ label })) });
+
+  it("reads the same-ruling groups the gate's resolver refuses, and the gate's own relation", () => {
+    // Bukhari 1108 and Nasai 598 state one ruling, not one report: reported only.
+    const sameRuling = REPORTED_CITATION_IDENTITY.identityOf("HR. Nasai no. 598");
+    expect(CITATION_IDENTITY.identityOf("HR. Nasai no. 598")).toBeNull();
+    expect(sameRuling).not.toBeNull();
+    expect(sameRuling).toBe(REPORTED_CITATION_IDENTITY.identityOf("HR. Bukhari no. 1108"));
+    // The broader resolver still reads the gate's relation, so it is a superset.
+    expect(REPORTED_CITATION_IDENTITY.identityOf("HR. Bukhari no. 191")).toBe(
+      CITATION_IDENTITY.identityOf("HR. Bukhari no. 191"),
+    );
+  });
+
+  it("delivers the reported resolver from the real composition root", async () => {
+    // Behavioural, through the harness's OWN reference: a dropped delivery is
+    // `undefined`, and the same evidence then reads 0 under either resolver.
+    const harness = await createStagingHarness(
+      { databaseUrl: "postgres://unused:unused@127.0.0.1:1/unused" },
+      {},
+    );
+    try {
+      expect(harness.reportedCitationIdentity).toBe(REPORTED_CITATION_IDENTITY);
+      const delivered = harness.reportedCitationIdentity;
+      const frame = frameOf(["HR. Nasai no. 598"]);
+      expect(
+        citationValidity(["HR. Bukhari no. 1108"], "", {
+          frame,
+          grammar: harness.citationGrammar,
+          identity: delivered,
+        }),
+      ).toBe(1);
+      // The gate's own reference scores the same evidence 0 — the relation split
+      // the two deliveries exist for.
+      expect(
+        citationValidity(["HR. Bukhari no. 1108"], "", {
+          frame,
+          grammar: harness.citationGrammar,
+          identity: harness.citationIdentity,
+        }),
+      ).toBe(0);
+    } finally {
+      await disposePostgresPools();
+    }
+  });
+
+  it("writes the reported block through the delivered resolver, not the gate's", async () => {
+    // The end-to-end seam: a gate-red row whose reported reading is green. Dropping
+    // either delivery writes no block, so the assertion fails instead of publishing
+    // the gate's number under the reported name.
+    const harness = await createStagingHarness(
+      { databaseUrl: "postgres://unused:unused@127.0.0.1:1/unused" },
+      {},
+    );
+    try {
+      const question = {
+        id: "gs-v0-006",
+        question: "Bagaimana shalat dalam perjalanan?",
+        language: "id",
+        expectedSourceTypes: ["primary"],
+        requiredCitations: ["HR. Bukhari no. 1108"],
+        expectedBehavior: "answer",
+      };
+      const events = [
+        { kind: "retrieval", stage: "retriever", detail: { chunks: [{ id: "c0" }] } },
+      ];
+      const scored = scoreQuestion(
+        question,
+        "",
+        events,
+        {
+          sourceTypeOf: () => "primary",
+          citationOf: (id) => (id === "c0" ? "HR. Bukhari no. 1108" : undefined),
+          refusalMarkers: [],
+          citationGrammar: harness.citationGrammar,
+          citationIdentity: harness.citationIdentity,
+          reportedCitationIdentity: harness.reportedCitationIdentity,
+        },
+        frameOf(["HR. Nasai no. 598"]),
+      );
+      // The gate stays red on the same-ruling citation; the reported block reads it
+      // as satisfied. That difference is the figure this seam publishes.
+      expect(scored.passed).toBe(false);
+      expect(scored.identitySatisfied).toEqual({
+        citationAddressRecall: 1,
+        citationValidity: 1,
+        passed: true,
+      });
+    } finally {
+      await disposePostgresPools();
+    }
+  });
+
+  it("forwards the harness's reported resolver into the scorer in both eval CLIs", () => {
+    for (const script of ["eval-run.mjs", "eval-smoke.mjs"]) {
+      const source = readFileSync(resolve(process.cwd(), "packages/eval/scripts", script), "utf8");
+      expect(source).toMatch(/reportedCitationIdentity:\s*harness\.reportedCitationIdentity,/);
     }
   });
 });

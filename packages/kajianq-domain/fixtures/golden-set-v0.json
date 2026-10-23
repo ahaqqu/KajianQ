@@ -72,6 +72,8 @@
       "language": "id",
       "expectedSourceTypes": ["hadith"],
       "requiredCitations": ["HR. Bukhari no. 5026"],
+      "$comment": "citationAlternatives: the question asks for a virtue of recitation, and the corpus holds several valid answers. 5027 (\"the best of you is the one who learns the Quran and teaches it\") and 4937 (the proficient reciter is with the noble scribes) are different narrations, not identities of 5026, so the curator accepts them as an opt-in any-of set instead of widening the identity map. Rows with no such field keep the all-required default.",
+      "citationAlternatives": ["HR. Bukhari no. 5027", "HR. Bukhari no. 4937"],
       "expectedBehavior": "answer",
       "tags": ["hadith"]
     },

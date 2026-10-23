@@ -1,3 +1,4 @@
+import { requireAlternativesScope } from "./citation-alternatives";
 import { requireCitationGrammar } from "./citation-grammar";
 import type {
   ChunkRefLike,
@@ -10,7 +11,7 @@ import type {
 import { requireCitationIdentity, resolveIdentity } from "./citation-identity";
 import { comparedAddressesOf } from "./scorers-address";
 
-export { citationAddressRecall } from "./scorers-address";
+export { citationAddressRecall, identitySatisfiedCitationAddressRecall } from "./scorers-address";
 
 /** Deterministic scorers — source-type recall, citation-address recall,
  * citation validity, refusal correctness — with no LLM involvement: the metrics
@@ -68,14 +69,25 @@ export function citationLabelsPresent(input: {
   events?: readonly TraceEventLike[];
   grammar?: CitationGrammar;
   identity?: CitationIdentity;
+  alternatives?: readonly string[];
 }): string[] {
-  const { required, answerText, frame, events, grammar, identity } = input;
-  // An unwired grammar fails loudly at the engine's grammar entry.
+  const { required, answerText, frame, events, grammar, identity, alternatives = [] } = input;
+  // An unwired grammar fails loudly at the engine's grammar entry, and so does a
+  // set that the row cannot bound to one requirement.
   if (grammar !== undefined) requireCitationGrammar(grammar);
   if (identity !== undefined) requireCitationIdentity(identity);
+  requireAlternativesScope(required, alternatives);
   const evidence = verifiedEvidenceLabels({ frame, events });
-  if (evidence !== undefined) return groundedLabels(required, evidence, grammar, identity);
-  return groundedLabels(required, textCandidateLabels(answerText, grammar), grammar, identity);
+  if (evidence !== undefined) {
+    return groundedLabels(required, evidence, grammar, identity, alternatives);
+  }
+  return groundedLabels(
+    required,
+    textCandidateLabels(answerText, grammar),
+    grammar,
+    identity,
+    alternatives,
+  );
 }
 
 /** The `grounded` list of the trace's `review` event, or `undefined` when the
@@ -123,28 +135,35 @@ function textCandidateLabels(answerText: string, grammar?: CitationGrammar): str
  * resolves; a label the map does not carry resolves to `null` and matches
  * nothing. That keeps the exact-row path and the fail-closed behavior for
  * unmapped, fabricated, and unrelated citations.
+ *
+ * `alternatives` is a curator's opt-in any-of set for a single-requirement row:
+ * a requirement is satisfied when any member of the set matches, exactly as the
+ * requirement itself would. The members are different reports, so the set is a
+ * requirement decision rather than an identity — a same-ruling identity never
+ * reaches this path under the gate's resolver.
  */
 function groundedLabels(
   required: readonly string[],
   evidence: readonly string[],
   grammar?: CitationGrammar,
   identity?: CitationIdentity,
+  alternatives: readonly string[] = [],
 ): string[] {
   if (grammar === undefined) {
-    return required.filter(
-      (citation) =>
-        evidence.some((label) => label.includes(citation)) ||
-        sameIdentity(identity, citation, evidence),
-    );
+    const textMatches = (citation: string): boolean =>
+      evidence.some((label) => label.includes(citation)) ||
+      sameIdentity(identity, citation, evidence);
+    return required.filter((citation) => [citation, ...alternatives].some(textMatches));
   }
+  // One set per row: the evidence's addresses do not change per requirement, and
+  // every rebuild re-parses each evidence label through the grammar.
   const named = new Set(evidence.flatMap((label) => comparedAddressesOf(label, grammar) ?? []));
-  return required.filter((citation) => {
+  const addressMatches = (citation: string): boolean => {
     const addresses = comparedAddressesOf(citation, grammar);
-    if (addresses !== null && addresses.every((address) => named.has(address))) {
-      return true;
-    }
+    if (addresses !== null && addresses.every((address) => named.has(address))) return true;
     return sameIdentity(identity, citation, evidence);
-  });
+  };
+  return required.filter((citation) => [citation, ...alternatives].some(addressMatches));
 }
 
 /** Whether one required citation names the same curated identity as any
@@ -167,7 +186,9 @@ function sameIdentity(
  * {@link citationLabelsPresent} owns. No required citations scores 1; without a
  * grammar the text path keeps its two-argument semantics. An injected
  * {@link CitationIdentity} lets a required citation be satisfied by a parallel
- * narration of it, never by a different one.
+ * narration of it, never by a different one. `alternatives` is the row's opt-in
+ * any-of set (see {@link groundedLabels}); absent, the all-required default is
+ * unchanged.
  */
 export function citationValidity(
   requiredCitations: readonly string[],
@@ -177,13 +198,15 @@ export function citationValidity(
     events?: readonly TraceEventLike[];
     grammar?: CitationGrammar;
     identity?: CitationIdentity;
+    alternatives?: readonly string[];
   },
 ): number {
-  // Guarded before the empty-required early return, so an unwired grammar or a
-  // malformed identity resolver fails even on a question whose citations are
-  // trivially satisfied.
+  // Every guard runs before the empty-required early return, so an unwired
+  // grammar, a malformed identity resolver or a set the row cannot bound fails
+  // loudly even on a question whose citations are trivially satisfied.
   if (evidence?.grammar !== undefined) requireCitationGrammar(evidence.grammar);
   if (evidence?.identity !== undefined) requireCitationIdentity(evidence.identity);
+  requireAlternativesScope(requiredCitations, evidence?.alternatives ?? []);
   if (requiredCitations.length === 0) return 1;
   const present = citationLabelsPresent({
     required: requiredCitations,
@@ -192,6 +215,7 @@ export function citationValidity(
     ...(evidence?.events !== undefined ? { events: evidence.events } : {}),
     ...(evidence?.grammar !== undefined ? { grammar: evidence.grammar } : {}),
     ...(evidence?.identity !== undefined ? { identity: evidence.identity } : {}),
+    ...(evidence?.alternatives !== undefined ? { alternatives: evidence.alternatives } : {}),
   }).length;
   return present / requiredCitations.length;
 }
