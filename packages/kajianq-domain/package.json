@@ -15,8 +15,8 @@
     "@app/infra": "workspace:*",
     "@app/rag-core": "workspace:*",
     "@app/rag-ingest": "workspace:*",
-    "@aws-sdk/client-s3": "^3.1149.0",
-    "effect": "4.0.2",
+    "@aws-sdk/client-s3": "^3.1152.0",
+    "effect": "4.0.5",
     "valibot": "1.5.0"
   },
   "devDependencies": {
