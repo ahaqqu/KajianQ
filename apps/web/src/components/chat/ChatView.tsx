@@ -49,7 +49,7 @@ export function ChatView({
   online,
   prefill,
   consentCard,
-  stored = true,
+  stored,
   onSend,
   onNewSession,
 }: {
@@ -68,7 +68,7 @@ export function ChatView({
    * itself once answered, so the page can pass it unconditionally. */
   consentCard?: ReactNode;
   /** Whether the conversation is being kept in this browser (ADR-0063). */
-  stored?: boolean;
+  stored: boolean;
   onSend: (text: string) => void;
   onNewSession: () => void;
 }) {

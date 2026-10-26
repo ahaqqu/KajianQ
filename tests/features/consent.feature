@@ -12,6 +12,12 @@ Feature: Keeping a conversation in the browser is a choice
     And only the choice is stored
     And reloading does not ask again
 
+  Scenario: Agreeing keeps the conversation for the next visit
+    When I open the chat in a fresh browser
+    And I choose to keep the conversation
+    And I ask about ayat kursi on that page
+    Then the browser keeps the session for next time
+
   Scenario: The history drawer carries the storage switch
     When I open the chat in a fresh browser
     And I choose to keep the conversation

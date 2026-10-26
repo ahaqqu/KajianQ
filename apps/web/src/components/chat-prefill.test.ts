@@ -124,6 +124,7 @@ describe("ChatView pre-fill seeding", () => {
         transcriptTruncated: false,
         error: null,
         online: true,
+        stored: true,
         prefill: value,
         onSend,
         onNewSession: vi.fn(),
