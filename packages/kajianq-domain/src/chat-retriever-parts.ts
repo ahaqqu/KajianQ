@@ -31,8 +31,6 @@ export type { MetadataFilterMatch, MetadataFilterValue } from "@app/infra";
 export type { RetrieverStore } from "./chat-retriever-store";
 export {
   CALLER_PRIORITY_ORIGIN,
-  CALLER_QUERY_ORIGIN,
-  CALLER_QUERY_ROLE,
   applyCallerPriority,
   callerPriorityHits,
   guaranteeCallerPriority,

@@ -106,12 +106,16 @@ function retrieverDeps(
 function run(
   options: {
     subQueries?: { text: string; role?: string; origin?: string }[];
+    /** Overrides the verbatim text the route stamps beside its sub-queries. */
+    sourceText?: string;
     decider?: Decider;
     callerPriorityK?: number;
+    /** The store the route searches, for a fixture the shared one cannot shape. */
+    store?: RetrieverStore;
     record?: (event: Recorded) => void;
   } = {},
 ): Promise<{ chunks: readonly Chunk[]; events: Recorded[] }> {
-  const { store } = makeStore();
+  const store = options.store ?? makeStore().store;
   const events: Recorded[] = [];
   // The wired stage, not the bare retriever: this is where the rerank composes,
   // and the guarantee's effect on it is part of what the tests pin.
@@ -120,7 +124,7 @@ function run(
     rerankDecider: options.decider ?? null,
     ...(options.callerPriorityK !== undefined ? { callerPriorityK: options.callerPriorityK } : {}),
   });
-  const routed = routedQuery(CALLER_TEXT, {
+  const routed = routedQuery(options.sourceText ?? CALLER_TEXT, {
     subQueries: options.subQueries ?? SUB_QUERIES,
   });
   return Effect.runPromise(
@@ -197,6 +201,94 @@ describe("the caller's own query is a priority retrieval angle", () => {
     });
     expect(JSON.stringify(event?.detail)).not.toContain("arab-");
     expect(chunks).toHaveLength(3 + PARAPHRASE_ROWS.length);
+  });
+});
+
+/**
+ * The router's fallback route: the only sub-query carries the caller's words with
+ * `origin: "fallback"`. The corpus rows are shaped so the caller's rank-2 hit sits
+ * on the primary track alone — the fallback track never returned it, so no other
+ * list can lift it and fusion puts a row both tracks returned ahead of it.
+ */
+const FALLBACK_SUB_QUERIES = [{ text: CALLER_TEXT, role: "factual", origin: "fallback" }];
+const FALLBACK_PRIMARY_ROWS = ["p1", TARGET, "p2"];
+const FALLBACK_TRACK_ROWS = ["p1", "p2", "p3"];
+
+function makeFallbackStore(): RetrieverStore {
+  const store = {
+    similaritySearch: (track: "primary" | "fallback") =>
+      Effect.succeed(ranked(track === "primary" ? FALLBACK_PRIMARY_ROWS : FALLBACK_TRACK_ROWS)),
+    listDocChildrenByParentSourceKey: () => Effect.succeed([]),
+    listDocChildNeighboursByChildIds: () => Effect.succeed([]),
+    findDocChildrenByMetadata: () => Effect.succeed([]),
+  };
+  return store as unknown as RetrieverStore;
+}
+
+describe("the guarantee covers the router's fallback route", () => {
+  it("leads the returned set with the caller's rank-2 hit no other list carries", async () => {
+    const { chunks } = await run({
+      subQueries: FALLBACK_SUB_QUERIES,
+      store: makeFallbackStore(),
+    });
+
+    // Fusion alone puts p2 — a row both tracks returned — ahead of the caller's
+    // rank-2 hit, and the fallback track never returned the hit, so no other list
+    // can rescue it. The guarantee is what leads the set with the caller's order.
+    expect(chunks.map((chunk) => chunk.id)).toEqual(["p1", TARGET, "p2", "p3"]);
+    expect(chunks[1]?.id).toBe(TARGET);
+    expect(chunks[1]?.origin).toBe(CALLER_PRIORITY_ORIGIN);
+    expect(
+      chunks.filter((chunk) => chunk.origin === CALLER_PRIORITY_ORIGIN).map((chunk) => chunk.id),
+    ).toEqual(["p1", TARGET, "p2"]);
+  });
+
+  it("records the guarantee beside the origin the entry actually had", async () => {
+    const { events } = await run({
+      subQueries: FALLBACK_SUB_QUERIES,
+      store: makeFallbackStore(),
+    });
+
+    expect(events.find((event) => event.kind === "caller_priority")?.detail).toEqual({
+      k: CALLER_PRIORITY_K,
+      ids: ["p1", TARGET, "p2"],
+      alreadyPresent: ["p1", TARGET, "p2"],
+    });
+    // The same typed event, and the caller's entry keeps its own origin: the
+    // fallback route is recorded as the fallback route, never relabelled a rule.
+    const searches = events.filter((event) => event.kind === "search_hits");
+    expect(searches.map((event) => event.detail)).toMatchObject([
+      { role: "factual", origin: "fallback", track: "primary" },
+      { role: "factual", origin: "fallback", track: "fallback" },
+    ]);
+  });
+
+  it("reaches the assembled context the generator reads", async () => {
+    const { chunks } = await run({
+      subQueries: FALLBACK_SUB_QUERIES,
+      store: makeFallbackStore(),
+    });
+    const assembled = assemble(
+      chunks,
+      routedQuery(CALLER_TEXT, { subQueries: FALLBACK_SUB_QUERIES }),
+    );
+
+    expect(assembled.map((chunk) => chunk.id)).toEqual(["p1", TARGET, "p2", "p3"]);
+    expect(assembled.findIndex((chunk) => chunk.id === TARGET)).toBe(1);
+    expect(assembled.findIndex((chunk) => chunk.id === TARGET)).toBeLessThan(
+      assembled.findIndex((chunk) => chunk.id === "p2"),
+    );
+  });
+
+  it("finds the entry by the admitted question, not by the padded source text", async () => {
+    const { chunks, events } = await run({
+      subQueries: FALLBACK_SUB_QUERIES,
+      store: makeFallbackStore(),
+      // The runner stamps the verbatim text; the entry carries the admitted one.
+      sourceText: `  ${CALLER_TEXT}\n`,
+    });
+    expect(chunks[1]?.id).toBe(TARGET);
+    expect(events.some((event) => event.kind === "caller_priority")).toBe(true);
   });
 });
 

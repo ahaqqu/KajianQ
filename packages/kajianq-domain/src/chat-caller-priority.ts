@@ -1,6 +1,7 @@
 import type { TraceEvent } from "@app/contracts";
 import type { Chunk } from "@app/rag-core";
 import { compareTrackHits, type TrackHit } from "./chat-fusion";
+import { admitSubQueryText } from "./chat-subquery-admission";
 
 /**
  * Caller-query priority (ADR-0062): the caller's own question is the one query
@@ -19,13 +20,12 @@ import { compareTrackHits, type TrackHit } from "./chat-fusion";
  * from that set is a broken invariant, recorded on the trace rather than
  * repaired by fabricating a chunk with no fused score. The bound is the
  * retriever's `callerPriorityK`, defaulting to the contract's `CALLER_PRIORITY_K`.
+ *
+ * The caller's entry is found by the text it carries, not by the origin that
+ * offered it: the decomposition repair and the router's deterministic fallback
+ * both copy the admitted verbatim question into their sub-query, and the
+ * guarantee covers the caller's words whichever route wrote them down.
  */
-
-/** What produced the caller's sub-query, as the decomposition repair labels it. */
-export const CALLER_QUERY_ORIGIN = "rule";
-
-/** The role the caller's sub-query carries, as the decomposition repair labels it. */
-export const CALLER_QUERY_ROLE = "factual";
 
 /** The provenance label the caller's guaranteed chunks carry. It marks a row the
  * caller's own list produced, promoted ahead of its fusion rank — not a row
@@ -50,12 +50,16 @@ export type CallerPriority = {
 };
 
 /**
- * True for the sub-query the decomposition repair made from the caller's
- * verbatim question. The repair guarantees it is the set's first entry, so the
- * retriever can find it by its labels rather than by its position.
+ * True for the sub-query carrying the caller's verbatim question. Two routes
+ * can produce that entry — the decomposition repair's `factual` sub-query and
+ * the router's deterministic fallback — and both copy the admitted question
+ * into their entry's text, so the entry is found by the words it carries rather
+ * than by the origin that offered it. The origin stays the entry's own on the
+ * trace; only this selection is origin-blind.
  */
-export function isCallerSubQuery(sub: { role?: string; origin?: string }): boolean {
-  return sub.origin === CALLER_QUERY_ORIGIN && sub.role === CALLER_QUERY_ROLE;
+export function isCallerSubQuery(sub: { text: string }, callerText: string): boolean {
+  const question = admitSubQueryText(callerText);
+  return question !== undefined && sub.text === question;
 }
 
 /**
