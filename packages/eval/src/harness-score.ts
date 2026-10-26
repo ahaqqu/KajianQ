@@ -62,6 +62,7 @@ export function scoreQuestion(
     | "expansionOrigin"
     | "gateAddressRecall"
     | "lookupOrigin"
+    | "callerPriorityOrigin"
     | "quoteEquivalences"
   >,
   frame?: CitationFrameLike | null,
@@ -119,6 +120,9 @@ export function scoreQuestion(
       sourceTypeOf: deps.sourceTypeOf,
       ...(deps.expansionOrigin !== undefined ? { expansionOrigin: deps.expansionOrigin } : {}),
       ...(deps.lookupOrigin !== undefined ? { lookupOrigin: deps.lookupOrigin } : {}),
+      ...(deps.callerPriorityOrigin !== undefined
+        ? { callerPriorityOrigin: deps.callerPriorityOrigin }
+        : {}),
     }),
   };
 }

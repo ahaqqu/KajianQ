@@ -75,7 +75,8 @@ export const searchHitsEventSchema = v.object({
 
 /**
  * The `caller_priority` trace event variant: the caller's own query's leading
- * dense hits, guaranteed into the context regardless of their fusion rank.
+ * dense hits, promoted ahead of their fusion rank — out of the rerank's reorder
+ * and to the head of their presentation slot in the assembled context.
  *
  * **Why it exists.** Fusion weighs every sub-query list alike, and the router's
  * paraphrases outnumber the caller's single list, so paraphrase rows at a
@@ -85,17 +86,19 @@ export const searchHitsEventSchema = v.object({
  *
  * **Identity, not text.** `ids` are chunk ids in the caller list's dense-rank
  * order; the chunk text already rides the `retrieval` event. `k` is the bound
- * the run applied and `alreadyPresent` names the ids the returned set already
- * held (they are labelled and led all the same), so `ids` minus
- * `alreadyPresent` is what the guarantee added. The arm reads no store: the
- * caller's own searches already produced this list.
+ * the run applied, never more than the contract's ceiling, and `ids` never
+ * exceeds it. `alreadyPresent` names the ids the returned set already held;
+ * fusion keeps every row a search returned, so a shorter list names a caller hit
+ * fusion never returned — the guarantee's inclusion floor is fusion's, and this
+ * field is where a break in it shows. The arm reads no store: the caller's own
+ * searches already produced this list.
  */
 export const callerPriorityEventSchema = v.object({
   stage: v.literal("retriever"),
   kind: v.literal("caller_priority"),
   detail: v.pipe(
     v.object({
-      /** The bound the run applied (the contract's `CALLER_PRIORITY_K`). */
+      /** The bound the run applied — at most the contract's `CALLER_PRIORITY_K`. */
       k: v.pipe(v.number(), v.integer(), v.minValue(0)),
       /** The guaranteed hits, in the caller list's ascending dense rank. */
       ids: v.pipe(v.array(v.pipe(v.string(), v.minLength(1))), v.maxLength(CALLER_PRIORITY_K)),

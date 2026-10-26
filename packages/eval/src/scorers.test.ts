@@ -979,6 +979,45 @@ describe("scoreQuestion", () => {
     });
   });
 
+  it("keeps the caller-priority guarantee's promoted rows in the fused-only leg", () => {
+    // A promoted fused row is still fusion's row: its label means "do not reorder
+    // me", not "an arm added me". Dropping it from this leg would report a gap the
+    // fused track did not have and name the wrong path as the carrier.
+    const promoted = {
+      kind: "retrieval",
+      stage: "retriever",
+      detail: {
+        chunks: [
+          { id: "c1", score: 0.5, rankDense: 1, origin: "caller_priority" },
+          { id: "c2", score: 0.4, rankDense: 2 },
+          { id: "l1", origin: "citation_lookup" },
+        ],
+      },
+    } satisfies TraceEventLike;
+    const outcome = scoreQuestion(question, "… label-1 …", [promoted], {
+      sourceTypeOf: (id) => (id === "c2" ? "source-b" : "source-a"),
+      citationOf,
+      expansionOrigin: "expansion",
+      lookupOrigin: "citation_lookup",
+      callerPriorityOrigin: "caller_priority",
+    });
+    expect(outcome.sourceTypeRecall).toBe(1);
+    // The promoted row covers source-a and the unlabelled row covers source-b, so the
+    // fused leg alone reaches the full recall: no false gap, and the lookup carried
+    // nothing the fused rows did not already.
+    expect(outcome.expansion).toEqual({
+      chunks: 0,
+      fusedOnlySourceTypeRecall: 1,
+      lookup: {
+        returned: 1,
+        missing: 0,
+        dropped: 0,
+        truncated: false,
+        carriedSourceTypes: [],
+      },
+    });
+  });
+
   it("records a recognised-but-empty scope honestly (0 chunks, fused-only = reported)", () => {
     const outcome = scoreQuestion(
       question,

@@ -177,6 +177,10 @@ export {
   type RetrieverStore,
   type StoreBridge,
 } from "./chat-retriever";
+// The caller-priority guarantee's provenance label, exported for the composition
+// roots that inject domain labels into the engine's seams (the eval harness) and
+// for readers of the trace.
+export { CALLER_PRIORITY_ORIGIN } from "./chat-caller-priority";
 // The fusion arithmetic and the two deterministic expansions live in their own
 // modules (the 300-line and 5-import agentic caps); the barrel keeps one public
 // surface, so consumers import from `@app/kajianq-domain`.

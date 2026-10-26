@@ -20,6 +20,7 @@ import { Effect } from "effect";
 import { createLogger, resolvePostgresStore } from "@app/infra";
 import { BudgetExceededError, postChatSse } from "@app/eval";
 import {
+  CALLER_PRIORITY_ORIGIN,
   CITATION_LOOKUP_ORIGIN,
   DEFAULT_REFUSALS,
   QUOTE_EQUIVALENCES,
@@ -48,6 +49,14 @@ export const EXPANSION_ORIGIN = SCOPE_EXPANSION_ORIGIN;
  * report a label-only question's lookup contribution.
  */
 export const LOOKUP_ORIGIN = CITATION_LOOKUP_ORIGIN;
+
+/**
+ * The opaque `origin` label the domain pack writes on the caller-priority
+ * guarantee's rows (ADR-0062). The guarantee promotes fused rows rather than
+ * adding them, so injecting the label keeps them inside the fused-only
+ * source-type recall instead of letting a promotion read as an arm's rescue.
+ */
+export const CALLER_PRIORITY_LABEL = CALLER_PRIORITY_ORIGIN;
 
 /**
  * The citation grammar the scorer normalizes labels with. It is the
@@ -203,6 +212,7 @@ export async function createStagingHarness(config, budget) {
     reportedCitationIdentity: REPORTED_CITATION_IDENTITY,
     expansionOrigin: EXPANSION_ORIGIN,
     lookupOrigin: LOOKUP_ORIGIN,
+    callerPriorityOrigin: CALLER_PRIORITY_LABEL,
     // The language's own quote-normalisation equivalences, owned by the domain pack
     // (`QUOTE_EQUIVALENCES`) and injected here so the engine's fold stays generic.
     quoteEquivalences: QUOTE_EQUIVALENCES,

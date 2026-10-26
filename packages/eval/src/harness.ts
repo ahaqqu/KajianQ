@@ -94,6 +94,11 @@ export type HarnessDeps = {
    * lookup added (ADR-0058). Supplying it makes the provenance block record a
    * label-only question's lookup contribution; the engine never names the label. */
   lookupOrigin?: string;
+  /** The opaque `origin` label the domain pack puts on the rows its caller-priority
+   * guarantee promotes (ADR-0062). The guarantee moves and labels fused rows without
+   * adding any, so supplying it keeps those rows inside `fusedOnlySourceTypeRecall`
+   * instead of letting a promotion read as a deterministic arm's rescue. */
+  callerPriorityOrigin?: string;
   /** Language- or corpus-specific quote equivalences, supplied by the composition
    * root and applied after the scorer's generic fold, so the engine ships no language
    * policy. Omitted, quotes are compared under the generic fold alone. */
