@@ -7,13 +7,16 @@ import {
   type RoutedQuery,
   type Turn,
 } from "@app/rag-core";
+import { CALLER_PRIORITY_ORIGIN } from "./chat-caller-priority";
 import type { KajianQFilters } from "./filters";
 
 /**
  * KajianQAssembler — Smart Router stage 5: order the retrieved chunks into the
  * Generator's turn list. Presentation order is {@link PRESENTATION_ORDER}, never the
- * authority order the system prompt states; within a slot, fused score decides. The result
- * is deterministic — the runner records the `assembly` boundary event from it.
+ * authority order the system prompt states; within a slot, the caller-priority
+ * guarantee's chunks lead in the order retrieval gave them, then the reranked score
+ * decides when a rerank applied, else the fused score. The result is
+ * deterministic — the runner records the `assembly` boundary event from it.
  *
  * Two product rules live here:
  *
@@ -91,15 +94,40 @@ function orderScore(chunk: Chunk): number {
   return chunk.rerankScore ?? chunk.score ?? 0;
 }
 
+/**
+ * Whether the caller-priority guarantee leads this chunk's slot (ADR-0062). The
+ * guarantee's rows are the caller's own dense ranking; they carry no
+ * decision-model score because the rerank never reorders them, and their fused
+ * score is a different scale from a rerank probability — so they are placed by
+ * their tier, not by `orderScore`.
+ */
+function leadsItsSlot(chunk: Chunk): boolean {
+  return chunk.origin === CALLER_PRIORITY_ORIGIN;
+}
+
+/**
+ * Presentation slot first, then the guarantee's tier, then the score. The
+ * guarantee's rows compare equal and `Array#sort` is stable, so they keep the
+ * caller's dense-rank order retrieval gave them; no fused score or rerank
+ * probability can outvote them. A guaranteed row stays in its own slot: the
+ * presentation order is the spec's, not the guarantee's to override.
+ */
+function compareSlots(a: Chunk, b: Chunk): number {
+  const byPresentation = presentationRank(a) - presentationRank(b);
+  if (byPresentation !== 0) return byPresentation;
+  const byGuarantee = Number(leadsItsSlot(b)) - Number(leadsItsSlot(a));
+  if (byGuarantee !== 0) return byGuarantee;
+  if (leadsItsSlot(a)) return 0;
+  return orderScore(b) - orderScore(a);
+}
+
 export function createKajianQAssembler(): Assembler<KajianQFilters> {
   return {
     assemble: (routed: RoutedQuery<KajianQFilters>, chunks: readonly Chunk[]) =>
       toStageError(
         "assembler",
         Effect.sync(() => {
-          const ordered = [...chunks].sort(
-            (a, b) => presentationRank(a) - presentationRank(b) || orderScore(b) - orderScore(a),
-          );
+          const ordered = [...chunks].sort(compareSlots);
           const context = ordered.map(renderEvidenceChunk).join("\n\n");
           const history = historyOf(routed);
           const preamble = renderHistory(history);

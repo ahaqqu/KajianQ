@@ -11,17 +11,18 @@ import {
 } from "@app/rag-core";
 import type { KajianQFilters } from "./filters";
 import {
+  CALLER_PRIORITY_K,
   DEFAULT_LABEL_LOOKUP_CAP,
   DEFAULT_NEIGHBOUR_CAP,
   DEFAULT_NEIGHBOUR_RADIUS,
   DEFAULT_SCOPE_EXPANSION_CAP,
+  applyCallerPriority,
   compareHitsByDenseRank,
   expandRetrievedSurahScope,
   expandSurahScope,
   expandVerseNeighbours,
   createFilterRelaxation,
   filterEntries,
-  guaranteeCallerPriority,
   hierarchyBonus,
   isCallerSubQuery,
   lookupCitationLabels,
@@ -69,10 +70,14 @@ export type KajianQRetrieverDeps = {
   /** Budget cap for the citation-label lookup over the labels a question names,
    * defaulting to `DEFAULT_LABEL_LOOKUP_CAP`; `0` disables it. */
   labelLookupCap?: number | undefined;
+  /** ADR-0062's bound: how many of the caller's leading hits the guarantee promotes,
+   * defaulting to `CALLER_PRIORITY_K`; `0` disables it. */
+  callerPriorityK?: number | undefined;
 };
 
 export function createKajianQRetriever(deps: KajianQRetrieverDeps): Retriever<KajianQFilters> {
   const limit = deps.limit ?? SEARCH_HITS_TRACE_LIMIT;
+  const callerPriorityK = deps.callerPriorityK ?? CALLER_PRIORITY_K;
   return {
     retrieve: (routed: RoutedQuery<KajianQFilters>) =>
       toStageError(
@@ -278,19 +283,13 @@ export function createKajianQRetriever(deps: KajianQRetrieverDeps): Retriever<Ka
               at: run.now(),
             });
           }
-          const returned = [...inContext, ...neighbours.chunks];
-          // The caller's own query is a priority angle (ADR-0062): its leading hits
-          // lead the returned set under their own label, which the rerank respects.
-          const priority = guaranteeCallerPriority({ callerLists, returned });
-          if (priority.detail !== null) {
-            run.record({
-              stage: "retriever",
-              kind: "caller_priority",
-              detail: priority.detail,
-              at: run.now(),
-            });
-          }
-          return priority.chunks;
+          return applyCallerPriority({
+            callerLists,
+            returned: [...inContext, ...neighbours.chunks],
+            k: callerPriorityK,
+            at: run.now(),
+            record: (event) => run.record(event),
+          });
         }),
       ),
   };

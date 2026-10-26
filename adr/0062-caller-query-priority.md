@@ -5,10 +5,13 @@
 The caller's verbatim question is a retrieval angle with priority of its own.
 The leading dense hits of the caller's own sub-query enter the context whatever
 their fusion rank, are labelled so the decision-model rerank keeps the position
-retrieval gave them, and lead the returned set. The guarantee is bounded by one
-small fixed number, and it is recorded on the answer's Trace as its own typed
-event naming the bound, the ids, and which of them the returned set already
-held.
+retrieval gave them, and lead their presentation slot in the assembled context,
+in the order the caller's own search ranked them. That placement is a dedicated
+rule: those rows lead every unlabelled row in their slot whatever the fused
+score or the reranker's probability says, while the rest of the slot stays
+ordered by that score. The guarantee is bounded by one small fixed number, and
+it is recorded on the answer's Trace as its own typed event naming the bound,
+the ids, and which of them the returned set already held.
 
 It issues no search. The caller's sub-query is embedded and searched by the
 ordinary fan-out; this rule only selects from the list that search already
@@ -38,7 +41,9 @@ moves every row's fused score instead of protecting the rows that matter.
 
 - The retriever owns the selection and the bound. The rerank keeps its existing
   contract: a labelled chunk already keeps the position the wrapped retriever
-  gave it, so the guaranteed rows are simply not offered for reordering.
+  gave it, so the guaranteed rows are simply not offered for reordering. The
+  assembler owns presentation order, and it leads the slot with them because
+  their position is deliberate, not a score to compare.
 - The guaranteed hits are context, so they grow the assembled context and the
   paid prompts that read it. The rule itself makes no provider call and no store
   read.

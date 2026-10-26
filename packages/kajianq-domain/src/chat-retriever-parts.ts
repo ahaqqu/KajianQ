@@ -26,13 +26,14 @@ export {
   rrfFuse,
   type TrackHit,
 } from "./chat-fusion";
-export { SEARCH_HITS_TRACE_LIMIT } from "@app/contracts";
+export { CALLER_PRIORITY_K, SEARCH_HITS_TRACE_LIMIT } from "@app/contracts";
 export type { MetadataFilterMatch, MetadataFilterValue } from "@app/infra";
 export type { RetrieverStore } from "./chat-retriever-store";
 export {
   CALLER_PRIORITY_ORIGIN,
   CALLER_QUERY_ORIGIN,
   CALLER_QUERY_ROLE,
+  applyCallerPriority,
   callerPriorityHits,
   guaranteeCallerPriority,
   isCallerSubQuery,
