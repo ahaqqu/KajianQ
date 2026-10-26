@@ -498,12 +498,12 @@ describe("citation-label lookup — delivered answer", () => {
     const retrieval = answer.trace.events.find((event) => event.kind === "retrieval");
     const refs = retrieval?.kind === "retrieval" ? retrieval.detail.chunks : [];
 
-    // The routed filter still governs the fused arm — the row the search returned
-    // is present, whether it reaches the context as an ordinary fused hit or led by
-    // the caller-priority guarantee (ADR-0062)...
+    // The routed filter still governs the fused arm: the row the search returned is
+    // present, and it is the caller's leading hit, so the caller-priority guarantee
+    // promotes it and marks its provenance (ADR-0062) rather than leaving it anonymous.
     const nearRef = refs.find((ref) => ref.id === near);
     expect(nearRef).toBeDefined();
-    expect([undefined, CALLER_PRIORITY_ORIGIN]).toContain(nearRef?.origin);
+    expect(nearRef?.origin).toBe(CALLER_PRIORITY_ORIGIN);
     // ...and the identity-addressed read is deliberately not bound by it: the
     // label the caller named outranks the route's inferred grade, on the same
     // footing as the scope and neighbour reads (ADR-0058).

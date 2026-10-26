@@ -468,18 +468,22 @@ describe("the fused set is the pure fusion of the searches it recorded", () => {
         event.detail.topHits.map((hit) => [{ chunk: chunkOf(hit.id), rank: hit.rankDense }]),
       );
     const expected = rrfFuse(listsOf(events), (chunk) => hierarchyBonus(chunk, ORACLE_INTENT));
+    const guaranteed = ["a1", "a2", "b1"];
     const byId = (rows: readonly Chunk[]) =>
       [...rows]
         .sort((a, b) => (a.id < b.id ? -1 : 1))
         .map(({ id, score, rankDense }) => ({ id, score, rankDense }));
 
     // The returned set is fusion's set — same rows, same scores, same dense
-    // ranks. The caller-priority guarantee leads the set (ADR-0062), so
-    // membership is compared order-insensitively and the lead is asserted next.
+    // ranks — with the caller-priority guarantee's block led in the caller's rank
+    // order and fusion's own order kept for everything it did not promote.
     expect(byId(chunks)).toEqual(byId(expected));
+    expect(chunks.map((chunk) => chunk.id)).toEqual([
+      ...guaranteed,
+      ...expected.filter((chunk) => !guaranteed.includes(chunk.id)).map((chunk) => chunk.id),
+    ]);
     // The caller sub-query's top three hit rows: its primary rank 1 and 2 and the
     // fallback rank 2, in rank order with ties broken by id.
-    expect(chunks.slice(0, 3).map((chunk) => chunk.id)).toEqual(["a1", "a2", "b1"]);
     expect(chunks.slice(0, 3).every((chunk) => chunk.origin === CALLER_PRIORITY_ORIGIN)).toBe(true);
 
     // The fixture is discriminating: dropping any one sub-query's lists changes
