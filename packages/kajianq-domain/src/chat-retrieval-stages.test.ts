@@ -65,7 +65,15 @@ async function retrieve(
   const events: TraceEvent[] = [];
   const chunks = await Effect.runPromise(
     Effect.provideService(
-      retriever.retrieve(routedQuery("apa maksud ayat kursi")) as never,
+      // Opted out of the shared default on purpose: its entry carries the caller's
+      // own question, and a route the caller-priority guarantee covers wholly leaves
+      // the rerank this suite pins with no candidate to order. This route is the
+      // router's paraphrase-only fan-out, which the guarantee does not touch.
+      retriever.retrieve(
+        routedQuery("apa maksud ayat kursi", {
+          subQueries: [{ text: "makna ayat kursi", role: "factual", origin: "model" }],
+        }) as never,
+      ) as never,
       RunContext,
       { config: {}, now: () => 1, record: (event: TraceEvent) => events.push(event) } as never,
     ) as never,

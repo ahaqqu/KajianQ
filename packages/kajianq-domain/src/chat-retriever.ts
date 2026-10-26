@@ -17,6 +17,7 @@ import {
   DEFAULT_NEIGHBOUR_RADIUS,
   DEFAULT_SCOPE_EXPANSION_CAP,
   applyCallerPriority,
+  callerIndexIn,
   compareHitsByDenseRank,
   expandRetrievedSurahScope,
   expandSurahScope,
@@ -24,7 +25,6 @@ import {
   createFilterRelaxation,
   filterEntries,
   hierarchyBonus,
-  isCallerSubQuery,
   lookupCitationLabels,
   rrfFuse,
   SEARCH_HITS_TRACE_LIMIT,
@@ -87,7 +87,7 @@ export function createKajianQRetriever(deps: KajianQRetrieverDeps): Retriever<Ka
           const run = yield* RunContext;
           // The caller's own list is watched as it is searched: its top hits are a
           // priority angle (ADR-0062) the fusion vote cannot outrank on its own.
-          const callerIndex = routed.subQueries.findIndex(isCallerSubQuery);
+          const callerIndex = callerIndexIn(routed.subQueries, routed.sourceText);
           const callerLists: TrackHit[][] = [];
           const embedded = yield* deps.embedder
             .embed({ texts: routed.subQueries.map((q) => q.text), personalData: true })

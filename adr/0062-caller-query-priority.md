@@ -15,8 +15,11 @@ the ids, and which of them the returned set already held.
 
 It issues no search. The caller's sub-query is embedded and searched by the
 ordinary fan-out; this rule only selects from the list that search already
-returned. A route with no caller sub-query — a question carrying no letter and
-no digit, which is not decomposed at all — is unaffected.
+returned. That sub-query is the entry carrying the caller's verbatim question,
+whichever route produced it — the decomposition repair's factual entry or the
+router's deterministic fallback — so the guarantee does not depend on the router
+having read a reply. A route with no caller sub-query — a question carrying no
+letter and no digit, which is not decomposed at all — is unaffected.
 
 ## Why
 
