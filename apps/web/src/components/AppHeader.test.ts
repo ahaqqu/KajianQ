@@ -23,14 +23,14 @@ afterEach(cleanup);
  * visibility, and they assert the active link with `aria-current`.
  */
 describe("AppHeader navigation", () => {
-  it("offers the three destinations, Indonesian-first", async () => {
+  it("offers the four destinations, Indonesian-first", async () => {
     await renderApp("/about");
     const nav = screen.getByRole("navigation", { name: "Navigasi utama" });
     expect(
       within(nav)
         .getAllByRole("link")
         .map((link) => link.textContent),
-    ).toEqual(["Obrolan", "Koleksi", "Tentang"]);
+    ).toEqual(["Obrolan", "Koleksi", "Tentang", "FAQ"]);
     expect(screen.getByTestId("nav-menu-toggle").getAttribute("aria-label")).toBe(
       "Buka menu navigasi",
     );
@@ -99,7 +99,7 @@ describe("AppHeader navigation", () => {
       within(menu)
         .getAllByRole("link")
         .map((link) => link.textContent),
-    ).toEqual(["Obrolan", "Koleksi", "Tentang"]);
+    ).toEqual(["Obrolan", "Koleksi", "Tentang", "FAQ"]);
     fireEvent.click(within(menu).getByRole("link", { name: "Koleksi" }));
     await waitFor(() => expect(router.state.location.pathname).toBe("/collection"));
     await waitFor(() => expect(screen.queryByTestId("nav-menu")).toBeNull());
@@ -126,13 +126,42 @@ describe("AppHeader navigation", () => {
     ).toBeNull();
   });
 
-  it("keeps the theme toggle and the language select on every route", async () => {
+  it("keeps the theme toggle and the language menu on every route", async () => {
     await renderApp("/collection");
     expect(screen.getByTestId("theme-toggle")).toBeTruthy();
-    const select = screen.getByTestId("locale-select") as HTMLSelectElement;
-    expect(select.value).toBe("id");
-    fireEvent.change(select, { target: { value: "en" } });
+    const toggle = screen.getByTestId("locale-toggle");
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    expect(toggle.textContent).toContain("ID");
+
+    fireEvent.click(toggle);
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
+    fireEvent.click(screen.getByTestId("locale-option-en"));
+
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    expect(toggle.textContent).toContain("EN");
     const nav = screen.getByRole("navigation", { name: "Main navigation" });
     expect(within(nav).getByRole("link", { name: "Collection" })).toBeTruthy();
+  });
+
+  it("moves through the language options with the arrow keys", async () => {
+    await renderApp("/about");
+    fireEvent.click(screen.getByTestId("locale-toggle"));
+    expect(document.activeElement).toBe(screen.getByTestId("locale-option-id"));
+
+    const menu = screen.getByTestId("locale-menu");
+    fireEvent.keyDown(menu, { key: "ArrowDown" });
+    expect(document.activeElement).toBe(screen.getByTestId("locale-option-en"));
+    fireEvent.keyDown(menu, { key: "ArrowUp" });
+    expect(document.activeElement).toBe(screen.getByTestId("locale-option-id"));
+  });
+
+  it("closes the language menu on Escape and returns focus to it", async () => {
+    await renderApp("/about");
+    const toggle = screen.getByTestId("locale-toggle");
+    fireEvent.click(toggle);
+    expect(screen.getByTestId("locale-menu")).toBeTruthy();
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.queryByTestId("locale-menu")).toBeNull();
+    expect(document.activeElement).toBe(toggle);
   });
 });

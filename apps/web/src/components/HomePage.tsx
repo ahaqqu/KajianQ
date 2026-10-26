@@ -13,11 +13,9 @@ export function HomePage({ locale }: { locale: Locale }) {
   });
 
   return (
-    <div className="min-h-dvh">
-      <header className="border-b border-dashed border-rule">
-        <AppHeader />
-      </header>
-      <main className="mx-auto w-full max-w-3xl space-y-4 px-4 py-6">
+    <div className="flex min-h-dvh flex-col">
+      <AppHeader />
+      <main className="mx-auto w-full max-w-3xl flex-1 space-y-4 px-4 py-8">
         <div className="space-y-1">
           <h1 className="font-serif text-2xl font-semibold italic">{t(locale, "homeTitle")}</h1>
           <p className="text-sm text-muted-foreground">{t(locale, "homeSubtitle")}</p>

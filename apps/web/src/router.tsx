@@ -1,12 +1,22 @@
 import { createRootRoute, createRoute, createRouter } from "@tanstack/react-router";
-import { AboutPage, ChatPage, CollectionPage, HomePage, Shell } from "./components/pages";
+import {
+  AboutPage,
+  ChatPage,
+  CollectionPage,
+  FaqPage,
+  HomePage,
+  PrivacyPage,
+  Shell,
+  TermsPage,
+} from "./components/pages";
 import { validateChatSearch } from "./lib/chat-prefill";
 import { useLocale } from "./lib/i18n";
 
 /**
  * The product's home is the chat; the template's health card lives on /health.
- * The two public static pages — /about and /collection — are reachable from the
- * header nav and precached by the PWA, so they open offline.
+ * The public static pages — /about, /collection, /faq, /privacy and /terms —
+ * are reachable from the header nav and the footer, and precached by the PWA,
+ * so they open offline.
  *
  * `createRouteTree` builds a fresh tree per call: TanStack route objects carry
  * their own matcher state and cannot be mounted by two routers at once, so a
@@ -32,12 +42,27 @@ function Collection() {
   return <CollectionPage locale={useLocale()} />;
 }
 
+function Faq() {
+  return <FaqPage locale={useLocale()} />;
+}
+
+function Privacy() {
+  return <PrivacyPage locale={useLocale()} />;
+}
+
+function Terms() {
+  return <TermsPage locale={useLocale()} />;
+}
+
 /** The route paths, in the order the header nav lists them. */
 export const ROUTES = {
   chat: "/",
   health: "/health",
   about: "/about",
   collection: "/collection",
+  faq: "/faq",
+  privacy: "/privacy",
+  terms: "/terms",
 } as const;
 
 // Production singleton: `createRouter` owns matcher state that must live for
@@ -73,7 +98,30 @@ export function createRouteTree() {
     path: "/collection",
     component: Collection,
   });
-  return rootRoute.addChildren([indexRoute, healthRoute, aboutRoute, collectionRoute]);
+  const faqRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: "/faq",
+    component: Faq,
+  });
+  const privacyRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: "/privacy",
+    component: Privacy,
+  });
+  const termsRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: "/terms",
+    component: Terms,
+  });
+  return rootRoute.addChildren([
+    indexRoute,
+    healthRoute,
+    aboutRoute,
+    collectionRoute,
+    faqRoute,
+    privacyRoute,
+    termsRoute,
+  ]);
 }
 
 // Never make the singleton above lazy or recomputed: it must be built at module

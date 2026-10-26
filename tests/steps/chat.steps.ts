@@ -560,7 +560,9 @@ When(
     );
     const nav = page.getByRole("navigation", { name: "Navigasi utama" });
     await nav.getByRole("link", { name: "Tentang" }).click();
-    await expect(page.getByRole("heading", { level: 1 })).toHaveText("Tentang KajianQ");
+    await expect(page.getByRole("heading", { level: 1 })).toContainText(
+      "Dibangun untuk membaca perlahan",
+    );
     await nav.getByRole("link", { name: "Obrolan" }).click();
     await expect(page.getByTestId("composer")).toBeVisible();
   },

@@ -21,7 +21,6 @@ export function Transcript({
   persistedMessageIds,
   busy,
   loadingTranscript,
-  transcriptTruncated,
   online,
   error,
   stagedLabel,
@@ -33,7 +32,6 @@ export function Transcript({
   persistedMessageIds: ReadonlySet<string>;
   busy: boolean;
   loadingTranscript: boolean;
-  transcriptTruncated: boolean;
   online: boolean;
   error: TranscriptError;
   /** The staged waiting label while `busy` (the caller owns the stage clock). */
@@ -70,11 +68,6 @@ export function Transcript({
       )}
 
       <div className="space-y-4 pb-4">
-        {transcriptTruncated && !busy && (
-          <MonoLabel data-testid="transcript-truncated" className="text-[11px]">
-            {t(locale, "transcriptTruncated")}
-          </MonoLabel>
-        )}
         {messages.length === 0 && !loadingTranscript && !busy && (
           <EmptyState locale={locale} onSuggest={onSuggest} />
         )}
@@ -103,7 +96,22 @@ export function Transcript({
  * chrome rather than the composer's form.
  */
 export function TranscriptMeta({ locale }: { locale: Locale }) {
-  return <MonoLabel className="mt-2">{t(locale, "footerMeta")}</MonoLabel>;
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 pt-1 pb-1">
+      <MonoLabel className="text-[10px]">{t(locale, "footerMeta")}</MonoLabel>
+      <div className="flex flex-wrap gap-x-4 font-mono text-[10px] uppercase tracking-[0.15em] text-muted-foreground">
+        <a href="/privacy" className="hover:text-foreground">
+          {t(locale, "footerPrivacy")}
+        </a>
+        <a href="/terms" className="hover:text-foreground">
+          {t(locale, "footerTerms")}
+        </a>
+        <a href="/faq" className="hover:text-foreground">
+          {t(locale, "navFaq")}
+        </a>
+      </div>
+    </div>
+  );
 }
 
 function errorCopy(locale: Locale, error: Exclude<TranscriptError, "load" | null>): string {

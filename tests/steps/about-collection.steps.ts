@@ -48,7 +48,10 @@ Then("I see the collection page", async ({ page }) => {
 });
 
 Then("I see the about page", async ({ page }) => {
-  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Tentang KajianQ");
+  await expect(page.getByRole("heading", { level: 1 })).toContainText(
+    "Dibangun untuk membaca perlahan",
+  );
+  await expect(page.getByTestId("about-mission")).toBeVisible();
   await expect(page).toHaveURL(/\/about$/);
 });
 
@@ -136,7 +139,7 @@ Then("I see the collection page in English", async ({ page }) => {
 });
 
 Then("I see the about page in English", async ({ page }) => {
-  await expect(page.getByRole("heading", { level: 1 })).toHaveText("About KajianQ");
+  await expect(page.getByRole("heading", { level: 1 })).toContainText("Built for reading slowly");
   await expect(page.getByTestId("about-principles")).toContainText("Name the source");
 });
 
@@ -145,11 +148,11 @@ Then("I see the about page in English", async ({ page }) => {
 // marked in use today and the retired vendors kept as no-serving-role rows.
 
 When("I see the privacy notice rendered from the register", async ({ page }) => {
-  const notice = page.getByTestId("about-privacy");
+  const notice = page.getByTestId("privacy-notice");
   await expect(notice).toContainText("Siapa yang memproses data Anda");
-  await expect(notice.getByTestId("about-privacy-controller")).toContainText("Angga (@ahaqqu)");
+  await expect(notice.getByTestId("privacy-notice-controller")).toContainText("Angga (@ahaqqu)");
   // Every register row is its own card; the count is a floor, not the register size.
-  const processors = notice.getByTestId("about-privacy-processor");
+  const processors = notice.getByTestId("privacy-notice-processor");
   expect(await processors.count()).toBeGreaterThanOrEqual(7);
   await expect(notice).toContainText("netcup GmbH");
   await expect(notice).toContainText("Neon, Inc.");
@@ -160,15 +163,15 @@ When("I see the privacy notice rendered from the register", async ({ page }) => 
 Then(
   "I see the netcup host marked as in use today, with the decommissioned vendors marked as having no serving role",
   async ({ page }) => {
-    const netcup = page.getByTestId("about-privacy-processor").filter({ hasText: "netcup GmbH" });
+    const netcup = page.getByTestId("privacy-notice-processor").filter({ hasText: "netcup GmbH" });
     await expect(netcup).toHaveAttribute("data-status", "current");
-    await expect(netcup.getByTestId("about-privacy-processor-status")).toHaveText(
+    await expect(netcup.getByTestId("privacy-notice-processor-status")).toHaveText(
       "Dipakai hari ini",
     );
     // Retired vendors stay registered — their history keeps its row — but each
     // says "no serving role".
     for (const vendor of ["Cloudflare, Inc.", "Neon, Inc."]) {
-      const row = page.getByTestId("about-privacy-processor").filter({ hasText: vendor });
+      const row = page.getByTestId("privacy-notice-processor").filter({ hasText: vendor });
       await expect(row).toHaveAttribute("data-status", "no-serving-role");
       await expect(row).toContainText("Tanpa peran melayani");
     }
@@ -179,7 +182,7 @@ Then(
   "I see the retention row for reverse-proxy access logs marked {string}",
   async ({ page }, mark: string) => {
     const row = page
-      .getByTestId("about-privacy-retention-row")
+      .getByTestId("privacy-notice-retention-row")
       .filter({ hasText: "Log akses reverse proxy" });
     // The row renders as current — the logrotate stanza is applied on the host —
     // and it must not claim a ticket for work that is done.
@@ -191,7 +194,7 @@ Then(
 );
 
 Then("the erasure card names the endpoint that erases the data", async ({ page }) => {
-  const erasure = page.getByTestId("about-privacy-erasure");
+  const erasure = page.getByTestId("privacy-notice-erasure");
   await expect(erasure).toContainText("DELETE /v1/auth/me");
   await expect(erasure).toContainText(
     "sesi, sesi obrolan dan pesannya, trace setiap jawaban, dan masukan",
@@ -201,10 +204,12 @@ Then("the erasure card names the endpoint that erases the data", async ({ page }
 });
 
 Then("I see the privacy notice in English", async ({ page }) => {
-  const notice = page.getByTestId("about-privacy");
+  const notice = page.getByTestId("privacy-notice");
   await expect(notice).toContainText("Who processes your data");
   await expect(notice).toContainText("Not for personal data");
-  await expect(notice.getByTestId("about-privacy-erasure")).toContainText("no button for this yet");
+  await expect(notice.getByTestId("privacy-notice-erasure")).toContainText(
+    "no button for this yet",
+  );
 });
 
 // --- The browser-storage line --------------------------------------------
@@ -214,7 +219,7 @@ Then("I see the privacy notice in English", async ({ page }) => {
 Then(
   "I see the browser-storage line: no cookies, localStorage keys, erasable",
   async ({ page }) => {
-    const storage = page.getByTestId("about-privacy").getByTestId("about-privacy-storage");
+    const storage = page.getByTestId("privacy-notice").getByTestId("privacy-notice-storage");
     await expect(storage).toBeVisible();
     await expect(storage).toContainText("tidak memasang cookie");
     await expect(storage).toContainText("tanpa pelacakan");
@@ -226,7 +231,7 @@ Then(
 );
 
 Then("I see the browser-storage line in English", async ({ page }) => {
-  const storage = page.getByTestId("about-privacy").getByTestId("about-privacy-storage");
+  const storage = page.getByTestId("privacy-notice").getByTestId("privacy-notice-storage");
   await expect(storage).toContainText("sets no cookies");
   await expect(storage).toContainText("no tracking");
   await expect(storage).toContainText("erase them yourself");

@@ -5,7 +5,7 @@ import {
   createRouter,
 } from "@tanstack/react-router";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { createElement, type ReactElement } from "react";
 import { createRouteTree } from "../router";
 
@@ -48,4 +48,15 @@ export function wrapInRouter(element: ReactElement) {
     history: createMemoryHistory({ initialEntries: ["/"] }),
   });
   return createElement(RouterContextProvider, { router, children: element });
+}
+
+/**
+ * Switches the app locale through the header's real control — opening the
+ * language menu and choosing an option. Tests must not reach for the old
+ * `<select>`: the control is a menu now, and a helper keeps every test driving
+ * the same interaction a reader does.
+ */
+export function chooseLocale(locale: "en" | "id"): void {
+  fireEvent.click(screen.getByTestId("locale-toggle"));
+  fireEvent.click(screen.getByTestId(`locale-option-${locale}`));
 }

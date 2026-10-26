@@ -44,6 +44,8 @@
   --rule: oklch(27% 0.035 162 / 0.1);
   --surface: oklch(93.5% 0.02 92);
   --radius: 0.75rem;
+  /* Native controls and scrollbars follow the theme, not the OS. */
+  color-scheme: light;
 }
 
 .dark {
@@ -68,6 +70,7 @@
   --ring: oklch(68% 0.078 92 / 0.7);
   --rule: oklch(93% 0.014 92 / 0.1);
   --surface: oklch(15.5% 0.012 153);
+  color-scheme: dark;
 }
 
 @theme inline {

@@ -50,20 +50,20 @@ Feature: About and Collection pages
     When I open the about page
     Then the page has no serious accessibility violations
 
-  Scenario: The about page names who processes the data, for how long, and how to erase it (#179)
-    When I open the about page
+  Scenario: The privacy page names who processes the data, for how long, and how to erase it (#179)
+    When I open the privacy page
     Then I see the privacy notice rendered from the register
     And I see the netcup host marked as in use today, with the decommissioned vendors marked as having no serving role
     And I see the retention row for reverse-proxy access logs marked "14 hari"
     And the erasure card names the endpoint that erases the data
 
   Scenario: The privacy notice follows the language switch (#179)
-    When I open the about page
+    When I open the privacy page
     And I switch the language to English
     Then I see the privacy notice in English
 
   Scenario: The privacy notice states what stays in the browser (#179)
-    When I open the about page
+    When I open the privacy page
     Then I see the browser-storage line: no cookies, localStorage keys, erasable
     When I switch the language to English
     Then I see the browser-storage line in English
