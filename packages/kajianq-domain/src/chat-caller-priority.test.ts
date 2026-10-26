@@ -398,3 +398,36 @@ describe("the label keeps the guaranteed hits out of the rerank reorder", () => 
     expect(chunks.slice(3).every((chunk) => typeof chunk.rerankScore === "number")).toBe(true);
   });
 });
+
+describe("a retrieval the guarantee covers entirely skips the rerank", () => {
+  it("makes no decision call, and the trace says the guarantee caused the skip", async () => {
+    const { decider, specs } = answering([0.5, 0.5]);
+    // The caller's sub-query alone: its three rows are the whole fused set, so the
+    // guarantee labels every candidate the rerank would have ranked.
+    const { chunks, events } = await run({ subQueries: [CALLER_SUB_QUERY], decider });
+
+    // No paid call: the decider was never asked.
+    expect(specs).toHaveLength(0);
+    expect(
+      events.some(
+        (event) =>
+          event.kind === "llm_call" &&
+          (event.detail as { purpose?: string } | undefined)?.purpose === "rerank",
+      ),
+    ).toBe(false);
+
+    const rerank = events.find((event) => event.kind === "rerank")?.detail as
+      | { outcome?: string; reason?: string; items?: unknown[] }
+      | undefined;
+    expect(rerank).toMatchObject({ outcome: "preserved", reason: "too_few_candidates" });
+
+    // Attribution: retrieval returned a set large enough to rerank, and the whole
+    // set is the guarantee's block — so the empty candidate list is the label's
+    // doing, not a retrieval too small to offer two candidates.
+    expect(chunks).toHaveLength(CALLER_PRIORITY_K);
+    expect(chunks.every((chunk) => chunk.origin === CALLER_PRIORITY_ORIGIN)).toBe(true);
+    expect(rerank?.items).toEqual([]);
+    // The labelled rows keep the order retrieval gave them.
+    expect(chunks.map((chunk) => chunk.id)).toEqual(CALLER_ROWS);
+  });
+});
