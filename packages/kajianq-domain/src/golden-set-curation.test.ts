@@ -24,17 +24,24 @@ const FIXTURE = JSON.parse(
 ) as { questions: GoldenQuestion[] };
 
 /**
- * The corpus's own labels for every hadith address the Golden Set and the
- * matn-identity map name, read from the immutable raw editions and pinned here.
- * The corpus is not available to a test process, so this index is what makes
- * "the label names a corpus row" checkable offline: a curated label absent from
- * it either was never read in the corpus or was mistyped, and the test fails
- * rather than trusting the fixture.
+ * The curated corpus-label index: every hadith address the Golden Set and the
+ * matn-identity map name, with the label the citation gate folds it to, its
+ * consolidated grade, and the edition files and manifest digests the curator
+ * read it in.
  */
 const CORPUS_LABELS = JSON.parse(
   readFileSync(new URL("../fixtures/hadith-corpus-labels-v0.json", import.meta.url), "utf8"),
 ) as {
-  labels: { label: string; collection: HadithCollection; hadithNo: string; grade: Grade | null }[];
+  labels: {
+    label: string;
+    collection: HadithCollection;
+    hadithNo: string;
+    grade: Grade | null;
+    arabicEdition: string;
+    arabicEditionSha256: string;
+    indonesianEdition: string;
+    indonesianEditionSha256: string;
+  }[];
 };
 
 const IDENTITY_MAP = JSON.parse(
@@ -43,6 +50,66 @@ const IDENTITY_MAP = JSON.parse(
 
 /** The index keyed by the comparison form the citation gate builds. */
 const CORPUS_BY_LABEL = new Map(CORPUS_LABELS.labels.map((entry) => [entry.label, entry]));
+
+/**
+ * The edition files and SHA256 digests the index was curated against, as the
+ * corpus manifest records them. Every entry must carry its collection's pair:
+ * a changed corpus or a re-read is then a deliberate update to both the entry
+ * and this pin, and an operator with the corpus can verify the recorded file
+ * with `sha256sum`.
+ */
+const SOURCE_EDITIONS: Record<
+  HadithCollection,
+  {
+    arabicEdition: string;
+    arabicEditionSha256: string;
+    indonesianEdition: string;
+    indonesianEditionSha256: string;
+  }
+> = {
+  abudawud: {
+    arabicEdition: "hadith/ara-abudawud.json",
+    arabicEditionSha256: "216139c5f40a8147e700d62ffa3b5b2fe45d0e034f86941a193c598c10056189",
+    indonesianEdition: "hadith/ind-abudawud.json",
+    indonesianEditionSha256: "43eeef2a9b020219075bbb7ab2cbdb4d68c4e0a4158d12a7cb2b1da081712b51",
+  },
+  bukhari: {
+    arabicEdition: "hadith/ara-bukhari.json",
+    arabicEditionSha256: "e34a3402889ca378871da3c5984b7875c680920e93f1c8738ac7afe502179562",
+    indonesianEdition: "hadith/ind-bukhari.json",
+    indonesianEditionSha256: "a3005e17d00578bc4937f2c43575c2a3883c5f848c25ca66b064d92f5144bafb",
+  },
+  ibnmajah: {
+    arabicEdition: "hadith/ara-ibnmajah.json",
+    arabicEditionSha256: "b406e6be81588ab0ec1ddbed32f5fd95bbcdda242c460d88331e82eb5c2bc0aa",
+    indonesianEdition: "hadith/ind-ibnmajah.json",
+    indonesianEditionSha256: "57d24d566170dfbdf772264cf2ba20ff113f10c4c43a41190b502f479df56876",
+  },
+  malik: {
+    arabicEdition: "hadith/ara-malik.json",
+    arabicEditionSha256: "088b1f354e110211da006d47e37dd8f8837368f318ed683271f0fdb0f09a3ab5",
+    indonesianEdition: "hadith/ind-malik.json",
+    indonesianEditionSha256: "9ae098a8f282d99fa858dda064ae6578bc64a54906aa9b59490b5b2000b36772",
+  },
+  muslim: {
+    arabicEdition: "hadith/ara-muslim.json",
+    arabicEditionSha256: "194073b24090c5368e4d14a3f55c9e0ef144c7437bd7e5aa83aa4d2bc54a8ea0",
+    indonesianEdition: "hadith/ind-muslim.json",
+    indonesianEditionSha256: "a330ce352dbe509f3f40305daa78b0ed8c4fcb0f8fd3ea96cd7251c267509c5a",
+  },
+  nasai: {
+    arabicEdition: "hadith/ara-nasai.json",
+    arabicEditionSha256: "c705983c19bb089c87cd6531aff609bd94d862183ed0859115b0ff991826a956",
+    indonesianEdition: "hadith/ind-nasai.json",
+    indonesianEditionSha256: "a461e7f1cf64fb0d908a27b5947eb5218363b7bdea872f98c317fddc72eb4b3e",
+  },
+  tirmidhi: {
+    arabicEdition: "hadith/ara-tirmidhi.json",
+    arabicEditionSha256: "408028cd56329ed78edbe3ad443beb96b58e16c3e5bd49f9bc7b0eac77c8820f",
+    indonesianEdition: "hadith/ind-tirmidhi.json",
+    indonesianEditionSha256: "0b405ba8df14d7d90923f3135ce2a3327d827fdbbb036cc0f9ea2979ae280c19",
+  },
+};
 
 /** Every hadith label a row demands: its requirement and any alternative it opts in to. */
 function curatedHadithLabels(): string[] {
@@ -277,19 +344,32 @@ describe("golden-set-v0 curation", () => {
   });
 });
 
-/** The corpus grade each opt-in alternative carries — the evidence the curator
- * read before accepting it, pinned so a silent grade change in the index shows. */
-const ALTERNATIVE_GRADES: Record<string, Grade> = {
+/** The grade each opt-in alternative carries in the index (`null` = ungraded,
+ * e.g. a sahihayn address) — the evidence the curator read before accepting it,
+ * pinned so a silent grade change in the index shows. The key set is pinned to
+ * the alternatives too, so a new member enters only with its grade. */
+const ALTERNATIVE_GRADES: Record<string, Grade | null> = {
   "HR. Nasai no. 598": "sahih",
   "HR. Ibn Majah no. 1070": "sahih",
+  "HR. Bukhari no. 5027": null,
+  "HR. Bukhari no. 4937": null,
   "HR. Nasai no. 5148": "sahih",
   "HR. Nasai no. 5265": "hasan",
   "HR. Tirmidhi no. 1720": "hasan",
   "HR. Ibn Majah no. 3597": "sahih",
 };
 
-describe("every curated hadith label names a corpus row", () => {
-  it("indexes each label in the form the corpus renders it", () => {
+/**
+ * A drift check, not evidence. This index and the Golden Set are both hand-written
+ * declarations, so a label the curator misread in the corpus and wrote into both
+ * passes: the test never opens the corpus. What it does catch is disagreement — a
+ * requirement, alternative or map claim that was not registered, a grade the index
+ * carries differently, an entry that no longer renders its own label — and the
+ * recorded edition files and digests let an operator with the corpus audit the
+ * reading. The fixture's own `$comment` states the same residual risk.
+ */
+describe("the curated corpus-label index registers every curated hadith label", () => {
+  it("renders each entry's label from its own collection, number and grade", () => {
     expect(CORPUS_LABELS.labels.length).toBeGreaterThan(0);
     for (const entry of CORPUS_LABELS.labels) {
       expect(
@@ -308,7 +388,24 @@ describe("every curated hadith label names a corpus row", () => {
     );
   });
 
-  it("carries every requirement and every opted-in alternative", () => {
+  it("records the edition files and manifest digests each label was read in", () => {
+    expect(new Set(CORPUS_LABELS.labels.map((entry) => entry.collection))).toEqual(
+      new Set(Object.keys(SOURCE_EDITIONS)),
+    );
+    for (const entry of CORPUS_LABELS.labels) {
+      expect(
+        {
+          arabicEdition: entry.arabicEdition,
+          arabicEditionSha256: entry.arabicEditionSha256,
+          indonesianEdition: entry.indonesianEdition,
+          indonesianEditionSha256: entry.indonesianEditionSha256,
+        },
+        entry.label,
+      ).toEqual(SOURCE_EDITIONS[entry.collection]);
+    }
+  });
+
+  it("registers every requirement and every opted-in alternative", () => {
     const labels = curatedHadithLabels();
     expect(labels.length).toBeGreaterThan(0);
     for (const label of labels) {
@@ -316,7 +413,7 @@ describe("every curated hadith label names a corpus row", () => {
     }
   });
 
-  it("carries every label the matn-identity map claims", () => {
+  it("registers every label the matn-identity map claims", () => {
     for (const group of IDENTITY_MAP.groups) {
       for (const label of [group.canonical, ...group.members]) {
         expect(CORPUS_BY_LABEL.has(normalizeCitationLabel(label)), label).toBe(true);
@@ -324,7 +421,14 @@ describe("every curated hadith label names a corpus row", () => {
     }
   });
 
-  it("pins the corpus grade each alternative's evidence rests on", () => {
+  it("pins a grade for every opted-in alternative", () => {
+    const alternatives = FIXTURE.questions.flatMap(
+      (question) => question.citationAlternatives ?? [],
+    );
+    expect(Object.keys(ALTERNATIVE_GRADES).sort()).toEqual([...alternatives].sort());
+  });
+
+  it("pins the grade each opt-in alternative carries in the index", () => {
     for (const [label, grade] of Object.entries(ALTERNATIVE_GRADES)) {
       expect(CORPUS_BY_LABEL.get(label)?.grade, label).toBe(grade);
     }

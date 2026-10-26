@@ -240,11 +240,20 @@ describe("D1b — a signed same-ruling relation never satisfies the exact-addres
 });
 
 describe("D3b — the curated alternative sets are the opt-in that widens 006 and 017", () => {
-  it("passes 006 through its own set, not through the same-ruling relation", () => {
+  it("passes 006 through its own set and accepts each member alone", () => {
+    const entry = ROWS["gs-v0-006"];
+    // The curated set is this case's input; pin it so a dropped member cannot
+    // quietly shrink the loop below.
+    const alternatives = entry.row.citationAlternatives ?? [];
+    expect(alternatives).toEqual(["HR. Nasai no. 598", "HR. Ibn Majah no. 1070"]);
     const scored = outcome("gs-v0-006");
     expect(scored.citationValidity).toBe(1); // 598 and 1070 are curator-accepted answers
     expect(scored.citationAddressRecall).toBe(1); // the required address was retrieved
     expect(scored.passed).toBe(true);
+    for (const alternative of alternatives) {
+      const alone = score(entry.row, [alternative], entry.retrieved, WITH_BOTH);
+      expect(alone.citationValidity, alternative).toBe(1);
+    }
   });
 
   it("passes 017 through its own set and accepts each member alone", () => {
@@ -369,9 +378,9 @@ describe("the projection the PR states is derived from these decisions", () => {
     ]);
     // 007 is the only row neither instrument reaches; it needs the concept lever.
     expect(outcome("gs-v0-007").identitySatisfied?.passed).toBe(false);
-    // 008 and 012 move on a signed identity and a curated verse pair; 006 and 017
-    // move on their own alternative sets; 016 stays red on the exact address this
-    // recorded evidence never retrieved, and the reported figure shows it.
+    // 012 moves on the curated verse pair; 006, 008 and 017 move on their own
+    // alternative sets; 016 stays red on the exact address this recorded evidence
+    // never retrieved, and the reported figure shows it.
     expect(gatePassing.length).toBe(4);
     expect(reportedPassing.length).toBe(5);
   });
