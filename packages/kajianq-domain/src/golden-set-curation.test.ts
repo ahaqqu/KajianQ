@@ -335,7 +335,7 @@ describe("every curated hadith label names a corpus row", () => {
     const mapped = IDENTITY_MAP.groups.flatMap((group) => [group.canonical, ...group.members]);
     // 331 is a Successor's fatwa, not a Prophetic report; 1454 is the zakat
     // schedule, not the obligation/recipient ruling; 5149 and 5160 state the
-    // \"except a cut piece\" exception, a different ruling from the prohibition.
+    // "except a cut piece" exception, a different ruling from the prohibition.
     for (const label of [
       "HR. Malik no. 331",
       "HR. Bukhari no. 1454",
