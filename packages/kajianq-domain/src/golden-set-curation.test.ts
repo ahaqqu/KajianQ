@@ -162,10 +162,10 @@ const QUESTIONS: Record<string, string> = {
   "gs-v0-010": "Bagaimana hukum riba dalam transaksi? Sebutkan ayat dan haditsnya.",
   "gs-v0-011": "Sebutkan hadits tentang kebersihan itu sebagian dari iman!",
   "gs-v0-012": "Apa makna asmaul husna Ar-Rahman dan Ar-Rahim?",
-  "gs-v0-013": "Bagaimana adab makan menurut hadits Rasulullah?",
+  "gs-v0-013": "Sebutkan hadits tentang makan dan minum dengan tangan kanan",
   "gs-v0-014": "Apa makna ikhlas berdasarkan QS. 98:5?",
   "gs-v0-015": "What does Surah Al-Fatihah mean and why is it recited in every prayer?",
-  "gs-v0-016": "Which hadith states the obligation of zakat on wealth, and who is entitled to it?",
+  "gs-v0-016": "What did the Prophet tell Mu'adh about zakat when he sent him to Yemen?",
   "gs-v0-017": "What is the ruling on gold and silk for men, and what is the evidence?",
   "gs-v0-018": "Berapa jumlah rakaat shalat Tarawih yang paling utama menurut hadits sahih?",
   "gs-v0-019": "Kapan kiamat akan terjadi? Sebutkan tahun pastinya!",
@@ -201,7 +201,7 @@ const REQUIREMENTS: Record<string, CuratedRequirement> = {
   },
   "gs-v0-004": {
     expectedSourceTypes: ["hadith"],
-    requiredCitations: ["HR. Ibnu Majah no. 224"],
+    requiredCitations: ["HR. Tirmidhi no. 2646"],
     expectedBehavior: "answer",
   },
   "gs-v0-005": {
@@ -434,18 +434,31 @@ describe("the curated corpus-label index registers every curated hadith label", 
     }
   });
 
-  it("keeps the named different-ruling neighbours out of the sets and the map", () => {
+  it("pins the sahih grade the re-curated knowledge requirement's retrieval depends on", () => {
+    // The route reads gs-v0-004 as a question about sahih evidence, so its
+    // requirement must be a sahih address: a dhaif one is excluded before
+    // retrieval at any rank, which is why Ibnu Majah 224 is not the requirement.
+    expect(CORPUS_BY_LABEL.get("HR. Tirmidhi no. 2646")?.grade).toBe("sahih");
+  });
+
+  it("keeps the named excluded neighbours out of the requirements, the sets and the map", () => {
+    const required = FIXTURE.questions.flatMap((question) => question.requiredCitations);
     const sets = FIXTURE.questions.flatMap((question) => question.citationAlternatives ?? []);
     const mapped = IDENTITY_MAP.groups.flatMap((group) => [group.canonical, ...group.members]);
     // 331 is a Successor's fatwa, not a Prophetic report; 1454 is the zakat
     // schedule, not the obligation/recipient ruling; 5149 and 5160 state the
-    // "except a cut piece" exception, a different ruling from the prohibition.
+    // "except a cut piece" exception, a different ruling from the prohibition;
+    // 224 is a different narration (Anas, "seeking knowledge is obligatory")
+    // that every grader grades dhaif, so a sahih filter drops it before
+    // retrieval and no requirement, set or map may name it.
     for (const label of [
       "HR. Malik no. 331",
       "HR. Bukhari no. 1454",
       "HR. Nasai no. 5149",
       "HR. Nasai no. 5160",
+      "HR. Ibnu Majah no. 224",
     ]) {
+      expect(required, label).not.toContain(label);
       expect(sets, label).not.toContain(label);
       expect(mapped, label).not.toContain(label);
     }

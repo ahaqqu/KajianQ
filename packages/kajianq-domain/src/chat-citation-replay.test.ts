@@ -38,11 +38,28 @@ const GOLDEN = JSON.parse(
  */
 const RETIRED_IDS = new Set(["gs-v0-007"]);
 
+/**
+ * Rows whose requirement the head Golden Set re-curated after this run was
+ * recorded, with the requirement the run carried in the comparison form. The
+ * snapshot stays what the run was scored against; the head set must have moved
+ * off it, so either side changing is a deliberate edit.
+ */
+const RECURATED_REQUIREMENTS = new Map<string, string[]>([
+  ["gs-v0-004", ["HR. Ibn Majah no. 224"]],
+]);
+
 describe("golden-set-v0 replay fixture — the head build's comparison form", () => {
   it("carries every requirement in the comparison form the gate compares", () => {
     for (const row of REPLAY.rows) {
       const question = GOLDEN.questions.find((candidate) => candidate.id === row.questionId);
-      if (question === undefined) {
+      const recurated = RECURATED_REQUIREMENTS.get(row.questionId);
+      if (recurated !== undefined) {
+        expect(row.required, `${row.questionId}: the recorded requirement`).toEqual(recurated);
+        expect(
+          question?.requiredCitations.map(normalizeCitationLabel),
+          `${row.questionId}: the head requirement`,
+        ).not.toEqual(recurated);
+      } else if (question === undefined) {
         expect(
           RETIRED_IDS.has(row.questionId),
           `${row.questionId}: not in the Golden Set, not retired`,
