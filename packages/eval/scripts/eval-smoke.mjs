@@ -125,6 +125,7 @@ const result = await evalpkg.runGoldenSet(selection.set, {
   citationIdentity: harness.citationIdentity,
   reportedCitationIdentity: harness.reportedCitationIdentity,
   expansionOrigin: harness.expansionOrigin,
+  callerPriorityOrigin: harness.callerPriorityOrigin,
   // The deployed smoke REPORTS citation-address recall but does not gate on it.
   // Its held-out sample is not derived from the retrieval gap, so a known-unfixed
   // retrieval miss could redden a deploy for a reason unrelated to the change

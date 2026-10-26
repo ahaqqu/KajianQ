@@ -199,7 +199,7 @@ export type ChatCitationsFrame = v.InferOutput<typeof ChatCitationsFrameSchema>;
  *
  * `source` is joined by chunk id — a missing row renders by id, never a
  * fabricated title. `rerankScore` sits beside `score` because the panel lists
- * the reranked order, and the fused number alone would no longer explain it.
+ * the retrieval order — guarantee-led, then reranked — not a fused score order.
  */
 export const ChatTraceChunkSchema = v.object({
   id: v.pipe(v.string(), v.minLength(1)),

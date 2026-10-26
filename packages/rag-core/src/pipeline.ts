@@ -41,13 +41,15 @@ export type Chunk = {
    */
   rerankScore?: number;
   /**
-   * Why this chunk is in the retrieved set, as a caller-chosen opaque label
-   * (ADR-0045). Absent means the retriever's fused tracks produced it; a
-   * retriever that adds chunks by another path labels them so the Trace can
-   * tell the two apart. A reordering decorator treats this field as the fused
-   * marker: only the unlabelled block is reordered, and a labelled chunk keeps
-   * the position the wrapped retriever gave it. Outside the reorder the engine
-   * never interprets the label.
+   * Why this chunk is in the retrieved set, as a caller-chosen opaque label.
+   * Absent means no rule labelled it, which is the fused tracks' ordinary shape.
+   * A label names either a path that *added* the chunk (ADR-0045) or a rule that
+   * *promoted* a fused row and marked its provenance (ADR-0062) — the engine
+   * carries the distinction, the caller names it. A reordering decorator reads
+   * the label as one signal: only the unlabelled block is reordered, and a
+   * labelled chunk keeps the position the wrapped retriever gave it, whatever
+   * the label's own meaning. Outside that reorder the engine never interprets
+   * the value.
    */
   origin?: string;
   metadata?: Record<string, unknown>;

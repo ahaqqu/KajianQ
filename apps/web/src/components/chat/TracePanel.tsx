@@ -201,9 +201,9 @@ export function TracePanel({
 
 /**
  * One technical-layer passage: display title (or id) plus its scores. The list
- * is in retrieval order, which is the reranked order when a rerank applied, so
- * the rerank score is rendered beside the fused score — the fused number alone
- * would not explain the order it appears in.
+ * is the retrieval order — the caller-priority guarantee's rows lead, then the
+ * block the rerank reordered — so the rerank score is rendered beside the fused
+ * score: the fused number alone would not explain that order.
  */
 function ChunkRow({
   chunk,

@@ -67,8 +67,10 @@ export const ChunkRefSchema = v.object({
    * rerank reordered this chunk.
    */
   rerankScore: v.optional(v.pipe(v.number(), v.minValue(0), v.maxValue(1))),
-  /** Why this chunk is in the set: an opaque caller label (ADR-0045).
-   * Absent = the fused tracks produced it, so older traces stay readable. */
+  /** Why this chunk is in the set: an opaque caller label. Absent = no rule
+   * labelled it, which is the fused tracks' ordinary shape, so older traces stay
+   * readable. A label can name a path that added the chunk (ADR-0045) or a rule
+   * that promoted a fused row and marked its provenance (ADR-0062). */
   origin: v.optional(v.pipe(v.string(), v.minLength(1))),
 });
 
@@ -85,3 +87,18 @@ export type ChunkRef = v.InferOutput<typeof ChunkRefSchema>;
  * value with it (a longer list fails the parse) rather than truncate silently.
  */
 export const SEARCH_HITS_TRACE_LIMIT = 10;
+
+/**
+ * The most of the caller's own leading dense hits the caller-priority guarantee
+ * may carry into the context, and the default the retriever applies. Small on
+ * purpose: these are the caller's strongest rows, not a second fused block, and
+ * every one of them is kept out of the rerank's reorder and leads its
+ * presentation slot.
+ *
+ * It is a **ceiling**, not only a convention: a `caller_priority` record naming
+ * more ids fails the parse, so a run configured with a larger bound must not
+ * write one. The retriever's `callerPriorityK` knob therefore defaults to this
+ * value and the composition root refuses a larger one as a typed config failure
+ * — the trace never fails to parse on a value the config allowed through.
+ */
+export const CALLER_PRIORITY_K = 3;

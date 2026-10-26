@@ -1,3 +1,4 @@
+import { CALLER_PRIORITY_K } from "@app/contracts";
 import { resolvePostgresStore, type RagStore } from "@app/infra";
 
 /** The chat wiring's configuration surface: the typed config failure, the store
@@ -69,4 +70,24 @@ export function parseNeighbourCap(raw: string | undefined): number | undefined {
 /** `LABEL_LOOKUP_CAP`: chunks the citation-label lookup may add per query. */
 export function parseLabelLookupCap(raw: string | undefined): number | undefined {
   return parseBoundedKnob(raw, "LABEL_LOOKUP_CAP");
+}
+
+/**
+ * `CALLER_PRIORITY_K`: how many of the caller sub-query's leading hits the
+ * caller-priority guarantee promotes. It takes the bounded-knob rule — absent
+ * means the domain default, `0` disables the guarantee, a malformed value is a
+ * typed config failure — plus one bound of its own: the contract's
+ * `caller_priority` record refuses more ids than `CALLER_PRIORITY_K`, so a
+ * configured value above it fails here, at wiring time, rather than writing a
+ * trace that cannot be parsed back for every answer the box serves.
+ */
+export function parseCallerPriorityK(raw: string | undefined): number | undefined {
+  const value = parseBoundedKnob(raw, "CALLER_PRIORITY_K");
+  if (value !== undefined && value > CALLER_PRIORITY_K) {
+    throw new ChatConfigError(
+      `chat route: CALLER_PRIORITY_K must not exceed the trace's bound of ${CALLER_PRIORITY_K} (got "${raw}")`,
+      "CALLER_PRIORITY_K",
+    );
+  }
+  return value;
 }

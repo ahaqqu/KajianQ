@@ -7,6 +7,7 @@ import { TraceEventSchema } from "./trace-events";
 // module — the cost shape included, which lives in `./trace-primitives` and
 // nowhere else (no second spelling of it is a valid layout).
 export {
+  CALLER_PRIORITY_K,
   ChunkRefSchema,
   CostRecordSchema,
   SEARCH_HITS_TRACE_LIMIT,

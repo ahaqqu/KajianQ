@@ -1,10 +1,11 @@
 import * as v from "valibot";
-import { CostRecordSchema, SEARCH_HITS_TRACE_LIMIT } from "./trace-primitives";
+import { CALLER_PRIORITY_K, CostRecordSchema, SEARCH_HITS_TRACE_LIMIT } from "./trace-primitives";
 
 /**
  * The retriever's trace variants that do not fit in the union's own file: the
- * raw per-search hit list (`search_hits`) and the decision-model reorder
- * (`rerank`) of the fused candidates.
+ * raw per-search hit list (`search_hits`), the caller's guaranteed leading hits
+ * (`caller_priority`), and the decision-model reorder (`rerank`) of the fused
+ * candidates.
  *
  * Owner module, composed verbatim into the closed {@link TraceEventSchema}
  * union: `kind` stays the only discriminator and no reader branches on a
@@ -67,6 +68,51 @@ export const searchHitsEventSchema = v.object({
     // describes a search that never happened, and it is the pairing every reader
     // of this event relies on to tell "returned nothing" from "returned a sample".
     v.check((detail) => detail.topHits.length <= detail.hits, "topHits cannot exceed hits"),
+  ),
+  cost: v.optional(CostRecordSchema),
+  at: v.pipe(v.number(), v.integer()),
+});
+
+/**
+ * The `caller_priority` trace event variant: the caller's own query's leading
+ * dense hits, promoted ahead of their fusion rank — out of the rerank's reorder
+ * and to the head of their presentation slot in the assembled context.
+ *
+ * **Why it exists.** Fusion weighs every sub-query list alike, and the router's
+ * paraphrases outnumber the caller's single list, so paraphrase rows at a
+ * middling rank can outscore the caller's leading row. The caller's words are
+ * the one query guaranteed to be in the user's vocabulary, so its strongest
+ * rows are a retrieval angle of their own and this record names them.
+ *
+ * **Identity, not text.** `ids` are chunk ids in the caller list's dense-rank
+ * order; the chunk text already rides the `retrieval` event. `k` is the bound
+ * the run applied, never more than the contract's ceiling, and `ids` never
+ * exceeds it. `alreadyPresent` names the ids the returned set already held;
+ * fusion keeps every row a search returned, so a shorter list names a caller hit
+ * fusion never returned — the guarantee's inclusion floor is fusion's, and this
+ * field is where a break in it shows. The arm reads no store: the caller's own
+ * searches already produced this list.
+ */
+export const callerPriorityEventSchema = v.object({
+  stage: v.literal("retriever"),
+  kind: v.literal("caller_priority"),
+  detail: v.pipe(
+    v.object({
+      /** The bound the run applied — at most the contract's `CALLER_PRIORITY_K`. */
+      k: v.pipe(v.number(), v.integer(), v.minValue(0)),
+      /** The guaranteed hits, in the caller list's ascending dense rank. */
+      ids: v.pipe(v.array(v.pipe(v.string(), v.minLength(1))), v.maxLength(CALLER_PRIORITY_K)),
+      /** Of `ids`, the rows the returned set already carried. */
+      alreadyPresent: v.pipe(
+        v.array(v.pipe(v.string(), v.minLength(1))),
+        v.maxLength(CALLER_PRIORITY_K),
+      ),
+    }),
+    v.check(
+      (detail) => detail.alreadyPresent.every((id) => detail.ids.includes(id)),
+      "alreadyPresent must name ids in the guaranteed set",
+    ),
+    v.check((detail) => detail.ids.length <= detail.k, "ids must fit the bound the run applied"),
   ),
   cost: v.optional(CostRecordSchema),
   at: v.pipe(v.number(), v.integer()),

@@ -6,7 +6,7 @@ export type ChunkRefLike = {
   score?: number;
   rankDense?: number;
   rankSparse?: number;
-  /** The ref's opaque origin label (ADR-0045); compared, never interpreted. */
+  /** The ref's opaque origin label; compared, never interpreted. */
   origin?: string;
 };
 

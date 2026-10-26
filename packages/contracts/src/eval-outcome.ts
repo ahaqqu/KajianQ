@@ -52,11 +52,13 @@ export type EvalResultOutcome = {
    * names a reference is satisfied **by construction** whenever a deterministic
    * read works, and a fused-track regression on exactly those questions is
    * invisible in `sourceTypeRecall` alone. This block makes it visible,
-   * deterministically: `fusedOnlySourceTypeRecall` is what the refs with no
-   * origin label score — a number below `sourceTypeRecall` means a deterministic
-   * arm carried the question. `chunks` is the **scope** read's count; `lookup`
-   * is the citation-label lookup's own contribution, present exactly when that
-   * path ran. Absent = no deterministic read was recorded.
+   * deterministically: `fusedOnlySourceTypeRecall` is what the refs fusion
+   * produced score — the unlabelled rows, plus rows a rule labels without adding
+   * them (the caller-priority guarantee promotes fused rows) — so a number below
+   * `sourceTypeRecall` means a deterministic arm **added** a ref and carried the
+   * question. `chunks` is the **scope** read's count; `lookup` is the
+   * citation-label lookup's own contribution, present exactly when that path ran.
+   * Absent = no deterministic read was recorded.
    */
   expansion?:
     | {

@@ -5,6 +5,7 @@ import { createKajianQRetriever } from "./chat-retriever";
 import { runChatPipelinePromise, type ChatPipelineDeps } from "./chat-pipeline";
 import type { GeneratorProvider } from "./chat-generator";
 import { CITATION_LOOKUP_ORIGIN, DEFAULT_LABEL_LOOKUP_CAP } from "./chat-label-lookup";
+import { CALLER_PRIORITY_ORIGIN } from "./chat-caller-priority";
 import { DEFAULT_REFUSALS } from "./chat-refusal";
 import { dhaifWarning } from "./chat-postprocess";
 import type { KajianQFilters } from "./filters";
@@ -497,8 +498,12 @@ describe("citation-label lookup — delivered answer", () => {
     const retrieval = answer.trace.events.find((event) => event.kind === "retrieval");
     const refs = retrieval?.kind === "retrieval" ? retrieval.detail.chunks : [];
 
-    // The routed filter still governs the fused arm...
-    expect(refs.some((ref) => ref.id === near && ref.origin === undefined)).toBe(true);
+    // The routed filter still governs the fused arm: the row the search returned is
+    // present, and it is the caller's leading hit, so the caller-priority guarantee
+    // promotes it and marks its provenance (ADR-0062) rather than leaving it anonymous.
+    const nearRef = refs.find((ref) => ref.id === near);
+    expect(nearRef).toBeDefined();
+    expect(nearRef?.origin).toBe(CALLER_PRIORITY_ORIGIN);
     // ...and the identity-addressed read is deliberately not bound by it: the
     // label the caller named outranks the route's inferred grade, on the same
     // footing as the scope and neighbour reads (ADR-0058).

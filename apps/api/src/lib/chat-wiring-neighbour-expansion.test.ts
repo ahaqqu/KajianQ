@@ -99,6 +99,9 @@ type Run = {
   scopeCaps: number[];
   /** The cap the typed citation event recorded, when the arm ran. */
   citationCap: number | undefined;
+  /** The caller-priority guarantee's typed event, when the caller arm ran: the bound
+   * the run applied and the ids it promoted. */
+  callerPriority: { k: number; ids: readonly string[] } | undefined;
   /** The typed neighbourhood event, when the expansion ran. */
   detail:
     | {
@@ -170,6 +173,7 @@ async function runWith(
   const userTurn = turns[0]?.find((turn) => turn.role === "user")?.content;
   if (userTurn === undefined) throw new Error("the generator was never shown a context");
   const event = answer.trace.events.find((entry) => entry.kind === "neighbour_expansion");
+  const callerEvent = answer.trace.events.find((entry) => entry.kind === "caller_priority");
   return {
     searches,
     scopeReads,
@@ -180,6 +184,10 @@ async function runWith(
       .filter((entry) => entry.kind === "scope_expansion")
       .map((entry) => entry.detail.cap),
     citationCap: answer.trace.events.find((entry) => entry.kind === "citation_lookup")?.detail.cap,
+    callerPriority:
+      callerEvent === undefined
+        ? undefined
+        : { k: callerEvent.detail.k, ids: [...callerEvent.detail.ids] },
     detail:
       event === undefined ? undefined : { ...event.detail, anchors: [...event.detail.anchors] },
   };
@@ -317,6 +325,16 @@ const TUNABLES: Record<keyof Required<ChatPipelineDeps["retrieval"]>, TunablePro
       // The label read asks for the cap plus one proof row.
       expect(run.citationReads.map((read) => read.limit)).toEqual([4]);
       expect(run.citationCap).toBe(3);
+    },
+  },
+  callerPriorityK: {
+    // `0` is the discriminating value: it reaches the selection, so the typed event
+    // records the bound the run applied and nothing is promoted. A knob the composition
+    // root never forwarded would record the contract's default instead.
+    binding: { name: "CALLER_PRIORITY_K", value: "0" },
+    question: PLAIN_QUESTION,
+    assert: (run) => {
+      expect(run.callerPriority).toEqual({ k: 0, ids: [] });
     },
   },
 };

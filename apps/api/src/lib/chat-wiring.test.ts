@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vite-plus/test";
+import { CALLER_PRIORITY_K } from "@app/contracts";
 import { runStoreEffect } from "@app/kajianq-domain";
 import { createMemoryRagStore } from "@app/kajianq-domain/test-utils/memory-rag-store";
 import {
@@ -7,6 +8,7 @@ import {
   buildStoreWiring,
   ChatConfigError,
   createProvidersFromEnv,
+  parseCallerPriorityK,
   parseLabelLookupCap,
   parseNeighbourCap,
   parseNeighbourRadius,
@@ -159,6 +161,28 @@ describe("parseScopeExpansionCap — ADR-0045's budget knob", () => {
       labelLookupCap: 5,
     });
     expect(buildChatWiring(keyed).pipeline.retrieval.labelLookupCap).toBeUndefined();
+  });
+
+  it("parses ADR-0062's caller-priority bound with the same rule, ceiling included, and wires it", () => {
+    expect(parseCallerPriorityK(undefined)).toBeUndefined();
+    expect(parseCallerPriorityK("  ")).toBeUndefined();
+    expect(parseCallerPriorityK("1")).toBe(1);
+    // `0` is a real value: it turns the guarantee off without making the query fail.
+    expect(parseCallerPriorityK("0")).toBe(0);
+    expect(parseCallerPriorityK(String(CALLER_PRIORITY_K))).toBe(CALLER_PRIORITY_K);
+    for (const bad of ["-1", "abc", "1.5", "12x"]) {
+      expect(() => parseCallerPriorityK(bad)).toThrow(/CALLER_PRIORITY_K/);
+    }
+    // The contract's `caller_priority` record refuses more ids than its ceiling, so a
+    // value above it is a typed config failure here — never an answer whose trace
+    // cannot be parsed back.
+    expect(() => parseCallerPriorityK(String(CALLER_PRIORITY_K + 1))).toThrow(ChatConfigError);
+    expect(() => parseCallerPriorityK(String(CALLER_PRIORITY_K + 1))).toThrow(/CALLER_PRIORITY_K/);
+    const keyed = { DATABASE_URL: "postgres://x", DEEPSEEK_API_KEY: "k" };
+    expect(buildChatWiring({ ...keyed, CALLER_PRIORITY_K: "2" }).pipeline.retrieval).toMatchObject({
+      callerPriorityK: 2,
+    });
+    expect(buildChatWiring(keyed).pipeline.retrieval.callerPriorityK).toBeUndefined();
   });
 });
 

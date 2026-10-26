@@ -63,6 +63,12 @@ export type AppBindings = {
    * domain default; `0` disables the lookup, and a negative value is a typed config
    * failure when the chat wiring builds. Same filtered-env view as the caps above. */
   LABEL_LOOKUP_CAP?: string;
+  /** ADR-0062's caller-priority bound, as a non-negative integer string: how many of
+   * the caller sub-query's leading hits the guarantee promotes. Absent = the contract's
+   * default; `0` disables the guarantee. The contract's `caller_priority` record
+   * refuses more ids than its ceiling, so a value above it is a typed config failure
+   * when the chat wiring builds — never a trace that fails to parse. */
+  CALLER_PRIORITY_K?: string;
 };
 
 /** Resolved per-request identity, set by `authGuard` before guarded routes run; session

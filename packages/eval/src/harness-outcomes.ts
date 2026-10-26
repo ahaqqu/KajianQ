@@ -25,10 +25,15 @@ import { sourceTypeRecall } from "./scorers";
  * `sourceTypeRecall` states that a deterministic arm carried the question; the
  * metric itself is never redefined.
  *
- * **"The fused refs alone" means the refs that carry NO origin label** — every
- * deterministic path labels its own chunks, so whichever label a future path
- * writes, its chunks leave the fused-only leg. `expansion.chunks` stays the
- * **scope** path's count; a neighbour-only question reports no block.
+ * **"The fused refs alone" means the refs fusion produced** — unlabelled rows,
+ * plus the rows a rule labels *without changing their provenance*: the
+ * caller-priority guarantee promotes fused rows and marks them, so they stay in
+ * this leg. Chunks a deterministic path **added** leave it. That is what keeps
+ * the gap meaningful: a label that means "do not reorder me" is not evidence an
+ * arm carried the question. The caller-priority label is supplied by the
+ * composition root like the others (`callerPriorityOrigin`), so the engine never
+ * names a caller's vocabulary. `expansion.chunks` stays the **scope** path's
+ * count; a neighbour-only question reports no block.
  *
  * The block is written whenever **any** deterministic path ran: the scope read
  * (`expansionOrigin`), or the citation-label lookup — a lookup event or a
@@ -47,8 +52,10 @@ export function expansionProvenance(input: {
   expansionOrigin?: string;
   /** Opaque caller label for the citation-label lookup's chunks. */
   lookupOrigin?: string;
+  /** Opaque caller label for the caller-priority guarantee's promoted fused rows. */
+  callerPriorityOrigin?: string;
 }): { expansion?: EvalResultOutcome["expansion"] } {
-  const { expansionOrigin, lookupOrigin } = input;
+  const { expansionOrigin, lookupOrigin, callerPriorityOrigin } = input;
   if (expansionOrigin === undefined && lookupOrigin === undefined) return {};
   const expansionChunks =
     expansionOrigin === undefined
@@ -65,8 +72,13 @@ export function expansionProvenance(input: {
   const lookupPathRan = lookupChunks.length > 0 || lookupEvent !== undefined;
   if (!scopedPathRan && !lookupPathRan) return {};
 
-  // Absence of an origin label is what makes a ref a fused hit.
-  const fused = input.chunks.filter((chunk) => chunk.origin === undefined);
+  // A fused ref is one no arm added: unlabelled, or labelled by the promotion
+  // rule that moves a fused row without changing where it came from.
+  const fused = input.chunks.filter(
+    (chunk) =>
+      chunk.origin === undefined ||
+      (callerPriorityOrigin !== undefined && chunk.origin === callerPriorityOrigin),
+  );
   const expansion: NonNullable<EvalResultOutcome["expansion"]> = {
     chunks: expansionChunks.length,
     fusedOnlySourceTypeRecall: sourceTypeRecall(

@@ -102,13 +102,16 @@ function toTechnicalChunk(
     ...(ref.score !== undefined ? { score: ref.score } : {}),
     ...(ref.rankDense !== undefined ? { rankDense: ref.rankDense } : {}),
     ...(ref.rankSparse !== undefined ? { rankSparse: ref.rankSparse } : {}),
-    // The decision model's probability, when a rerank applied: the order this
-    // frame lists is the reranked order, so the number that explains it must
-    // reach the panel beside the fused score.
+    // The decision model's probability, when a rerank applied: the panel lists the
+    // retrieval order — led by the caller-priority guarantee — and this number
+    // explains the fused block's order within it, beside the fused score. The
+    // assembled prompt re-sorts by presentation slot, so neither number is a
+    // prompt position.
     ...(ref.rerankScore !== undefined ? { rerankScore: ref.rerankScore } : {}),
-    // The ref's opaque origin label, when the trace carries one (ADR-0045):
-    // an expansion chunk has no score or channel ranks, so this field is the
-    // only thing that tells the panel why the surah's verses are in context.
+    // The ref's opaque origin label, when the trace carries one: a chunk an arm
+    // added has no score or channel ranks, so this field is the only thing that
+    // tells the panel why it is in context; a promoted fused row says so too
+    // (ADR-0062) rather than reading as an addition.
     ...(ref.origin !== undefined ? { origin: ref.origin } : {}),
   };
 }

@@ -11,24 +11,25 @@ import {
 } from "@app/rag-core";
 import type { KajianQFilters } from "./filters";
 import {
+  CALLER_PRIORITY_K,
   DEFAULT_LABEL_LOOKUP_CAP,
   DEFAULT_NEIGHBOUR_CAP,
   DEFAULT_NEIGHBOUR_RADIUS,
   DEFAULT_SCOPE_EXPANSION_CAP,
+  applyCallerPriority,
   compareHitsByDenseRank,
   expandRetrievedSurahScope,
   expandSurahScope,
   expandVerseNeighbours,
   createFilterRelaxation,
   filterEntries,
-  storeFilters,
   hierarchyBonus,
+  isCallerSubQuery,
   lookupCitationLabels,
   rrfFuse,
   SEARCH_HITS_TRACE_LIMIT,
-  type NeighbourChildRow,
+  storeFilters,
   type RetrieverStore,
-  type ScopeChildRow,
   type TrackHit,
 } from "./chat-retriever-parts";
 import { withTextLayers } from "./chunk-text-layers";
@@ -69,10 +70,14 @@ export type KajianQRetrieverDeps = {
   /** Budget cap for the citation-label lookup over the labels a question names,
    * defaulting to `DEFAULT_LABEL_LOOKUP_CAP`; `0` disables it. */
   labelLookupCap?: number | undefined;
+  /** ADR-0062's bound: how many of the caller's leading hits the guarantee promotes,
+   * defaulting to `CALLER_PRIORITY_K`; `0` disables it. */
+  callerPriorityK?: number | undefined;
 };
 
 export function createKajianQRetriever(deps: KajianQRetrieverDeps): Retriever<KajianQFilters> {
   const limit = deps.limit ?? SEARCH_HITS_TRACE_LIMIT;
+  const callerPriorityK = deps.callerPriorityK ?? CALLER_PRIORITY_K;
   return {
     retrieve: (routed: RoutedQuery<KajianQFilters>) =>
       toStageError(
@@ -80,6 +85,10 @@ export function createKajianQRetriever(deps: KajianQRetrieverDeps): Retriever<Ka
         Effect.gen(function* () {
           if (routed.subQueries.length === 0) return [];
           const run = yield* RunContext;
+          // The caller's own list is watched as it is searched: its top hits are a
+          // priority angle (ADR-0062) the fusion vote cannot outrank on its own.
+          const callerIndex = routed.subQueries.findIndex(isCallerSubQuery);
+          const callerLists: TrackHit[][] = [];
           const embedded = yield* deps.embedder
             .embed({ texts: routed.subQueries.map((q) => q.text), personalData: true })
             .pipe(Effect.mapError((cause) => ({ cause })));
@@ -179,29 +188,18 @@ export function createKajianQRetriever(deps: KajianQRetrieverDeps): Retriever<Ka
                 },
                 at: run.now(),
               });
-              for (const hit of hits) {
-                lists.push([
-                  {
-                    chunk: {
-                      id: hit.child.id,
-                      text:
-                        track === "primary"
-                          ? hit.child.textAr
-                          : (hit.child.textId ?? hit.child.textAr),
-                      // The two text layers ride the chunk metadata — the store's text
-                      // columns are their only source — and `withTextLayers` owns the
-                      // merge for both retrieval paths, so they cannot drift.
-                      metadata: withTextLayers(
-                        hit.child.metadata,
-                        hit.child.textAr,
-                        hit.child.textId,
-                      ),
-                      rankDense: hit.rankDense,
-                    },
-                    rank: hit.rankDense,
-                  },
-                ]);
-              }
+              const list: TrackHit[] = hits.map((hit) => ({
+                chunk: {
+                  id: hit.child.id,
+                  text:
+                    track === "primary" ? hit.child.textAr : (hit.child.textId ?? hit.child.textAr),
+                  metadata: withTextLayers(hit.child.metadata, hit.child.textAr, hit.child.textId),
+                  rankDense: hit.rankDense,
+                },
+                rank: hit.rankDense,
+              }));
+              lists.push(list);
+              if (i === callerIndex) callerLists.push(list);
             }
           }
           // The hierarchy bonuses are the spec's; the Principle bonus applies only on an
@@ -285,7 +283,13 @@ export function createKajianQRetriever(deps: KajianQRetrieverDeps): Retriever<Ka
               at: run.now(),
             });
           }
-          return [...inContext, ...neighbours.chunks];
+          return applyCallerPriority({
+            callerLists,
+            returned: [...inContext, ...neighbours.chunks],
+            k: callerPriorityK,
+            at: run.now(),
+            record: (event) => run.record(event),
+          });
         }),
       ),
   };
