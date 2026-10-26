@@ -6,6 +6,7 @@ import {
   type ChatSessionMessages,
 } from "@app/contracts";
 import { apiFetch } from "./api";
+import { chatPersistenceAllowed } from "./consent";
 
 /**
  * Client chat-session state: the anonymous Bearer token and the active
@@ -39,7 +40,15 @@ export const OPEN_SESSION_EVENT = "kajianq:open-session";
 
 const memory = new Map<string, string>();
 
+/**
+ * The consent gate (ADR-0063) sits here, in the one wrapper every chat key
+ * writes through: unless the reader agreed to keep the conversation in this
+ * browser, a key reads and writes the page-lifetime map only, so no call site
+ * has to remember the rule. Removal always reaches localStorage — deleting is
+ * not keeping.
+ */
 function storageGet(key: string): string | null {
+  if (!chatPersistenceAllowed()) return memory.get(key) ?? null;
   try {
     return globalThis.localStorage?.getItem(key) ?? memory.get(key) ?? null;
   } catch {
@@ -48,10 +57,12 @@ function storageGet(key: string): string | null {
 }
 
 function storageSet(key: string, value: string): void {
-  try {
-    globalThis.localStorage?.setItem(key, value);
-  } catch {
-    // Storage full/blocked: keep the value for this page lifetime.
+  if (chatPersistenceAllowed()) {
+    try {
+      globalThis.localStorage?.setItem(key, value);
+    } catch {
+      // Storage full/blocked: keep the value for this page lifetime.
+    }
   }
   memory.set(key, value);
 }
@@ -63,6 +74,43 @@ function storageRemove(key: string): void {
     // Nothing to reclaim.
   }
   memory.delete(key);
+}
+
+/** The consent helpers are re-exported here because they govern these keys and
+ * the history drawer reads both from one import. */
+export { CONSENT_KEY, loadConsent, setConsent, useConsent } from "./consent";
+
+/**
+ * Writes the chat keys already held in memory to localStorage — the grant path:
+ * the conversation that earned "keep it here" is the one it keeps. No-op unless
+ * the reader has just agreed to persist.
+ */
+export function persistChatState(): void {
+  if (!chatPersistenceAllowed()) return;
+  for (const key of [TOKEN_KEY, SESSION_KEY]) {
+    const value = memory.get(key);
+    if (value === undefined) continue;
+    try {
+      globalThis.localStorage?.setItem(key, value);
+    } catch {
+      // Blocked: memory still serves the tab.
+    }
+  }
+}
+
+/**
+ * The withdrawal path: every chat key leaves localStorage, while the tab keeps
+ * working from memory — the open conversation stays on screen and is forgotten
+ * when the tab closes. The consent record itself is written by `setConsent`.
+ */
+export function forgetChatState(): void {
+  for (const key of [TOKEN_KEY, SESSION_KEY, HISTORY_KEY]) {
+    try {
+      globalThis.localStorage?.removeItem(key);
+    } catch {
+      // Nothing to reclaim.
+    }
+  }
 }
 
 export const loadStoredSessionId = (): string | null => storageGet(SESSION_KEY);

@@ -332,6 +332,7 @@ async function openChatWithFixtures(
   // asset request. Each fresh context starts with no session id — a fresh chat —
   // and keeps it across the in-scenario reload the rehydration scenario performs.
   await page.addInitScript(() => {
+    localStorage.setItem("kajianq.consent", "store");
     localStorage.setItem("kajianq.auth.token", "tok-e2e");
   });
   await page.goto("/");
@@ -440,6 +441,7 @@ When("I open a chat whose stored transcript was capped", async ({ page }) => {
   // context boots with no session id (the rehydration query is disabled) —
   // store the session id before the app boots.
   await page.addInitScript(() => {
+    localStorage.setItem("kajianq.consent", "store");
     localStorage.setItem("kajianq.chat.sessionId", "sess-e2e");
   });
   await openChatWithFixtures(page, ANSWER_FIXTURE, { ...TRANSCRIPT_FIXTURE, truncated: true });
@@ -457,6 +459,7 @@ Then("the transcript says older messages are not shown", async ({ page }) => {
  */
 When("I open a chat whose stored session id is malformed", async ({ page }) => {
   await page.addInitScript(() => {
+    localStorage.setItem("kajianq.consent", "store");
     localStorage.setItem("kajianq.chat.sessionId", "en");
   });
   await openChatWithFixtures(page, ANSWER_FIXTURE, TRANSCRIPT_FIXTURE, 404);
@@ -492,6 +495,7 @@ When(
   "I open a chat whose transcript load failed and hold its reconnect refetch",
   async ({ page }) => {
     await page.addInitScript(() => {
+      localStorage.setItem("kajianq.consent", "store");
       localStorage.setItem("kajianq.chat.sessionId", "sess-e2e");
     });
     await openChatWithFixtures(page, ANSWER_FIXTURE, undefined, 200, true);
@@ -543,6 +547,7 @@ When(
   "I open the chat with a stored session and ask about ayat kursi, then leave and come back",
   async ({ page }) => {
     await page.addInitScript(() => {
+      localStorage.setItem("kajianq.consent", "store");
       localStorage.setItem("kajianq.chat.sessionId", "sess-e2e");
     });
     await openChatWithFixtures(

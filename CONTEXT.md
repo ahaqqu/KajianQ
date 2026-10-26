@@ -134,7 +134,7 @@ A source reference rendered on an answer (e.g. `QS. 2:255`, `HR. Malik no. 18`),
 _Avoid_: reference link (implies a URL), footnote
 
 **Chat Session**:
-An anonymous user's conversation: a `chat_sessions` row whose turns are `chat_messages` (user question, assistant answer with its answer trace). The client persists the session id locally; follow-ups append to it, and "new session" starts a clean one (ADR-0017 stakes, ADR-0040 rehydration).
+An anonymous user's conversation: a `chat_sessions` row whose turns are `chat_messages` (user question, assistant answer with its answer trace). The client persists the session id locally once the reader has agreed to keep the conversation in the browser, and for the tab only otherwise (ADR-0063); follow-ups append to it, and "new session" starts a clean one (ADR-0017 stakes, ADR-0040 rehydration).
 _Avoid_: chat history (ambiguous with the transcript), thread
 
 **Rehydration**:

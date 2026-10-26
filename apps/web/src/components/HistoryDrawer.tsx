@@ -3,11 +3,15 @@ import { useNavigate, useRouterState } from "@tanstack/react-router";
 import {
   OPEN_SESSION_EVENT,
   clearChatHistory,
+  forgetChatState,
   loadChatHistory,
   markChatSessionExpired,
+  persistChatState,
   rehydrateSession,
   removeChatHistoryEntry,
   saveStoredSessionId,
+  setConsent,
+  useConsent,
   type ChatHistoryEntry,
 } from "../lib/chat-store";
 import { formatMessage, t, useLocale, type Locale } from "../lib/i18n";
@@ -27,6 +31,7 @@ import { CloseIcon, HistoryIcon } from "./icons";
  */
 export function HistoryDrawer({ onClose }: { onClose: () => void }) {
   const locale = useLocale();
+  const consent = useConsent();
   const navigate = useNavigate();
   const pathname = useRouterState({ select: (state) => state.location.pathname });
   const [entries, setEntries] = useState<readonly ChatHistoryEntry[]>(() => loadChatHistory());
@@ -116,6 +121,14 @@ export function HistoryDrawer({ onClose }: { onClose: () => void }) {
         <div className="mt-4 border-t border-rule" />
 
         <div className="flex-1 overflow-y-auto px-3 py-3">
+          {consent !== "store" && (
+            <p
+              data-testid="history-consent-off"
+              className="mx-3 mb-2 rounded-lg border border-rule bg-card/60 px-3 py-2 text-xs leading-5 text-muted-foreground"
+            >
+              {t(locale, "consentOffNote")}
+            </p>
+          )}
           {notice !== null && (
             <p
               role="alert"
@@ -180,6 +193,23 @@ export function HistoryDrawer({ onClose }: { onClose: () => void }) {
         </div>
 
         <div className="border-t border-rule px-6 py-4">
+          <button
+            type="button"
+            data-testid={consent === "store" ? "consent-disable" : "consent-enable"}
+            onClick={() => {
+              if (consent === "store") {
+                setConsent("session-only");
+                forgetChatState();
+              } else {
+                setConsent("store");
+                persistChatState();
+              }
+              refresh();
+            }}
+            className="mb-2 text-xs font-medium underline underline-offset-4 hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            {t(locale, consent === "store" ? "consentDisable" : "consentEnable")}
+          </button>
           <p className="text-xs leading-5 text-muted-foreground">{t(locale, "historyLocalNote")}</p>
           {entries.length > 0 && (
             <button

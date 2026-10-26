@@ -24,6 +24,7 @@ export function Transcript({
   online,
   error,
   stagedLabel,
+  stored = true,
   onSuggest,
 }: {
   locale: Locale;
@@ -36,6 +37,8 @@ export function Transcript({
   error: TranscriptError;
   /** The staged waiting label while `busy` (the caller owns the stage clock). */
   stagedLabel: string | null;
+  /** Whether the reader agreed to keep this conversation in the browser (ADR-0063). */
+  stored?: boolean;
   onSuggest: (text: string) => void;
 }) {
   return (
@@ -44,7 +47,7 @@ export function Transcript({
         <MonoLabel className="text-[11px]">{t(locale, "conversationLabel")}</MonoLabel>
         <span className="h-px flex-1 bg-rule" />
         <span className="font-mono text-[11px] text-muted-foreground">
-          {t(locale, "savedLocally")}
+          {t(locale, stored === false ? "notSavedLocally" : "savedLocally")}
         </span>
       </div>
 

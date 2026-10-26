@@ -71,8 +71,8 @@ export const FAQ_ITEMS: readonly FaqItem[] = [
       id: "Apa yang terjadi pada pertanyaan dan percakapan saya?",
     },
     answer: {
-      en: "There are no accounts. Your conversations are kept in this browser, and starting a new one keeps the previous conversation in the history drawer so you can reopen it. Clearing browser storage removes them all; a server-side copy serves each answer and expires on the schedule the privacy notice lists, together with the erasure path.",
-      id: "Tidak ada akun. Percakapan disimpan di peramban ini, dan memulai percakapan baru menyimpan percakapan sebelumnya di riwayat agar bisa dibuka lagi. Menghapus penyimpanan peramban membuang semuanya; salinan di server melayani tiap jawaban lalu kedaluwarsa sesuai jadwal yang dicantumkan pemberitahuan privasi, beserta jalur penghapusannya.",
+      en: "There are no accounts. The chat asks first: if you agree, your conversations are kept in this browser, and starting a new one keeps the previous conversation in the history drawer so you can reopen it. If you decline, nothing about the conversation is stored and it goes when the tab closes. Either way a server-side copy serves each answer and expires on the schedule the privacy notice lists, together with the erasure path.",
+      id: "Tidak ada akun. Obrolan bertanya lebih dulu: jika Anda setuju, percakapan disimpan di peramban ini, dan memulai percakapan baru menyimpan percakapan sebelumnya di riwayat agar bisa dibuka lagi. Jika Anda menolak, tidak ada yang disimpan dan percakapan hilang saat tab ditutup. Bagaimanapun, salinan di server melayani tiap jawaban lalu kedaluwarsa sesuai jadwal yang dicantumkan pemberitahuan privasi, beserta jalur penghapusannya.",
     },
   },
   {

@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { useChat } from "../lib/use-chat";
 import { ChatView } from "./chat/ChatView";
+import { ConsentCard, useChatConsent } from "./chat/ConsentCard";
 
 /**
  * The KajianQ chat route: replaces the template home. The hook owns
@@ -27,6 +28,7 @@ import { ChatView } from "./chat/ChatView";
  */
 export function ChatPage({ locale }: { locale: "id" | "en" }) {
   const chat = useChat(locale);
+  const stored = useChatConsent() === "store";
   const navigate = useNavigate();
   const search = useSearch({ from: "/" });
 
@@ -38,6 +40,8 @@ export function ChatPage({ locale }: { locale: "id" | "en" }) {
   return (
     <ChatView
       locale={locale}
+      consentCard={<ConsentCard />}
+      stored={stored}
       messages={chat.messages}
       persistedMessageIds={chat.persistedMessageIds}
       busy={chat.busy}
