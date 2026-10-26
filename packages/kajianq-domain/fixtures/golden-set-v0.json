@@ -36,7 +36,7 @@
       "language": "id",
       "expectedSourceTypes": ["hadith"],
       "requiredCitations": ["HR. Tirmidhi no. 2646"],
-      "$comment": "The requirement is the sahih narration that answers the question — the Prophet said that whoever treads a path seeking knowledge, Allah eases for him a path to Paradise (Tirmidhi, from Abu Hurayra through al-A'mash ← Abu Salih; Sahih by every grader in the corpus) — because the route filters this question to sahih evidence. HR. Ibnu Majah no. 224 (\"seeking knowledge is obligatory for every Muslim\", from Anas) is excluded and recorded here rather than in the row: every grader in the corpus grades it dhaif, so the route's sahih filter drops it before retrieval at any rank, and an alternative the gate can never be handed would be decoration. The parallel chains of Tirmidhi 2646 are the signed same-report identity map's.",
+      "$comment": "The requirement is the sahih narration that answers the question — the Prophet said that whoever treads a path seeking knowledge, Allah eases for him a path to Paradise (Tirmidhi, from Abu Hurayra through al-A'mash ← Abu Salih; Sahih by every grader in the corpus). Whether the route applies the sahih grade filter is the model's decision, and the row is reachable under either shape: with the filter, HR. Ibnu Majah no. 224 (\"seeking knowledge is obligatory for every Muslim\", from Anas) is dropped before retrieval, and without it Tirmidhi 2646 still comes in on the fallback track inside the retrieved window. 224 is excluded from the requirement and from citationAlternatives: every grader in the corpus grades it dhaif, it is a different narration from another Companion, and no signed identity relation ties it to 2646, so an answer grounded on it is not the sahih evidence this grade-check question asks for. The parallel chains of Tirmidhi 2646 are the signed same-report identity map's.",
       "expectedBehavior": "answer",
       "tags": ["hadith", "grade-check"]
     },
@@ -113,7 +113,7 @@
       "language": "id",
       "expectedSourceTypes": ["hadith"],
       "requiredCitations": ["HR. Muslim no. 5265"],
-      "$comment": "The question names the instruction the required matn carries — eat and drink with the right hand, for Satan eats and drinks with his left — instead of asking eating etiquette at large: a question wider than its required address lets an answer that grounds another adab look responsive while the gate's address is never the one it answers. The requirement is unchanged, and the right-hand family's parallel chains are the signed same-report identity map's, so this re-word moves the gate's input, not the evidence bar.",
+      "$comment": "The question names the instruction the required matn carries — eat and drink with the right hand, for Satan eats and drinks with his left — instead of asking eating etiquette at large: a question wider than its required address lets an answer that grounds another adab look responsive while the gate's address is never the one it answers. The requirement is the right-hand family's canonical label, and its parallel chains are the signed same-report identity map's.",
       "expectedBehavior": "answer",
       "tags": ["adab", "hadith"]
     },
@@ -142,7 +142,7 @@
       "language": "en",
       "expectedSourceTypes": ["hadith"],
       "requiredCitations": ["HR. Bukhari no. 1395"],
-      "$comment": "The question names the narrative the required matn carries — the Prophet sending Mu'adh to Yemen and instructing him about zakat — instead of asking for the abstract obligations of zakat, a proposition the corpus answers with several different reports (Abu Bakr's written zakat schedule among them); 1395 is the Mu'adh instruction that Allah obligated a sadaqah from wealth, taken from the rich and given to the poor. The requirement is unchanged, its same-report family is the signed map's, and the row has no citationAlternatives: HR. Bukhari no. 1454, the schedule (the nisab and rates for camels, sheep and silver), states a different ruling, and accepting it would turn \"grounded the obligation and its recipients\" into \"grounded a zakat hadith\".",
+      "$comment": "The question names the narrative the required matn carries — the Prophet sending Mu'adh to Yemen and instructing him about zakat — instead of asking for the abstract obligations of zakat, a proposition the corpus answers with several different reports (Abu Bakr's written zakat schedule among them); 1395 is the Mu'adh instruction that Allah obligated a sadaqah from wealth, taken from the rich and given to the poor. The requirement is the zakat family's canonical label, its parallel chains are the signed map's, and the row has no citationAlternatives: HR. Bukhari no. 1454, the schedule (the nisab and rates for camels, sheep and silver), states a different ruling, and accepting it would turn \"grounded the obligation and its recipients\" into \"grounded a zakat hadith\".",
       "expectedBehavior": "answer",
       "tags": ["fikih", "hadith", "english"]
     },

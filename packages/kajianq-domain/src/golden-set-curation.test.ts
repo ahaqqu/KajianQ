@@ -435,9 +435,10 @@ describe("the curated corpus-label index registers every curated hadith label", 
   });
 
   it("pins the sahih grade the re-curated knowledge requirement's retrieval depends on", () => {
-    // The route reads gs-v0-004 as a question about sahih evidence, so its
-    // requirement must be a sahih address: a dhaif one is excluded before
-    // retrieval at any rank, which is why Ibnu Majah 224 is not the requirement.
+    // The route may or may not apply the sahih grade filter to gs-v0-004: under
+    // that shape a dhaif requirement is dropped before retrieval, and without it
+    // the row is still reached on the fallback track. The requirement is the
+    // address that survives both shapes, so it is 2646, not Ibnu Majah 224.
     expect(CORPUS_BY_LABEL.get("HR. Tirmidhi no. 2646")?.grade).toBe("sahih");
   });
 

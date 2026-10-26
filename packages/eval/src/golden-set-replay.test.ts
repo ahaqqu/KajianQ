@@ -198,9 +198,12 @@ describe("golden-set-v0 replay — the collection fold measured on the recorded 
       const required = HEAD_REQUIRED.get(row.questionId);
       if (recurated !== undefined) {
         // A re-curated row keeps the requirement the run carried, and the head
-        // set no longer demands it — the other side of the same change.
+        // set no longer demands it — the other side of the same change. The head
+        // side is compared in the gate's comparison form, the form `recurated`
+        // is stored in, so the guard fails on any requirement that folds to the
+        // recorded one, however the fixture spells it.
         expect(row.required, row.questionId).toEqual(recurated);
-        expect(required, row.questionId).not.toEqual(recurated);
+        expect(required?.map(GRAMMAR.normalizeLabel), row.questionId).not.toEqual(recurated);
       } else if (required !== undefined) {
         expect(row.required, row.questionId).toEqual(required.map(GRAMMAR.normalizeLabel));
       } else {
