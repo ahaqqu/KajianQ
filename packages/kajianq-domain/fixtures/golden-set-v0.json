@@ -35,7 +35,8 @@
       "question": "Apa yang Nabi Islam katakan tentang mencari ilmu?",
       "language": "id",
       "expectedSourceTypes": ["hadith"],
-      "requiredCitations": ["HR. Ibnu Majah no. 224"],
+      "requiredCitations": ["HR. Tirmidhi no. 2646"],
+      "$comment": "The requirement is the sahih narration that answers the question — the Prophet said that whoever treads a path seeking knowledge, Allah eases for him a path to Paradise (Tirmidhi, from Abu Hurayra through al-A'mash ← Abu Salih; Sahih by every grader in the corpus). Whether the route applies the sahih grade filter is the model's decision, and the row is reachable under either shape: with the filter, HR. Ibnu Majah no. 224 (\"seeking knowledge is obligatory for every Muslim\", from Anas) is dropped before retrieval, and without it Tirmidhi 2646 still comes in on the fallback track inside the retrieved window. 224 is excluded from the requirement and from citationAlternatives: every grader in the corpus grades it dhaif, it is a different narration from another Companion, and no signed identity relation ties it to 2646, so an answer grounded on it is not the sahih evidence this grade-check question asks for. The parallel chains of Tirmidhi 2646 are the signed same-report identity map's.",
       "expectedBehavior": "answer",
       "tags": ["hadith", "grade-check"]
     },
@@ -108,10 +109,11 @@
     },
     {
       "id": "gs-v0-013",
-      "question": "Bagaimana adab makan menurut hadits Rasulullah?",
+      "question": "Sebutkan hadits tentang makan dan minum dengan tangan kanan",
       "language": "id",
       "expectedSourceTypes": ["hadith"],
       "requiredCitations": ["HR. Muslim no. 5265"],
+      "$comment": "The question names the instruction the required matn carries — eat and drink with the right hand, for Satan eats and drinks with his left — instead of asking eating etiquette at large: a question wider than its required address lets an answer that grounds another adab look responsive while the gate's address is never the one it answers. The requirement is the right-hand family's canonical label, and its parallel chains are the signed same-report identity map's.",
       "expectedBehavior": "answer",
       "tags": ["adab", "hadith"]
     },
@@ -136,11 +138,11 @@
     },
     {
       "id": "gs-v0-016",
-      "question": "Which hadith states the obligation of zakat on wealth, and who is entitled to it?",
+      "question": "What did the Prophet tell Mu'adh about zakat when he sent him to Yemen?",
       "language": "en",
       "expectedSourceTypes": ["hadith"],
       "requiredCitations": ["HR. Bukhari no. 1395"],
-      "$comment": "The question is worded to the proposition 1395's matn carries — Allah obligated a sadaqah from wealth, taken from the rich and returned to the poor — and the row has no citationAlternatives: the same-topic neighbour the answer grounds, HR. Bukhari no. 1454, is Abu Bakr's written zakat schedule (the nisab and rates for camels, sheep and silver), a different ruling, and accepting it would turn \"grounded the obligation and its recipients\" into \"grounded a zakat hadith\". The parallel chains of the Ibn Abbas/Mu'adh report are carried by the signed same-report identity map instead.",
+      "$comment": "The question names the narrative the required matn carries — the Prophet sending Mu'adh to Yemen and instructing him about zakat — instead of asking for the abstract obligations of zakat, a proposition the corpus answers with several different reports (Abu Bakr's written zakat schedule among them); 1395 is the Mu'adh instruction that Allah obligated a sadaqah from wealth, taken from the rich and given to the poor. The requirement is the zakat family's canonical label, its parallel chains are the signed map's, and the row has no citationAlternatives: HR. Bukhari no. 1454, the schedule (the nisab and rates for camels, sheep and silver), states a different ruling, and accepting it would turn \"grounded the obligation and its recipients\" into \"grounded a zakat hadith\".",
       "expectedBehavior": "answer",
       "tags": ["fikih", "hadith", "english"]
     },

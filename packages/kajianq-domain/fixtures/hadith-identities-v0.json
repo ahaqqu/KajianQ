@@ -81,6 +81,18 @@
       "rationale": "One report from Ibn Abbas — the Prophet sent Mu'adh to Yemen, and Allah obligated a sadaqah from wealth, taken from the rich and returned to the poor — narrated through the same lower chain (Yahya ibn Abdullah ibn Sayfi ← Abu Ma'bad ← Ibn Abbas) from different top links: every member reaches Yahya through Zakariyya ibn Ishaq except Muslim 123, which reaches it through Isma'il ibn Umayyah. Wording varies (\"sadaqah\" and \"zakat\", \"تُرَدُّ عَلَى\" and \"فَتُرَدُّ فِي\"). Bukhari 1454 is Abu Bakr's zakat schedule — a different report and a different ruling — and is not a member."
     },
     {
+      "id": "seeking-knowledge-abu-hurayra",
+      "relation": "same-report",
+      "canonical": "HR. Tirmidhi no. 2646",
+      "members": [
+        "HR. Abu Dawud no. 3643",
+        "HR. Ibn Majah no. 225",
+        "HR. Muslim no. 6853",
+        "HR. Tirmidhi no. 2945"
+      ],
+      "rationale": "One report from Abu Hurayra — whoever treads a path seeking knowledge, Allah eases for him a path to Paradise — narrated through the same lower chain (al-A'mash ← Abu Salih ← Abu Hurayra) from different top links: Abu Dawud 3643 through Zaidah, Ibn Majah 225 through Abu Mu'awiyah, Tirmidhi 2945 through Abu Usamah (2646's own link), and Muslim 6853 through Abu Mu'awiyah, whose Indonesian edition appends the Abu Usamah chain as well (the Arabic edition holds that chain as 6854). The matn varies in length — 2646 states the knowledge sentence alone, 225, 2945 and 6853 carry it inside the fuller report on relieving a believer's distress, and 3643 states it in the short form followed by the deeds clause (\"whoever is slowed by his deeds, his lineage will not speed him up\") — so the identity is the narration, not one wording. Different reports of the same ruling sit outside this group: Tirmidhi 2682 and Ibn Majah 223 are the Abu Darda report, and Ibn Majah 224 (\"seeking knowledge is obligatory for every Muslim\", from Anas) is a different narration that every grader grades dhaif."
+    },
+    {
       "id": "gold-and-silk-prohibition-ali",
       "relation": "same-report",
       "canonical": "HR. Nasai no. 5144",

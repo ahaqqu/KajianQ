@@ -41,7 +41,7 @@ describe("the shipped identity map", () => {
       expect(["same-report", "same-ruling"]).toContain(group.relation);
       expect(group.rationale, "the group states why it is one identity").not.toBe("");
     }
-    expect(SET.groups.filter((group) => group.relation === "same-report")).toHaveLength(6);
+    expect(SET.groups.filter((group) => group.relation === "same-report")).toHaveLength(7);
     expect(SET.groups.filter((group) => group.relation === "same-ruling")).toHaveLength(2);
   });
 
@@ -92,6 +92,29 @@ describe("the shipped identity map", () => {
     }
     // The zakat schedule (Abu Bakr's letter) is a different report and ruling.
     expect(gateIdentityOf("HR. Bukhari no. 1454")).toBeNull();
+  });
+
+  it("classifies the seeking-knowledge report as one identity under the gate", () => {
+    const canonical = gateIdentityOf("HR. Tirmidhi no. 2646");
+    expect(canonical).toBe("HR. Tirmidhi no. 2646");
+    for (const label of [
+      "HR. Abu Dawud no. 3643",
+      "HR. Ibn Majah no. 225",
+      "HR. Muslim no. 6853",
+      "HR. Tirmidhi no. 2945",
+    ]) {
+      expect(gateIdentityOf(label), label).toBe(canonical);
+    }
+    // The Abu Darda report states the same ruling through another companion's
+    // chain, and 224 ("seeking knowledge is obligatory") is a different narration
+    // graded dhaif; neither is a chain of the Abu Hurayra report.
+    for (const label of [
+      "HR. Tirmidhi no. 2682",
+      "HR. Ibn Majah no. 223",
+      "HR. Ibn Majah no. 224",
+    ]) {
+      expect(gateIdentityOf(label), label).toBeNull();
+    }
   });
 
   it("keeps the travel group's same-report membership to the Anas chains", () => {
@@ -204,7 +227,7 @@ describe("the shipped identity map", () => {
     ]) {
       expect(gateIdentityOf(other), other).not.toBe(travel);
     }
-    // The map holds six same-report narrations; none of their keys aliases another.
+    // The map holds seven same-report narrations; none of their keys aliases another.
     expect(
       SET.groups
         .filter((group) => group.relation === "same-report")
@@ -215,6 +238,7 @@ describe("the shipped identity map", () => {
       "HR. Muslim no. 534",
       travel,
       "HR. Bukhari no. 1395",
+      "HR. Tirmidhi no. 2646",
       "HR. Nasai no. 5144",
     ]);
   });

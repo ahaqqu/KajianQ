@@ -20,8 +20,8 @@ import type { CitationGrammar, TraceEventLike } from "./harness-types";
  * head, not from the replay snapshot's pre-folded copy: a stub that stripped only
  * the grade would flip `gs-v0-004` red, so a normaliser weaker than production
  * cannot pass this test. The snapshot's own `required` entries are asserted to be
- * the comparison form of the head fixture below; a row the set has since retired
- * keeps the requirement the run was recorded with. The domain-side
+ * the comparison form of the head fixture below; a row the set has since retired or
+ * re-curated keeps the requirement the run was recorded with. The domain-side
  * `chat-citation-replay` test re-derives both sides from the recorded answer texts
  * and retrieved chunks; this file only replays them. With a frame on every row, the
  * text path is unreachable, which is why `labelsInText` is empty.
@@ -90,8 +90,25 @@ const { gating: GATE_IDENTITY, reported: REPORTED_IDENTITY } = curatedIdentityRe
  */
 const RETIRED_IDS = new Set(["gs-v0-007"]);
 
-/** The requirement the head Golden Set carries, or the recorded one for a retired row. */
+/**
+ * Rows whose requirement the head Golden Set re-curated after this run was
+ * recorded, with the requirement the run was scored against. A recorded row keeps
+ * what the run carried: the replay's claim is about the fold this run measured,
+ * and scoring its answer against a requirement the run never saw would re-write
+ * history rather than replay it. The recorded value is pinned here, and the head
+ * set must have moved off it, so either side changing is a deliberate edit.
+ */
+const RECURATED_REQUIREMENTS = new Map<string, string[]>([
+  // The snapshot stores requirements in the comparison form, so this is the
+  // recorded value as the replay reads it, not the fixture's own spelling.
+  ["gs-v0-004", ["HR. Ibn Majah no. 224"]],
+]);
+
+/** The requirement the head Golden Set carries, or the recorded one for a row the
+ * set has re-curated or retired since the run. */
 function requiredOf(row: Row): string[] {
+  const recurated = RECURATED_REQUIREMENTS.get(row.questionId);
+  if (recurated !== undefined) return recurated;
   const required = HEAD_REQUIRED.get(row.questionId);
   if (required !== undefined) return required;
   if (RETIRED_IDS.has(row.questionId)) return row.required;
@@ -177,8 +194,17 @@ function instrumentOutcome(row: Row): ReturnType<typeof scoreQuestion> {
 describe("golden-set-v0 replay — the collection fold measured on the recorded run", () => {
   it("stores every replay requirement in the comparison form the gate compares", () => {
     for (const row of ROWS) {
+      const recurated = RECURATED_REQUIREMENTS.get(row.questionId);
       const required = HEAD_REQUIRED.get(row.questionId);
-      if (required !== undefined) {
+      if (recurated !== undefined) {
+        // A re-curated row keeps the requirement the run carried, and the head
+        // set no longer demands it — the other side of the same change. The head
+        // side is compared in the gate's comparison form, the form `recurated`
+        // is stored in, so the guard fails on any requirement that folds to the
+        // recorded one, however the fixture spells it.
+        expect(row.required, row.questionId).toEqual(recurated);
+        expect(required?.map(GRAMMAR.normalizeLabel), row.questionId).not.toEqual(recurated);
+      } else if (required !== undefined) {
         expect(row.required, row.questionId).toEqual(required.map(GRAMMAR.normalizeLabel));
       } else {
         // A retired row's requirement is the recorded one; an id the set neither
