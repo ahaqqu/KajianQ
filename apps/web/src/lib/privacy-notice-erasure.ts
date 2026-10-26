@@ -22,8 +22,8 @@ export const ERASURE = {
     en: "The interface has no button for this yet: the endpoint above is the working erasure path today, called with your own session token. A discoverable control does not exist yet, and this notice records that gap rather than inventing an affordance.",
   },
   localNote: {
-    id: "Menghapus penyimpanan peramban — atau memulai percakapan baru — hanya membuang id sesi di perangkat Anda. Salinan di server tetap ada sampai Anda memanggil endpoint ini atau sesi kedaluwarsa karena 30 hari tanpa aktivitas.",
-    en: "Clearing your browser storage — or starting a new conversation — only drops the session id on your device. The server-side copy stays until you call this endpoint or the session expires through 30 days of inactivity.",
+    id: "Menghapus penyimpanan peramban — atau memulai percakapan baru — hanya mengubah apa yang dipegang peramban ini; salinan di server tetap ada sampai Anda memanggil endpoint ini atau sesi kedaluwarsa karena 30 hari tanpa aktivitas.",
+    en: "Clearing your browser storage — or starting a new conversation — only changes what this browser holds. The server-side copy stays until you call this endpoint or the session expires through 30 days of inactivity.",
   },
 } as const satisfies {
   method: string;

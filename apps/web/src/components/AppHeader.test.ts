@@ -165,3 +165,29 @@ describe("AppHeader navigation", () => {
     expect(document.activeElement).toBe(toggle);
   });
 });
+
+describe("AppHeader conversation history", () => {
+  it("carries the history control on a static page and opens the drawer", async () => {
+    await renderApp("/faq");
+    const control = screen.getByTestId("history-toggle");
+    expect(control.getAttribute("aria-label")).toBe("Riwayat percakapan");
+
+    fireEvent.click(control);
+    expect(screen.getByTestId("history-drawer")).toBeTruthy();
+    // Closing returns focus to the control that opened it.
+    fireEvent.keyDown(document, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByTestId("history-drawer")).toBeNull());
+    expect(document.activeElement).toBe(control);
+  });
+
+  it("reaches history from the nav drawer, so a phone keeps three round controls", async () => {
+    await renderApp("/about");
+    fireEvent.click(screen.getByTestId("nav-menu-toggle"));
+    const row = screen.getByTestId("drawer-history");
+    expect(row.textContent).toBe("Riwayat percakapan");
+
+    fireEvent.click(row);
+    expect(screen.queryByTestId("nav-drawer")).toBeNull();
+    expect(screen.getByTestId("history-drawer")).toBeTruthy();
+  });
+});

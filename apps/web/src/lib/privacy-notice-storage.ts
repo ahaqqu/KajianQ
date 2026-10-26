@@ -1,4 +1,4 @@
-import { SESSION_KEY, TOKEN_KEY } from "./chat-store";
+import { HISTORY_KEY, SESSION_KEY, TOKEN_KEY } from "./chat-store";
 import type { Localized } from "./localized";
 import { THEME_KEY } from "./theme";
 
@@ -11,9 +11,9 @@ import { THEME_KEY } from "./theme";
  * the modules that implement them:
  *
  *   - **No cookies.** The app calls neither `document.cookie` nor any
- *     `Set-Cookie` header; the session token and the theme preference live in
- *     `localStorage` instead (`chat-store.ts` `TOKEN_KEY`, `theme.ts`
- *     `THEME_KEY`). Browser storage that is functional-only and carries no
+ *     `Set-Cookie` header; the session token, the conversation-history list and
+ *     the theme preference live in `localStorage` instead (`chat-store.ts`
+ *     `TOKEN_KEY`/`HISTORY_KEY`, `theme.ts` `THEME_KEY`). Browser storage that is functional-only and carries no
  *     tracking is why no cookie-banner rules apply — so the notice says what
  *     is stored, not merely that nothing is.
  *   - **Erasable by the visitor, any time.** Clearing site data in the browser
@@ -30,10 +30,10 @@ import { THEME_KEY } from "./theme";
 export const STORAGE = {
   /** The `localStorage` keys the app writes, imported from the modules that
    * write them (`chat-store.ts`, `theme.ts`) — no duplicated literal to drift. */
-  keys: [TOKEN_KEY, SESSION_KEY, THEME_KEY],
+  keys: [TOKEN_KEY, SESSION_KEY, HISTORY_KEY, THEME_KEY],
   setsCookies: false,
   body: {
-    id: "KajianQ tidak memasang cookie sama sekali. Token sesi dan preferensi tema disimpan di localStorage peramban Anda — murni fungsional, tanpa pelacakan, sehingga aturan banner cookie tidak berlaku. Anda dapat menghapusnya sendiri kapan saja lewat pengaturan data situs di peramban.",
-    en: "KajianQ sets no cookies at all. The session token and your theme preference live in the browser's localStorage — functional only, with no tracking, which is why cookie-banner rules do not apply. You can erase them yourself at any time through your browser's site-data settings.",
+    id: "KajianQ tidak memasang cookie sama sekali. Token sesi, daftar percakapan yang tersimpan di peramban ini, dan preferensi tema disimpan di localStorage — murni fungsional, tanpa pelacakan, sehingga aturan banner cookie tidak berlaku. Anda dapat menghapusnya sendiri kapan saja lewat pengaturan data situs di peramban.",
+    en: "KajianQ sets no cookies at all. The session token, the list of conversations kept in this browser, and your theme preference live in localStorage — functional only, with no tracking, which is why cookie-banner rules do not apply. You can erase them yourself at any time through your browser's site-data settings.",
   },
 } as const satisfies { keys: readonly string[]; setsCookies: boolean; body: Localized };

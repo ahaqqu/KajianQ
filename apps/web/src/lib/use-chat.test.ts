@@ -37,6 +37,9 @@ type ChatMeta = { sessionId: string; messageId: string };
 const mocks = vi.hoisted(() => ({
   loadStoredSessionId: vi.fn<() => string | null>(),
   clearStoredSessionId: vi.fn(),
+  saveStoredSessionId: vi.fn(),
+  archiveChatFromMessages: vi.fn(),
+  markChatSessionExpired: vi.fn(),
   rehydrateSession: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
   askChat: vi.fn<
     (
@@ -51,8 +54,12 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("./chat-store", () => ({
+  OPEN_SESSION_EVENT: "kajianq:open-session",
   loadStoredSessionId: mocks.loadStoredSessionId,
   clearStoredSessionId: mocks.clearStoredSessionId,
+  saveStoredSessionId: mocks.saveStoredSessionId,
+  archiveChatFromMessages: mocks.archiveChatFromMessages,
+  markChatSessionExpired: mocks.markChatSessionExpired,
   rehydrateSession: mocks.rehydrateSession,
   // use-chat maps ChatApiError kinds onto its typed error surface.
   ChatApiError: class ChatApiError extends Error {
@@ -642,5 +649,46 @@ describe("useChat — transcript vs. the live turn and the route", () => {
     expect(secondId).toBeDefined();
     expect(secondId).not.toBe(firstId);
     expect(mocks.rehydrateSession).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("useChat — the conversation history", () => {
+  it("archives the conversation being left before a new one clears it", async () => {
+    mocks.loadStoredSessionId.mockReturnValue("sess-1");
+    const chat = setupChat({ initialTranscript: Promise.resolve(OLD_TRANSCRIPT) });
+    await waitFor(() => expect(chat.result.current.messages).toHaveLength(2));
+
+    act(() => chat.result.current.newSession());
+
+    expect(mocks.archiveChatFromMessages).toHaveBeenCalledWith({
+      id: "sess-1",
+      messages: OLD_MESSAGES,
+      locale: "id",
+    });
+    expect(chat.result.current.messages).toEqual([]);
+    expect(mocks.clearStoredSessionId).toHaveBeenCalled();
+  });
+
+  it("adopts a conversation opened from the drawer without fetching it again", async () => {
+    mocks.loadStoredSessionId.mockReturnValue(null);
+    const chat = setupChat();
+    const opened: ChatSessionMessages = {
+      sessionId: "sess-old",
+      truncated: false,
+      messages: [{ id: "x1", role: "user", content: "Pertanyaan lama", createdAt: 1 }],
+    };
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent("kajianq:open-session", { detail: { id: "sess-old", transcript: opened } }),
+      );
+    });
+
+    expect(mocks.saveStoredSessionId).toHaveBeenCalledWith("sess-old");
+    await waitFor(() =>
+      expect(chat.result.current.messages.map((message) => message.id)).toEqual(["x1"]),
+    );
+    expect(chat.result.current.persistedMessageIds.has("x1")).toBe(true);
+    expect(mocks.rehydrateSession).not.toHaveBeenCalled();
   });
 });
