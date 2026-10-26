@@ -41,7 +41,7 @@ describe("the shipped identity map", () => {
       expect(["same-report", "same-ruling"]).toContain(group.relation);
       expect(group.rationale, "the group states why it is one identity").not.toBe("");
     }
-    expect(SET.groups.filter((group) => group.relation === "same-report")).toHaveLength(5);
+    expect(SET.groups.filter((group) => group.relation === "same-report")).toHaveLength(6);
     expect(SET.groups.filter((group) => group.relation === "same-ruling")).toHaveLength(2);
   });
 
@@ -78,27 +78,50 @@ describe("the shipped identity map", () => {
     const canonical = gateIdentityOf("HR. Bukhari no. 1395");
     expect(canonical).toBe("HR. Bukhari no. 1395");
     for (const label of [
+      "HR. Bukhari no. 1496",
+      "HR. Bukhari no. 4347",
       "HR. Abu Dawud no. 1584",
       "HR. Ibn Majah no. 1783",
+      "HR. Muslim no. 121",
+      "HR. Muslim no. 123",
       "HR. Nasai no. 2522",
       "HR. Nasai no. 2435",
+      "HR. Tirmidhi no. 625",
     ]) {
       expect(gateIdentityOf(label), label).toBe(canonical);
     }
+    // The zakat schedule (Abu Bakr's letter) is a different report and ruling.
+    expect(gateIdentityOf("HR. Bukhari no. 1454")).toBeNull();
   });
 
-  it("keeps the travel group's membership exactly the signed same-report set", () => {
+  it("keeps the travel group's same-report membership to the Anas chains", () => {
     const group = SET.groups.find(
       (candidate) => candidate.id === "combining-prayers-in-travel-maghrib-isha",
     );
     expect(group?.canonical).toBe("HR. Bukhari no. 1108");
     expect(group?.relation).toBe("same-report");
-    expect(group?.members).toEqual([
-      "HR. Bukhari no. 1109",
-      "HR. Bukhari no. 1110",
-      "HR. Muslim no. 1621",
-      "HR. Muslim no. 1624",
-    ]);
+    expect(group?.members).toEqual(["HR. Bukhari no. 1110"]);
+    // 1108's matn names 1110's chain as its own follow-up, so the two are one report.
+    expect(gateIdentityOf("HR. Bukhari no. 1110")).toBe(gateIdentityOf("HR. Bukhari no. 1108"));
+    // The Ibn Umar rows are different reports of the same ruling: under the gate
+    // they are their own identities, never 1108's.
+    for (const label of ["HR. Bukhari no. 1109", "HR. Muslim no. 1621", "HR. Muslim no. 1624"]) {
+      expect(gateIdentityOf(label), label).toBeNull();
+    }
+  });
+
+  it("classifies Ali's gold-and-silk report as one identity under the gate", () => {
+    const canonical = gateIdentityOf("HR. Nasai no. 5144");
+    expect(canonical).not.toBeNull();
+    for (const label of [
+      "HR. Nasai no. 5145",
+      "HR. Nasai no. 5146",
+      "HR. Nasai no. 5147",
+      "HR. Abu Dawud no. 4057",
+      "HR. Ibn Majah no. 3595",
+    ]) {
+      expect(gateIdentityOf(label), label).toBe(canonical);
+    }
   });
 
   it("does NOT let the signed same-ruling relation satisfy the gate", () => {
@@ -107,17 +130,23 @@ describe("the shipped identity map", () => {
     // all under the gating relations.
     expect(gateIdentityOf("HR. Bukhari no. 1108")).toBe("HR. Bukhari no. 1108");
     expect(gateIdentityOf("HR. Nasai no. 598")).toBeNull();
-    // The gold/silk ruling is recorded too, and the gate cannot read it.
-    expect(gateIdentityOf("HR. Nasai no. 5144")).toBeNull();
+    // The gold/silk ruling is recorded too, and the gate cannot read it; only the
+    // Ali report's own chains resolve, as that group's same report.
+    const ali = gateIdentityOf("HR. Nasai no. 5144");
+    expect(ali).not.toBeNull();
     for (const label of [
       "HR. Nasai no. 5148",
-      "HR. Nasai no. 5149",
-      "HR. Nasai no. 5160",
+      "HR. Nasai no. 5265",
       "HR. Ibn Majah no. 3597",
       "HR. Ibn Majah no. 3590",
       "HR. Tirmidhi no. 1720",
     ]) {
       expect(gateIdentityOf(label), label).toBeNull();
+    }
+    // The exception narrations are in no group of either relation.
+    for (const label of ["HR. Nasai no. 5149", "HR. Nasai no. 5160"]) {
+      expect(gateIdentityOf(label), label).toBeNull();
+      expect(reportedIdentityOf(label), label).toBeNull();
     }
   });
 
@@ -125,8 +154,9 @@ describe("the shipped identity map", () => {
     const travel = reportedIdentityOf("HR. Bukhari no. 1108");
     expect(travel).not.toBeNull();
     expect(reportedIdentityOf("HR. Nasai no. 598")).toBe(travel);
-    // The same-report parallels of 1108 share that key too: the reported relation
-    // is the union of the two, so a component cannot split across relations.
+    // The same-report parallels and the same-ruling rows share that key too: the
+    // reported relation is the union of the two, so a component cannot split
+    // across relations.
     for (const label of [
       "HR. Bukhari no. 1109",
       "HR. Bukhari no. 1110",
@@ -139,12 +169,16 @@ describe("the shipped identity map", () => {
     const gold = reportedIdentityOf("HR. Nasai no. 5144");
     expect(gold).not.toBeNull();
     for (const label of [
+      "HR. Nasai no. 5145",
+      "HR. Nasai no. 5146",
+      "HR. Nasai no. 5147",
       "HR. Nasai no. 5148",
-      "HR. Nasai no. 5149",
-      "HR. Nasai no. 5160",
+      "HR. Nasai no. 5265",
       "HR. Ibn Majah no. 3597",
       "HR. Ibn Majah no. 3590",
+      "HR. Ibn Majah no. 3595",
       "HR. Tirmidhi no. 1720",
+      "HR. Abu Dawud no. 4057",
     ]) {
       expect(reportedIdentityOf(label), label).toBe(gold);
     }
@@ -170,7 +204,7 @@ describe("the shipped identity map", () => {
     ]) {
       expect(gateIdentityOf(other), other).not.toBe(travel);
     }
-    // The map holds five same-report narrations; none of their keys aliases another.
+    // The map holds six same-report narrations; none of their keys aliases another.
     expect(
       SET.groups
         .filter((group) => group.relation === "same-report")
@@ -181,6 +215,7 @@ describe("the shipped identity map", () => {
       "HR. Muslim no. 534",
       travel,
       "HR. Bukhari no. 1395",
+      "HR. Nasai no. 5144",
     ]);
   });
 

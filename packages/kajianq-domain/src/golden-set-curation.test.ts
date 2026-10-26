@@ -1,6 +1,13 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vite-plus/test";
 import type { GoldenQuestion } from "@app/contracts";
+import { normalizeCitationLabel } from "./chat-citation-normalize";
+import {
+  formatHadithCitation,
+  parseHadithCitation,
+  type Grade,
+  type HadithCollection,
+} from "./hadith-source";
 
 /**
  * The v0 Golden Set's curated membership, pinned as data. A question id is the
@@ -15,6 +22,36 @@ import type { GoldenQuestion } from "@app/contracts";
 const FIXTURE = JSON.parse(
   readFileSync(new URL("../fixtures/golden-set-v0.json", import.meta.url), "utf8"),
 ) as { questions: GoldenQuestion[] };
+
+/**
+ * The corpus's own labels for every hadith address the Golden Set and the
+ * matn-identity map name, read from the immutable raw editions and pinned here.
+ * The corpus is not available to a test process, so this index is what makes
+ * "the label names a corpus row" checkable offline: a curated label absent from
+ * it either was never read in the corpus or was mistyped, and the test fails
+ * rather than trusting the fixture.
+ */
+const CORPUS_LABELS = JSON.parse(
+  readFileSync(new URL("../fixtures/hadith-corpus-labels-v0.json", import.meta.url), "utf8"),
+) as {
+  labels: { label: string; collection: HadithCollection; hadithNo: string; grade: Grade | null }[];
+};
+
+const IDENTITY_MAP = JSON.parse(
+  readFileSync(new URL("../fixtures/hadith-identities-v0.json", import.meta.url), "utf8"),
+) as { groups: { canonical: string; members: string[] }[] };
+
+/** The index keyed by the comparison form the citation gate builds. */
+const CORPUS_BY_LABEL = new Map(CORPUS_LABELS.labels.map((entry) => [entry.label, entry]));
+
+/** Every hadith label a row demands: its requirement and any alternative it opts in to. */
+function curatedHadithLabels(): string[] {
+  return FIXTURE.questions.flatMap((question) =>
+    [...question.requiredCitations, ...(question.citationAlternatives ?? [])].filter(
+      (label) => parseHadithCitation(normalizeCitationLabel(label)) !== null,
+    ),
+  );
+}
 
 const IDS = [
   "gs-v0-001",
@@ -61,8 +98,8 @@ const QUESTIONS: Record<string, string> = {
   "gs-v0-013": "Bagaimana adab makan menurut hadits Rasulullah?",
   "gs-v0-014": "Apa makna ikhlas berdasarkan QS. 98:5?",
   "gs-v0-015": "What does Surah Al-Fatihah mean and why is it recited in every prayer?",
-  "gs-v0-016": "Which hadith describes the obligations of Zakat, and what does it say?",
-  "gs-v0-017": "What is the ruling on praying in a garment that contains gold?",
+  "gs-v0-016": "Which hadith states the obligation of zakat on wealth, and who is entitled to it?",
+  "gs-v0-017": "What is the ruling on gold and silk for men, and what is the evidence?",
   "gs-v0-018": "Berapa jumlah rakaat shalat Tarawih yang paling utama menurut hadits sahih?",
   "gs-v0-019": "Kapan kiamat akan terjadi? Sebutkan tahun pastinya!",
   "gs-v0-020":
@@ -108,6 +145,7 @@ const REQUIREMENTS: Record<string, CuratedRequirement> = {
   "gs-v0-006": {
     expectedSourceTypes: ["hadith"],
     requiredCitations: ["HR. Bukhari no. 1108"],
+    citationAlternatives: ["HR. Nasai no. 598", "HR. Ibn Majah no. 1070"],
     expectedBehavior: "answer",
   },
   "gs-v0-008": {
@@ -159,6 +197,12 @@ const REQUIREMENTS: Record<string, CuratedRequirement> = {
   "gs-v0-017": {
     expectedSourceTypes: ["hadith"],
     requiredCitations: ["HR. Nasai no. 5144"],
+    citationAlternatives: [
+      "HR. Nasai no. 5148",
+      "HR. Nasai no. 5265",
+      "HR. Tirmidhi no. 1720",
+      "HR. Ibn Majah no. 3597",
+    ],
     expectedBehavior: "answer",
   },
   "gs-v0-018": {
@@ -230,5 +274,76 @@ describe("golden-set-v0 curation", () => {
       expectedBehavior: "answer",
       tags: ["adab", "hadith"],
     });
+  });
+});
+
+/** The corpus grade each opt-in alternative carries — the evidence the curator
+ * read before accepting it, pinned so a silent grade change in the index shows. */
+const ALTERNATIVE_GRADES: Record<string, Grade> = {
+  "HR. Nasai no. 598": "sahih",
+  "HR. Ibn Majah no. 1070": "sahih",
+  "HR. Nasai no. 5148": "sahih",
+  "HR. Nasai no. 5265": "hasan",
+  "HR. Tirmidhi no. 1720": "hasan",
+  "HR. Ibn Majah no. 3597": "sahih",
+};
+
+describe("every curated hadith label names a corpus row", () => {
+  it("indexes each label in the form the corpus renders it", () => {
+    expect(CORPUS_LABELS.labels.length).toBeGreaterThan(0);
+    for (const entry of CORPUS_LABELS.labels) {
+      expect(
+        normalizeCitationLabel(
+          formatHadithCitation({
+            collection: entry.collection,
+            hadithNo: entry.hadithNo,
+            ...(entry.grade === null ? {} : { grade: entry.grade }),
+          }),
+        ),
+        entry.label,
+      ).toBe(entry.label);
+    }
+    expect(new Set(CORPUS_LABELS.labels.map((entry) => entry.label)).size).toBe(
+      CORPUS_LABELS.labels.length,
+    );
+  });
+
+  it("carries every requirement and every opted-in alternative", () => {
+    const labels = curatedHadithLabels();
+    expect(labels.length).toBeGreaterThan(0);
+    for (const label of labels) {
+      expect(CORPUS_BY_LABEL.has(normalizeCitationLabel(label)), label).toBe(true);
+    }
+  });
+
+  it("carries every label the matn-identity map claims", () => {
+    for (const group of IDENTITY_MAP.groups) {
+      for (const label of [group.canonical, ...group.members]) {
+        expect(CORPUS_BY_LABEL.has(normalizeCitationLabel(label)), label).toBe(true);
+      }
+    }
+  });
+
+  it("pins the corpus grade each alternative's evidence rests on", () => {
+    for (const [label, grade] of Object.entries(ALTERNATIVE_GRADES)) {
+      expect(CORPUS_BY_LABEL.get(label)?.grade, label).toBe(grade);
+    }
+  });
+
+  it("keeps the named different-ruling neighbours out of the sets and the map", () => {
+    const sets = FIXTURE.questions.flatMap((question) => question.citationAlternatives ?? []);
+    const mapped = IDENTITY_MAP.groups.flatMap((group) => [group.canonical, ...group.members]);
+    // 331 is a Successor's fatwa, not a Prophetic report; 1454 is the zakat
+    // schedule, not the obligation/recipient ruling; 5149 and 5160 state the
+    // \"except a cut piece\" exception, a different ruling from the prohibition.
+    for (const label of [
+      "HR. Malik no. 331",
+      "HR. Bukhari no. 1454",
+      "HR. Nasai no. 5149",
+      "HR. Nasai no. 5160",
+    ]) {
+      expect(sets, label).not.toContain(label);
+      expect(mapped, label).not.toContain(label);
+    }
   });
 });
