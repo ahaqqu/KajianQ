@@ -65,7 +65,14 @@ async function retrieve(
   const events: TraceEvent[] = [];
   const chunks = await Effect.runPromise(
     Effect.provideService(
-      retriever.retrieve(routedQuery("apa maksud ayat kursi")) as never,
+      // A model paraphrase, not the caller's own words: a route carrying the caller's
+      // question is wholly covered by the caller-priority guarantee, so the rerank this
+      // suite pins would have no candidate left to order.
+      retriever.retrieve(
+        routedQuery("apa maksud ayat kursi", {
+          subQueries: [{ text: "makna ayat kursi", role: "factual", origin: "model" }],
+        }) as never,
+      ) as never,
       RunContext,
       { config: {}, now: () => 1, record: (event: TraceEvent) => events.push(event) } as never,
     ) as never,
