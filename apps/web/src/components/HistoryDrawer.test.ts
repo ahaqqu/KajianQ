@@ -70,6 +70,8 @@ describe("conversation history drawer", () => {
     const rows = within(drawer).getAllByTestId("history-entry");
     expect(rows).toHaveLength(2);
     expect(rows[0]?.textContent).toContain("Hadits jujur");
+    // The row names the language the conversation was started in.
+    expect(rows[0]?.textContent).toContain("ID");
     expect(rows[0]?.textContent).toContain("baru saja");
   });
 

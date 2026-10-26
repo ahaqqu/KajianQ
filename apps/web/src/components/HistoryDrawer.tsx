@@ -155,6 +155,8 @@ export function HistoryDrawer({ onClose }: { onClose: () => void }) {
                       </span>
                     </span>
                     <span className="mt-1 flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.15em] text-muted-foreground">
+                      <span>{entry.locale.toUpperCase()}</span>
+                      <span aria-hidden="true">·</span>
                       {relativeTime(entry.startedAt, locale)}
                       {entry.expired === true && (
                         <span className="rounded-full border border-border px-1.5 py-0.5">
