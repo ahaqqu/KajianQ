@@ -5,8 +5,10 @@
  * copy lives in its own file so `i18n.ts` stays the machinery module, under
  * the agentic-limits cap a growing message list would otherwise break.
  */
+import { historyMessages } from "./i18n-messages-history";
 export const messages = {
   en: {
+    ...historyMessages.en,
     appTitle: "KajianQ",
     homeTitle: "KajianQ",
     homeSubtitle:
@@ -150,6 +152,7 @@ export const messages = {
     collectionFilterTerminology: "Terminology",
   },
   id: {
+    ...historyMessages.id,
     appTitle: "KajianQ",
     homeTitle: "KajianQ",
     homeSubtitle:

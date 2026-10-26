@@ -1,3 +1,13 @@
+/**
+ * The wire types this client speaks, re-exported so a consumer importing
+ * `askChat` also has the frames without a second import of `@app/contracts`.
+ */
+export type {
+  ChatCitationsFrame,
+  ChatSessionMessage,
+  ChatSessionMessages,
+  ChatTraceFrame,
+} from "@app/contracts";
 import {
   ChatCitationsFrameSchema,
   ChatMetaSchema,

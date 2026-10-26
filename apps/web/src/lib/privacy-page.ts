@@ -51,8 +51,8 @@ export const PRIVACY_PAGE = {
     {
       title: { en: "Limit what is kept", id: "Membatasi yang disimpan" },
       body: {
-        en: "There is no profile and no secondary use: a question is processed to answer it and nothing else. Starting a new conversation drops the local copy of the previous one, and clearing browser storage drops everything this browser holds.",
-        id: "Tidak ada profil dan tidak ada pemakaian sekunder: pertanyaan diproses untuk dijawab, tidak untuk hal lain. Memulai percakapan baru membuang salinan lokal percakapan sebelumnya, dan menghapus penyimpanan peramban membuang semua yang dipegang peramban ini.",
+        en: "There is no profile and no secondary use: a question is processed to answer it and nothing else. Starting a new conversation keeps the previous one in this browser's history list, and clearing browser storage drops everything this browser holds.",
+        id: "Tidak ada profil dan tidak ada pemakaian sekunder: pertanyaan diproses untuk dijawab, tidak untuk hal lain. Memulai percakapan baru menyimpan percakapan sebelumnya di daftar riwayat peramban ini, dan menghapus penyimpanan peramban membuang semua yang dipegang peramban ini.",
       },
     },
     {

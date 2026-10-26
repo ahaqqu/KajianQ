@@ -377,8 +377,9 @@ describe("privacy notice: erasure points at the route that exists", () => {
     expect(ERASURE.noUiNote.id).toContain("belum punya tombol");
     // The local-first posture invites reading "clearing local storage" as erasure, so the
     // distinction is stated.
-    expect(ERASURE.localNote.en).toContain("only drops the session id on your device");
-    expect(ERASURE.localNote.id).toContain("hanya membuang id sesi");
+    expect(ERASURE.localNote.en).toContain("only changes what this browser holds");
+    expect(ERASURE.localNote.en).toContain("server-side copy stays");
+    expect(ERASURE.localNote.id).toContain("hanya mengubah apa yang dipegang peramban ini");
   });
 
   it("gives the erasure copy both locales", () => {
@@ -439,7 +440,7 @@ describe("privacy notice: browser storage is stated from the code that stores it
     const chatStore = read("apps/web/src/lib/chat-store.ts");
     const theme = read("apps/web/src/lib/theme.ts");
     const declared = [
-      ...chatStore.matchAll(/export const (?:SESSION|TOKEN)_KEY = "([^"]+)"/g),
+      ...chatStore.matchAll(/export const (?:SESSION|TOKEN|HISTORY)_KEY = "([^"]+)"/g),
       ...theme.matchAll(/export const THEME_KEY = "([^"]+)"/g),
     ].map((match) => match[1]!);
     expect(declared.sort()).toEqual([...STORAGE.keys].sort());

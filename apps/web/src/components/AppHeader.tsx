@@ -1,7 +1,15 @@
 import { Link, useRouterState } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import { t, useLocale, type Locale } from "../lib/i18n";
-import { CloseButton, LocaleMenu, MenuButton, NewSessionButton, ThemeToggle } from "./header-parts";
+import {
+  CloseButton,
+  HistoryButton,
+  HistoryDrawer,
+  LocaleMenu,
+  MenuButton,
+  NewSessionButton,
+  ThemeToggle,
+} from "./header-parts";
 import { LogoTile, MonoLabel, NavLinks } from "./ui";
 
 /**
@@ -21,7 +29,10 @@ import { LogoTile, MonoLabel, NavLinks } from "./ui";
 export function AppHeader({ onNewSession }: { onNewSession?: () => void } = {}) {
   const locale = useLocale();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
+  // Closing the history drawer returns focus to the control that opened it.
+  const historyButtonRef = useRef<HTMLButtonElement>(null);
   // A drawer left open would cover the page its own link just opened, so close
   // it whenever the route changes (the router state read is required for that
   // close-on-navigate behavior — this component cannot render outside a
@@ -31,6 +42,11 @@ export function AppHeader({ onNewSession }: { onNewSession?: () => void } = {}) 
   useEffect(() => {
     setMenuOpen(false);
   }, [pathname]);
+
+  const closeHistory = (): void => {
+    setHistoryOpen(false);
+    historyButtonRef.current?.focus();
+  };
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -91,6 +107,7 @@ export function AppHeader({ onNewSession }: { onNewSession?: () => void } = {}) 
 
           <div className="ml-auto flex items-center gap-2 lg:ml-0 lg:justify-self-end">
             {onNewSession !== undefined && <NewSessionButton onClick={onNewSession} />}
+            <HistoryButton onClick={() => setHistoryOpen(true)} buttonRef={historyButtonRef} />
             <LocaleMenu />
             <ThemeToggle />
             <MenuButton open={menuOpen} onClick={() => setMenuOpen((open) => !open)} />
@@ -103,8 +120,14 @@ export function AppHeader({ onNewSession }: { onNewSession?: () => void } = {}) 
           locale={locale}
           onClose={() => setMenuOpen(false)}
           onNewSession={onNewSession}
+          onHistory={() => {
+            setMenuOpen(false);
+            setHistoryOpen(true);
+          }}
         />
       )}
+
+      {historyOpen && <HistoryDrawer onClose={closeHistory} />}
     </div>
   );
 }
@@ -114,10 +137,12 @@ function MobileDrawer({
   locale,
   onClose,
   onNewSession,
+  onHistory,
 }: {
   locale: Locale;
   onClose: () => void;
   onNewSession?: (() => void) | undefined;
+  onHistory: () => void;
 }) {
   return (
     <div className="fixed inset-0 z-50 lg:hidden" data-testid="nav-drawer">
@@ -161,6 +186,18 @@ function MobileDrawer({
             {t(locale, "newSession")}
           </button>
         )}
+
+        <button
+          type="button"
+          data-testid="drawer-history"
+          onClick={() => {
+            onHistory();
+            onClose();
+          }}
+          className="mt-2 flex h-10 items-center justify-center rounded-full border border-border px-4 text-sm font-medium text-foreground hover:bg-card focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          {t(locale, "historyOpen")}
+        </button>
 
         <div className="mt-auto space-y-2 pt-8">
           <MonoLabel>{t(locale, "footerLegalLabel")}</MonoLabel>

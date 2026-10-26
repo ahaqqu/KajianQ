@@ -1,17 +1,21 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import type {
-  ChatCitationsFrame,
-  ChatSessionMessage,
-  ChatSessionMessages,
-  ChatTraceFrame,
-} from "@app/contracts";
-import { askChat } from "./chat-client";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  askChat,
+  type ChatCitationsFrame,
+  type ChatSessionMessage,
+  type ChatSessionMessages,
+  type ChatTraceFrame,
+} from "./chat-client";
+import { useOnline, useOpenSession } from "./chat-hooks";
 import {
   ChatApiError,
+  archiveChatFromMessages,
   clearStoredSessionId,
   loadStoredSessionId,
+  markChatSessionExpired,
   rehydrateSession,
+  saveStoredSessionId,
 } from "./chat-store";
 
 /**
@@ -62,7 +66,6 @@ export function useChat(locale: "id" | "en") {
   );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<ChatError>(null);
-  const [online, setOnline] = useState(true);
   const liveSessionRef = useRef<string | null>(loadStoredSessionId());
   // Incremented when a turn completes. A snapshot records this at request
   // time: a turn that completed after that point is not in the response.
@@ -129,6 +132,9 @@ export function useChat(locale: "id" | "en") {
     // is still the one this request probed (a live turn's `meta` may have
     // saved a newer id since).
     if (snapshot.transcript === null && loadStoredSessionId() === sessionId) {
+      // The conversation is gone from the server: the history drawer shows it
+      // as expired rather than offering a row that can only fail.
+      if (sessionId !== null) markChatSessionExpired(sessionId);
       clearStoredSessionId();
       liveSessionRef.current = null;
       setSessionId(null);
@@ -166,16 +172,7 @@ export function useChat(locale: "id" | "en") {
     transcriptIsThisMount,
   ]);
 
-  useEffect(() => {
-    const sync = (): void => setOnline(window.navigator.onLine);
-    sync();
-    window.addEventListener("online", sync);
-    window.addEventListener("offline", sync);
-    return () => {
-      window.removeEventListener("online", sync);
-      window.removeEventListener("offline", sync);
-    };
-  }, []);
+  const online = useOnline();
 
   const send = useCallback(
     (text: string): void => {
@@ -242,14 +239,43 @@ export function useChat(locale: "id" | "en") {
     [busy, locale],
   );
 
+  // "New conversation" must not strand the one being left.
+  const archiveCurrent = useCallback((): void => {
+    const id = liveSessionRef.current;
+    if (id !== null) archiveChatFromMessages({ id, messages, locale });
+  }, [messages, locale]);
+
+  const queryClient = useQueryClient();
+  // Adopting the drawer's fetched transcript keeps an open to one request: it
+  // seeds the query cache so the rehydration effect applies it as this mount's
+  // own result. Expired and failed opens are the drawer's to report.
+  const adopt = useCallback(
+    (id: string, transcript: ChatSessionMessages): void => {
+      saveStoredSessionId(id);
+      liveSessionRef.current = id;
+      setSessionId(id);
+      setMessages(transcript.messages);
+      setPersistedMessageIds(new Set(transcript.messages.map((message) => message.id)));
+      setError(null);
+      queryClient.setQueryData<TranscriptSnapshot>(["chat-transcript", id], {
+        transcript,
+        completedTurnEpoch: completedTurnEpochRef.current,
+        requestedByMount: mountId,
+      });
+    },
+    [mountId, queryClient],
+  );
+  useOpenSession(adopt);
+
   const newSession = useCallback((): void => {
+    archiveCurrent();
     clearStoredSessionId();
     liveSessionRef.current = null;
     setSessionId(null);
     setMessages([]);
     setPersistedMessageIds(new Set());
     setError(null);
-  }, []);
+  }, [archiveCurrent]);
 
   return {
     messages,

@@ -1,7 +1,15 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type Ref } from "react";
 import { t, type Locale, useLocale, useLocaleSetter } from "../lib/i18n";
 import { useTheme } from "../lib/theme";
-import { BurgerIcon, CloseIcon, MoonIcon, NewChatIcon, SunIcon, TranslateIcon } from "./icons";
+import {
+  BurgerIcon,
+  CloseIcon,
+  HistoryIcon,
+  MoonIcon,
+  NewChatIcon,
+  SunIcon,
+  TranslateIcon,
+} from "./icons";
 
 /**
  * The header's controls, split out of `AppHeader` (which owns the brand, the
@@ -162,6 +170,31 @@ export function NewSessionButton({ onClick }: { onClick: () => void }) {
   );
 }
 
+/** The history trigger: a round control beside the new-conversation pill, on
+ * the same breakpoints (the nav drawer carries it on phones). */
+export function HistoryButton({
+  onClick,
+  buttonRef,
+}: {
+  onClick: () => void;
+  buttonRef?: Ref<HTMLButtonElement>;
+}) {
+  const locale = useLocale();
+  return (
+    <button
+      type="button"
+      ref={buttonRef}
+      data-testid="history-toggle"
+      aria-label={t(locale, "historyOpen")}
+      aria-haspopup="dialog"
+      onClick={onClick}
+      className={`${CONTROL} hidden sm:flex`}
+    >
+      <HistoryIcon />
+    </button>
+  );
+}
+
 /** The hamburger, below lg only; `AppHeader` owns the drawer it controls. */
 export function MenuButton({ open, onClick }: { open: boolean; onClick: () => void }) {
   const locale = useLocale();
@@ -198,3 +231,6 @@ export function CloseButton({ onClick }: { onClick: () => void }) {
     </button>
   );
 }
+
+/** The history drawer is a header part; it lives in its own file for the line cap. */
+export { HistoryDrawer } from "./HistoryDrawer";
