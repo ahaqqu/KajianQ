@@ -32,6 +32,7 @@ export type { RetrieverStore } from "./chat-retriever-store";
 export {
   CALLER_PRIORITY_ORIGIN,
   applyCallerPriority,
+  callerIndexIn,
   callerPriorityHits,
   guaranteeCallerPriority,
   isCallerSubQuery,

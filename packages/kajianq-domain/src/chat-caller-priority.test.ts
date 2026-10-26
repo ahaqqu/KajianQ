@@ -11,7 +11,9 @@ import {
 import { createKajianQAssembler } from "./chat-assembler";
 import {
   CALLER_PRIORITY_ORIGIN,
+  callerIndexIn,
   guaranteeCallerPriority,
+  isCallerSubQuery,
   type RetrieverStore,
   type TrackHit,
 } from "./chat-retriever-parts";
@@ -93,7 +95,10 @@ function retrieverDeps(
       embed: ({ texts }: { texts: readonly string[]; personalData: true }) => {
         embed(texts);
         return Effect.succeed({
-          vectors: texts.map((text) => (text === CALLER_TEXT ? [1, 0] : [0, 1])),
+          // The caller's rows are keyed on the caller's own words, however the
+          // fixture's producer padded them: this picks the store's caller list, not
+          // the admission under test.
+          vectors: texts.map((text) => (text.trim() === CALLER_TEXT ? [1, 0] : [0, 1])),
           cost,
         });
       },
@@ -205,6 +210,66 @@ describe("the caller's own query is a priority retrieval angle", () => {
 });
 
 /**
+ * The selection rule itself: both texts pass `admitSubQueryText`, so "the same
+ * query" is the accepted text and padding on either side is not a difference.
+ * The route tests below cover the same rule end to end; these pin it at the
+ * unit and give `callerIndexIn` a direct target.
+ */
+describe("the caller's entry is selected by the admitted text", () => {
+  it.each([
+    ["both sides as written", "apa hukumnya", "apa hukumnya"],
+    ["the caller's text padded", `  apa hukumnya\n`, "apa hukumnya"],
+    ["the entry's text padded", "apa hukumnya", `  apa hukumnya\n`],
+    ["both sides padded", ` apa hukumnya `, "\napa hukumnya  "],
+  ])("selects the entry when %s", (_case, callerText, entryText) => {
+    expect(isCallerSubQuery({ text: entryText }, callerText)).toBe(true);
+  });
+
+  it("rejects a different question, a content-free entry, and a content-free question", () => {
+    expect(isCallerSubQuery({ text: "makna ayat kursi" }, "apa hukumnya")).toBe(false);
+    expect(isCallerSubQuery({ text: " \n " }, "apa hukumnya")).toBe(false);
+    expect(isCallerSubQuery({ text: "apa hukumnya" }, " \n ")).toBe(false);
+  });
+
+  it("resolves the caller's index among paraphrase entries, and -1 when absent", () => {
+    const paraphrase = { text: "makna ayat kursi" };
+    expect(callerIndexIn([paraphrase, { text: ` ${CALLER_TEXT} ` }, paraphrase], CALLER_TEXT)).toBe(
+      1,
+    );
+    expect(callerIndexIn([paraphrase], CALLER_TEXT)).toBe(-1);
+    expect(callerIndexIn([], CALLER_TEXT)).toBe(-1);
+  });
+});
+
+/**
+ * The shared fixture (`test-utils/routed-query.ts`) is the decomposition repair's
+ * route: its one entry is `rule`/`factual` and carries the caller's question, so
+ * a suite that takes the default is running the guarantee, not beside it.
+ */
+describe("the shared routed-query default is a route the guarantee covers", () => {
+  it("records the caller's entry with production's provenance and fires the guarantee", async () => {
+    const { store } = makeStore();
+    const events: Recorded[] = [];
+    const retriever = createChatRetriever({ ...retrieverDeps(store), rerankDecider: null });
+    const chunks = (await Effect.runPromise(
+      Effect.provideService(retriever.retrieve(routedQuery(CALLER_TEXT) as never), RunContext, {
+        config: {},
+        now: () => 7,
+        record: (event: unknown) => events.push(event as Recorded),
+      } as never) as never,
+    )) as readonly Chunk[];
+
+    const searches = events.filter((event) => event.kind === "search_hits");
+    expect(searches.map((event) => event.detail)).toMatchObject([
+      { role: "factual", origin: "rule", track: "primary" },
+      { role: "factual", origin: "rule", track: "fallback" },
+    ]);
+    expect(events.some((event) => event.kind === "caller_priority")).toBe(true);
+    expect(chunks.every((chunk) => chunk.origin === CALLER_PRIORITY_ORIGIN)).toBe(true);
+  });
+});
+
+/**
  * The router's fallback route: the only sub-query carries the caller's words with
  * `origin: "fallback"`. The corpus rows are shaped so the caller's rank-2 hit sits
  * on the primary track alone — the fallback track never returned it, so no other
@@ -280,16 +345,24 @@ describe("the guarantee covers the router's fallback route", () => {
     );
   });
 
-  it("finds the entry by the admitted question, not by the padded source text", async () => {
-    const { chunks, events } = await run({
-      subQueries: FALLBACK_SUB_QUERIES,
-      store: makeFallbackStore(),
-      // The runner stamps the verbatim text; the entry carries the admitted one.
-      sourceText: `  ${CALLER_TEXT}\n`,
-    });
-    expect(chunks[1]?.id).toBe(TARGET);
-    expect(events.some((event) => event.kind === "caller_priority")).toBe(true);
-  });
+  it.each([
+    ["the caller's text", `  ${CALLER_TEXT}\n`, CALLER_TEXT],
+    ["the sub-query's text", CALLER_TEXT, `  ${CALLER_TEXT}\n`],
+    ["both texts", ` ${CALLER_TEXT} `, `\n${CALLER_TEXT}  `],
+  ])(
+    "finds the entry by the admitted question with %s padded",
+    async (_case, sourceText, subQueryText) => {
+      const { chunks, events } = await run({
+        subQueries: [{ text: subQueryText, role: "factual", origin: "fallback" }],
+        store: makeFallbackStore(),
+        sourceText,
+      });
+      // Padding is not a drop: both sides pass the same admission, so the padded
+      // entry and the padded source text are the same question.
+      expect(chunks[1]?.id).toBe(TARGET);
+      expect(events.some((event) => event.kind === "caller_priority")).toBe(true);
+    },
+  );
 });
 
 describe("the guarantee reaches the assembled context the generator reads", () => {

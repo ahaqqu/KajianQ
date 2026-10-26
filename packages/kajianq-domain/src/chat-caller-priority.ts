@@ -23,8 +23,9 @@ import { admitSubQueryText } from "./chat-subquery-admission";
  *
  * The caller's entry is found by the text it carries, not by the origin that
  * offered it: the decomposition repair and the router's deterministic fallback
- * both copy the admitted verbatim question into their sub-query, and the
- * guarantee covers the caller's words whichever route wrote them down.
+ * both write the caller's question into their sub-query, and the guarantee
+ * covers the caller's words whichever route wrote them down. Both sides pass the
+ * same admission, so padding on either side is the same query, not a miss.
  */
 
 /** The provenance label the caller's guaranteed chunks carry. It marks a row the
@@ -52,14 +53,30 @@ export type CallerPriority = {
 /**
  * True for the sub-query carrying the caller's verbatim question. Two routes
  * can produce that entry — the decomposition repair's `factual` sub-query and
- * the router's deterministic fallback — and both copy the admitted question
+ * the router's deterministic fallback — and both write the caller's question
  * into their entry's text, so the entry is found by the words it carries rather
  * than by the origin that offered it. The origin stays the entry's own on the
  * trace; only this selection is origin-blind.
+ *
+ * Both sides pass the same admission, so the comparison is over the accepted
+ * text: padding on either side is the same query, and the predicate does not
+ * rest on every producer having admitted what it stored.
  */
 export function isCallerSubQuery(sub: { text: string }, callerText: string): boolean {
   const question = admitSubQueryText(callerText);
-  return question !== undefined && sub.text === question;
+  return question !== undefined && admitSubQueryText(sub.text) === question;
+}
+
+/**
+ * The index of the caller's sub-query in the route's fan-out, or `-1` when the
+ * route carries none. Two routes produce that entry — the decomposition
+ * repair's `factual` sub-query and the router's deterministic fallback — so the
+ * fallback route is the caller's list too, not an unprotected route. Resolved
+ * once before the fan-out, so the retriever can keep that branch's lists aside
+ * while it searches rather than re-testing a predicate that trims both sides.
+ */
+export function callerIndexIn(subQueries: readonly { text: string }[], callerText: string): number {
+  return subQueries.findIndex((sub) => isCallerSubQuery(sub, callerText));
 }
 
 /**
