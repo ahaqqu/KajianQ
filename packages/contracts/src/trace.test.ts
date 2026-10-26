@@ -776,10 +776,11 @@ describe("the search_hits event", () => {
 
 /**
  * The caller-priority record: the caller's own query's leading rows, which the
- * retriever guarantees into the context past fusion. Its bound is the
- * contract's, so a producer cannot write more guaranteed ids than the decision
- * allows, and `alreadyPresent` must be a subset of `ids` — a record naming a row
- * it did not guarantee describes a run that never happened.
+ * retriever promotes past fusion. Its bound is the contract's, so a producer
+ * cannot write more guaranteed ids than the decision allows; the ids must fit
+ * the bound the record claims to have applied; and `alreadyPresent` must be a
+ * subset of `ids` — a record naming a row it did not guarantee describes a run
+ * that never happened.
  */
 describe("the caller_priority event", () => {
   const base = { id: "d2c3b4a5-6f70-4a8b-9c0d-e1f2a3b4c5d6", createdAt: 0 };
@@ -799,6 +800,26 @@ describe("the caller_priority event", () => {
       kind: "caller_priority",
       detail: { k: CALLER_PRIORITY_K, ids: ["c1", "c2"], alreadyPresent: ["c1"] },
     });
+  });
+
+  it("refuses more guaranteed ids than the bound the run applied", () => {
+    // `k` is the bound the run applied, not free text: a record claiming a smaller
+    // bound than the ids it promoted describes a run that never happened.
+    for (const detail of [
+      { k: 0, ids: ["c1"], alreadyPresent: [] },
+      { k: 1, ids: ["c1", "c2"], alreadyPresent: [] },
+    ]) {
+      expect(v.safeParse(TraceSchema, { ...base, events: [priorityEvent(detail)] }).success).toBe(
+        false,
+      );
+    }
+    // A shorter list than the bound is a real record: the caller search returned fewer.
+    expect(
+      v.safeParse(TraceSchema, {
+        ...base,
+        events: [priorityEvent({ k: CALLER_PRIORITY_K, ids: ["c1"], alreadyPresent: [] })],
+      }).success,
+    ).toBe(true);
   });
 
   it("refuses more guaranteed ids than the bound allows, and an id outside the set", () => {

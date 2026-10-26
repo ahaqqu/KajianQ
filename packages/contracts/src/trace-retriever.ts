@@ -109,6 +109,7 @@ export const callerPriorityEventSchema = v.object({
       (detail) => detail.alreadyPresent.every((id) => detail.ids.includes(id)),
       "alreadyPresent must name ids in the guaranteed set",
     ),
+    v.check((detail) => detail.ids.length <= detail.k, "ids must fit the bound the run applied"),
   ),
   cost: v.optional(CostRecordSchema),
   at: v.pipe(v.number(), v.integer()),
