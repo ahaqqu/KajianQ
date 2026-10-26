@@ -54,6 +54,8 @@
       "language": "id",
       "expectedSourceTypes": ["hadith"],
       "requiredCitations": ["HR. Bukhari no. 1108"],
+      "$comment": "citationAlternatives: the question asks the ruling — combining Maghrib and Isha in travel — not one narration's address, so the curator accepts two different reports that state it as an opt-in any-of set instead of widening the identity map, where a same-ruling relation is reported and never gates (ADR-0054). HR. Nasai no. 598 is Ibn Umar through Malik ← Nafi' (Sahih), and HR. Ibn Majah no. 1070 is Mu'adh at Tabuk, combining all four prayers (Sahih); both say the Prophet combined Maghrib and Isha on a journey, and neither is a chain of 1108's Anas report. Excluded: HR. Malik no. 331, Ibn Shihab asking Salim ibn Abdullah about Dhuhr and Asr — a Successor's fatwa, a Maqtu chain, not a Prophetic report, which the grade fold nonetheless renders \"(Sahih)\".",
+      "citationAlternatives": ["HR. Nasai no. 598", "HR. Ibn Majah no. 1070"],
       "expectedBehavior": "answer",
       "tags": ["fikih", "hadith"]
     },
@@ -134,19 +136,27 @@
     },
     {
       "id": "gs-v0-016",
-      "question": "Which hadith describes the obligations of Zakat, and what does it say?",
+      "question": "Which hadith states the obligation of zakat on wealth, and who is entitled to it?",
       "language": "en",
       "expectedSourceTypes": ["hadith"],
       "requiredCitations": ["HR. Bukhari no. 1395"],
+      "$comment": "The question is worded to the proposition 1395's matn carries — Allah obligated a sadaqah from wealth, taken from the rich and returned to the poor — and the row has no citationAlternatives: the same-topic neighbour the answer grounds, HR. Bukhari no. 1454, is Abu Bakr's written zakat schedule (the nisab and rates for camels, sheep and silver), a different ruling, and accepting it would turn \"grounded the obligation and its recipients\" into \"grounded a zakat hadith\". The parallel chains of the Ibn Abbas/Mu'adh report are carried by the signed same-report identity map instead.",
       "expectedBehavior": "answer",
       "tags": ["fikih", "hadith", "english"]
     },
     {
       "id": "gs-v0-017",
-      "question": "What is the ruling on praying in a garment that contains gold?",
+      "question": "What is the ruling on gold and silk for men, and what is the evidence?",
       "language": "en",
       "expectedSourceTypes": ["hadith"],
       "requiredCitations": ["HR. Nasai no. 5144"],
+      "$comment": "citationAlternatives: the question asks the ruling on gold and silk for men, which 5144 states — the Prophet took silk in one hand and gold in the other and said these are forbidden to the males of his ummah — without any prayer setting, so the curator accepts four different reports of the same ruling as an opt-in any-of set: HR. Nasai no. 5148 (Abu Musa, Sahih), HR. Nasai no. 5265 (Abu Musa, Hasan), HR. Tirmidhi no. 1720 (Abu Musa, Hasan) and HR. Ibn Majah no. 3597 ('Abdullah ibn 'Amr, Sahih) all state that gold and silk are lawful to the women of this ummah and forbidden to its men. The parallel chains of Ali's report (5145, 5146, 5147, Abu Dawud 4057, Ibn Majah 3595) are carried by the signed same-report identity map instead. Excluded: HR. Nasai no. 5149 and HR. Nasai no. 5160, which state the exception (إلا مقطعًا — gold or silk in a cut piece is permitted) and so a different ruling.",
+      "citationAlternatives": [
+        "HR. Nasai no. 5148",
+        "HR. Nasai no. 5265",
+        "HR. Tirmidhi no. 1720",
+        "HR. Ibn Majah no. 3597"
+      ],
       "expectedBehavior": "answer",
       "tags": ["fikih", "hadith", "english"]
     },

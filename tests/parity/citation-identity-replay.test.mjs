@@ -59,8 +59,8 @@ const ROWS = [
       "HR. Muslim no. 1624",
       "HR. Muslim no. 1630",
     ],
-    expected: 1,
-    why: "1624 is the same Maghrib/Isha travel practice as 1108; the other five are different prayer pairs or broader Tabuk reports",
+    expected: 0,
+    why: "1624, 1626 and 1630 are the Ibn Umar and Ibn Abbas travel reports — the same ruling under other chains, not the Anas report — and 1070 is the fixture's curated alternative, a requirement decision this identity replay does not inject",
   },
   {
     questionId: "falsification — a different travel prayer pair",
@@ -168,12 +168,7 @@ describe("recorded run replay — citation identity", () => {
           grammar,
         }),
     );
-    expect(moved.map((row) => row.questionId)).toEqual([
-      "gs-v0-003",
-      "gs-v0-006",
-      "gs-v0-013",
-      "gs-v0-012",
-    ]);
+    expect(moved.map((row) => row.questionId)).toEqual(["gs-v0-003", "gs-v0-013", "gs-v0-012"]);
   });
 
   it("flips the falsification row the rule exists to accept, and only with the map", () => {
@@ -194,10 +189,11 @@ describe("recorded run replay — citation identity", () => {
 });
 
 /**
- * A `gs-v0-006` frame carrying both travel members the group holds (Bukhari
- * 1109, Muslim 1621) beside the rows it does not. The recorded row above matches
- * through Muslim 1624, so this frame is what pins the added members' effect on
- * the scorer: 0 without the map, 1 with it, and no neighbouring row inside.
+ * A `gs-v0-006` frame carrying the two Ibn Umar rows the map once admitted as
+ * same-report members of the Anas report (Bukhari 1109, Muslim 1621) beside the
+ * rows neither relation holds. They state the same ruling under another chain, so
+ * the gate must not accept them; the reported resolver, which reads the signed
+ * same-ruling relation, is the instrument that does.
  */
 const TRAVEL_ANSWER_FRAME = [
   "HR. Bukhari no. 1109",
@@ -216,13 +212,32 @@ const TRAVEL_ANSWER_FRAME = [
   "HR. Nasai no. 588",
 ];
 
-describe("the travel group's added members", () => {
-  it("scores the answer's two travel parallels as one narration, and only with the map", () => {
+describe("the travel group's corrected relations", () => {
+  it("does not score the Ibn Umar parallels as the Anas report under the gate", () => {
     const frame = { citations: TRAVEL_ANSWER_FRAME.map((label) => ({ label })) };
+    expect(citationValidity(["HR. Bukhari no. 1108"], "", { frame, grammar, identity })).toBe(0);
+    expect(identity.identityOf("HR. Bukhari no. 1109")).toBeNull();
+    expect(identity.identityOf("HR. Muslim no. 1621")).toBeNull();
+  });
+
+  it("scores the Anas report's own follow-up chain (Bukhari 1110) as the report", () => {
+    const frame = { citations: [{ label: "HR. Bukhari no. 1110" }] };
     expect(citationValidity(["HR. Bukhari no. 1108"], "", { frame, grammar })).toBe(0);
     expect(citationValidity(["HR. Bukhari no. 1108"], "", { frame, grammar, identity })).toBe(1);
-    expect(identity.identityOf("HR. Bukhari no. 1109")).toBe("HR. Bukhari no. 1108");
-    expect(identity.identityOf("HR. Muslim no. 1621")).toBe("HR. Bukhari no. 1108");
+  });
+
+  it("resolves the Ibn Umar rows as the same ruling for the reported measure", () => {
+    const { reported } = curatedIdentityResolvers();
+    const travel = reported.identityOf("HR. Bukhari no. 1108");
+    expect(travel).not.toBeNull();
+    for (const label of [
+      "HR. Nasai no. 598",
+      "HR. Bukhari no. 1109",
+      "HR. Muslim no. 1621",
+      "HR. Muslim no. 1624",
+    ]) {
+      expect(reported.identityOf(label), label).toBe(travel);
+    }
   });
 
   it("keeps the frame's unmapped travel rows out of the group one by one", () => {
@@ -241,19 +256,18 @@ describe("the travel group's added members", () => {
     }
   });
 
-  it("keeps the recorded row's match on Muslim 1624, not on the added members", () => {
+  it("grounds none of the recorded row's evidence through the Anas identity", () => {
     const row = ROWS.find((candidate) => candidate.questionId === "gs-v0-006");
     expect(row).toBeDefined();
-    expect(row.evidence).toContain("HR. Muslim no. 1624");
-    expect(row.evidence).not.toContain("HR. Bukhari no. 1109");
-    expect(row.evidence).not.toContain("HR. Muslim no. 1621");
-    const withoutMatch = row.evidence.filter((label) => label !== "HR. Muslim no. 1624");
-    expect(
-      citationValidity(row.required, "", {
-        frame: { citations: withoutMatch.map((label) => ({ label })) },
-        grammar,
-        identity,
-      }),
-    ).toBe(0);
+    for (const label of row.evidence) {
+      expect(
+        citationValidity(row.required, "", {
+          frame: { citations: [{ label }] },
+          grammar,
+          identity,
+        }),
+        label,
+      ).toBe(0);
+    }
   });
 });

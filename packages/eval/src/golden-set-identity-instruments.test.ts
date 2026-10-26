@@ -88,7 +88,11 @@ const WITH_BOTH = { gate: gateIdentity, reported: reportedIdentity };
  */
 const ROWS = {
   "gs-v0-006": {
-    row: question("gs-v0-006", ["HR. Bukhari no. 1108"]),
+    row: question(
+      "gs-v0-006",
+      ["HR. Bukhari no. 1108"],
+      ["HR. Nasai no. 598", "HR. Ibn Majah no. 1070"],
+    ),
     cited: ["HR. Malik no. 331", "HR. Ibn Majah no. 1070", "HR. Nasai no. 598"],
     retrieved: [
       { label: "HR. Bukhari no. 1108", sourceType: "primary" },
@@ -136,7 +140,16 @@ const ROWS = {
     ],
   },
   "gs-v0-017": {
-    row: question("gs-v0-017", ["HR. Nasai no. 5144"]),
+    row: question(
+      "gs-v0-017",
+      ["HR. Nasai no. 5144"],
+      [
+        "HR. Nasai no. 5148",
+        "HR. Nasai no. 5265",
+        "HR. Tirmidhi no. 1720",
+        "HR. Ibn Majah no. 3597",
+      ],
+    ),
     cited: ["HR. Nasai no. 5148", "HR. Nasai no. 5149", "HR. Ibn Majah no. 3597"],
     retrieved: [
       { label: "HR. Nasai no. 5144", sourceType: "primary" },
@@ -146,6 +159,14 @@ const ROWS = {
     ],
   },
 } as const;
+
+/** The row's requirement without its opt-in alternative set: the shape that
+ * isolates what the signed relation decides, since the row's own set is a
+ * separate curation decision whose effect is asserted below. */
+function withoutOptIn(row: GoldenQuestion): GoldenQuestion {
+  const { citationAlternatives: _alternatives, ...requirementOnly } = row;
+  return requirementOnly;
+}
 
 const outcome = (id: keyof typeof ROWS): EvalResultOutcome => {
   const entry = ROWS[id];
@@ -175,8 +196,9 @@ describe("D1a — the signed same-report identity of 1395 (016)", () => {
 });
 
 describe("D1b — a signed same-ruling relation never satisfies the exact-address gate", () => {
-  it("keeps 006's gate validity at 0 while the reported measure reads 1", () => {
-    const scored = outcome("gs-v0-006");
+  it("keeps 006's gate validity at 0 without its opt-in set while the reported measure reads 1", () => {
+    const entry = ROWS["gs-v0-006"];
+    const scored = score(withoutOptIn(entry.row), entry.cited, entry.retrieved, WITH_BOTH);
     expect(scored.citationValidity).toBe(0); // 598 is the same ruling, not the same report
     expect(scored.citationAddressRecall).toBe(1); // the required address was retrieved
     expect(scored.passed).toBe(false);
@@ -184,8 +206,9 @@ describe("D1b — a signed same-ruling relation never satisfies the exact-addres
     expect(scored.identitySatisfied?.passed).toBe(true);
   });
 
-  it("keeps 017's gate validity at 0 while the reported measure reads 1", () => {
-    const scored = outcome("gs-v0-017");
+  it("keeps 017's gate validity at 0 without its opt-in set while the reported measure reads 1", () => {
+    const entry = ROWS["gs-v0-017"];
+    const scored = score(withoutOptIn(entry.row), entry.cited, entry.retrieved, WITH_BOTH);
     expect(scored.citationValidity).toBe(0);
     expect(scored.citationAddressRecall).toBe(1);
     expect(scored.passed).toBe(false);
@@ -198,7 +221,7 @@ describe("D1b — a signed same-ruling relation never satisfies the exact-addres
     // one; a scoreQuestion that read the broader resolver for both would accept
     // 598 here and fail this trap.
     const entry = ROWS["gs-v0-006"];
-    const scored = score(entry.row, entry.cited, entry.retrieved, {
+    const scored = score(withoutOptIn(entry.row), entry.cited, entry.retrieved, {
       gate: undefined,
       reported: reportedIdentity,
     });
@@ -213,6 +236,57 @@ describe("D1b — a signed same-ruling relation never satisfies the exact-addres
     const scored = outcome("gs-v0-016");
     expect(scored.citationAddressRecall).toBe(0);
     expect(scored.identitySatisfied?.citationAddressRecall).toBe(1);
+  });
+});
+
+describe("D3b — the curated alternative sets are the opt-in that widens 006 and 017", () => {
+  it("passes 006 through its own set and accepts each member alone", () => {
+    const entry = ROWS["gs-v0-006"];
+    // The curated set is this case's input; pin it so a dropped member cannot
+    // quietly shrink the loop below.
+    const alternatives = entry.row.citationAlternatives ?? [];
+    expect(alternatives).toEqual(["HR. Nasai no. 598", "HR. Ibn Majah no. 1070"]);
+    const scored = outcome("gs-v0-006");
+    expect(scored.citationValidity).toBe(1); // 598 and 1070 are curator-accepted answers
+    expect(scored.citationAddressRecall).toBe(1); // the required address was retrieved
+    expect(scored.passed).toBe(true);
+    for (const alternative of alternatives) {
+      const alone = score(entry.row, [alternative], entry.retrieved, WITH_BOTH);
+      expect(alone.citationValidity, alternative).toBe(1);
+    }
+  });
+
+  it("passes 017 through its own set and accepts each member alone", () => {
+    const entry = ROWS["gs-v0-017"];
+    const scored = outcome("gs-v0-017");
+    expect(scored.citationValidity).toBe(1);
+    expect(scored.citationAddressRecall).toBe(1);
+    expect(scored.passed).toBe(true);
+    for (const alternative of entry.row.citationAlternatives ?? []) {
+      const alone = score(entry.row, [alternative], entry.retrieved, WITH_BOTH);
+      expect(alone.citationValidity, alternative).toBe(1);
+    }
+  });
+
+  it("does not accept a member the curator excluded", () => {
+    // 5149 states the exception ("except a cut piece"), a different ruling, and
+    // 1454 is the zakat schedule, not the obligation/recipient ruling.
+    const exception = score(
+      ROWS["gs-v0-017"].row,
+      ["HR. Nasai no. 5149"],
+      ROWS["gs-v0-017"].retrieved,
+      WITH_BOTH,
+    );
+    expect(exception.citationValidity).toBe(0);
+    expect(exception.identitySatisfied?.citationValidity).toBe(0);
+    const schedule = score(
+      ROWS["gs-v0-016"].row,
+      ["HR. Bukhari no. 1454"],
+      ROWS["gs-v0-016"].retrieved,
+      WITH_BOTH,
+    );
+    expect(schedule.citationValidity).toBe(0);
+    expect(schedule.identitySatisfied?.citationValidity).toBe(0);
   });
 });
 
@@ -290,10 +364,10 @@ describe("the gate's AND default is unchanged", () => {
 });
 
 describe("the projection the PR states is derived from these decisions", () => {
-  it("moves exactly 012 and 008 on the gate, and reaches 006/016/017 only as reported", () => {
+  it("moves 006, 008, 012 and 017 on the gate, and reaches 016 only as reported", () => {
     const ids = Object.keys(ROWS) as (keyof typeof ROWS)[];
     const gatePassing = ids.filter((id) => outcome(id).passed);
-    expect(gatePassing).toEqual(["gs-v0-008", "gs-v0-012"]);
+    expect(gatePassing).toEqual(["gs-v0-006", "gs-v0-008", "gs-v0-012", "gs-v0-017"]);
     const reportedPassing = ids.filter((id) => outcome(id).identitySatisfied?.passed === true);
     expect(reportedPassing).toEqual([
       "gs-v0-006",
@@ -304,12 +378,10 @@ describe("the projection the PR states is derived from these decisions", () => {
     ]);
     // 007 is the only row neither instrument reaches; it needs the concept lever.
     expect(outcome("gs-v0-007").identitySatisfied?.passed).toBe(false);
-    // The QA report records 15 of 21 passing; these per-row decisions project that
-    // to 17 on the gate (15 + 008 + 012) and 20 as reported (17 + 006 + 016 + 017).
-    // The 15 is a reported outcome, not recomputed here, and no fixture pins the
-    // projection — the recorded replay and these instrument decisions are the
-    // measured evidence.
-    expect(gatePassing.length).toBe(2);
+    // 012 moves on the curated verse pair; 006, 008 and 017 move on their own
+    // alternative sets; 016 stays red on the exact address this recorded evidence
+    // never retrieved, and the reported figure shows it.
+    expect(gatePassing.length).toBe(4);
     expect(reportedPassing.length).toBe(5);
   });
 });
