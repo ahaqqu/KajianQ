@@ -67,17 +67,17 @@ const RETENTION_STATUS_LABELS: Record<RetentionStatus, MessageKey> = {
 
 export function PrivacyNotice({ locale }: { locale: Locale }) {
   return (
-    <section className="space-y-4" data-testid="about-privacy">
+    <section className="space-y-4" data-testid="privacy-notice">
       <MonoLabel>{t(locale, "aboutPrivacyLabel")}</MonoLabel>
       <p className="text-sm leading-relaxed">{t(locale, "aboutPrivacyBody")}</p>
 
-      <Card className="space-y-2" data-testid="about-privacy-controller">
+      <Card className="space-y-2" data-testid="privacy-notice-controller">
         <MonoLabel>{t(locale, "aboutPrivacyControllerLabel")}</MonoLabel>
         <p className="text-sm font-medium">{CONTROLLER.name}</p>
         <p className="text-sm leading-relaxed text-muted-foreground">{CONTROLLER.body[locale]}</p>
       </Card>
 
-      <div className="space-y-3" data-testid="about-privacy-processors">
+      <div className="space-y-3" data-testid="privacy-notice-processors">
         <div className="space-y-1">
           <MonoLabel>{t(locale, "aboutPrivacyProcessorsLabel")}</MonoLabel>
           <p className="text-sm leading-relaxed text-muted-foreground">{REGISTER_RULE[locale]}</p>
@@ -89,13 +89,13 @@ export function PrivacyNotice({ locale }: { locale: Locale }) {
           <Card
             key={processor.id}
             className="space-y-2"
-            data-testid="about-privacy-processor"
+            data-testid="privacy-notice-processor"
             data-status={processor.status}
           >
             <div className="flex flex-wrap items-center justify-between gap-2">
               <h3 className="font-serif text-base font-semibold italic">{processor.name}</h3>
               <span
-                data-testid="about-privacy-processor-status"
+                data-testid="privacy-notice-processor-status"
                 data-status={processor.status}
                 className={`shrink-0 rounded-full px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.2em] ${STATUS_TONE[processor.status]}`}
               >
@@ -126,19 +126,19 @@ export function PrivacyNotice({ locale }: { locale: Locale }) {
         <p className="text-xs leading-relaxed text-muted-foreground">{REGISTER_SOURCE[locale]}</p>
       </div>
 
-      <div className="space-y-3" data-testid="about-privacy-retention">
+      <div className="space-y-3" data-testid="privacy-notice-retention">
         <MonoLabel>{t(locale, "aboutPrivacyRetentionLabel")}</MonoLabel>
         {RETENTION.map((item) => (
           <Card
             key={item.id}
             className="space-y-1"
-            data-testid="about-privacy-retention-row"
+            data-testid="privacy-notice-retention-row"
             data-status={item.status}
           >
             <div className="flex flex-wrap items-baseline gap-2">
               <h3 className="font-serif text-sm font-semibold italic">{item.what[locale]}</h3>
               <span
-                data-testid="about-privacy-retention-status"
+                data-testid="privacy-notice-retention-status"
                 data-status={item.status}
                 className="font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground"
               >
@@ -155,7 +155,7 @@ export function PrivacyNotice({ locale }: { locale: Locale }) {
         ))}
       </div>
 
-      <Card className="space-y-2" data-testid="about-privacy-erasure">
+      <Card className="space-y-2" data-testid="privacy-notice-erasure">
         <MonoLabel>{t(locale, "aboutPrivacyErasureLabel")}</MonoLabel>
         <p className="text-sm leading-relaxed">{ERASURE.what[locale]}</p>
         <p className="font-mono text-xs">
@@ -165,7 +165,7 @@ export function PrivacyNotice({ locale }: { locale: Locale }) {
         <p className="text-xs leading-relaxed text-muted-foreground">{ERASURE.localNote[locale]}</p>
       </Card>
 
-      <Card className="space-y-2" data-testid="about-privacy-storage">
+      <Card className="space-y-2" data-testid="privacy-notice-storage">
         <MonoLabel>{t(locale, "aboutPrivacyStorageLabel")}</MonoLabel>
         <p className="text-sm leading-relaxed">{STORAGE.body[locale]}</p>
         <p className="font-mono text-xs text-muted-foreground">{STORAGE.keys.join(" · ")}</p>

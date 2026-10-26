@@ -1,28 +1,16 @@
 import { useState } from "react";
-import type { ChatTraceChunk, ChatTraceFrame } from "@app/contracts";
-import { t, useLocale, type Locale } from "../../lib/i18n";
-import { MonoLabel } from "../ui";
-import { FlagButton } from "./FeedbackControls";
+import type { ChatTraceFrame } from "@app/contracts";
+import { t, useLocale } from "../../lib/i18n";
+import { BookIcon, ChevronIcon } from "../icons";
+import { TraceBody } from "./TraceBody";
 
 /**
- * The user-facing Trace panel (ADR-0007): every answer expands to show
- * how it was built, in two layers. The default view lists the sources
- * consulted in plain language — readable by a non-technical user. One tap
- * deeper, the technical layer shows the router intent, sub-queries, the
- * retrieved passages with their scores, and the model identities — all
- * server-derived from the persisted answer trace and rendered as-is; the
- * client never reconstructs pipeline machinery. ADR-0007's warning stands:
- * this panel is the feedback instrument, not UI clutter — do not clean it up.
- * Each source row carries a flag affordance anchoring an "irrelevant chunk"
- * report to that chunk's id — the server re-validates the anchor against the
- * persisted trace before storing.
- *
- * Rendered only when the message carries a trace frame; a message without
- * one (user turns, degraded traces) shows no affordance, by data. `persisted`
- * gates the flag affordance: a live turn before `meta` has no row for the
- * report to name.
+ * The trace disclosure under an answer: the reference's full-width row — book
+ * mark, "See how this answer came together", caret — opening the two-layer
+ * body (`TraceBody`). Rendered only when the message carries a trace frame; a
+ * message without one (user turns, degraded traces) shows no affordance, by
+ * data.
  */
-
 export function TracePanel({
   trace,
   messageId,
@@ -32,223 +20,27 @@ export function TracePanel({
   messageId: string;
   persisted: boolean;
 }) {
-  const locale: Locale = useLocale();
+  const locale = useLocale();
   const [open, setOpen] = useState(false);
-  const [techOpen, setTechOpen] = useState(false);
   if (trace === undefined) return null;
-  const score = new Intl.NumberFormat(locale, { maximumFractionDigits: 4 });
-  const { technical } = trace;
+
   return (
-    <div data-testid="trace-panel" className="ml-10 mt-2 max-w-[95%]">
+    <div data-testid="trace-panel" className="mt-1">
       <button
         type="button"
         data-testid="trace-toggle"
         aria-expanded={open}
         aria-controls="trace-body"
-        className="inline-flex items-center gap-1 rounded-full border border-border bg-card px-2.5 py-1 font-mono text-[11px] uppercase tracking-wide text-muted-foreground hover:bg-secondary focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        onClick={() => setOpen((v) => !v)}
+        onClick={() => setOpen((value) => !value)}
+        className="flex w-full items-center gap-2 rounded-lg px-1.5 py-2 text-left text-sm text-muted-foreground hover:bg-card hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
-        <Chevron open={open} />
-        {t(locale, "traceToggle")}
+        <BookIcon className="size-4 shrink-0 text-accent" />
+        <span>{t(locale, "traceToggle")}</span>
+        <ChevronIcon
+          className={`ml-auto size-4 shrink-0 transition-transform ${open ? "rotate-180" : ""}`}
+        />
       </button>
-      {open && (
-        <div
-          id="trace-body"
-          data-testid="trace-body"
-          className="mt-2 space-y-3 rounded-xl border border-rule bg-card px-4 py-3"
-        >
-          <div>
-            <MonoLabel>{t(locale, "traceSourcesLabel")}</MonoLabel>
-            {trace.sources.length === 0 ? (
-              <p data-testid="trace-no-sources" className="mt-1 text-sm text-muted-foreground">
-                {t(locale, "traceNoSources")}
-              </p>
-            ) : (
-              <ul data-testid="trace-sources" className="mt-1 space-y-0.5">
-                {trace.sources.map((chunk) => (
-                  <li
-                    key={chunk.id}
-                    data-testid="trace-source"
-                    className="flex items-center justify-between gap-2 text-sm text-card-foreground"
-                  >
-                    <span>
-                      {chunk.source ?? <span className="font-mono text-xs">{chunk.id}</span>}
-                    </span>
-                    <FlagButton
-                      messageId={messageId}
-                      persisted={persisted}
-                      anchor={{ type: "chunk", category: "irrelevant_chunk", id: chunk.id }}
-                      labelKey="flagIrrelevantChunk"
-                      testId={`trace-flag-${chunk.id}`}
-                    />
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-          <button
-            type="button"
-            data-testid="trace-tech-toggle"
-            aria-expanded={techOpen}
-            aria-controls="trace-technical"
-            className="inline-flex items-center gap-1 font-mono text-[11px] uppercase tracking-wide text-muted-foreground hover:text-card-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            onClick={() => setTechOpen((v) => !v)}
-          >
-            <Chevron open={techOpen} />
-            {t(locale, "traceTechnicalToggle")}
-          </button>
-          {techOpen && (
-            <div id="trace-technical" data-testid="trace-technical" className="space-y-2">
-              {technical.intent !== undefined && (
-                <p data-testid="trace-intent" className="text-sm text-card-foreground">
-                  <MonoLabel className="mr-2 inline">{t(locale, "traceIntentLabel")}</MonoLabel>
-                  {technical.intent}
-                </p>
-              )}
-              {technical.routing !== undefined && (
-                <div data-testid="trace-routing">
-                  {/* The route's SELECTION, never a claim about what ran: the run
-                      can give the source dimension up (the "given up" row below,
-                      projected from the retriever's own events), and then every
-                      source was searched. The label says "selected" so the row
-                      never asserts a restriction the search has already dropped;
-                      the deviation is the given-up row's job. */}
-                  <MonoLabel>{t(locale, "traceRoutingLabel")}</MonoLabel>
-                  <p
-                    data-testid="trace-routing-sources"
-                    className="mt-1 text-sm text-card-foreground"
-                  >
-                    {/* An EMPTY list is the route's own statement that it did not
-                        restrict the corpus — rendered as such, never as "unknown". */}
-                    {technical.routing.sources.length === 0
-                      ? t(locale, "traceRoutingAllSources")
-                      : technical.routing.sources.join(" · ")}
-                  </p>
-                  {Object.entries(technical.routing.filters).length > 0 && (
-                    <p
-                      data-testid="trace-routing-filters"
-                      className="mt-1 text-sm text-card-foreground"
-                    >
-                      <span className="mr-2 text-muted-foreground">
-                        {t(locale, "traceRoutingFiltersLabel")}
-                      </span>
-                      {Object.entries(technical.routing.filters)
-                        .map(([key, values]) => `${key}: ${values.join(", ")}`)
-                        .join(" · ")}
-                    </p>
-                  )}
-                  {/* The filters the run GAVE UP — a hint that matched nothing is
-                      probed away and retried, and the panel names which one, so a
-                      relaxed filter is never displayed as one that ran. */}
-                  {(technical.routing.relaxed?.length ?? 0) > 0 && (
-                    <p
-                      data-testid="trace-routing-relaxed"
-                      className="mt-1 text-sm text-card-foreground"
-                    >
-                      <span className="mr-2 text-muted-foreground">
-                        {t(locale, "traceRoutingRelaxedLabel")}
-                      </span>
-                      {technical.routing.relaxed
-                        ?.map(({ key, values }) => `${key}: ${values.join(", ")}`)
-                        .join(" · ")}
-                    </p>
-                  )}
-                </div>
-              )}
-              {technical.subQueries.length > 0 && (
-                <div data-testid="trace-subqueries">
-                  <MonoLabel>{t(locale, "traceSubqueriesLabel")}</MonoLabel>
-                  <ul className="mt-1 list-disc space-y-0.5 pl-5">
-                    {technical.subQueries.map((text, index) => (
-                      // Index-stabilized key: duplicate sub-query texts must not
-                      // collide as React keys.
-                      <li key={`${text}-${index}`} className="text-sm text-card-foreground">
-                        {text}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-              {technical.chunks.length > 0 && (
-                <div data-testid="trace-chunks">
-                  <MonoLabel>{t(locale, "traceChunksLabel")}</MonoLabel>
-                  <ul className="mt-1 space-y-0.5">
-                    {technical.chunks.map((chunk) => (
-                      <ChunkRow key={chunk.id} chunk={chunk} locale={locale} score={score} />
-                    ))}
-                  </ul>
-                </div>
-              )}
-              {technical.models.length > 0 && (
-                <div data-testid="trace-models">
-                  <MonoLabel>{t(locale, "traceModelsLabel")}</MonoLabel>
-                  <ul className="mt-1 space-y-0.5">
-                    {technical.models.map((model) => (
-                      <li key={model} className="font-mono text-xs text-card-foreground">
-                        {model}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      )}
+      {open && <TraceBody trace={trace} messageId={messageId} persisted={persisted} />}
     </div>
-  );
-}
-
-/**
- * One technical-layer passage: display title (or id) plus its scores. The list
- * is the retrieval order — the caller-priority guarantee's rows lead, then the
- * block the rerank reordered — so the rerank score is rendered beside the fused
- * score: the fused number alone would not explain that order.
- */
-function ChunkRow({
-  chunk,
-  locale,
-  score,
-}: {
-  chunk: ChatTraceChunk;
-  locale: Locale;
-  score: Intl.NumberFormat;
-}) {
-  return (
-    <li className="text-sm text-card-foreground">
-      {chunk.source ?? <span className="font-mono text-xs">{chunk.id}</span>}
-      {chunk.score !== undefined && (
-        <span
-          data-testid="trace-score"
-          className="ml-2 font-mono text-[11px] text-muted-foreground"
-        >
-          {t(locale, "traceScoreLabel")} {score.format(chunk.score)}
-        </span>
-      )}
-      {chunk.rerankScore !== undefined && (
-        <span
-          data-testid="trace-rerank-score"
-          className="ml-2 font-mono text-[11px] text-muted-foreground"
-        >
-          {t(locale, "traceRerankScoreLabel")} {score.format(chunk.rerankScore)}
-        </span>
-      )}
-    </li>
-  );
-}
-
-/** The disclosure caret; rotation communicates the expanded state to sight. */
-function Chevron({ open }: { open: boolean }) {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      aria-hidden="true"
-      className={`size-3 transition-transform ${open ? "rotate-90" : ""}`}
-    >
-      <path d="m9 6 6 6-6 6" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
   );
 }

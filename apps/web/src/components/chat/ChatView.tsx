@@ -95,7 +95,13 @@ export function ChatView({
   }, [busy]);
 
   useEffect(() => {
-    listRef.current?.scrollTo({ top: listRef.current.scrollHeight });
+    // The chat scrolls with the document (the header sticks at the top, the
+    // composer at the bottom), so a new turn scrolls the page, not a panel.
+    // The empty state does not scroll: there is no turn to follow, and jumping
+    // would hide the rule row and the greeting on a short viewport.
+    if (messages.length === 0) return;
+    const page = document.scrollingElement;
+    page?.scrollTo({ top: page.scrollHeight });
   }, [messages.length]);
 
   const sendText = (text: string): boolean => {
@@ -122,43 +128,38 @@ export function ChatView({
   };
 
   return (
-    <div className="flex h-dvh flex-col overflow-hidden" data-testid="chat-view">
-      <header className="shrink-0 border-b border-dashed border-rule">
-        <AppHeader
-          actions={
-            <button
-              type="button"
-              data-testid="new-session"
-              className="shrink-0 whitespace-nowrap rounded-full border border-border bg-card px-2 py-2 text-sm font-medium text-card-foreground hover:bg-secondary focus:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:px-4"
-              onClick={onNewSession}
-            >
-              {t(locale, "newSession")}
-            </button>
-          }
-        />
-      </header>
+    <div className="flex min-h-dvh flex-col" data-testid="chat-view">
+      <AppHeader onNewSession={onNewSession} />
 
-      <div
-        ref={listRef}
-        data-testid="message-list"
-        className="mx-auto w-full max-w-3xl flex-1 overflow-y-auto px-4"
-      >
-        <Transcript
-          locale={locale}
-          messages={messages}
-          persistedMessageIds={persistedMessageIds}
-          busy={busy}
-          loadingTranscript={loadingTranscript}
-          transcriptTruncated={transcriptTruncated}
-          online={online}
-          error={error}
-          stagedLabel={busy ? t(locale, STAGE_KEYS[stage]!) : null}
-          onSuggest={sendText}
-        />
+      <div ref={listRef} data-testid="message-list" className="flex-1">
+        <div className="mx-auto w-full max-w-3xl px-4">
+          <Transcript
+            locale={locale}
+            messages={messages}
+            persistedMessageIds={persistedMessageIds}
+            busy={busy}
+            loadingTranscript={loadingTranscript}
+            online={online}
+            error={error}
+            stagedLabel={busy ? t(locale, STAGE_KEYS[stage]!) : null}
+            onSuggest={sendText}
+          />
+        </div>
       </div>
 
-      <div className="shrink-0 border-t border-rule bg-background pb-[calc(env(safe-area-inset-bottom)+0.625rem)]">
+      <div className="sticky bottom-0 z-20 shrink-0 border-t border-rule bg-background/95 pb-[calc(env(safe-area-inset-bottom)+0.625rem)] backdrop-blur">
         <div className="mx-auto w-full max-w-3xl px-4 pt-3">
+          {/* The note lives in the pinned band, not at the transcript's top: a
+              reader lands at the newest turn, and the cap explains what is
+              missing there — above the fold it would explain nothing. */}
+          {transcriptTruncated && !busy && (
+            <p
+              data-testid="transcript-truncated"
+              className="pb-2 font-mono text-[11px] uppercase tracking-[0.15em] text-muted-foreground"
+            >
+              {t(locale, "transcriptTruncated")}
+            </p>
+          )}
           <form
             className="relative rounded-xl border border-input bg-card"
             onSubmit={(event) => {

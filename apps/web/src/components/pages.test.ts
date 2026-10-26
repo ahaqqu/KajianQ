@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
-import { renderApp } from "./app-test-utils";
+import { chooseLocale, renderApp } from "./app-test-utils";
 import { COLLECTION_ENTRIES, byStatus } from "../lib/collections";
 import { COLLECTION_AVAILABLE } from "../lib/collections-available";
 import { CONTROLLER, ERASURE, RETENTION, SUB_PROCESSORS } from "../lib/privacy-notice";
@@ -119,7 +119,7 @@ describe("CollectionPage", () => {
     await renderApp("/collection");
     expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Koleksi");
 
-    fireEvent.change(screen.getByTestId("locale-select"), { target: { value: "en" } });
+    chooseLocale("en");
     expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("The collection");
     expect(screen.getByTestId("collection-section-available").textContent).toContain(
       "Available now",
@@ -169,36 +169,70 @@ describe("CollectionPage", () => {
     expect(link().textContent).toBe("Tanyakan sumber ini");
     expect(seedOf(link())).toBe(firstQuestion.id);
 
-    fireEvent.change(screen.getByTestId("locale-select"), { target: { value: "en" } });
+    chooseLocale("en");
     expect(link().textContent).toBe("Ask about this source");
     expect(seedOf(link())).toBe(firstQuestion.en);
   });
 });
 
 describe("AboutPage", () => {
-  it("renders the hero, mission, three principles and the privacy section", async () => {
+  it("renders the display hero, the mission and the three principles", async () => {
     await renderApp("/about");
-    expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Tentang KajianQ");
+    expect(screen.getByRole("heading", { level: 1 }).textContent).toBe(
+      "Dibangun untuk membaca perlahan, bertanya dengan cermat, dan mengikuti sumbernya.",
+    );
     expect(screen.getByTestId("about-mission").textContent).toContain("Misi");
     const principles = screen.getByTestId("about-principles");
     expect(
       within(principles)
-        .getAllByRole("heading", { level: 2 })
+        .getAllByRole("heading", { level: 3 })
         .map((h) => h.textContent),
     ).toEqual(["Sebutkan sumbernya", "Jaga perbedaan", "Kenali batasnya"]);
-    expect(screen.getByTestId("about-privacy").textContent).toContain("Privasi");
   });
 
-  it("renders the privacy notice from the register: controller, sub-processors, retention, erasure (#179)", async () => {
+  it("states the privacy posture and links to the notice, not the register", async () => {
     await renderApp("/about");
-    const privacy = screen.getByTestId("about-privacy");
+    const summary = screen.getByTestId("about-privacy-summary");
+    expect(summary.textContent).toContain("Privasi");
+    expect(
+      screen.getByRole("link", { name: "Baca pemberitahuan privasi" }).getAttribute("href"),
+    ).toBe("/privacy");
+    // The Art. 30 register has one home: the About page no longer duplicates it.
+    expect(screen.queryByTestId("privacy-notice-processor")).toBeNull();
+  });
+
+  it("links its calls to action to the notice and the collection", async () => {
+    await renderApp("/about");
+    expect(
+      screen.getByRole("link", { name: "Baca pemberitahuan privasi" }).getAttribute("href"),
+    ).toBe("/privacy");
+    expect(screen.getByRole("link", { name: "Telusuri koleksi" }).getAttribute("href")).toBe(
+      "/collection",
+    );
+  });
+
+  it("re-renders its copy in English after a locale switch", async () => {
+    await renderApp("/about");
+    chooseLocale("en");
+    expect(screen.getByRole("heading", { level: 1 }).textContent).toBe(
+      "Built for reading slowly, asking carefully, and following the sources.",
+    );
+    expect(screen.getByTestId("about-principles").textContent).toContain("Name the source");
+    expect(screen.getByRole("link", { name: "Read the privacy notice" })).toBeTruthy();
+  });
+});
+
+describe("PrivacyPage", () => {
+  it("renders the notice from the register: controller, sub-processors, retention, erasure (#179)", async () => {
+    await renderApp("/privacy");
+    const privacy = screen.getByTestId("privacy-notice");
     expect(privacy.textContent).toContain("Privasi");
 
     // One card per register row, each carrying its status — netcup is the host
     // in use today, so the page is never false.
-    const processors = within(privacy).getAllByTestId("about-privacy-processor");
+    const processors = within(privacy).getAllByTestId("privacy-notice-processor");
     expect(processors.length).toBe(SUB_PROCESSORS.length);
-    expect(within(privacy).getByTestId("about-privacy-controller").textContent).toContain(
+    expect(within(privacy).getByTestId("privacy-notice-controller").textContent).toContain(
       CONTROLLER.name,
     );
     const netcup = processors.find((card) => card.textContent?.includes("netcup GmbH"))!;
@@ -213,7 +247,7 @@ describe("AboutPage", () => {
     // host (Art. 30 §7 "Applied on the host"), so no row renders as planned and
     // none carries a ticket: claiming `planned` for enforced work understates
     // the protection as much as the reverse would overstate it.
-    const retention = within(privacy).getAllByTestId("about-privacy-retention-row");
+    const retention = within(privacy).getAllByTestId("privacy-notice-retention-row");
     expect(retention.length).toBe(RETENTION.length);
     expect(
       retention.find((row) => row.textContent?.includes("30 hari tanpa aktivitas")),
@@ -227,37 +261,57 @@ describe("AboutPage", () => {
     expect(accessLogs.textContent).not.toContain("#180");
 
     // The erasure card names the real endpoint and the actual gap.
-    const erasure = within(privacy).getByTestId("about-privacy-erasure");
+    const erasure = within(privacy).getByTestId("privacy-notice-erasure");
     expect(erasure.textContent).toContain(`${ERASURE.method} ${ERASURE.path}`);
     expect(erasure.textContent).toContain("belum punya tombol");
   });
 
+  it("states the statutory rights and the CCPA opt-out anchor", async () => {
+    await renderApp("/privacy");
+    expect(screen.getByRole("heading", { level: 1 }).textContent).toContain("Tanpa akun");
+    expect(screen.getByText("Hak Anda")).toBeTruthy();
+    expect(screen.getByText("Menghapus data Anda")).toBeTruthy();
+    // The footer's opt-out link lands on a real anchor on this page.
+    expect(document.querySelector("#do-not-sell")).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Jangan Jual atau Bagikan" })).toBeTruthy();
+  });
+
   it("switches the privacy notice to English with the locale (#179)", async () => {
-    await renderApp("/about");
-    fireEvent.change(screen.getByTestId("locale-select"), { target: { value: "en" } });
-    const privacy = screen.getByTestId("about-privacy");
+    await renderApp("/privacy");
+    chooseLocale("en");
+    const privacy = screen.getByTestId("privacy-notice");
     expect(privacy.textContent).toContain("Who processes your data");
     expect(privacy.textContent).toContain("In use today");
     expect(privacy.textContent).toContain("Not for personal data");
-    expect(within(privacy).getByTestId("about-privacy-erasure").textContent).toContain(
+    expect(within(privacy).getByTestId("privacy-notice-erasure").textContent).toContain(
       "no button for this yet",
     );
   });
+});
 
-  it("links its calls to action to the chat and the collection", async () => {
-    await renderApp("/about");
-    expect(screen.getByRole("link", { name: "Mulai obrolan" }).getAttribute("href")).toBe("/");
-    expect(screen.getByRole("link", { name: "Telusuri koleksi" }).getAttribute("href")).toBe(
-      "/collection",
+describe("FaqPage", () => {
+  it("renders one disclosure per question, in the reader's locale", async () => {
+    await renderApp("/faq");
+    expect(screen.getByRole("heading", { level: 1 }).textContent).toBe(
+      "Pertanyaan, dijawab lugas.",
     );
+    const questions = document.querySelectorAll("details");
+    expect(questions.length).toBe(9);
+    expect(questions[0]?.textContent).toContain("Apa itu KajianQ?");
+    expect(questions[0]?.textContent).toContain("pendamping membaca literatur Islam klasik");
   });
+});
 
-  it("re-renders its copy in English after a locale switch", async () => {
-    await renderApp("/about");
-    fireEvent.change(screen.getByTestId("locale-select"), { target: { value: "en" } });
-    expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("About KajianQ");
-    expect(screen.getByTestId("about-principles").textContent).toContain("Name the source");
-    expect(screen.getByRole("link", { name: "Start a chat" })).toBeTruthy();
+describe("TermsPage", () => {
+  it("renders the six sections and the operator's real contact channel", async () => {
+    await renderApp("/terms");
+    expect(screen.getByRole("heading", { level: 1 }).textContent).toBe(
+      "Pendamping membaca, ditawarkan dengan itikad baik.",
+    );
+    const sections = document.querySelectorAll("section[class*='border-b']");
+    expect(sections.length).toBe(6);
+    expect(screen.getByText("Anda berbicara dengan mesin")).toBeTruthy();
+    expect(document.body.textContent).toContain("@ahaqqu");
   });
 });
 

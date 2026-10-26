@@ -27,7 +27,8 @@ Then("the health schema version is visible", async ({ page }) => {
 });
 
 When("I switch the language to English", async ({ page }) => {
-  await page.getByTestId("locale-select").selectOption("en");
+  await page.getByTestId("locale-toggle").click();
+  await page.getByTestId("locale-option-en").click();
 });
 
 Then("I see the health page in English", async ({ page }) => {

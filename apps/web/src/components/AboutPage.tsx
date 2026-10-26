@@ -1,16 +1,15 @@
 import { Link } from "@tanstack/react-router";
+import { ABOUT_COPY } from "../lib/about-copy";
 import { t, type Locale } from "../lib/i18n";
 import { PageShell } from "./PageShell";
-import { PrivacyNotice } from "./PrivacyNotice";
-import { Card, MonoLabel, PageIntro } from "./ui";
+import { MonoLabel, PageHero, PageSection, SectionColumns, SectionTitle } from "./ui";
 
 /**
- * The About page (#about route): what KajianQ is, the mission (orientation, not
- * authority), three working principles, and the privacy notice — all from the
- * product's real facts (SPECS §1/§2.1, ADR-0017, ADR-0043), never the reference
- * mockup's branding. Copy is externalized per locale; the page carries no data
- * of its own beyond the principles list. The notice itself lives in
- * `PrivacyNotice` so this page stays inside the agentic-limits import cap.
+ * The About page: the product's story in the reference's editorial layout —
+ * a display hero, then three full-bleed sections (purpose, working principles,
+ * privacy by default) over hairline rules. The privacy *register* lives on
+ * `/privacy`; this page only states the posture and links to the notice, so
+ * the Art. 30 disclosure has one home.
  */
 export function AboutPage({ locale }: { locale: Locale }) {
   const principles = [
@@ -21,41 +20,56 @@ export function AboutPage({ locale }: { locale: Locale }) {
 
   return (
     <PageShell>
-      <PageIntro title={t(locale, "aboutTitle")} intro={t(locale, "aboutIntro")} />
+      <PageHero
+        eyebrow={ABOUT_COPY.eyebrow[locale]}
+        title={ABOUT_COPY.title[locale]}
+        lead={t(locale, "aboutIntro")}
+      />
 
-      <section className="space-y-2" data-testid="about-mission">
-        <MonoLabel>{t(locale, "aboutMissionLabel")}</MonoLabel>
-        <p className="text-sm leading-relaxed">{t(locale, "aboutMissionBody")}</p>
-      </section>
+      <PageSection tone="muted">
+        <SectionColumns label={t(locale, "aboutMissionLabel")} testId="about-mission">
+          <SectionTitle>{ABOUT_COPY.purposeTitle[locale]}</SectionTitle>
+          <p className="mt-4 max-w-3xl text-base leading-7">{t(locale, "aboutMissionBody")}</p>
+        </SectionColumns>
+      </PageSection>
 
-      <section className="space-y-3" data-testid="about-principles">
-        <MonoLabel>{t(locale, "aboutPrinciplesLabel")}</MonoLabel>
-        <div className="grid gap-3 sm:grid-cols-3">
-          {principles.map(({ title, body }) => (
-            <Card key={title} className="space-y-2">
-              <h2 className="font-serif text-lg font-semibold italic">{t(locale, title)}</h2>
-              <p className="text-sm leading-relaxed text-muted-foreground">{t(locale, body)}</p>
-            </Card>
-          ))}
-        </div>
-      </section>
+      <PageSection>
+        <SectionColumns label={t(locale, "aboutPrinciplesLabel")} testId="about-principles">
+          <SectionTitle>{ABOUT_COPY.principlesTitle[locale]}</SectionTitle>
+          <div className="mt-8 grid gap-8 sm:grid-cols-3">
+            {principles.map(({ title, body }, index) => (
+              <article key={title} className="border-t border-rule pt-4">
+                <MonoLabel className="text-accent">{String(index + 1).padStart(2, "0")}</MonoLabel>
+                <h3 className="mt-3 font-serif text-xl font-semibold italic sm:text-2xl">
+                  {t(locale, title)}
+                </h3>
+                <p className="mt-2 text-sm leading-6 text-muted-foreground">{t(locale, body)}</p>
+              </article>
+            ))}
+          </div>
+        </SectionColumns>
+      </PageSection>
 
-      <PrivacyNotice locale={locale} />
-
-      <div className="flex flex-wrap gap-3 pt-2">
-        <Link
-          to="/"
-          className="rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        >
-          {t(locale, "aboutCtaChat")}
-        </Link>
-        <Link
-          to="/collection"
-          className="rounded-full border border-border bg-card px-4 py-2 text-sm font-medium text-card-foreground hover:bg-secondary focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        >
-          {t(locale, "aboutCtaCollection")}
-        </Link>
-      </div>
+      <PageSection tone="muted">
+        <SectionColumns label={t(locale, "aboutPrivacyLabel")} testId="about-privacy-summary">
+          <SectionTitle>{ABOUT_COPY.privacyTitle[locale]}</SectionTitle>
+          <p className="mt-4 max-w-3xl text-base leading-7">{t(locale, "aboutPrivacyBody")}</p>
+          <div className="mt-6 flex flex-wrap gap-3">
+            <Link
+              to="/privacy"
+              className="rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              {t(locale, "privacyCta")}
+            </Link>
+            <Link
+              to="/collection"
+              className="rounded-full border border-border bg-card px-4 py-2 text-sm font-medium text-card-foreground hover:bg-secondary focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              {t(locale, "aboutCtaCollection")}
+            </Link>
+          </div>
+        </SectionColumns>
+      </PageSection>
     </PageShell>
   );
 }

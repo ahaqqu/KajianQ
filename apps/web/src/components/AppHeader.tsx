@@ -1,28 +1,28 @@
-import { useRouterState } from "@tanstack/react-router";
-import { useEffect, useRef, useState, type ReactNode } from "react";
-import { type Locale, t, useLocale, useLocaleSetter } from "../lib/i18n";
-import { useTheme } from "../lib/theme";
+import { Link, useRouterState } from "@tanstack/react-router";
+import { useEffect, useRef, useState } from "react";
+import { t, useLocale, type Locale } from "../lib/i18n";
+import { CloseButton, LocaleMenu, MenuButton, NewSessionButton, ThemeToggle } from "./header-parts";
 import { LogoTile, MonoLabel, NavLinks } from "./ui";
 
 /**
- * The app header (the reference design's): logo tile + serif-italic wordmark
- * over a mono uppercase letter-spaced tagline; the primary nav (Chat,
- * Collection, About) inline on sm+ screens; and on the right the circular theme
- * toggle and the language select, plus any route action (the chat adds its "new
- * conversation" pill). The wordmark is the product name — always KajianQ.
- * Below sm the nav collapses into a burger button that toggles a disclosure
- * menu (aria-expanded + aria-controls, aria-label from i18n, keyboard
- * reachable, closed automatically when the route changes); the wordmark block
- * compresses (min-w-0, truncated tagline) so the controls keep the reference's
- * single line.
+ * The app header, in the reference's full-bleed treatment: a sticky bar across
+ * the viewport with a 1152px inner row, the brand at the left, the primary nav
+ * centered on lg+ and the round controls at the right. Below lg the nav moves
+ * into a left drawer and the tagline and the new-conversation pill step aside,
+ * so the mobile row keeps the whole wordmark beside its controls instead of
+ * truncating it to two characters.
+ *
+ * The drawer keeps the disclosure contract the tests pin: aria-expanded /
+ * aria-controls on the toggle, Escape closes and returns focus, focus leaving
+ * the toggle+drawer subtree closes it, and a route change closes it. The chat
+ * passes `onNewSession`, which renders the pill on sm+ and a full-width action
+ * inside the drawer — the one mobile path back to a fresh conversation.
  */
-export function AppHeader({ actions }: { actions?: ReactNode }) {
+export function AppHeader({ onNewSession }: { onNewSession?: () => void } = {}) {
   const locale = useLocale();
-  const setLocale = useLocaleSetter();
-  const { theme, toggle } = useTheme();
   const [menuOpen, setMenuOpen] = useState(false);
-  const menuRef = useRef<HTMLDivElement>(null);
-  // A menu left open would cover the page its own link just opened, so close
+  const rootRef = useRef<HTMLDivElement>(null);
+  // A drawer left open would cover the page its own link just opened, so close
   // it whenever the route changes (the router state read is required for that
   // close-on-navigate behavior — this component cannot render outside a
   // router; tests go through `renderApp`/`wrapInRouter`).
@@ -32,24 +32,18 @@ export function AppHeader({ actions }: { actions?: ReactNode }) {
     setMenuOpen(false);
   }, [pathname]);
 
-  // Keyboard contract for the disclosure: Escape closes and
-  // returns focus to the toggle, and focus leaving the toggle+menu subtree
-  // closes it, so Tab from the last menu link cannot strand the open menu
-  // (absolutely positioned over the page) without the user noticing. The
-  // focusout listener sits on the header container because the menu is a
-  // sibling of the controls row — the containment check must cover both.
   useEffect(() => {
     if (!menuOpen) return;
-    const container = menuRef.current;
-    if (!container) return;
+    const root = rootRef.current;
+    if (!root) return;
+    const toggle = root.querySelector('[data-testid="nav-menu-toggle"]');
+    const drawer = root.querySelector('[data-testid="nav-drawer"]');
     const inDisclosure = (node: Node | null) =>
-      node !== null &&
-      (node === container.querySelector('[data-testid="nav-menu-toggle"]') ||
-        (container.querySelector('[data-testid="nav-menu"]')?.contains(node) ?? false));
+      node !== null && (node === toggle || (drawer?.contains(node) ?? false));
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         setMenuOpen(false);
-        container.querySelector<HTMLButtonElement>('[data-testid="nav-menu-toggle"]')?.focus();
+        root.querySelector<HTMLButtonElement>('[data-testid="nav-menu-toggle"]')?.focus();
       }
     };
     const onFocusOut = (event: FocusEvent) => {
@@ -58,114 +52,131 @@ export function AppHeader({ actions }: { actions?: ReactNode }) {
       }
     };
     document.addEventListener("keydown", onKeyDown);
-    container.addEventListener("focusout", onFocusOut);
+    root.addEventListener("focusout", onFocusOut);
     return () => {
       document.removeEventListener("keydown", onKeyDown);
-      container.removeEventListener("focusout", onFocusOut);
+      root.removeEventListener("focusout", onFocusOut);
     };
   }, [menuOpen]);
 
   return (
-    <div
-      className="relative mx-auto flex w-full max-w-3xl items-center gap-2 px-4 py-4 sm:gap-3"
-      ref={menuRef}
-    >
-      <LogoTile size="md" />
-      <div className="min-w-0">
-        <p className="truncate font-serif text-[22px] font-semibold italic leading-tight">
-          {t(locale, "appTitle")}
-        </p>
-        <MonoLabel className="truncate">{t(locale, "tagline")}</MonoLabel>
-      </div>
+    // The wrapper exists for the drawer: `backdrop-filter` on the header makes
+    // it the containing block for fixed descendants, which would clip a
+    // viewport-sized drawer to the header's height. The drawer is therefore a
+    // sibling of the blurred bar, inside the ref the focus contract watches.
+    <div ref={rootRef} className="sticky top-0 z-40">
+      <header className="border-b border-dashed border-rule bg-background/95 backdrop-blur">
+        <div className="relative mx-auto flex h-[72px] w-full max-w-6xl items-center gap-3 px-4 sm:px-8 lg:grid lg:grid-cols-[1fr_auto_1fr]">
+          <Link
+            to="/"
+            className="flex min-w-0 shrink-0 items-center gap-3 rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-ring lg:justify-self-start"
+          >
+            <LogoTile size="md" />
+            <span className="min-w-0">
+              <span className="block truncate font-serif text-[22px] leading-none font-semibold italic">
+                {t(locale, "appTitle")}
+              </span>
+              <MonoLabel className="mt-1 hidden text-[9px] leading-none tracking-[0.18em] sm:block">
+                {t(locale, "tagline")}
+              </MonoLabel>
+            </span>
+          </Link>
 
-      <nav aria-label={t(locale, "navLabel")} className="ml-4 hidden sm:block">
-        <NavLinks locale={locale} />
-      </nav>
+          <nav
+            aria-label={t(locale, "navLabel")}
+            className="hidden lg:block lg:justify-self-center"
+          >
+            <NavLinks locale={locale} />
+          </nav>
 
-      <div className="ml-auto flex items-center gap-1.5 sm:gap-2">
-        {actions}
-        <button
-          type="button"
-          data-testid="nav-menu-toggle"
-          aria-expanded={menuOpen}
-          aria-controls="primary-nav-menu"
-          aria-label={t(locale, menuOpen ? "navMenuClose" : "navMenuOpen")}
-          onClick={() => setMenuOpen((open) => !open)}
-          className="flex size-9 shrink-0 items-center justify-center rounded-full border border-border text-foreground hover:bg-card focus:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:hidden"
-        >
-          {menuOpen ? <CloseIcon /> : <BurgerIcon />}
-        </button>
-        <button
-          type="button"
-          data-testid="theme-toggle"
-          aria-label={t(locale, "themeToggle")}
-          onClick={toggle}
-          className="flex size-9 shrink-0 items-center justify-center rounded-full border border-border text-foreground hover:bg-card focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        >
-          {theme === "light" ? <MoonIcon /> : <SunIcon />}
-        </button>
-        <select
-          className="rounded-full border border-border bg-transparent px-1.5 py-1.5 font-mono text-xs text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:px-2"
-          value={locale}
-          aria-label={t(locale, "localeLabel")}
-          data-testid="locale-select"
-          onChange={(e) => setLocale(e.target.value as Locale)}
-        >
-          <option value="en">EN</option>
-          <option value="id">ID</option>
-        </select>
-      </div>
+          <div className="ml-auto flex items-center gap-2 lg:ml-0 lg:justify-self-end">
+            {onNewSession !== undefined && <NewSessionButton onClick={onNewSession} />}
+            <LocaleMenu />
+            <ThemeToggle />
+            <MenuButton open={menuOpen} onClick={() => setMenuOpen((open) => !open)} />
+          </div>
+        </div>
+      </header>
 
       {menuOpen && (
-        <nav
-          id="primary-nav-menu"
-          aria-label={t(locale, "navLabel")}
-          data-testid="nav-menu"
-          className="absolute top-full right-4 left-4 z-40 rounded-xl border border-border bg-card p-2 shadow-lg sm:hidden"
-        >
-          <NavLinks locale={locale} stacked />
-        </nav>
+        <MobileDrawer
+          locale={locale}
+          onClose={() => setMenuOpen(false)}
+          onNewSession={onNewSession}
+        />
       )}
     </div>
   );
 }
 
-function BurgerIcon() {
+/** The below-lg navigation drawer: brand, large serif nav, chat action, legal. */
+function MobileDrawer({
+  locale,
+  onClose,
+  onNewSession,
+}: {
+  locale: Locale;
+  onClose: () => void;
+  onNewSession?: (() => void) | undefined;
+}) {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" className="size-4">
-      <path d="M4 7h16M4 12h16M4 17h16" strokeLinecap="round" />
-    </svg>
-  );
-}
-
-function CloseIcon() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" className="size-4">
-      <path d="M6 6l12 12M18 6L6 18" strokeLinecap="round" />
-    </svg>
-  );
-}
-
-function MoonIcon() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" className="size-4">
-      <path
-        d="M20 14.5A8 8 0 0 1 9.5 4 8 8 0 1 0 20 14.5Z"
-        strokeLinecap="round"
-        strokeLinejoin="round"
+    <div className="fixed inset-0 z-50 lg:hidden" data-testid="nav-drawer">
+      <button
+        type="button"
+        aria-label={t(locale, "navMenuClose")}
+        className="absolute inset-0 bg-foreground/50"
+        onClick={onClose}
       />
-    </svg>
-  );
-}
+      <div className="relative flex h-full w-[min(88vw,22rem)] flex-col overflow-y-auto border-r border-border bg-background px-6 py-5 shadow-2xl">
+        <div className="flex items-start justify-between gap-3">
+          <Link to="/" onClick={onClose} className="flex items-center gap-3">
+            <LogoTile size="md" />
+            <span className="font-serif text-[22px] leading-none font-semibold italic">
+              {t(locale, "appTitle")}
+            </span>
+          </Link>
+          <CloseButton onClick={onClose} />
+        </div>
+        <p className="mt-2 text-sm text-muted-foreground">{t(locale, "tagline")}</p>
 
-function SunIcon() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" className="size-4">
-      <circle cx="12" cy="12" r="4" />
-      <path
-        d="M12 2v2m0 16v2M4.9 4.9l1.4 1.4m11.4 11.4 1.4 1.4M2 12h2m16 0h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"
-        strokeLinecap="round"
-      />
-    </svg>
+        <nav
+          id="primary-nav-menu"
+          data-testid="nav-menu"
+          aria-label={t(locale, "navLabel")}
+          className="mt-6"
+        >
+          <NavLinks locale={locale} variant="drawer" />
+        </nav>
+
+        {onNewSession !== undefined && (
+          <button
+            type="button"
+            data-testid="drawer-new-session"
+            onClick={() => {
+              onNewSession();
+              onClose();
+            }}
+            className="mt-6 flex h-10 items-center justify-center rounded-full bg-primary px-4 text-sm font-medium text-primary-foreground hover:opacity-90 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            {t(locale, "newSession")}
+          </button>
+        )}
+
+        <div className="mt-auto space-y-2 pt-8">
+          <MonoLabel>{t(locale, "footerLegalLabel")}</MonoLabel>
+          <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground">
+            <Link to="/privacy" onClick={onClose} className="hover:text-foreground">
+              {t(locale, "footerPrivacy")}
+            </Link>
+            <Link to="/terms" onClick={onClose} className="hover:text-foreground">
+              {t(locale, "footerTerms")}
+            </Link>
+            <Link to="/faq" onClick={onClose} className="hover:text-foreground">
+              {t(locale, "navFaq")}
+            </Link>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }

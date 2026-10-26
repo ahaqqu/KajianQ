@@ -50,14 +50,86 @@ export function CardLabel({ children }: { children: ReactNode }) {
 }
 
 /**
- * The static pages' shared heading (About, Collection), owned here so both
- * pages cannot drift apart.
+ * The static pages' eyebrow: the mono label in the reference's gold accent.
+ * Owned here so every legal/marketing page opens with the same mark.
  */
-export function PageIntro({ title, intro }: { title: string; intro: string }) {
+export function Eyebrow({ children }: { children: ReactNode }) {
+  return <MonoLabel className="text-accent">{children}</MonoLabel>;
+}
+
+/**
+ * The static pages' hero: gold eyebrow, the display serif title at the
+ * reference's 72/56/40 responsive sizes, the lead paragraph and an optional
+ * mono meta line (a "last updated" stamp, a count). The hero owns the page's
+ * top spacing; the sections below it start at `PageSection`.
+ */
+export function PageHero({
+  eyebrow,
+  title,
+  lead,
+  meta,
+}: {
+  eyebrow: string;
+  title: string;
+  lead?: string;
+  meta?: string;
+}) {
   return (
-    <div className="space-y-2">
-      <h1 className="font-serif text-3xl font-semibold italic">{title}</h1>
-      <p className="text-sm leading-relaxed text-muted-foreground">{intro}</p>
+    <div className="mx-auto w-full max-w-6xl px-4 pt-12 pb-10 sm:px-8 sm:pt-16 sm:pb-14">
+      <Eyebrow>{eyebrow}</Eyebrow>
+      <h1 className="mt-4 max-w-4xl font-serif text-[40px] leading-[1.02] font-semibold text-balance sm:text-[56px] lg:text-[72px] lg:leading-[0.98]">
+        {title}
+      </h1>
+      {lead !== undefined && (
+        <p className="mt-6 max-w-2xl text-lg leading-8 text-muted-foreground">{lead}</p>
+      )}
+      {meta !== undefined && <MonoLabel className="mt-6">{meta}</MonoLabel>}
+    </div>
+  );
+}
+
+/**
+ * A full-bleed section: the hairline rule under the hero, the shared 1152px
+ * inner column and the reference's vertical rhythm. `tone="muted"` paints the
+ * band with the card tone for the alternating sections.
+ */
+export function PageSection({
+  children,
+  tone = "plain",
+  className = "",
+}: {
+  children: ReactNode;
+  tone?: "plain" | "muted";
+  className?: string;
+}) {
+  return (
+    <section
+      className={`border-t border-rule ${tone === "muted" ? "bg-card/60" : ""} ${className}`}
+    >
+      <div className="mx-auto w-full max-w-6xl px-4 py-12 sm:px-8 sm:py-16">{children}</div>
+    </section>
+  );
+}
+
+/** The section heading inside a `PageSection` (36px serif, reference scale). */
+export function SectionTitle({ children }: { children: ReactNode }) {
+  return (
+    <h2 className="font-serif text-[26px] leading-tight font-semibold sm:text-[36px]">
+      {children}
+    </h2>
+  );
+}
+
+/**
+ * A legal/prose block: the 16px body measure at the reference's line height,
+ * with list and link treatments so pages do not hand-roll paragraph styling.
+ */
+export function Prose({ children, className = "" }: { children: ReactNode; className?: string }) {
+  return (
+    <div
+      className={`max-w-3xl space-y-4 text-base leading-7 text-foreground [&_a]:underline [&_a]:underline-offset-4 [&_a:hover]:text-primary ${className}`}
+    >
+      {children}
     </div>
   );
 }
@@ -113,6 +185,28 @@ export function LogoTile({ size }: { size: keyof typeof LOGO_SIZES }) {
         <rect x="6.2" y="6.2" width="11.6" height="11.6" transform="rotate(45 12 12)" />
         <circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none" />
       </svg>
+    </div>
+  );
+}
+
+/**
+ * The reference's two-column section body: the mono label in a fixed left rail
+ * on lg+, the content at the right. Owned here so About, Collection and the
+ * legal pages share one rhythm instead of three hand-rolled grids.
+ */
+export function SectionColumns({
+  label,
+  testId,
+  children,
+}: {
+  label: string;
+  testId?: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className="grid gap-8 lg:grid-cols-[200px_1fr]" data-testid={testId}>
+      <Eyebrow>{label}</Eyebrow>
+      <div>{children}</div>
     </div>
   );
 }
