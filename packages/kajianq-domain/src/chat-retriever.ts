@@ -86,9 +86,8 @@ export function createKajianQRetriever(deps: KajianQRetrieverDeps): Retriever<Ka
           if (routed.subQueries.length === 0) return [];
           const run = yield* RunContext;
           // The caller's own list is watched as it is searched: its top hits are a
-          // priority angle (ADR-0062) the fusion vote cannot outrank on its own. The
-          // entry is the one carrying the caller's verbatim question, so the router's
-          // deterministic fallback is the caller's list too, not an unprotected route.
+          // priority angle (ADR-0062) the fusion vote cannot outrank on its own — the
+          // entry carrying the caller's verbatim question, on either route.
           const callerIndex = routed.subQueries.findIndex((sub) =>
             isCallerSubQuery(sub, routed.sourceText),
           );
