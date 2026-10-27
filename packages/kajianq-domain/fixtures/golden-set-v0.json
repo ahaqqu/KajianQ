@@ -55,8 +55,14 @@
       "language": "id",
       "expectedSourceTypes": ["hadith"],
       "requiredCitations": ["HR. Bukhari no. 1108"],
-      "$comment": "citationAlternatives: the question asks the ruling — combining Maghrib and Isha in travel — not one narration's address, so the curator accepts two different reports that state it as an opt-in any-of set instead of widening the identity map, where a same-ruling relation is reported and never gates (ADR-0054). HR. Nasai no. 598 is Ibn Umar through Malik ← Nafi' (Sahih), and HR. Ibn Majah no. 1070 is Mu'adh at Tabuk, combining all four prayers (Sahih); both say the Prophet combined Maghrib and Isha on a journey, and neither is a chain of 1108's Anas report. Excluded: HR. Malik no. 331, Ibn Shihab asking Salim ibn Abdullah about Dhuhr and Asr — a Successor's fatwa, a Maqtu chain, not a Prophetic report, which the grade fold nonetheless renders \"(Sahih)\".",
-      "citationAlternatives": ["HR. Nasai no. 598", "HR. Ibn Majah no. 1070"],
+      "$comment": "citationAlternatives: the question asks the ruling — combining Maghrib and Isha in travel — not one narration's address, so the curator accepts these different reports that state it as an opt-in any-of set instead of widening the identity map, where a same-ruling relation is reported and never gates (ADR-0054). The required 1108 is the Anas report (Husayn ← Yahya ibn Abi Kathir ← Hafsh ibn Ubaydillah ← Anas); its parallel Anas chain, 1110, is recorded as the map's same-report identity and is not a set member. Every member here is a same-ruling narration — a different report, not a chain of 1108's Anas report: HR. Nasai no. 598 and HR. Muslim no. 1621 are Ibn Umar through Malik ← Nafi' (Sahih and ungraded sahihayn), HR. Bukhari no. 1109 and HR. Muslim no. 1624 are Ibn Umar through Zuhri ← Salim (both ungraded sahihayn), and HR. Ibn Majah no. 1070 is Mu'adh at Tabuk combining all four prayers (Sahih). Excluded: HR. Malik no. 331, Ibn Shihab asking Salim ibn Abdullah about Dhuhr and Asr — a Successor's fatwa, a Maqtu chain, not a Prophetic report, which the grade fold nonetheless renders \"(Sahih)\"; HR. Ibn Majah no. 1069, the same travel ruling but Daif by every grader; HR. Ibn Majah no. 1194, qasr rather than jamak; HR. Nasai no. 602, combining while resident in Madinah without fear or rain; HR. Bukhari no. 1668 and HR. Tirmidhi no. 888, Muzdalifah/Hajj material; and HR. Bukhari nos. 1111-1112 and HR. Malik no. 326, which combine Dhuhr and Asr only.",
+      "citationAlternatives": [
+        "HR. Nasai no. 598",
+        "HR. Ibn Majah no. 1070",
+        "HR. Bukhari no. 1109",
+        "HR. Muslim no. 1621",
+        "HR. Muslim no. 1624"
+      ],
       "expectedBehavior": "answer",
       "tags": ["fikih", "hadith"]
     },

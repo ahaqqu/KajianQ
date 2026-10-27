@@ -212,7 +212,13 @@ const REQUIREMENTS: Record<string, CuratedRequirement> = {
   "gs-v0-006": {
     expectedSourceTypes: ["hadith"],
     requiredCitations: ["HR. Bukhari no. 1108"],
-    citationAlternatives: ["HR. Nasai no. 598", "HR. Ibn Majah no. 1070"],
+    citationAlternatives: [
+      "HR. Nasai no. 598",
+      "HR. Ibn Majah no. 1070",
+      "HR. Bukhari no. 1109",
+      "HR. Muslim no. 1621",
+      "HR. Muslim no. 1624",
+    ],
     expectedBehavior: "answer",
   },
   "gs-v0-008": {
@@ -351,6 +357,9 @@ describe("golden-set-v0 curation", () => {
 const ALTERNATIVE_GRADES: Record<string, Grade | null> = {
   "HR. Nasai no. 598": "sahih",
   "HR. Ibn Majah no. 1070": "sahih",
+  "HR. Bukhari no. 1109": null,
+  "HR. Muslim no. 1621": null,
+  "HR. Muslim no. 1624": null,
   "HR. Bukhari no. 5027": null,
   "HR. Bukhari no. 4937": null,
   "HR. Nasai no. 5148": "sahih",
@@ -451,13 +460,25 @@ describe("the curated corpus-label index registers every curated hadith label", 
     // "except a cut piece" exception, a different ruling from the prohibition;
     // 224 is a different narration (Anas, "seeking knowledge is obligatory")
     // that every grader grades dhaif, so a sahih filter drops it before
-    // retrieval and no requirement, set or map may name it.
+    // retrieval and no requirement, set or map may name it. For 006's ruling:
+    // 1069 states travel combining but every grader grades it Daif; 1194 is
+    // qasr rather than jamak; 602 combines while resident, not on a journey;
+    // 1668 and 888 are Muzdalifah/Hajj material; 1111, 1112 and 326 combine
+    // Dhuhr and Asr only.
     for (const label of [
       "HR. Malik no. 331",
       "HR. Bukhari no. 1454",
       "HR. Nasai no. 5149",
       "HR. Nasai no. 5160",
       "HR. Ibnu Majah no. 224",
+      "HR. Ibn Majah no. 1069",
+      "HR. Ibn Majah no. 1194",
+      "HR. Nasai no. 602",
+      "HR. Bukhari no. 1668",
+      "HR. Tirmidhi no. 888",
+      "HR. Bukhari no. 1111",
+      "HR. Bukhari no. 1112",
+      "HR. Malik no. 326",
     ]) {
       expect(required, label).not.toContain(label);
       expect(sets, label).not.toContain(label);

@@ -1,4 +1,5 @@
 /// <reference types="node" />
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vite-plus/test";
 import type { EvalResultOutcome, GoldenQuestion, GoldenSet } from "@app/contracts";
 import {
@@ -32,6 +33,19 @@ const GRAMMAR: CitationGrammar = {
   labelsInText: citationCandidatesIn,
   addressesNamedBy,
 };
+
+/** 006's opt-in set is head curation, not a recorded run input: read it from the
+ * fixture so the disposition below cannot disagree with the set the harness
+ * actually applies. */
+const HEAD_006_ALTERNATIVES =
+  (
+    JSON.parse(
+      readFileSync(
+        new URL("../../../packages/kajianq-domain/fixtures/golden-set-v0.json", import.meta.url),
+        "utf8",
+      ),
+    ) as { questions: { id: string; citationAlternatives?: string[] }[] }
+  ).questions.find((entry) => entry.id === "gs-v0-006")?.citationAlternatives ?? [];
 
 type Retrieved = { label: string; sourceType: string };
 
@@ -88,11 +102,7 @@ const WITH_BOTH = { gate: gateIdentity, reported: reportedIdentity };
  */
 const ROWS = {
   "gs-v0-006": {
-    row: question(
-      "gs-v0-006",
-      ["HR. Bukhari no. 1108"],
-      ["HR. Nasai no. 598", "HR. Ibn Majah no. 1070"],
-    ),
+    row: question("gs-v0-006", ["HR. Bukhari no. 1108"], HEAD_006_ALTERNATIVES),
     cited: ["HR. Malik no. 331", "HR. Ibn Majah no. 1070", "HR. Nasai no. 598"],
     retrieved: [
       { label: "HR. Bukhari no. 1108", sourceType: "primary" },
@@ -239,20 +249,53 @@ describe("D1b — a signed same-ruling relation never satisfies the exact-addres
   });
 });
 
+/** The same-ruling members 006's opt-in set gained, listed here beside the
+ * fixture's own entry: the set pin below catches a dropped member, and this list
+ * makes the per-member disposition fail with it rather than shrinking the loop
+ * silently. */
+const ADDED_006_MEMBERS = [
+  "HR. Bukhari no. 1109",
+  "HR. Muslim no. 1621",
+  "HR. Muslim no. 1624",
+] as const;
+
 describe("D3b — the curated alternative sets are the opt-in that widens 006 and 017", () => {
   it("passes 006 through its own set and accepts each member alone", () => {
     const entry = ROWS["gs-v0-006"];
     // The curated set is this case's input; pin it so a dropped member cannot
     // quietly shrink the loop below.
     const alternatives = entry.row.citationAlternatives ?? [];
-    expect(alternatives).toEqual(["HR. Nasai no. 598", "HR. Ibn Majah no. 1070"]);
+    expect(alternatives).toEqual([
+      "HR. Nasai no. 598",
+      "HR. Ibn Majah no. 1070",
+      "HR. Bukhari no. 1109",
+      "HR. Muslim no. 1621",
+      "HR. Muslim no. 1624",
+    ]);
     const scored = outcome("gs-v0-006");
-    expect(scored.citationValidity).toBe(1); // 598 and 1070 are curator-accepted answers
+    expect(scored.citationValidity).toBe(1); // every member is a curator-accepted answer
     expect(scored.citationAddressRecall).toBe(1); // the required address was retrieved
     expect(scored.passed).toBe(true);
     for (const alternative of alternatives) {
       const alone = score(entry.row, [alternative], entry.retrieved, WITH_BOTH);
       expect(alone.citationValidity, alternative).toBe(1);
+      expect(alone.passed, alternative).toBe(true);
+    }
+  });
+
+  it("accepts each added same-ruling member alone, and only through the set", () => {
+    const entry = ROWS["gs-v0-006"];
+    for (const member of ADDED_006_MEMBERS) {
+      expect(entry.row.citationAlternatives, member).toContain(member);
+      const alone = score(entry.row, [member], entry.retrieved, WITH_BOTH);
+      expect(alone.citationValidity, member).toBe(1);
+      expect(alone.passed, member).toBe(true);
+      // The signed same-ruling relation is reported, never gating: without the
+      // opt-in set the same member leaves the gate at 0, and only the reported
+      // measure reads it.
+      const withoutSet = score(withoutOptIn(entry.row), [member], entry.retrieved, WITH_BOTH);
+      expect(withoutSet.citationValidity, member).toBe(0);
+      expect(withoutSet.identitySatisfied?.citationValidity, member).toBe(1);
     }
   });
 
@@ -287,6 +330,30 @@ describe("D3b — the curated alternative sets are the opt-in that widens 006 an
     );
     expect(schedule.citationValidity).toBe(0);
     expect(schedule.identitySatisfied?.citationValidity).toBe(0);
+    // 006's excluded neighbours, even with its widened set in place: 331 is a
+    // Successor's fatwa, 1069 is Daif by every grader, 1194 is qasr, 602
+    // combines while resident, 1668 and 888 are Muzdalifah/Hajj material, and
+    // 1111, 1112 and 326 combine Dhuhr and Asr only.
+    for (const label of [
+      "HR. Malik no. 331",
+      "HR. Ibn Majah no. 1069",
+      "HR. Ibn Majah no. 1194",
+      "HR. Nasai no. 602",
+      "HR. Bukhari no. 1668",
+      "HR. Tirmidhi no. 888",
+      "HR. Bukhari no. 1111",
+      "HR. Bukhari no. 1112",
+      "HR. Malik no. 326",
+    ]) {
+      const excluded = score(
+        ROWS["gs-v0-006"].row,
+        [label],
+        ROWS["gs-v0-006"].retrieved,
+        WITH_BOTH,
+      );
+      expect(excluded.citationValidity, label).toBe(0);
+      expect(excluded.identitySatisfied?.citationValidity, label).toBe(0);
+    }
   });
 });
 
