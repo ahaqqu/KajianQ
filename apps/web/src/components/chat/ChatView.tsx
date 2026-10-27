@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { formatMessage, formatNumber, t, type Locale } from "../../lib/i18n";
 import { CHAT_MESSAGE_MAX_LENGTH, type ChatSessionMessage } from "@app/contracts";
 import { AppHeader } from "../AppHeader";
@@ -48,6 +48,8 @@ export function ChatView({
   error,
   online,
   prefill,
+  consentCard,
+  stored,
   onSend,
   onNewSession,
 }: {
@@ -62,6 +64,11 @@ export function ChatView({
   online: boolean;
   /** The seed question from the route's `?q=` param, if any. */
   prefill?: string | undefined;
+  /** The consent question (ADR-0063), rendered above the composer; it hides
+   * itself once answered, so the page can pass it unconditionally. */
+  consentCard?: ReactNode;
+  /** Whether the conversation is being kept in this browser (ADR-0063). */
+  stored: boolean;
   onSend: (text: string) => void;
   onNewSession: () => void;
 }) {
@@ -142,6 +149,7 @@ export function ChatView({
             online={online}
             error={error}
             stagedLabel={busy ? t(locale, STAGE_KEYS[stage]!) : null}
+            stored={stored}
             onSuggest={sendText}
           />
         </div>
@@ -160,6 +168,7 @@ export function ChatView({
               {t(locale, "transcriptTruncated")}
             </p>
           )}
+          {consentCard}
           <form
             className="relative rounded-xl border border-input bg-card"
             onSubmit={(event) => {

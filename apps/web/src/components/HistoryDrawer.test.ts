@@ -7,7 +7,9 @@ import {
   OPEN_SESSION_EVENT,
   archiveChatSession,
   clearChatHistory,
+  forgetChatState,
   loadChatHistory,
+  setConsent,
 } from "../lib/chat-store";
 
 /**
@@ -41,12 +43,15 @@ function stubTranscript(status: number) {
 
 beforeEach(() => {
   window.localStorage.clear();
+  // A browser holding conversations has answered the consent question (ADR-0063).
+  setConsent("store");
 });
 
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
   clearChatHistory();
+  forgetChatState();
 });
 
 function openDrawer(): HTMLElement {
@@ -155,5 +160,38 @@ describe("conversation history drawer", () => {
     await renderApp("/faq");
     const drawer = openDrawer();
     expect(within(drawer).getByTestId("history-empty")).toBeTruthy();
+  });
+});
+
+describe("conversation history — consent", () => {
+  it("says storage is off and offers to turn it on, then keeps the list", async () => {
+    window.localStorage.clear();
+    setConsent("session-only");
+    await renderApp("/faq");
+    const drawer = openDrawer();
+
+    expect(within(drawer).getByTestId("history-consent-off").textContent).toContain(
+      "Penyimpanan di peramban mati",
+    );
+    expect(within(drawer).queryByTestId("consent-disable")).toBeNull();
+
+    fireEvent.click(within(drawer).getByTestId("consent-enable"));
+    expect(window.localStorage.getItem("kajianq.consent")).toBe("store");
+    expect(within(drawer).queryByTestId("history-consent-off")).toBeNull();
+    expect(within(drawer).getByTestId("consent-disable")).toBeTruthy();
+  });
+
+  it("withdrawing erases the stored list but keeps it on screen for the tab", async () => {
+    archiveChatSession({ id: "a", title: "Ayat kursi", locale: "id", startedAt: Date.now() });
+    expect(window.localStorage.getItem(HISTORY_KEY)).not.toBeNull();
+    await renderApp("/faq");
+    const drawer = openDrawer();
+
+    fireEvent.click(within(drawer).getByTestId("consent-disable"));
+    expect(window.localStorage.getItem(HISTORY_KEY)).toBeNull();
+    expect(window.localStorage.getItem("kajianq.consent")).toBe("session-only");
+    // The tab keeps working from memory: the conversation is still listed.
+    expect(within(drawer).getAllByTestId("history-entry")).toHaveLength(1);
+    expect(within(drawer).getByTestId("consent-enable")).toBeTruthy();
   });
 });

@@ -80,6 +80,7 @@ async function openChatWithFixtures(page: import("@playwright/test").Page): Prom
     });
   });
   await page.addInitScript(() => {
+    localStorage.setItem("kajianq.consent", "store");
     localStorage.setItem("kajianq.auth.token", "tok-e2e");
   });
   await page.goto("/");

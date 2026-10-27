@@ -36,6 +36,7 @@ async function openChatWithHistory(
   status = 200,
 ): Promise<void> {
   await page.addInitScript((seed) => {
+    localStorage.setItem("kajianq.consent", "store");
     localStorage.setItem("kajianq.auth.token", "tok-e2e");
     localStorage.setItem("kajianq.chat.history", JSON.stringify(seed));
   }, entries);

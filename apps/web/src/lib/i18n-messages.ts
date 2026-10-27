@@ -5,10 +5,10 @@
  * copy lives in its own file so `i18n.ts` stays the machinery module, under
  * the agentic-limits cap a growing message list would otherwise break.
  */
-import { historyMessages } from "./i18n-messages-history";
+import { chatMessages } from "./i18n-messages-chat";
 export const messages = {
   en: {
-    ...historyMessages.en,
+    ...chatMessages.en,
     appTitle: "KajianQ",
     homeTitle: "KajianQ",
     homeSubtitle:
@@ -31,7 +31,7 @@ export const messages = {
     suggestion1: "What is Ayat al-Kursi and what does it mean?",
     suggestion2: "Which authentic hadith speak about honesty?",
     suggestion3: "What do the classical kitab say about intention in deeds?",
-    footerMeta: "One conversation · Every answer cites its sources · Saved on your device",
+    footerMeta: "One conversation · Every answer cites its sources",
     warningLabel: "Warning",
     composerPlaceholder: "Ask about the Quran, hadith, or classical scholarship…",
     composerLimit: "Message limit reached ({max} characters).",
@@ -152,7 +152,7 @@ export const messages = {
     collectionFilterTerminology: "Terminology",
   },
   id: {
-    ...historyMessages.id,
+    ...chatMessages.id,
     appTitle: "KajianQ",
     homeTitle: "KajianQ",
     homeSubtitle:
@@ -175,8 +175,7 @@ export const messages = {
     suggestion1: "Apa itu ayat kursi dan apa maknanya?",
     suggestion2: "Hadits apa saja yang shahih tentang kejujuran?",
     suggestion3: "Apa kata kitab klasik tentang niat dalam beramal?",
-    footerMeta:
-      "Satu percakapan · Setiap jawaban mencantumkan sumbernya · Tersimpan di perangkat Anda",
+    footerMeta: "Satu percakapan · Setiap jawaban mencantumkan sumbernya",
     warningLabel: "Peringatan",
     composerPlaceholder: "Tanyakan tentang Quran, hadits, atau tafsir…",
     composerLimit: "Batas pesan tercapai ({max} karakter).",

@@ -437,10 +437,12 @@ describe("privacy notice: browser storage is stated from the code that stores it
   it("names the localStorage keys the app actually writes", () => {
     // The claim is pinned to each key's source, not to prose: the keys are the owning modules'
     // exported constants re-exported through `privacy-notice.ts`, so a rename breaks the typecheck.
-    const chatStore = read("apps/web/src/lib/chat-store.ts");
+    const chatStorage = read("apps/web/src/lib/chat-storage.ts");
+    const consent = read("apps/web/src/lib/consent.ts");
     const theme = read("apps/web/src/lib/theme.ts");
     const declared = [
-      ...chatStore.matchAll(/export const (?:SESSION|TOKEN|HISTORY)_KEY = "([^"]+)"/g),
+      ...chatStorage.matchAll(/export const (?:SESSION|TOKEN|HISTORY)_KEY = "([^"]+)"/g),
+      ...consent.matchAll(/export const (?:CONSENT)_KEY = "([^"]+)"/g),
       ...theme.matchAll(/export const THEME_KEY = "([^"]+)"/g),
     ].map((match) => match[1]!);
     expect(declared.sort()).toEqual([...STORAGE.keys].sort());
@@ -475,6 +477,9 @@ describe("privacy notice: browser storage is stated from the code that stores it
     expect(STORAGE.body.id).toContain("tanpa pelacakan");
     expect(STORAGE.body.en.toLowerCase()).toContain("erase them yourself");
     expect(STORAGE.body.id.toLowerCase()).toContain("menghapusnya sendiri");
+    // The chat keys are gated on consent (ADR-0063), and the card says so.
+    expect(STORAGE.body.en).toContain("Once you agree");
+    expect(STORAGE.body.id).toContain("Setelah Anda setuju");
     expect(STORAGE.body.en).not.toBe(STORAGE.body.id);
   });
 

@@ -42,6 +42,7 @@ function renderView(overrides: {
         transcriptTruncated: false,
         error: null,
         online: true,
+        stored: true,
         onSend,
         onNewSession: vi.fn(),
       }),
