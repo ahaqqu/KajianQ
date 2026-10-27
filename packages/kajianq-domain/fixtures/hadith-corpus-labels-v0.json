@@ -54,6 +54,16 @@
       "indonesianEditionSha256": "43eeef2a9b020219075bbb7ab2cbdb4d68c4e0a4158d12a7cb2b1da081712b51"
     },
     {
+      "label": "HR. Abu Dawud no. 5139",
+      "collection": "abudawud",
+      "hadithNo": "5139",
+      "grade": "hasan",
+      "arabicEdition": "hadith/ara-abudawud.json",
+      "arabicEditionSha256": "216139c5f40a8147e700d62ffa3b5b2fe45d0e034f86941a193c598c10056189",
+      "indonesianEdition": "hadith/ind-abudawud.json",
+      "indonesianEditionSha256": "43eeef2a9b020219075bbb7ab2cbdb4d68c4e0a4158d12a7cb2b1da081712b51"
+    },
+    {
       "label": "HR. Bukhari no. 1108",
       "collection": "bukhari",
       "hadithNo": "1108",
@@ -244,6 +254,16 @@
       "indonesianEditionSha256": "57d24d566170dfbdf772264cf2ba20ff113f10c4c43a41190b502f479df56876"
     },
     {
+      "label": "HR. Ibn Majah no. 2706",
+      "collection": "ibnmajah",
+      "hadithNo": "2706",
+      "grade": "sahih",
+      "arabicEdition": "hadith/ara-ibnmajah.json",
+      "arabicEditionSha256": "b406e6be81588ab0ec1ddbed32f5fd95bbcdda242c460d88331e82eb5c2bc0aa",
+      "indonesianEdition": "hadith/ind-ibnmajah.json",
+      "indonesianEditionSha256": "57d24d566170dfbdf772264cf2ba20ff113f10c4c43a41190b502f479df56876"
+    },
+    {
       "label": "HR. Ibn Majah no. 280",
       "collection": "ibnmajah",
       "hadithNo": "280",
@@ -298,6 +318,26 @@
       "collection": "ibnmajah",
       "hadithNo": "3597",
       "grade": "sahih",
+      "arabicEdition": "hadith/ara-ibnmajah.json",
+      "arabicEditionSha256": "b406e6be81588ab0ec1ddbed32f5fd95bbcdda242c460d88331e82eb5c2bc0aa",
+      "indonesianEdition": "hadith/ind-ibnmajah.json",
+      "indonesianEditionSha256": "57d24d566170dfbdf772264cf2ba20ff113f10c4c43a41190b502f479df56876"
+    },
+    {
+      "label": "HR. Ibn Majah no. 3658",
+      "collection": "ibnmajah",
+      "hadithNo": "3658",
+      "grade": "sahih",
+      "arabicEdition": "hadith/ara-ibnmajah.json",
+      "arabicEditionSha256": "b406e6be81588ab0ec1ddbed32f5fd95bbcdda242c460d88331e82eb5c2bc0aa",
+      "indonesianEdition": "hadith/ind-ibnmajah.json",
+      "indonesianEditionSha256": "57d24d566170dfbdf772264cf2ba20ff113f10c4c43a41190b502f479df56876"
+    },
+    {
+      "label": "HR. Ibn Majah no. 3661",
+      "collection": "ibnmajah",
+      "hadithNo": "3661",
+      "grade": "hasan",
       "arabicEdition": "hadith/ara-ibnmajah.json",
       "arabicEditionSha256": "b406e6be81588ab0ec1ddbed32f5fd95bbcdda242c460d88331e82eb5c2bc0aa",
       "indonesianEdition": "hadith/ind-ibnmajah.json",
@@ -397,6 +437,46 @@
       "label": "HR. Muslim no. 555",
       "collection": "muslim",
       "hadithNo": "555",
+      "grade": null,
+      "arabicEdition": "hadith/ara-muslim.json",
+      "arabicEditionSha256": "194073b24090c5368e4d14a3f55c9e0ef144c7437bd7e5aa83aa4d2bc54a8ea0",
+      "indonesianEdition": "hadith/ind-muslim.json",
+      "indonesianEditionSha256": "a330ce352dbe509f3f40305daa78b0ed8c4fcb0f8fd3ea96cd7251c267509c5a"
+    },
+    {
+      "label": "HR. Muslim no. 6500",
+      "collection": "muslim",
+      "hadithNo": "6500",
+      "grade": null,
+      "arabicEdition": "hadith/ara-muslim.json",
+      "arabicEditionSha256": "194073b24090c5368e4d14a3f55c9e0ef144c7437bd7e5aa83aa4d2bc54a8ea0",
+      "indonesianEdition": "hadith/ind-muslim.json",
+      "indonesianEditionSha256": "a330ce352dbe509f3f40305daa78b0ed8c4fcb0f8fd3ea96cd7251c267509c5a"
+    },
+    {
+      "label": "HR. Muslim no. 6501",
+      "collection": "muslim",
+      "hadithNo": "6501",
+      "grade": null,
+      "arabicEdition": "hadith/ara-muslim.json",
+      "arabicEditionSha256": "194073b24090c5368e4d14a3f55c9e0ef144c7437bd7e5aa83aa4d2bc54a8ea0",
+      "indonesianEdition": "hadith/ind-muslim.json",
+      "indonesianEditionSha256": "a330ce352dbe509f3f40305daa78b0ed8c4fcb0f8fd3ea96cd7251c267509c5a"
+    },
+    {
+      "label": "HR. Muslim no. 6502",
+      "collection": "muslim",
+      "hadithNo": "6502",
+      "grade": null,
+      "arabicEdition": "hadith/ara-muslim.json",
+      "arabicEditionSha256": "194073b24090c5368e4d14a3f55c9e0ef144c7437bd7e5aa83aa4d2bc54a8ea0",
+      "indonesianEdition": "hadith/ind-muslim.json",
+      "indonesianEditionSha256": "a330ce352dbe509f3f40305daa78b0ed8c4fcb0f8fd3ea96cd7251c267509c5a"
+    },
+    {
+      "label": "HR. Muslim no. 6503",
+      "collection": "muslim",
+      "hadithNo": "6503",
       "grade": null,
       "arabicEdition": "hadith/ara-muslim.json",
       "arabicEditionSha256": "194073b24090c5368e4d14a3f55c9e0ef144c7437bd7e5aa83aa4d2bc54a8ea0",
@@ -558,6 +638,16 @@
       "collection": "tirmidhi",
       "hadithNo": "1800",
       "grade": "sahih",
+      "arabicEdition": "hadith/ara-tirmidhi.json",
+      "arabicEditionSha256": "408028cd56329ed78edbe3ad443beb96b58e16c3e5bd49f9bc7b0eac77c8820f",
+      "indonesianEdition": "hadith/ind-tirmidhi.json",
+      "indonesianEditionSha256": "0b405ba8df14d7d90923f3135ce2a3327d827fdbbb036cc0f9ea2979ae280c19"
+    },
+    {
+      "label": "HR. Tirmidhi no. 1897",
+      "collection": "tirmidhi",
+      "hadithNo": "1897",
+      "grade": "hasan",
       "arabicEdition": "hadith/ara-tirmidhi.json",
       "arabicEditionSha256": "408028cd56329ed78edbe3ad443beb96b58e16c3e5bd49f9bc7b0eac77c8820f",
       "indonesianEdition": "hadith/ind-tirmidhi.json",

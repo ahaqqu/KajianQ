@@ -9,6 +9,10 @@ import {
   type HadithCollection,
 } from "./hadith-source";
 
+/** A row plus the curation note a `$comment` carries; the note is fixture
+ * metadata the contract strips, so the parsed type stays the loader's. */
+type CuratedRow = GoldenQuestion & { $comment?: string };
+
 /**
  * The v0 Golden Set's curated membership, pinned as data. A question id is the
  * key persisted `eval_results` rows reference, so an id is never reused: a
@@ -21,7 +25,7 @@ import {
  */
 const FIXTURE = JSON.parse(
   readFileSync(new URL("../fixtures/golden-set-v0.json", import.meta.url), "utf8"),
-) as { questions: GoldenQuestion[] };
+) as { questions: CuratedRow[] };
 
 /**
  * The curated corpus-label index: every hadith address the Golden Set and the
@@ -46,7 +50,9 @@ const CORPUS_LABELS = JSON.parse(
 
 const IDENTITY_MAP = JSON.parse(
   readFileSync(new URL("../fixtures/hadith-identities-v0.json", import.meta.url), "utf8"),
-) as { groups: { canonical: string; members: string[] }[] };
+) as {
+  groups: { canonical: string; members: string[]; relation: "same-report" | "same-ruling" }[];
+};
 
 /** The index keyed by the comparison form the citation gate builds. */
 const CORPUS_BY_LABEL = new Map(CORPUS_LABELS.labels.map((entry) => [entry.label, entry]));
@@ -275,6 +281,7 @@ const REQUIREMENTS: Record<string, CuratedRequirement> = {
       "HR. Nasai no. 5265",
       "HR. Tirmidhi no. 1720",
       "HR. Ibn Majah no. 3597",
+      "HR. Ibn Majah no. 3590",
     ],
     expectedBehavior: "answer",
   },
@@ -301,6 +308,11 @@ const REQUIREMENTS: Record<string, CuratedRequirement> = {
   "gs-v0-022": {
     expectedSourceTypes: ["hadith"],
     requiredCitations: ["HR. Bukhari no. 5971"],
+    citationAlternatives: [
+      "HR. Abu Dawud no. 5139",
+      "HR. Tirmidhi no. 1897",
+      "HR. Ibn Majah no. 3661",
+    ],
     expectedBehavior: "answer",
   },
 };
@@ -338,15 +350,144 @@ describe("golden-set-v0 curation", () => {
   });
 
   it("carries the family/birr replacement as a new id, grounded on the Bukhari narration", () => {
-    expect(FIXTURE.questions.find((question) => question.id === "gs-v0-022")).toEqual({
+    const row = FIXTURE.questions.find((question) => question.id === "gs-v0-022") as
+      | CuratedRow
+      | undefined;
+    expect(row).toBeDefined();
+    const { $comment, ...curated } = row as CuratedRow;
+    expect(curated).toEqual({
       id: "gs-v0-022",
       question: "Siapa yang harus diutamakan: istri atau ibu?",
       language: "id",
       expectedSourceTypes: ["hadith"],
       requiredCitations: ["HR. Bukhari no. 5971"],
+      citationAlternatives: [
+        "HR. Abu Dawud no. 5139",
+        "HR. Tirmidhi no. 1897",
+        "HR. Ibn Majah no. 3661",
+      ],
       expectedBehavior: "answer",
       tags: ["adab", "hadith"],
     });
+    expect($comment).toMatch(/^citationAlternatives: /);
+  });
+});
+
+/** The map's same-ruling labels the row must account for: the canonical or
+ * member a requirement anchors, minus the requirement itself. */
+function sameRulingSiblingsOf(
+  label: string,
+  groups: readonly { canonical: string; members: readonly string[] }[],
+): string[] {
+  const normalized = normalizeCitationLabel(label);
+  const group = groups.find(
+    (candidate) =>
+      normalizeCitationLabel(candidate.canonical) === normalized ||
+      candidate.members.some((member) => normalizeCitationLabel(member) === normalized),
+  );
+  if (group === undefined) return [];
+  return [group.canonical, ...group.members].filter(
+    (sibling) => normalizeCitationLabel(sibling) !== normalized,
+  );
+}
+
+/** True when the row's note names `label` after its `Excluded:` marker. The
+ * marker is the note's own statement that the curator read the sibling and ruled
+ * it out; a label the rationale mentions elsewhere is not an exclusion. A match
+ * that continues into a longer number ("no. 2" inside "no. 20") is not a naming. */
+function namesAsExcluded(comment: string | undefined, label: string): boolean {
+  if (comment === undefined) return false;
+  const marker = /excluded:/i.exec(comment);
+  if (marker === null) return false;
+  const tail = comment.slice(marker.index);
+  for (let at = tail.indexOf(label); at !== -1; at = tail.indexOf(label, at + 1)) {
+    const next = tail.charAt(at + label.length);
+    if (next === "" || !/\d/.test(next)) return true;
+  }
+  return false;
+}
+
+/** The map siblings the row neither accepts in its opt-in set nor names as
+ * excluded — the gap that lets a draw ground a verified same-ruling narration
+ * the gate then rejects. */
+function uncoveredSameRulingSiblings(
+  row: Pick<CuratedRow, "id" | "requiredCitations" | "citationAlternatives" | "$comment">,
+  groups: readonly { canonical: string; members: readonly string[] }[],
+): string[] {
+  const alternatives = (row.citationAlternatives ?? []).map(normalizeCitationLabel);
+  return row.requiredCitations.flatMap((required) =>
+    sameRulingSiblingsOf(required, groups).filter((sibling) => {
+      const normalized = normalizeCitationLabel(sibling);
+      return !alternatives.includes(normalized) && !namesAsExcluded(row.$comment, sibling);
+    }),
+  );
+}
+
+/**
+ * The sibling rule, encoded: a row whose required address anchors a
+ * `same-ruling` group in the curated identity map accepts every member of that
+ * group in its opt-in set, or names it as excluded in the row's note. The map
+ * records the relation and the row records the decision; a member in neither
+ * place is the curation gap that makes a draw's grounded sibling read as a miss.
+ */
+describe("the sibling rule: a row accepts its required address's same-ruling narrations", () => {
+  const sameRulingGroups = IDENTITY_MAP.groups.filter((group) => group.relation === "same-ruling");
+
+  it("lists every map sibling in the row's opt-in set or names it as excluded", () => {
+    expect(sameRulingGroups.length).toBeGreaterThan(0);
+    for (const row of FIXTURE.questions) {
+      expect(
+        uncoveredSameRulingSiblings(row, sameRulingGroups),
+        `${row.id}: same-ruling siblings neither in citationAlternatives nor named as excluded`,
+      ).toEqual([]);
+    }
+  });
+
+  it("covers the rows whose required address anchors a same-ruling group", () => {
+    const covered = FIXTURE.questions
+      .filter((row) =>
+        row.requiredCitations.some(
+          (required) => sameRulingSiblingsOf(required, sameRulingGroups).length > 0,
+        ),
+      )
+      .map((row) => row.id);
+    expect(covered).toEqual(["gs-v0-006", "gs-v0-017", "gs-v0-022"]);
+  });
+
+  it("honours a named exclusion, and only for the sibling it names", () => {
+    const groups = [
+      { canonical: "HR. Bukhari no. 1", members: ["HR. Muslim no. 2", "HR. Muslim no. 3"] },
+    ];
+    const row = (
+      comment?: string,
+      alternatives: string[] = [],
+    ): Pick<CuratedRow, "id" | "requiredCitations" | "citationAlternatives" | "$comment"> => ({
+      id: "synthetic",
+      requiredCitations: ["HR. Bukhari no. 1"],
+      citationAlternatives: alternatives,
+      ...(comment === undefined ? {} : { $comment: comment }),
+    });
+    expect(uncoveredSameRulingSiblings(row(), groups)).toEqual([
+      "HR. Muslim no. 2",
+      "HR. Muslim no. 3",
+    ]);
+    expect(
+      uncoveredSameRulingSiblings(row("Excluded: HR. Muslim no. 2 — a different report."), groups),
+    ).toEqual(["HR. Muslim no. 3"]);
+    expect(uncoveredSameRulingSiblings(row(undefined, ["HR. Muslim no. 3"]), groups)).toEqual([
+      "HR. Muslim no. 2",
+    ]);
+    // A rationale before the marker is not an exclusion.
+    expect(
+      uncoveredSameRulingSiblings(
+        row("HR. Muslim no. 2 states the same ruling. Excluded: none."),
+        groups,
+      ),
+    ).toEqual(["HR. Muslim no. 2", "HR. Muslim no. 3"]);
+    // A longer number that starts with the label is not that label.
+    expect(
+      uncoveredSameRulingSiblings(row("Excluded: HR. Muslim no. 20 — a different report."), groups),
+    ).toEqual(["HR. Muslim no. 2", "HR. Muslim no. 3"]);
   });
 });
 
@@ -366,6 +507,10 @@ const ALTERNATIVE_GRADES: Record<string, Grade | null> = {
   "HR. Nasai no. 5265": "hasan",
   "HR. Tirmidhi no. 1720": "hasan",
   "HR. Ibn Majah no. 3597": "sahih",
+  "HR. Ibn Majah no. 3590": "sahih",
+  "HR. Abu Dawud no. 5139": "hasan",
+  "HR. Tirmidhi no. 1897": "hasan",
+  "HR. Ibn Majah no. 3661": "hasan",
 };
 
 /**
@@ -464,7 +609,12 @@ describe("the curated corpus-label index registers every curated hadith label", 
     // 1069 states travel combining but every grader grades it Daif; 1194 is
     // qasr rather than jamak; 602 combines while resident, not on a journey;
     // 1668 and 888 are Muzdalifah/Hajj material; 1111, 1112 and 326 combine
-    // Dhuhr and Asr only.
+    // Dhuhr and Asr only. For 022's ruling: 3657 states the mother-three-times
+    // instruction but every grader grades it Daif, 5140 is Daif by both graders
+    // and lists mother, father, sister and brother rather than the threefold
+    // order, 5970 and 1898 rank deeds instead, 5972 and 6504 are jihad with
+    // parents, 5973, 5975 and 5141 are cursing or disobeying parents, 1899 is
+    // the parent's pleasure and 3659 a child's repayment.
     for (const label of [
       "HR. Malik no. 331",
       "HR. Bukhari no. 1454",
@@ -479,6 +629,17 @@ describe("the curated corpus-label index registers every curated hadith label", 
       "HR. Bukhari no. 1111",
       "HR. Bukhari no. 1112",
       "HR. Malik no. 326",
+      "HR. Ibn Majah no. 3657",
+      "HR. Abu Dawud no. 5140",
+      "HR. Bukhari no. 5970",
+      "HR. Tirmidhi no. 1898",
+      "HR. Bukhari no. 5972",
+      "HR. Muslim no. 6504",
+      "HR. Bukhari no. 5973",
+      "HR. Bukhari no. 5975",
+      "HR. Abu Dawud no. 5141",
+      "HR. Tirmidhi no. 1899",
+      "HR. Ibn Majah no. 3659",
     ]) {
       expect(required, label).not.toContain(label);
       expect(sets, label).not.toContain(label);

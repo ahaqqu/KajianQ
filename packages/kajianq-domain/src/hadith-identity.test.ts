@@ -41,8 +41,8 @@ describe("the shipped identity map", () => {
       expect(["same-report", "same-ruling"]).toContain(group.relation);
       expect(group.rationale, "the group states why it is one identity").not.toBe("");
     }
-    expect(SET.groups.filter((group) => group.relation === "same-report")).toHaveLength(7);
-    expect(SET.groups.filter((group) => group.relation === "same-ruling")).toHaveLength(2);
+    expect(SET.groups.filter((group) => group.relation === "same-report")).toHaveLength(8);
+    expect(SET.groups.filter((group) => group.relation === "same-ruling")).toHaveLength(3);
   });
 
   it("classifies the known wudu family as one report", () => {
@@ -133,6 +133,39 @@ describe("the shipped identity map", () => {
     }
   });
 
+  it("classifies the mother-precedence report's chains and its same-ruling reports", () => {
+    const report = gateIdentityOf("HR. Bukhari no. 5971");
+    expect(report).toBe("HR. Bukhari no. 5971");
+    // The Abu Hurayra rows reach the same 'Umarah ← Abu Zur'a chain: one report.
+    for (const label of [
+      "HR. Muslim no. 6500",
+      "HR. Muslim no. 6501",
+      "HR. Muslim no. 6502",
+      "HR. Muslim no. 6503",
+      "HR. Ibn Majah no. 2706",
+      "HR. Ibn Majah no. 3658",
+    ]) {
+      expect(gateIdentityOf(label), label).toBe(report);
+    }
+    const ruling = reportedIdentityOf("HR. Bukhari no. 5971");
+    expect(ruling).not.toBeNull();
+    // The Bahz and Miqdam reports state the same instruction through other
+    // companions: reported, never the gate's identity.
+    for (const label of [
+      "HR. Abu Dawud no. 5139",
+      "HR. Tirmidhi no. 1897",
+      "HR. Ibn Majah no. 3661",
+    ]) {
+      expect(gateIdentityOf(label), label).toBeNull();
+      expect(reportedIdentityOf(label), label).toBe(ruling);
+    }
+    // The Daif reports of the same instruction are in no group of either relation.
+    for (const label of ["HR. Ibn Majah no. 3657", "HR. Abu Dawud no. 5140"]) {
+      expect(gateIdentityOf(label), label).toBeNull();
+      expect(reportedIdentityOf(label), label).toBeNull();
+    }
+  });
+
   it("classifies Ali's gold-and-silk report as one identity under the gate", () => {
     const canonical = gateIdentityOf("HR. Nasai no. 5144");
     expect(canonical).not.toBeNull();
@@ -205,14 +238,21 @@ describe("the shipped identity map", () => {
     ]) {
       expect(reportedIdentityOf(label), label).toBe(gold);
     }
+
+    // Ibn Majah 1070 is the Mu'adh report of the travel ruling, not a chain of
+    // the Anas report: the reported relation reads it, the gate does not.
+    expect(gateIdentityOf("HR. Ibn Majah no. 1070")).toBeNull();
+    expect(reportedIdentityOf("HR. Ibn Majah no. 1070")).toBe(travel);
   });
 
   it("keeps every other narration a different identity from the travel group", () => {
     const travel = gateIdentityOf("HR. Bukhari no. 1108");
-    // Another narration — even one on the same subject — never shares this
+    // Another narration — even one on the same subject — never shares this gate
     // identity: the merit-of-recitation hadith 5026, the wudu demonstration 186,
     // the right-hand eating instruction, purity is half of faith, and the travel
     // rows that narrate another prayer pair rather than a chain of this report.
+    // A same-ruling report is a different gate identity too; it resolves only
+    // under the reported relation (1070, the Mu'adh report).
     for (const other of [
       "HR. Bukhari no. 5026",
       "HR. Bukhari no. 186",
@@ -227,7 +267,7 @@ describe("the shipped identity map", () => {
     ]) {
       expect(gateIdentityOf(other), other).not.toBe(travel);
     }
-    // The map holds seven same-report narrations; none of their keys aliases another.
+    // The map holds eight same-report narrations; none of their keys aliases another.
     expect(
       SET.groups
         .filter((group) => group.relation === "same-report")
@@ -237,6 +277,7 @@ describe("the shipped identity map", () => {
       "HR. Muslim no. 5265",
       "HR. Muslim no. 534",
       travel,
+      "HR. Bukhari no. 5971",
       "HR. Bukhari no. 1395",
       "HR. Tirmidhi no. 2646",
       "HR. Nasai no. 5144",

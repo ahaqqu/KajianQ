@@ -34,21 +34,36 @@ const GRAMMAR: CitationGrammar = {
   addressesNamedBy,
 };
 
-/** 006's opt-in set is head curation, not a recorded run input: read it from the
- * fixture so the disposition below cannot disagree with the set the harness
- * actually applies. */
-const HEAD_006_ALTERNATIVES =
-  (
-    JSON.parse(
-      readFileSync(
-        new URL("../../../packages/kajianq-domain/fixtures/golden-set-v0.json", import.meta.url),
-        "utf8",
-      ),
-    ) as { questions: { id: string; citationAlternatives?: string[] }[] }
-  ).questions.find((entry) => entry.id === "gs-v0-006")?.citationAlternatives ?? [];
+/** The head fixture's rows, keyed by id. 006's requirement and opt-in set and
+ * 022's are head curation, not recorded run inputs, so both are read from the
+ * fixture the harness applies — one parse pays for the requirement beside the
+ * set, and neither half can drift from the row. `expectedSourceTypes` stays each
+ * case's own scoring input (`question()` below), not the fixture's own value: the
+ * retrieved labels in these cases are `primary`, and the cases assert the
+ * citation decisions, not source-type recall. */
+const HEAD_QUESTIONS = (
+  JSON.parse(
+    readFileSync(
+      new URL("../../../packages/kajianq-domain/fixtures/golden-set-v0.json", import.meta.url),
+      "utf8",
+    ),
+  ) as { questions: (GoldenQuestion & { $comment?: string })[] }
+).questions;
+
+function headRow(id: string): GoldenQuestion {
+  const row = HEAD_QUESTIONS.find((entry) => entry.id === id);
+  if (row === undefined) throw new Error(`the fixture has no row ${id}`);
+  return row;
+}
+
+const HEAD_006 = headRow("gs-v0-006");
+const HEAD_022 = headRow("gs-v0-022");
 
 type Retrieved = { label: string; sourceType: string };
 
+/** One row scored the way the harness scores it. `expectedSourceTypes` is the
+ * case's own scoring input, not a fixture field: the retrieved labels below are
+ * `primary`, so this helper's rows are scored as primary-source answers. */
 const question = (id: string, required: string[], alternatives?: string[]): GoldenQuestion => ({
   id,
   question: id,
@@ -95,6 +110,26 @@ function score(
 
 const WITH_BOTH = { gate: gateIdentity, reported: reportedIdentity };
 
+/** 022's curated disposition, not a recorded cited set: the draw retrieved the
+ * required address (address recall 1.000) and the answer grounded a sibling. The
+ * retrieved frame carries the required address and every curated sibling, so each
+ * member below can be grounded alone. */
+const GS_022 = {
+  row: question("gs-v0-022", HEAD_022.requiredCitations, HEAD_022.citationAlternatives),
+  retrieved: [
+    { label: "HR. Bukhari no. 5971", sourceType: "primary" },
+    { label: "HR. Abu Dawud no. 5139", sourceType: "primary" },
+    { label: "HR. Tirmidhi no. 1897", sourceType: "primary" },
+    { label: "HR. Ibn Majah no. 3661", sourceType: "primary" },
+    { label: "HR. Muslim no. 6500", sourceType: "primary" },
+    { label: "HR. Muslim no. 6501", sourceType: "primary" },
+    { label: "HR. Muslim no. 6502", sourceType: "primary" },
+    { label: "HR. Muslim no. 6503", sourceType: "primary" },
+    { label: "HR. Ibn Majah no. 2706", sourceType: "primary" },
+    { label: "HR. Ibn Majah no. 3658", sourceType: "primary" },
+  ] as Retrieved[],
+};
+
 /**
  * The recorded inputs, one entry per failing row of the QA report. The cited set
  * and the required address's presence/absence are the audit's; the neighbouring
@@ -102,7 +137,7 @@ const WITH_BOTH = { gate: gateIdentity, reported: reportedIdentity };
  */
 const ROWS = {
   "gs-v0-006": {
-    row: question("gs-v0-006", ["HR. Bukhari no. 1108"], HEAD_006_ALTERNATIVES),
+    row: question("gs-v0-006", HEAD_006.requiredCitations, HEAD_006.citationAlternatives),
     cited: ["HR. Malik no. 331", "HR. Ibn Majah no. 1070", "HR. Nasai no. 598"],
     retrieved: [
       { label: "HR. Bukhari no. 1108", sourceType: "primary" },
@@ -249,11 +284,13 @@ describe("D1b — a signed same-ruling relation never satisfies the exact-addres
   });
 });
 
-/** The same-ruling members 006's opt-in set gained, listed here beside the
- * fixture's own entry: the set pin below catches a dropped member, and this list
- * makes the per-member disposition fail with it rather than shrinking the loop
- * silently. */
-const ADDED_006_MEMBERS = [
+/** The map's same-ruling members for 006's required address, listed for the
+ * per-member disposition. The curation test requires the row's opt-in set to
+ * accept every member the map records; this list disposes of each of those
+ * members, so a member the set loses fails here too. */
+const SAME_RULING_006_MEMBERS = [
+  "HR. Nasai no. 598",
+  "HR. Ibn Majah no. 1070",
   "HR. Bukhari no. 1109",
   "HR. Muslim no. 1621",
   "HR. Muslim no. 1624",
@@ -283,16 +320,20 @@ describe("D3b — the curated alternative sets are the opt-in that widens 006 an
     }
   });
 
-  it("accepts each added same-ruling member alone, and only through the set", () => {
+  it("accepts each map same-ruling member alone, and only through the set", () => {
     const entry = ROWS["gs-v0-006"];
-    for (const member of ADDED_006_MEMBERS) {
+    // The premise of this case: the map records the group. An empty list would
+    // make the loop vacuous, not green.
+    expect(SAME_RULING_006_MEMBERS.length).toBeGreaterThan(0);
+    for (const member of SAME_RULING_006_MEMBERS) {
       expect(entry.row.citationAlternatives, member).toContain(member);
       const alone = score(entry.row, [member], entry.retrieved, WITH_BOTH);
       expect(alone.citationValidity, member).toBe(1);
       expect(alone.passed, member).toBe(true);
       // The signed same-ruling relation is reported, never gating: without the
       // opt-in set the same member leaves the gate at 0, and only the reported
-      // measure reads it.
+      // measure reads it — including 1070, which the map records beside the Ibn
+      // Umar reports as the Mu'adh report of the same ruling.
       const withoutSet = score(withoutOptIn(entry.row), [member], entry.retrieved, WITH_BOTH);
       expect(withoutSet.citationValidity, member).toBe(0);
       expect(withoutSet.identitySatisfied?.citationValidity, member).toBe(1);
@@ -351,6 +392,71 @@ describe("D3b — the curated alternative sets are the opt-in that widens 006 an
         ROWS["gs-v0-006"].retrieved,
         WITH_BOTH,
       );
+      expect(excluded.citationValidity, label).toBe(0);
+      expect(excluded.identitySatisfied?.citationValidity, label).toBe(0);
+    }
+  });
+});
+
+describe("D3c — 022's same-ruling siblings are the opt-in that widens it", () => {
+  it("passes through its own set and accepts each same-ruling member alone", () => {
+    const alternatives = GS_022.row.citationAlternatives ?? [];
+    // The set is read from the fixture; pin its curated membership so a dropped
+    // member cannot quietly shrink the loop below.
+    expect(alternatives).toEqual([
+      "HR. Abu Dawud no. 5139",
+      "HR. Tirmidhi no. 1897",
+      "HR. Ibn Majah no. 3661",
+    ]);
+    const scored = score(GS_022.row, ["HR. Abu Dawud no. 5139"], GS_022.retrieved, WITH_BOTH);
+    expect(scored.citationValidity).toBe(1);
+    expect(scored.citationAddressRecall).toBe(1);
+    expect(scored.passed).toBe(true);
+    for (const member of alternatives) {
+      const alone = score(GS_022.row, [member], GS_022.retrieved, WITH_BOTH);
+      expect(alone.citationValidity, member).toBe(1);
+      expect(alone.citationAddressRecall, member).toBe(1);
+      expect(alone.passed, member).toBe(true);
+    }
+  });
+
+  it("accepts each same-ruling member only through the set, and reports the map relation", () => {
+    for (const member of GS_022.row.citationAlternatives ?? []) {
+      const withoutSet = score(withoutOptIn(GS_022.row), [member], GS_022.retrieved, WITH_BOTH);
+      expect(withoutSet.citationValidity, member).toBe(0);
+      expect(withoutSet.identitySatisfied?.citationValidity, member).toBe(1);
+      expect(withoutSet.passed, member).toBe(false);
+      expect(withoutSet.identitySatisfied?.passed, member).toBe(true);
+    }
+  });
+
+  it("accepts the report's own parallel chains as the signed same-report identity", () => {
+    for (const chain of [
+      "HR. Muslim no. 6500",
+      "HR. Muslim no. 6501",
+      "HR. Muslim no. 6502",
+      "HR. Muslim no. 6503",
+      "HR. Ibn Majah no. 2706",
+      "HR. Ibn Majah no. 3658",
+    ]) {
+      // These are chains of 5971's own Abu Hurayra report, so the map's
+      // same-report relation satisfies the gate without the opt-in set; the
+      // required address is present in the frame, so the row passes.
+      const withoutSet = score(withoutOptIn(GS_022.row), [chain], GS_022.retrieved, WITH_BOTH);
+      expect(withoutSet.citationValidity, chain).toBe(1);
+      expect(withoutSet.passed, chain).toBe(true);
+    }
+  });
+
+  it("does not accept the excluded reports", () => {
+    for (const label of [
+      "HR. Ibn Majah no. 3657", // the same instruction, Daif by every grader
+      "HR. Abu Dawud no. 5140", // Daif, and mother/father/sister/brother in one breath
+      "HR. Bukhari no. 5970", // ranks deeds rather than who comes first
+      "HR. Tirmidhi no. 1898", // the same deeds ranking through Ibn Mas'ud
+      "HR. Bukhari no. 5975", // the rights of mothers, not the precedence
+    ]) {
+      const excluded = score(GS_022.row, [label], GS_022.retrieved, WITH_BOTH);
       expect(excluded.citationValidity, label).toBe(0);
       expect(excluded.identitySatisfied?.citationValidity, label).toBe(0);
     }

@@ -158,12 +158,13 @@
       "language": "en",
       "expectedSourceTypes": ["hadith"],
       "requiredCitations": ["HR. Nasai no. 5144"],
-      "$comment": "citationAlternatives: the question asks the ruling on gold and silk for men, which 5144 states — the Prophet took silk in one hand and gold in the other and said these are forbidden to the males of his ummah — without any prayer setting, so the curator accepts four different reports of the same ruling as an opt-in any-of set: HR. Nasai no. 5148 (Abu Musa, Sahih), HR. Nasai no. 5265 (Abu Musa, Hasan), HR. Tirmidhi no. 1720 (Abu Musa, Hasan) and HR. Ibn Majah no. 3597 ('Abdullah ibn 'Amr, Sahih) all state that gold and silk are lawful to the women of this ummah and forbidden to its men. The parallel chains of Ali's report (5145, 5146, 5147, Abu Dawud 4057, Ibn Majah 3595) are carried by the signed same-report identity map instead. Excluded: HR. Nasai no. 5149 and HR. Nasai no. 5160, which state the exception (إلا مقطعًا — gold or silk in a cut piece is permitted) and so a different ruling.",
+      "$comment": "citationAlternatives: the question asks the ruling on gold and silk for men, which 5144 states — the Prophet took silk in one hand and gold in the other and said these are forbidden to the males of his ummah — without any prayer setting, so the curator accepts five different reports of the same ruling as an opt-in any-of set: HR. Nasai no. 5148 (Abu Musa, Sahih), HR. Nasai no. 5265 (Abu Musa, Hasan), HR. Tirmidhi no. 1720 (Abu Musa, Hasan), HR. Ibn Majah no. 3597 ('Abdullah ibn 'Amr, Sahih) and HR. Ibn Majah no. 3590 (Hudhayfa, Sahih) all state that gold and silk are prohibited, the first four adding that they are lawful to the women of this ummah and forbidden to its men. The parallel chains of Ali's report (5145, 5146, 5147, Abu Dawud 4057, Ibn Majah 3595) are carried by the signed same-report identity map instead. Excluded: HR. Nasai no. 5149 and HR. Nasai no. 5160, which state the exception (إلا مقطعًا — gold or silk in a cut piece is permitted) and so a different ruling.",
       "citationAlternatives": [
         "HR. Nasai no. 5148",
         "HR. Nasai no. 5265",
         "HR. Tirmidhi no. 1720",
-        "HR. Ibn Majah no. 3597"
+        "HR. Ibn Majah no. 3597",
+        "HR. Ibn Majah no. 3590"
       ],
       "expectedBehavior": "answer",
       "tags": ["fikih", "hadith", "english"]
@@ -211,6 +212,12 @@
       "language": "id",
       "expectedSourceTypes": ["hadith"],
       "requiredCitations": ["HR. Bukhari no. 5971"],
+      "$comment": "citationAlternatives: the question asks who is owed precedence, and the corpus carries the ruling — the mother three times, then the father — in more than one narration. The required 5971 is the Abu Hurayra report; the map records its parallel chains (Muslim 6500-6503, Ibn Majah 2706 and 3658, all through 'Umarah ← Abu Zur'a ← Abu Hurayra) as one same-report identity, so an answer that grounds one of them carries the required narration and this set does not repeat them. The set carries the different reports the map records as the same ruling: HR. Abu Dawud no. 5139 and HR. Tirmidhi no. 1897 are the Bahz ibn Hakim report (Hasan), HR. Ibn Majah no. 3661 the Miqdam ibn Ma'dikarib report (Hasan) — each states the same precedence with the mother three times, then the father, then the nearest of kin. Excluded: HR. Ibn Majah no. 3657 (the same instruction, Daif by every grader), HR. Abu Dawud no. 5140 (Daif by both graders, and it lists mother, father, sister and brother in one breath), HR. Bukhari no. 5970 and HR. Tirmidhi no. 1898 (they rank deeds — prayer, then birr al-walidayn, then jihad — not who comes first), HR. Bukhari no. 5972 and HR. Muslim no. 6504 (jihad with living parents), HR. Bukhari no. 5973, HR. Bukhari no. 5975 and HR. Abu Dawud no. 5141 (cursing or disobeying parents), HR. Tirmidhi no. 1899 (the Lord's pleasure in the parent's pleasure) and HR. Ibn Majah no. 3659 (a child's repayment of a parent).",
+      "citationAlternatives": [
+        "HR. Abu Dawud no. 5139",
+        "HR. Tirmidhi no. 1897",
+        "HR. Ibn Majah no. 3661"
+      ],
       "expectedBehavior": "answer",
       "tags": ["adab", "hadith"]
     }
