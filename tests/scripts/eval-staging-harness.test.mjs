@@ -243,26 +243,28 @@ describe("CITATION_IDENTITY (shared staging harness)", () => {
 });
 
 /**
- * The composition root's REPORTED identity resolver. The harness is JavaScript and
- * `reportedCitationIdentity` is optional, so deleting the one property line that
- * hands it to the CLIs compiles and leaves every package test green: the scorer
- * then writes no reported block, and a run that should publish the
- * identity-satisfied figure silently publishes none. The seam is pinned here like
- * the gate resolver — both relations resolve in each, the delivery by identity, the
- * counterfactual the block reports, and the pass-through in both CLI sources —
- * because the reported figure exists only if this delivery does.
+ * The composition root's REPORTED identity delivery. The reported block reads the
+ * gate's own resolver; the harness is JavaScript and `reportedCitationIdentity` is
+ * optional, so deleting the one property line that hands it to the CLIs compiles and
+ * leaves every package test green: the scorer then writes no reported block, and a
+ * run that should publish the identity-satisfied figure silently publishes none. The
+ * seam is pinned here like the gate resolver — the same resolver instance, the
+ * delivery by identity, the counterfactual the block reports, and the pass-through in
+ * both CLI sources — because the reported figure exists only if this delivery does.
  */
 describe("REPORTED_CITATION_IDENTITY (shared staging harness)", () => {
   const frameOf = (labels) => ({ citations: labels.map((label) => ({ label })) });
 
-  it("reads the signed same-ruling groups and the gate's own relation", () => {
-    // Bukhari 1108 and Nasai 598 state one ruling, not one report: both resolvers
-    // read the signed relation, so the gate accepts 598 beside 1108.
+  it("reads the signed same-ruling groups through the gate's own resolver", () => {
+    // The reported delivery is the gate resolver itself, so a future divergence is
+    // an edit rather than a second relation list.
+    expect(REPORTED_CITATION_IDENTITY).toBe(CITATION_IDENTITY);
+    // Bukhari 1108 and Nasai 598 state one ruling, not one report: the signed
+    // relation lets the gate accept 598 beside 1108.
     const sameRuling = REPORTED_CITATION_IDENTITY.identityOf("HR. Nasai no. 598");
     expect(CITATION_IDENTITY.identityOf("HR. Nasai no. 598")).toBe(sameRuling);
     expect(sameRuling).not.toBeNull();
     expect(sameRuling).toBe(REPORTED_CITATION_IDENTITY.identityOf("HR. Bukhari no. 1108"));
-    // The reported resolver is a superset only in name: both read both relations.
     expect(REPORTED_CITATION_IDENTITY.identityOf("HR. Bukhari no. 191")).toBe(
       CITATION_IDENTITY.identityOf("HR. Bukhari no. 191"),
     );

@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vite-plus/test";
 import type { GoldenQuestion } from "@app/contracts";
 import { citationCandidatesIn, normalizeCitationLabel } from "./chat-citation-normalize";
+import { curatedIdentityResolvers } from "./curated-identities";
 import {
   formatHadithCitation,
   parseHadithCitation,
@@ -481,9 +482,10 @@ function unexplainedExclusions(
  * Coverage and relation, encoded: every required hadith address anchors a map
  * group of either relation, so a cited narration the map relates to it is the
  * gate's identity. The map, not the row's opt-in set, is what accepts a
- * same-ruling narration — a row repeats a member in `citationAlternatives` only
- * to widen the exact-address recall leg. A candidate the curator read and ruled
- * out is recorded in `excludedCitations` with a one-line reason naming it.
+ * same-ruling narration; a row repeats a member in `citationAlternatives` only to
+ * widen the exact-address leg, and the member is matched as its own label rather
+ * than as an entry point into its component. A candidate the curator read and
+ * ruled out is recorded in `excludedCitations` with a one-line reason naming it.
  */
 describe("the map's coverage: every required address anchors a group", () => {
   it("anchors every required hadith address in a group of either relation", () => {
@@ -563,6 +565,28 @@ describe("the map's coverage: every required address anchors a group", () => {
     expect(
       unexplainedExclusions(row(["HR. Muslim no. 2"], "HR. Muslim no. 20 is another report.")),
     ).toEqual(["HR. Muslim no. 2"]);
+  });
+});
+
+/**
+ * The opt-in set is a label widening, not a second identity path: every member the
+ * fixture curates must resolve to its requirement's own gate identity, so a set can
+ * never smuggle another narration's component into a row.
+ */
+describe("the opt-in alternative set stays inside its requirement's identity", () => {
+  it("resolves every alternative to the requirement's own gate identity", () => {
+    const { gating } = curatedIdentityResolvers();
+    for (const row of FIXTURE.questions) {
+      const alternatives = row.citationAlternatives ?? [];
+      if (alternatives.length === 0) continue;
+      const required = row.requiredCitations[0];
+      if (required === undefined) throw new Error(`${row.id} carries a set but no requirement`);
+      const identity = gating.identityOf(required);
+      expect(identity, row.id).not.toBeNull();
+      for (const alternative of alternatives) {
+        expect(gating.identityOf(alternative), `${row.id}: ${alternative}`).toBe(identity);
+      }
+    }
   });
 });
 

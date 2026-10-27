@@ -48,9 +48,10 @@ const GoldenQuestionShape = v.object({
   /**
    * OPT-IN any-of requirement: citations that also satisfy this question's single
    * required citation. A curator names a set when the question admits several valid
-   * answers that are different reports: the set widens the requirement's address
-   * reading, while the identity map records which reports share the required
-   * narration's identity. Validity accepts any member, and address recall accepts a
+   * answers that are different reports. A member is matched as its own normalized
+   * label in citation validity and in address recall; it never resolves through the
+   * identity map, whose signed `same-report`/`same-ruling` widening applies only to
+   * the required citation. Validity accepts any member, and address recall accepts a
    * retrieved member; absent, the all-required default is unchanged. Legal only on
    * a question with exactly one required citation, which is the requirement the set
    * widens.

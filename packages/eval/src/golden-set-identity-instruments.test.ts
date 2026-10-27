@@ -316,6 +316,35 @@ describe("D1b — the signed same-ruling relation satisfies the gate", () => {
   });
 });
 
+describe("D1c — an opt-in alternative is a label, not an identity entry point", () => {
+  // 5144 is a gold-and-silk narration, foreign to 5026's recitation-merit
+  // component: only its own label may satisfy the row, never its same-ruling
+  // sibling 5145.
+  const row = question(
+    "gs-v0-foreign-alternative",
+    ["HR. Bukhari no. 5026"],
+    ["HR. Nasai no. 5144"],
+  );
+
+  it("passes on the alternative's own normalized label", () => {
+    const label = "HR. Nasai no. 5144";
+    const scored = score(row, [label], [{ label, sourceType: "primary" }], WITH_BOTH);
+    expect(scored.citationValidity).toBe(1);
+    expect(scored.identitySatisfied?.citationValidity).toBe(1);
+  });
+
+  it("fails on a same-ruling sibling of a foreign alternative", () => {
+    const sibling = "HR. Nasai no. 5145";
+    expect(gateIdentity.identityOf(sibling)).toBe(gateIdentity.identityOf("HR. Nasai no. 5144"));
+    expect(gateIdentity.identityOf(sibling)).not.toBe(
+      gateIdentity.identityOf("HR. Bukhari no. 5026"),
+    );
+    const scored = score(row, [sibling], [{ label: sibling, sourceType: "primary" }], WITH_BOTH);
+    expect(scored.citationValidity).toBe(0);
+    expect(scored.identitySatisfied?.citationValidity).toBe(0);
+  });
+});
+
 describe("D3b — the curated alternative sets are the opt-in that widens 006 and 017", () => {
   it("pins the fixture set to 006's map group, so either side's edit flows through", () => {
     const group = identityGroup("same-ruling", requiredAddress(HEAD_006));

@@ -25,7 +25,7 @@ The original authorial text of a kitab, as opposed to commentary written about i
 _Avoid_: original text (ambiguous)
 
 **Matn identity**:
-The canonical hadith a narration belongs to: every chain that narrates the same report, allowing different wording, shares one identity, and another narration that states the same ruling shares it for citation validity. Recorded in a curated, owner-signed map whose entries state their **relation** — `same-report` for one report's chains, `same-ruling` for another narration of the ruling — and both relations gate; identity is never inferred from the citation number, so citation validity can accept a stated parallel or the same ruling without accepting an unrelated hadith.
+The canonical hadith a narration belongs to: every chain that narrates the same report, allowing different wording, shares one identity, and another narration that states the same ruling or merit shares it for citation validity. Recorded in a curated, owner-signed map whose entries state their **relation** — `same-report` for one report's chains, `same-ruling` for another narration of the ruling — and both relations gate; identity is never inferred from the citation number, so citation validity can accept a stated parallel or the same ruling without accepting an unrelated hadith.
 _Avoid_: citation number, hadith ID (ambiguous with the corpus row)
 
 **Same report**:
@@ -33,7 +33,7 @@ The relation between two addresses that narrate one report, allowing different w
 _Avoid_: same hadith (ambiguous with the corpus row), parallel (unqualified)
 
 **Same ruling**:
-Two addresses that carry the same ruling or instruction but are not the same report — a different wording, occasion, or chain, so neither is a parallel chain of the other. Recorded as `same-ruling`; a citation of such a narration satisfies citation validity, while the exact-address measure still needs the required address or an alternative the row opted in to.
+Two addresses that carry the same ruling, instruction, or stated merit — a proposition the report asserts, such as the merit of reciting the Quran — but are not the same report: a different wording, occasion, or chain, so neither is a parallel chain of the other. Recorded as `same-ruling`; a citation of such a narration satisfies citation validity, while the exact-address measure still needs the required address or an alternative the row opted in to.
 _Avoid_: parallel chain (that is a same-report relation)
 
 **Verse pair**:

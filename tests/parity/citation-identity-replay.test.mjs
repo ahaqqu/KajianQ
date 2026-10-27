@@ -235,8 +235,10 @@ describe("the travel group's corrected relations", () => {
     expect(citationValidity(["HR. Bukhari no. 1108"], "", { frame, grammar, identity })).toBe(1);
   });
 
-  it("resolves the Ibn Umar rows as the same ruling for the gate and the reported measure", () => {
-    const { reported } = curatedIdentityResolvers();
+  it("resolves the Ibn Umar rows as the same ruling through the one signed resolver", () => {
+    const { gating, reported } = curatedIdentityResolvers();
+    // The reported block reads the gate's own resolver; only the leg it widens differs.
+    expect(reported).toBe(gating);
     const travel = reported.identityOf("HR. Bukhari no. 1108");
     expect(travel).not.toBeNull();
     for (const label of [

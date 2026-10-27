@@ -3,7 +3,6 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vite-plus/test";
 import {
   GATING_IDENTITY_RELATIONS,
-  REPORTED_IDENTITY_RELATIONS,
   identityResolver,
   parseHadithIdentitySet,
   type HadithIdentitySet,
@@ -12,14 +11,13 @@ import { IdentityMapError } from "./identity-map";
 
 /**
  * The identity map's contract: a group is one report (`same-report`) or one
- * ruling stated by different reports (`same-ruling`), and both are gate
- * identities — a citation of either carries the required narration's identity.
- * The reported identity-satisfied measure reads the same relations. A label
- * outside every group of the requested relations has no identity, so an
- * unrelated or fabricated hadith cannot resolve into a match. The known cases
- * pin the boundary between "another chain of the required hadith", "a different
- * narration stating the same ruling", and "a different hadith on the same
- * subject".
+ * ruling/instruction/merit stated by different reports (`same-ruling`), and both
+ * are gate identities — a citation of either carries the required narration's
+ * identity. A label outside every group of the requested relations has no
+ * identity, so an unrelated or fabricated hadith cannot resolve into a match. The
+ * known cases pin the boundary between "another chain of the required hadith", "a
+ * different narration stating the same ruling", and "a different hadith on the
+ * same subject".
  */
 
 const FIXTURE = new URL("../fixtures/hadith-identities-v0.json", import.meta.url);
@@ -28,7 +26,6 @@ const SET: HadithIdentitySet = parseHadithIdentitySet(
   "hadith-identities-v0",
 );
 const gateIdentityOf = identityResolver(SET, GATING_IDENTITY_RELATIONS);
-const reportedIdentityOf = identityResolver(SET, REPORTED_IDENTITY_RELATIONS);
 
 describe("the shipped identity map", () => {
   it("loads every group with a relation, a rationale and members", () => {
@@ -156,23 +153,21 @@ describe("the shipped identity map", () => {
     ]) {
       expect(gateIdentityOf(label), label).toBe(report);
     }
-    const ruling = reportedIdentityOf("HR. Bukhari no. 5971");
+    const ruling = gateIdentityOf("HR. Bukhari no. 5971");
     expect(ruling).not.toBeNull();
     // The Bahz and Miqdam reports state the same instruction through other
-    // companions; both resolvers read the signed relation, so the gate accepts
-    // them beside the Abu Hurayra report's chains.
+    // companions; the gate reads the signed relation, so it accepts them beside
+    // the Abu Hurayra report's chains.
     for (const label of [
       "HR. Abu Dawud no. 5139",
       "HR. Tirmidhi no. 1897",
       "HR. Ibn Majah no. 3661",
     ]) {
       expect(gateIdentityOf(label), label).toBe(ruling);
-      expect(reportedIdentityOf(label), label).toBe(ruling);
     }
     // The Daif reports of the same instruction are in no group of either relation.
     for (const label of ["HR. Ibn Majah no. 3657", "HR. Abu Dawud no. 5140"]) {
       expect(gateIdentityOf(label), label).toBeNull();
-      expect(reportedIdentityOf(label), label).toBeNull();
     }
   });
 
@@ -211,11 +206,9 @@ describe("the shipped identity map", () => {
     // Ibn Majah 3590 states the prohibition without the male/female clause, so
     // it is not a member of the men/women ruling: neither relation reads it.
     expect(gateIdentityOf("HR. Ibn Majah no. 3590")).toBeNull();
-    expect(reportedIdentityOf("HR. Ibn Majah no. 3590")).toBeNull();
     // The exception narrations are in no group of either relation.
     for (const label of ["HR. Nasai no. 5149", "HR. Nasai no. 5160"]) {
       expect(gateIdentityOf(label), label).toBeNull();
-      expect(reportedIdentityOf(label), label).toBeNull();
     }
   });
 
@@ -270,15 +263,13 @@ describe("the shipped identity map", () => {
       "HR. Muslim no. 1896",
     ]) {
       expect(gateIdentityOf(label), label).toBeNull();
-      expect(reportedIdentityOf(label), label).toBeNull();
     }
   });
 
-  it("resolves both signed relations under the gate and the reported measure", () => {
-    const travel = reportedIdentityOf("HR. Bukhari no. 1108");
+  it("resolves both signed relations under the gate", () => {
+    const travel = gateIdentityOf("HR. Bukhari no. 1108");
     expect(travel).not.toBeNull();
     expect(gateIdentityOf("HR. Nasai no. 598")).toBe(travel);
-    expect(reportedIdentityOf("HR. Nasai no. 598")).toBe(travel);
     // The same-report parallels and the same-ruling rows share that key too: the
     // requested relations are the union, so a component cannot split across them.
     for (const label of [
@@ -287,11 +278,10 @@ describe("the shipped identity map", () => {
       "HR. Muslim no. 1621",
       "HR. Muslim no. 1624",
     ]) {
-      expect(reportedIdentityOf(label), label).toBe(travel);
       expect(gateIdentityOf(label), label).toBe(travel);
     }
 
-    const gold = reportedIdentityOf("HR. Nasai no. 5144");
+    const gold = gateIdentityOf("HR. Nasai no. 5144");
     expect(gold).not.toBeNull();
     for (const label of [
       "HR. Nasai no. 5145",
@@ -304,14 +294,12 @@ describe("the shipped identity map", () => {
       "HR. Tirmidhi no. 1720",
       "HR. Abu Dawud no. 4057",
     ]) {
-      expect(reportedIdentityOf(label), label).toBe(gold);
       expect(gateIdentityOf(label), label).toBe(gold);
     }
 
     // Ibn Majah 1070 is the Mu'adh report of the travel ruling, not a chain of
-    // the Anas report: both resolvers read the signed same-ruling relation.
+    // the Anas report: the gate reads the signed same-ruling relation.
     expect(gateIdentityOf("HR. Ibn Majah no. 1070")).toBe(travel);
-    expect(reportedIdentityOf("HR. Ibn Majah no. 1070")).toBe(travel);
   });
 
   it("reads a relation only when the caller requests it", () => {
@@ -508,7 +496,7 @@ describe("parseHadithIdentitySet", () => {
 
   it("allows one label in a same-report group and a same-ruling group", () => {
     // The two claims are different (one report vs one ruling), so a canonical may
-    // anchor both; both resolvers union the component.
+    // anchor both; the union makes 9 and 2 one component.
     const map = {
       ...valid,
       groups: [
@@ -524,11 +512,8 @@ describe("parseHadithIdentitySet", () => {
     };
     const parsed = parseHadithIdentitySet(map);
     expect(parsed.groups).toHaveLength(2);
-    const reported = identityResolver(parsed, REPORTED_IDENTITY_RELATIONS);
-    expect(reported("HR. Bukhari no. 9")).toBe(reported("HR. Bukhari no. 2"));
-    expect(identityResolver(parsed, GATING_IDENTITY_RELATIONS)("HR. Bukhari no. 9")).toBe(
-      reported("HR. Bukhari no. 2"),
-    );
+    const gating = identityResolver(parsed, GATING_IDENTITY_RELATIONS);
+    expect(gating("HR. Bukhari no. 9")).toBe(gating("HR. Bukhari no. 2"));
   });
 
   it("rejects a member with no companion", () => {
