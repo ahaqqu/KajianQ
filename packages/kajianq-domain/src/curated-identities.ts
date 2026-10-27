@@ -14,10 +14,13 @@ import { parseQuranIdentitySet } from "./quran-identity";
  * staging harness and the tests that verify the instruments against the curated
  * data cannot drift about which maps are loaded or which relation each mode reads.
  *
- * `gating` is the exact-address gate's resolver: same-report groups and the
- * curated verse pairs. `reported` is the identity-satisfied measure's: the same
- * maps plus the signed same-ruling groups. The engine compares the opaque keys;
- * the relation vocabulary and the citation grammar stay here, in the domain pack.
+ * `gating` is citation validity's resolver: the signed hadith groups of both
+ * relations plus the curated verse pairs, because a report's parallel chain and
+ * a different report of its ruling are both the identity the question asks for.
+ * `reported` is the identity-satisfied figure's resolver: the same relations,
+ * read to widen the address comparison the gate keeps exact. The engine compares
+ * the opaque keys; the relation vocabulary and the citation grammar stay here, in
+ * the domain pack.
  *
  * The maps are read on call, not at import: a process that never scores pays no
  * file read, and a malformed fixture fails at the call that needed it.

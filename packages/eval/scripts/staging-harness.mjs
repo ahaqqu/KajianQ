@@ -86,9 +86,11 @@ export const CITATION_GRAMMAR = {
  * keeps the scorer on its exact-label comparison — an unmapped or fabricated
  * citation can satisfy only the identical required label, never another.
  *
- * Two resolvers, one relation apart: the gate reads same-report groups only, while
- * the REPORTED identity-satisfied block also reads the signed same-ruling groups.
- * The gate's number therefore stays the exact-address number it has always been.
+ * Two resolvers over the same signed relations: the gate reads both relations the
+ * map records, so a cited parallel chain or a different report of the required
+ * ruling satisfies validity, while the REPORTED identity-satisfied block reads the
+ * same map to widen only its own address comparison. The gate's exact-address
+ * recall stays exact and comparable with past runs.
  */
 const IDENTITY_RESOLVERS = curatedIdentityResolvers();
 

@@ -1,7 +1,7 @@
 {
   "id": "hadith-identities-v0",
   "status": "v0-draft",
-  "$comment": "Canonical matn identities for the hadith narrations the Golden Set requires. A group names one narration (`same-report`) or one ruling stated by different narrations (`same-ruling`); its members are the corpus rows that carry it through another chain. Every group states its `rationale`, because the two claims are not interchangeable: `same-report` means one matn through different chains and is what citation validity may accept; `same-ruling` means one instruction where wording, chain or companion differ, and only the reported identity-satisfied figure reads it — the exact-address gate never does. A label outside every group is its own identity, so it can never match another. A label may be claimed once per relation (a canonical may anchor both kinds of group); two groups of one relation may not share a label. Owner-signed gate data: adding a group or a member changes what citation validity accepts or what the reported figure counts.",
+  "$comment": "Canonical matn identities for the hadith narrations the Golden Set accepts. A group names one narration (`same-report`) or one ruling stated by different narrations (`same-ruling`); its members are the corpus rows that carry it through another chain or another report. Both relations gate citation validity: a cited narration that states the same ruling is a valid citation, and the map, not a single address, is the gate's unit of identity. Every group states its `rationale`, because the two claims are not interchangeable and a reader must be able to tell whether a group says \"another chain of this report\" or \"another report of this ruling\". A label outside every group is its own identity, so it can never match another. A label may be claimed once per relation (a canonical may anchor both kinds of group); two groups of one relation may not share a label. Owner-signed gate data: adding a group or a member changes what citation validity accepts, so a wrong `same-ruling` relation widens the gate.",
   "groups": [
     {
       "id": "wudu-abdullah-bin-zaid",
@@ -62,7 +62,7 @@
         "HR. Muslim no. 1624",
         "HR. Ibn Majah no. 1070"
       ],
-      "rationale": "Bukhari 1108 (Anas, through Yahya ← Hafsh) and these rows state the same ruling — combining prayers while travelling — under different chains and wording: Nasai 598 and Muslim 1621 are the Malik ← Nafi' ← Ibn Umar report, Bukhari 1109 and Muslim 1624 the Zuhri ← Salim ← Ibn Umar report, and Ibn Majah 1070 the Mu'adh ibn Jabal report of combining all four prayers at Tabuk. None of them is a chain of the Anas report, so the exact-address gate does not read this group."
+      "rationale": "Bukhari 1108 (Anas, through Yahya ← Hafsh) and these rows state the same ruling — combining prayers while travelling — under different chains and wording: Nasai 598 and Muslim 1621 are the Malik ← Nafi' ← Ibn Umar report, Bukhari 1109 and Muslim 1624 the Zuhri ← Salim ← Ibn Umar report, and Ibn Majah 1070 the Mu'adh ibn Jabal report of combining all four prayers at Tabuk. None of them is a chain of the Anas report; the same-report group beside this one carries the Anas chains, and a citation of either kind satisfies the ruling this question asks for."
     },
     {
       "id": "mother-precedence-companionship",
@@ -138,6 +138,63 @@
         "HR. Tirmidhi no. 1720"
       ],
       "rationale": "One instruction — gold and silk are prohibited to the men of this ummah and permitted to its women — narrated from different companions through different chains: 5148/5265/1720 are the Abu Musa report and 3597 the 'Abdullah ibn 'Amr report. Ibn Majah 3590 is not a member: its matn reads «نَهَى رَسُولُ اللَّهِ ـ صلى الله عليه وسلم ـ عَنْ لُبْسِ الْحَرِيرِ وَالذَّهَبِ وَقَالَ هُوَ لَهُمْ فِي الدُّنْيَا وَلَنَا فِي الآخِرَةِ» — the prohibition, with \"it is for them in this world and for us in the Hereafter\" and no male/female clause — so it does not state the men/women ruling this group records. Nasai 5149 and 5160 are not members either: they state the exception (\"إلا مقطعًا\" — gold or silk in a cut piece is permitted), a different ruling."
+    },
+    {
+      "id": "la-hasad-ibn-umar",
+      "relation": "same-report",
+      "canonical": "HR. Bukhari no. 5025",
+      "members": [
+        "HR. Muslim no. 1894",
+        "HR. Muslim no. 1895",
+        "HR. Bukhari no. 7529",
+        "HR. Tirmidhi no. 1936",
+        "HR. Ibn Majah no. 4209"
+      ],
+      "rationale": "One report from Ibn Umar — there is no envy except in two: a man given the Book who stands with it, and a man given wealth who gives it in charity — narrated through the same lower chain (al-Zuhri ← Salim ibn Abdullah ← Abdullah ibn Umar) from different top links: Bukhari 5025 through Shu'ayb, Bukhari 7529, Tirmidhi 1936 and Ibn Majah 4209 through Sufyan, Muslim 1894 through Ibn Uyaynah and Muslim 1895 through Yunus. Wording varies («الكتاب» / «القرآن», «قام به» / «يقوم به»); the operative content is one. The Abu Hurayra report (5026) is a different report of the same ruling, carried by the group beside this one."
+    },
+    {
+      "id": "khayrukum-uthman",
+      "relation": "same-report",
+      "canonical": "HR. Bukhari no. 5027",
+      "members": [
+        "HR. Bukhari no. 5028",
+        "HR. Tirmidhi no. 2907",
+        "HR. Tirmidhi no. 2908",
+        "HR. Abu Dawud no. 1452",
+        "HR. Ibn Majah no. 211",
+        "HR. Ibn Majah no. 212"
+      ],
+      "rationale": "One report from Uthman — the best of you is the one who learns the Quran and teaches it — narrated through the same lower chain (Alqamah ibn Marthad ← Sa'd ibn Ubaydah ← Abu Abd al-Rahman al-Sulami ← Uthman) from different top links: Bukhari 5027 and Tirmidhi 2907 through Shu'bah, Bukhari 5028, Tirmidhi 2908 and Ibn Majah 212 through Sufyan (5028, 2908 and 212 omitting Sa'd), Abu Dawud 1452 through Shu'bah, and Ibn Majah 211 through Shu'bah and Sufyan. Wording varies («خيركم» / «أفضلكم»); the Ali report (Tirmidhi 2909) is a different report of the same ruling, carried by the group beside this one."
+    },
+    {
+      "id": "mahir-aisha",
+      "relation": "same-report",
+      "canonical": "HR. Bukhari no. 4937",
+      "members": ["HR. Muslim no. 1862", "HR. Abu Dawud no. 1454", "HR. Ibn Majah no. 3779"],
+      "rationale": "One report from Aisha — the one who recites the Quran proficiently is with the noble scribes, and the one who recites it with difficulty has two rewards — narrated through the same lower chain (Qatadah ← Zurarah ibn Awfa ← Sa'd ibn Hisham ← Aisha) from different top links: Bukhari 4937 through Shu'bah, Muslim 1862 through Abu Awanah, Abu Dawud 1454 through Hisham and Hammam, and Ibn Majah 3779 through Sa'id ibn Abi Arubah. Wording varies («مثل الذي يقرأ» / «الماهر بالقرآن»); the operative content is one."
+    },
+    {
+      "id": "recite-and-ascend-abdullah-ibn-amr",
+      "relation": "same-report",
+      "canonical": "HR. Tirmidhi no. 2914",
+      "members": ["HR. Abu Dawud no. 1464"],
+      "rationale": "One report from Abdullah ibn Amr — the companion of the Quran is told to recite and ascend, his rank at the last verse he recites — narrated through the same lower chain (Asim ibn Bahdalah ← Zirr ← Abdullah ibn Amr): Tirmidhi 2914 and Abu Dawud 1464 through Sufyan. The Abu Sa'id report (Ibn Majah 3780) states the same ruling through another companion and sits in the same-ruling group."
+    },
+    {
+      "id": "quran-recitation-merit",
+      "relation": "same-ruling",
+      "canonical": "HR. Bukhari no. 5026",
+      "members": [
+        "HR. Bukhari no. 5025",
+        "HR. Bukhari no. 5027",
+        "HR. Tirmidhi no. 2909",
+        "HR. Tirmidhi no. 2910",
+        "HR. Bukhari no. 4937",
+        "HR. Muslim no. 1874",
+        "HR. Tirmidhi no. 2914",
+        "HR. Ibn Majah no. 3780"
+      ],
+      "rationale": "One ruling — reciting or learning the Quran carries merit, so a citation of another report that states it is a valid answer to this question — carried by different reports: Bukhari 5025 (Ibn Umar: the man given the Book who stands with it is one of the two envied); Bukhari 5027 (Uthman: the best of you learns the Quran and teaches it); Tirmidhi 2909 (Ali: the same ruling through another companion); Tirmidhi 2910 (Ibn Mas'ud: a good deed for every letter recited); Bukhari 4937 (Aisha: the proficient reciter with the noble scribes, the struggling reciter two rewards); Muslim 1874 (Abu Umamah: recite, for the Quran intercedes for its companions); and Tirmidhi 2914 and Ibn Majah 3780 (Abdullah ibn Amr and Abu Sa'id: recite and ascend, rank at the last verse). None is a chain of the Abu Hurayra report (5026); the same-report groups beside this one carry the chains. Ibn Majah 213 and Tirmidhi 2905 state a merit but both fold to dhaif (213's graders split, with the dhaif-wins fold governing, and 2905 is weak in every grader's reading), so neither is a member; Tirmidhi 2883, Bukhari 5015 and Bukhari 5020 state a specific surah's or a parable's merit rather than the reciter's, Bukhari 5023 and 5024 state what was permitted for the Prophet's recitation, and Bukhari 5031 and 5032 are instructions to preserve the Quran — none of those states this ruling, so none is a member."
     }
   ]
 }

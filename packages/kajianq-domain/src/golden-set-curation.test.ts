@@ -341,6 +341,23 @@ const EXCLUDED_CITATIONS: Record<string, string[]> = {
     "HR. Malik no. 326",
   ],
   "gs-v0-017": ["HR. Nasai no. 5149", "HR. Nasai no. 5160", "HR. Ibn Majah no. 3590"],
+  "gs-v0-008": [
+    "HR. Ibn Majah no. 213",
+    "HR. Tirmidhi no. 2905",
+    "HR. Tirmidhi no. 2883",
+    "HR. Bukhari no. 5015",
+    "HR. Bukhari no. 5020",
+    "HR. Bukhari no. 5023",
+    "HR. Bukhari no. 5024",
+    "HR. Bukhari no. 5031",
+    "HR. Bukhari no. 5032",
+    "HR. Bukhari no. 73",
+    "HR. Bukhari no. 1409",
+    "HR. Bukhari no. 7141",
+    "HR. Bukhari no. 7316",
+    "HR. Muslim no. 1896",
+    "HR. Ibn Majah no. 4208",
+  ],
   "gs-v0-022": [
     "HR. Ibn Majah no. 3657",
     "HR. Abu Dawud no. 5140",
@@ -428,28 +445,22 @@ describe("golden-set-v0 curation", () => {
   });
 });
 
-/** The map's same-ruling labels the row must account for: the canonical or
- * member a requirement anchors, minus the requirement itself. */
-function sameRulingSiblingsOf(
+/** The map group a label anchors, as canonical or member of either relation:
+ * the coverage unit the gate reads instead of the single address. */
+function groupOf(
   label: string,
-  groups: readonly { canonical: string; members: readonly string[] }[],
-): string[] {
+  groups: readonly {
+    relation: "same-report" | "same-ruling";
+    canonical: string;
+    members: readonly string[];
+  }[],
+): (typeof groups)[number] | undefined {
   const normalized = normalizeCitationLabel(label);
-  const group = groups.find(
-    (candidate) =>
-      normalizeCitationLabel(candidate.canonical) === normalized ||
-      candidate.members.some((member) => normalizeCitationLabel(member) === normalized),
+  return groups.find(
+    (group) =>
+      normalizeCitationLabel(group.canonical) === normalized ||
+      group.members.some((member) => normalizeCitationLabel(member) === normalized),
   );
-  if (group === undefined) return [];
-  return [group.canonical, ...group.members].filter(
-    (sibling) => normalizeCitationLabel(sibling) !== normalized,
-  );
-}
-
-/** The excluded citations in the comparison form the gate folds, so a row's
- * structured exclusion is compared on the same spelling as its requirement. */
-function excludedLabelsOf(row: Pick<CuratedRow, "excludedCitations">): string[] {
-  return (row.excludedCitations ?? []).map(normalizeCitationLabel);
 }
 
 /** The excluded citations whose reason the row's one-line note does not name:
@@ -466,54 +477,71 @@ function unexplainedExclusions(
   return excluded.filter((label) => !named.has(normalizeCitationLabel(label)));
 }
 
-/** The map siblings the row neither accepts in its opt-in set nor records in
- * `excludedCitations` — the gap that lets a draw ground a verified same-ruling
- * narration the gate then rejects. */
-function uncoveredSameRulingSiblings(
-  row: Pick<CuratedRow, "id" | "requiredCitations" | "citationAlternatives" | "excludedCitations">,
-  groups: readonly { canonical: string; members: readonly string[] }[],
-): string[] {
-  const alternatives = (row.citationAlternatives ?? []).map(normalizeCitationLabel);
-  const excluded = excludedLabelsOf(row);
-  return row.requiredCitations.flatMap((required) =>
-    sameRulingSiblingsOf(required, groups).filter((sibling) => {
-      const normalized = normalizeCitationLabel(sibling);
-      return !alternatives.includes(normalized) && !excluded.includes(normalized);
-    }),
-  );
-}
-
 /**
- * The sibling rule, encoded: a row whose required address anchors a
- * `same-ruling` group in the curated identity map accepts every member of that
- * group in its opt-in set, or records it in `excludedCitations` with a one-line
- * reason naming it. The map records the relation and the row records the
- * decision; a member in neither place is the curation gap that makes a draw's
- * grounded sibling read as a miss, and prose in the note can neither accept nor
- * exclude.
+ * Coverage and relation, encoded: every required hadith address anchors a map
+ * group of either relation, so a cited narration the map relates to it is the
+ * gate's identity. The map, not the row's opt-in set, is what accepts a
+ * same-ruling narration — a row repeats a member in `citationAlternatives` only
+ * to widen the exact-address recall leg. A candidate the curator read and ruled
+ * out is recorded in `excludedCitations` with a one-line reason naming it.
  */
-describe("the sibling rule: a row accepts its required address's same-ruling narrations", () => {
-  const sameRulingGroups = IDENTITY_MAP.groups.filter((group) => group.relation === "same-ruling");
-
-  it("lists every map sibling in the row's opt-in set or in excludedCitations", () => {
-    expect(sameRulingGroups.length).toBeGreaterThan(0);
-    for (const row of FIXTURE.questions) {
-      expect(
-        uncoveredSameRulingSiblings(row, sameRulingGroups),
-        `${row.id}: same-ruling siblings neither in citationAlternatives nor in excludedCitations`,
-      ).toEqual([]);
-    }
+describe("the map's coverage: every required address anchors a group", () => {
+  it("anchors every required hadith address in a group of either relation", () => {
+    const unanchored = FIXTURE.questions.flatMap((row) =>
+      row.requiredCitations
+        .filter((label) => parseHadithCitation(normalizeCitationLabel(label)) !== null)
+        .filter((label) => groupOf(label, IDENTITY_MAP.groups) === undefined)
+        .map((label) => `${row.id}: ${label}`),
+    );
+    expect(unanchored).toEqual([]);
   });
 
-  it("covers the rows whose required address anchors a same-ruling group", () => {
-    const covered = FIXTURE.questions
-      .filter((row) =>
-        row.requiredCitations.some(
-          (required) => sameRulingSiblingsOf(required, sameRulingGroups).length > 0,
-        ),
-      )
-      .map((row) => row.id);
-    expect(covered).toEqual(["gs-v0-006", "gs-v0-017", "gs-v0-022"]);
+  it("pins 008's same-ruling family and the same-report groups that carry its chains", () => {
+    const family = groupOf("HR. Bukhari no. 5026", IDENTITY_MAP.groups);
+    expect(family?.relation).toBe("same-ruling");
+    expect(family?.members).toEqual([
+      "HR. Bukhari no. 5025",
+      "HR. Bukhari no. 5027",
+      "HR. Tirmidhi no. 2909",
+      "HR. Tirmidhi no. 2910",
+      "HR. Bukhari no. 4937",
+      "HR. Muslim no. 1874",
+      "HR. Tirmidhi no. 2914",
+      "HR. Ibn Majah no. 3780",
+    ]);
+    const chains: [string, string[]][] = [
+      [
+        "HR. Bukhari no. 5025",
+        [
+          "HR. Muslim no. 1894",
+          "HR. Muslim no. 1895",
+          "HR. Bukhari no. 7529",
+          "HR. Tirmidhi no. 1936",
+          "HR. Ibn Majah no. 4209",
+        ],
+      ],
+      [
+        "HR. Bukhari no. 5027",
+        [
+          "HR. Bukhari no. 5028",
+          "HR. Tirmidhi no. 2907",
+          "HR. Tirmidhi no. 2908",
+          "HR. Abu Dawud no. 1452",
+          "HR. Ibn Majah no. 211",
+          "HR. Ibn Majah no. 212",
+        ],
+      ],
+      [
+        "HR. Bukhari no. 4937",
+        ["HR. Muslim no. 1862", "HR. Abu Dawud no. 1454", "HR. Ibn Majah no. 3779"],
+      ],
+      ["HR. Tirmidhi no. 2914", ["HR. Abu Dawud no. 1464"]],
+    ];
+    for (const [canonical, members] of chains) {
+      const group = IDENTITY_MAP.groups.find((candidate) => candidate.canonical === canonical);
+      expect(group?.relation, canonical).toBe("same-report");
+      expect(group?.members, canonical).toEqual(members);
+    }
   });
 
   it("states a reason naming every excluded citation, on one line", () => {
@@ -522,75 +550,18 @@ describe("the sibling rule: a row accepts its required address's same-ruling nar
     }
   });
 
-  it("accounts for a map sibling through structured data only", () => {
-    const groups = [
-      { canonical: "HR. Bukhari no. 1", members: ["HR. Muslim no. 2", "HR. Muslim no. 3"] },
-    ];
-    type SyntheticRow = Pick<
-      CuratedRow,
-      | "id"
-      | "requiredCitations"
-      | "citationAlternatives"
-      | "excludedCitations"
-      | "excludedNote"
-      | "$comment"
-    >;
-    const row = (
-      options: {
-        comment?: string;
-        alternatives?: string[];
-        excluded?: string[];
-        note?: string;
-      } = {},
-    ): SyntheticRow => ({
-      id: "synthetic",
-      requiredCitations: ["HR. Bukhari no. 1"],
-      citationAlternatives: options.alternatives ?? [],
-      ...(options.excluded === undefined ? {} : { excludedCitations: options.excluded }),
-      ...(options.note === undefined ? {} : { excludedNote: options.note }),
-      ...(options.comment === undefined ? {} : { $comment: options.comment }),
+  it("records an exclusion as structured data, with a reason naming the address", () => {
+    const row = (excluded: string[], note?: string) => ({
+      excludedCitations: excluded,
+      ...(note === undefined ? {} : { excludedNote: note }),
     });
-    expect(uncoveredSameRulingSiblings(row(), groups)).toEqual([
-      "HR. Muslim no. 2",
-      "HR. Muslim no. 3",
-    ]);
-    expect(uncoveredSameRulingSiblings(row({ excluded: ["HR. Muslim no. 2"] }), groups)).toEqual([
-      "HR. Muslim no. 3",
-    ]);
+    expect(unexplainedExclusions(row(["HR. Muslim no. 2"]))).toEqual(["HR. Muslim no. 2"]);
     expect(
-      uncoveredSameRulingSiblings(row({ alternatives: ["HR. Muslim no. 3"] }), groups),
-    ).toEqual(["HR. Muslim no. 2"]);
-    // Prose in the note is not an exclusion: the decision is structured data.
-    expect(
-      uncoveredSameRulingSiblings(
-        row({ comment: "Excluded: HR. Muslim no. 2 — a different report." }),
-        groups,
-      ),
-    ).toEqual(["HR. Muslim no. 2", "HR. Muslim no. 3"]);
-    // A map member the row does not account for stays uncovered even when its
-    // neighbour is excluded.
-    expect(
-      uncoveredSameRulingSiblings(row({ excluded: ["HR. Muslim no. 2"] }), [
-        {
-          canonical: "HR. Bukhari no. 1",
-          members: ["HR. Muslim no. 2", "HR. Muslim no. 4"],
-        },
-      ]),
-    ).toEqual(["HR. Muslim no. 4"]);
-    // An exclusion without a reason naming it is not a recorded decision.
-    expect(unexplainedExclusions(row({ excluded: ["HR. Muslim no. 2"] }))).toEqual([
-      "HR. Muslim no. 2",
-    ]);
-    expect(
-      unexplainedExclusions(
-        row({ excluded: ["HR. Muslim no. 2"], note: "HR. Muslim no. 2 is another report." }),
-      ),
+      unexplainedExclusions(row(["HR. Muslim no. 2"], "HR. Muslim no. 2 is another report.")),
     ).toEqual([]);
     // A longer number in the reason does not name the excluded address.
     expect(
-      unexplainedExclusions(
-        row({ excluded: ["HR. Muslim no. 2"], note: "HR. Muslim no. 20 is another report." }),
-      ),
+      unexplainedExclusions(row(["HR. Muslim no. 2"], "HR. Muslim no. 20 is another report.")),
     ).toEqual(["HR. Muslim no. 2"]);
   });
 });
@@ -720,7 +691,13 @@ describe("the curated corpus-label index registers every curated hadith label", 
     // rather than the threefold order, 5970 and 1898 rank deeds instead, 5972
     // and 6504 are jihad with parents, 5973, 5975 and 5141 are cursing or
     // disobeying parents, 1899 is the parent's pleasure and 3659 a child's
-    // repayment.
+    // repayment. For 008's ruling: 213 states khayrukum but its dhaif-wins fold
+    // is Daif; 2905 states a recitation reward but all four graders grade it
+    // weak; 2883 and 5015 state a specific surah's merit; 5020 is the citron
+    // parable, not the reciter's merit; 5023 and 5024 state what was permitted
+    // for the Prophet's recitation; 5031 and 5032 are preservation instructions;
+    // 73, 1409, 7141, 7316, 1896 and 4208 carry the la-hasad wording with wisdom
+    // as the second item, not Quran recitation.
     for (const label of [
       "HR. Malik no. 331",
       "HR. Bukhari no. 1454",
@@ -747,6 +724,21 @@ describe("the curated corpus-label index registers every curated hadith label", 
       "HR. Abu Dawud no. 5141",
       "HR. Tirmidhi no. 1899",
       "HR. Ibn Majah no. 3659",
+      "HR. Ibn Majah no. 213",
+      "HR. Tirmidhi no. 2905",
+      "HR. Tirmidhi no. 2883",
+      "HR. Bukhari no. 5015",
+      "HR. Bukhari no. 5020",
+      "HR. Bukhari no. 5023",
+      "HR. Bukhari no. 5024",
+      "HR. Bukhari no. 5031",
+      "HR. Bukhari no. 5032",
+      "HR. Bukhari no. 73",
+      "HR. Bukhari no. 1409",
+      "HR. Bukhari no. 7141",
+      "HR. Bukhari no. 7316",
+      "HR. Muslim no. 1896",
+      "HR. Ibn Majah no. 4208",
     ]) {
       expect(required, label).not.toContain(label);
       expect(sets, label).not.toContain(label);

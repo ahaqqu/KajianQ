@@ -2,59 +2,58 @@
 
 ## Decision
 
-A required citation is satisfied when the answer's evidence carries the **same report**, not when it
-carries the same corpus row. The scorer resolves every hadith label — the requirement and each evidence
-label — through a curated, owner-signed **matn-identity map** to its canonical identity, and compares
-identities. The Golden Set keeps one required label per requirement; the map, not the fixture, carries
-the parallel chains, and a group's canonical label is the map's identity key rather than the fixture's
-required one.
+A required citation is satisfied when the answer's evidence carries an address the **matn-identity map**
+relates to the required narration, not when it carries the same corpus row. Both relations the map records
+are gate identities:
 
-Each group states its **relation**, and the relation decides who may read it:
+- `same-report` — one narration through different chains, allowing different wording.
+- `same-ruling` — one ruling or instruction carried by another report.
 
-- `same-report` — one narration through different chains, allowing different wording. It is the gate's
-  identity: the only relation citation validity may satisfy a requirement with.
-- `same-ruling` — one ruling or instruction carried by different reports, so neither is a parallel chain
-  of the other. It is **reported, never gating**: the identity-satisfied measure reads it, and the gate
-  does not.
+A cited narration that states the same ruling is therefore a valid citation. The map, not a single address,
+is the gate's unit of identity: the required label anchors a group, and every member of that group satisfies
+the requirement. The relation still states which claim the group makes — one report or one ruling — and a
+label the map does not carry is its own identity, so an unmapped, fabricated, or unrelated citation can
+never match another.
 
-Identity is the **narration**, not the topic: a row that shares only a subject, a narrator, or a legal
-theme is a different identity. A label the map does not carry is its own identity, so an unmapped,
-fabricated, or unrelated citation can never match another. A refusal carries no citations and still
-scores zero. A curator's alternative set is a separate per-question decision, never an identity.
+The Golden Set keeps one required label per requirement and the exact-address measure keeps its exact
+meaning; the map carries the identity, and a curator's alternative set stays a separate per-question
+decision whose only effect is to widen the address reading, never the identity.
 
-The engine learns no domain vocabulary: it receives injected resolvers and compares opaque keys. The
-map is product data, owner-signed like the Golden Set, and gate-affecting.
+The engine learns no domain vocabulary: it receives injected resolvers and compares opaque keys. The map
+is product data, owner-signed like the Golden Set, and its accuracy is what the gate's verdict depends on.
 
 ## Why
 
-After the required labels were re-curated to the hadiths the questions ask for, drafts cited parallel
-chains of the same narration and the metric scored them as uncited. The metric's claim — "the required
-citation is present" — outran its mechanism, which compared strings. The corpus holds each chain as its
-own row, so an exact-row comparison cannot see the identity a reader sees.
+The metric's claim — "the required citation is present" — is a claim about grounding, not about one book's
+numbering. An answer that grounds its ruling in a parallel chain or in another companion's report of the
+same ruling has cited valid evidence; a gate that rejects it measures which addresses the sampler happened
+to retrieve and cite, not whether the answer is grounded. The map records that relation once, under owner
+review, and the gate reads it: the curator states the identity, the scorer applies it.
 
-The two relations are not interchangeable. A same-ruling narration supports the same ruling but is a
-different report, so accepting it as the gate's identity would report a citation as present that no
-chain of the required report carries; splitting the relations keeps the gate's number exact and
-comparable while the broader relation is still measured.
+The two relations are not interchangeable as claims — a same-report group is one narration's chains, a
+same-ruling group is one ruling under different reports — but they are interchangeable as identities for
+this gate, because both answer the question the metric asks. Keeping only one made the gate's verdict turn
+on which of two equally valid narrations a draw cited, so the same evidence could pass or fail by sampling.
 
-Rejected: a text-similarity matn test. The v1 corpus keeps the isnad inside the matn and holds
-same-topic hadiths that share vocabulary; a threshold that accepts a parallel narration also accepts a
-different hadith on the same subject. Identity is curation, not a guess.
+Rejected: a text-similarity matn test. The v1 corpus keeps the isnad inside the matn and holds same-topic
+hadiths that share vocabulary; a threshold that accepts a parallel narration also accepts a different hadith
+on the same subject. Identity is curation, not a guess.
 
-Rejected: per-question `requiredCitations` sets, which duplicate the same hadith knowledge across
-questions and make every accepted chain a local exception; the canonical identity belongs once, in the map.
+Rejected: per-question accepted-answer sets in place of the map. They duplicate one hadith's identity across
+rows and make every accepted narration a local exception; the relation belongs once, in the map.
 
-Rejected: teaching the generator to prefer the required label: it changes which narration an answer
-cites, not whether the metric can see a correct citation.
+Rejected: teaching the generator to prefer the required label. It changes which narration an answer cites,
+not whether the metric can see a correct citation.
 
 ## Consequences
 
-- The eval scorer and harness accept optional, separate resolvers for the gate and the reported measure;
-  without them the exact-label comparison and the historical outcome shape stand for existing callers.
+- The eval scorer accepts an injected identity resolver for the gate; without one the exact-label
+  comparison and the historical outcome shape stand for existing callers.
 - The identity map is a domain-pack fixture; adding a group or a member is owner-signed, gate-affecting
-  curation for the relation it carries, not a test-only edit. Adding a `same-ruling` group moves only the
-  reported figure.
-- The Golden Set fixture keeps one required label per requirement; no row and no label is re-curated to
-  match a model's output.
-- An unmapped label can satisfy only the identical required label, a refusal carries no citations and
-  stays invalid, and an unrelated hadith stays invalid; those boundaries are pinned in tests.
+  curation for the relation it carries, not a test-only edit. A wrong member widens the gate, so the map's
+  coverage and its rationale are reviewed like the Golden Set's requirements.
+- The exact-address measure is unchanged and stays comparable with past runs; the identity-satisfied figure
+  keeps its meaning as the reported counterfactual where a signed identity also satisfies the address
+  reading.
+- An unmapped label can satisfy only the identical required label, a refusal carries no citations and stays
+  invalid, and an unrelated hadith stays invalid; those boundaries are pinned in tests.

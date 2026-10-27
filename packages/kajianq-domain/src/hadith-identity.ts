@@ -25,13 +25,14 @@ import {
  * no identity, and the scorer keeps its exact-label comparison for it — an
  * unmapped, fabricated, or unrelated citation can never resolve into a group.
  *
- * A group states its **relation**, and the relation is what keeps the gate
- * honest: `same-report` groups are the ones citation validity may read, while
- * `same-ruling` groups relate narrations that state one instruction under
- * different chains — the reported identity-satisfied figure reads them, and the
- * exact-address gate deliberately does not. Every group also states its
- * `rationale`, because "same report" and "same ruling" are not interchangeable
- * and a reader must be able to tell which claim a group makes.
+ * A group states its **relation**, and both relations are gate identities: a
+ * `same-report` group is one narration through different chains, and a
+ * `same-ruling` group relates different narrations that state one ruling. A
+ * citation of either kind carries the required narration's identity, so the map,
+ * not a single address, is the gate's unit. The relation still keeps the claim
+ * honest: a reader must be able to tell whether a group says "another chain of
+ * this report" or "another report of this ruling", which is why every group also
+ * states its `rationale`.
  *
  * The parser is loud on a malformed map (a duplicated label, a label that is not
  * a single hadith citation, a duplicated group id, an empty group, a missing
@@ -41,12 +42,17 @@ import {
 
 export type HadithIdentityRelation = "same-report" | "same-ruling";
 
-/** The relations the exact-address gate reads: only a signed same-report identity
- * can satisfy citation validity; a same-ruling relation never can. */
-export const GATING_IDENTITY_RELATIONS: readonly HadithIdentityRelation[] = ["same-report"];
+/** The relations citation validity reads: a signed group of either relation
+ * satisfies the requirement, because both name the narration or the ruling the
+ * question asks for. The map is the gate's unit of identity, not one address. */
+export const GATING_IDENTITY_RELATIONS: readonly HadithIdentityRelation[] = [
+  "same-report",
+  "same-ruling",
+];
 
-/** The relations the REPORTED identity-satisfied figure reads: the gate's plus the
- * signed same-ruling relation. Never used to compute `passed`. */
+/** The relations the REPORTED identity-satisfied figure reads: the same signed
+ * relations, declared separately because that figure is reported, never part of
+ * `passed`, and its address comparison is the one it widens. */
 export const REPORTED_IDENTITY_RELATIONS: readonly HadithIdentityRelation[] = [
   "same-report",
   "same-ruling",

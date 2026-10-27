@@ -94,11 +94,13 @@ describe("citationIdentityResolver — the composed domain resolver", () => {
     expect(gateOf("HR. Bukhari no. 191")).not.toBe(gateOf("QS. 1:1"));
   });
 
-  it("reads the Qur'an pair under both relation sets, and the same-ruling group only when reported", () => {
+  it("reads the Qur'an pair and the same-ruling group under both relation sets", () => {
     expect(gateOf("QS. 1:3")).toBe(gateOf("QS. 1:1"));
     expect(reportedOf("QS. 1:3")).toBe(reportedOf("QS. 1:1"));
-    expect(gateOf("HR. Nasai no. 598")).toBeNull();
+    expect(gateOf("HR. Nasai no. 598")).toBe(gateOf("HR. Bukhari no. 1108"));
     expect(reportedOf("HR. Nasai no. 598")).toBe(reportedOf("HR. Bukhari no. 1108"));
+    // The composed key spaces stay apart for a same-ruling member too.
+    expect(gateOf("HR. Nasai no. 598")).not.toBe(gateOf("QS. 1:1"));
   });
 });
 

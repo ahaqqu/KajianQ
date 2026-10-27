@@ -138,9 +138,9 @@ function textCandidateLabels(answerText: string, grammar?: CitationGrammar): str
  *
  * `alternatives` is a curator's opt-in any-of set for a single-requirement row:
  * a requirement is satisfied when any member of the set matches, exactly as the
- * requirement itself would. The members are different reports, so the set is a
- * requirement decision rather than an identity — a same-ruling identity never
- * reaches this path under the gate's resolver.
+ * requirement itself would. The members are different reports the curator rules
+ * separately acceptable; the map's same-ruling identity is a second path, and
+ * both are consulted.
  */
 function groundedLabels(
   required: readonly string[],

@@ -248,20 +248,21 @@ describe("CITATION_IDENTITY (shared staging harness)", () => {
  * hands it to the CLIs compiles and leaves every package test green: the scorer
  * then writes no reported block, and a run that should publish the
  * identity-satisfied figure silently publishes none. The seam is pinned here like
- * the gate resolver — the relation split, the delivery by identity, the scorer's
- * readings through the delivered references, and the pass-through in both CLI
- * sources — because the broader-relation number exists only if this delivery does.
+ * the gate resolver — both relations resolve in each, the delivery by identity, the
+ * counterfactual the block reports, and the pass-through in both CLI sources —
+ * because the reported figure exists only if this delivery does.
  */
 describe("REPORTED_CITATION_IDENTITY (shared staging harness)", () => {
   const frameOf = (labels) => ({ citations: labels.map((label) => ({ label })) });
 
-  it("reads the same-ruling groups the gate's resolver refuses, and the gate's own relation", () => {
-    // Bukhari 1108 and Nasai 598 state one ruling, not one report: reported only.
+  it("reads the signed same-ruling groups and the gate's own relation", () => {
+    // Bukhari 1108 and Nasai 598 state one ruling, not one report: both resolvers
+    // read the signed relation, so the gate accepts 598 beside 1108.
     const sameRuling = REPORTED_CITATION_IDENTITY.identityOf("HR. Nasai no. 598");
-    expect(CITATION_IDENTITY.identityOf("HR. Nasai no. 598")).toBeNull();
+    expect(CITATION_IDENTITY.identityOf("HR. Nasai no. 598")).toBe(sameRuling);
     expect(sameRuling).not.toBeNull();
     expect(sameRuling).toBe(REPORTED_CITATION_IDENTITY.identityOf("HR. Bukhari no. 1108"));
-    // The broader resolver still reads the gate's relation, so it is a superset.
+    // The reported resolver is a superset only in name: both read both relations.
     expect(REPORTED_CITATION_IDENTITY.identityOf("HR. Bukhari no. 191")).toBe(
       CITATION_IDENTITY.identityOf("HR. Bukhari no. 191"),
     );
@@ -285,24 +286,25 @@ describe("REPORTED_CITATION_IDENTITY (shared staging harness)", () => {
           identity: delivered,
         }),
       ).toBe(1);
-      // The gate's own reference scores the same evidence 0 — the relation split
-      // the two deliveries exist for.
+      // Both delivered references read the signed relation, so the same evidence
+      // is valid through either; the delivery is what the CLIs need.
       expect(
         citationValidity(["HR. Bukhari no. 1108"], "", {
           frame,
           grammar: harness.citationGrammar,
           identity: harness.citationIdentity,
         }),
-      ).toBe(0);
+      ).toBe(1);
     } finally {
       await disposePostgresPools();
     }
   });
 
-  it("writes the reported block through the delivered resolver, not the gate's", async () => {
-    // The end-to-end seam: a gate-red row whose reported reading is green. Dropping
-    // either delivery writes no block, so the assertion fails instead of publishing
-    // the gate's number under the reported name.
+  it("writes the reported block through the delivered resolver", async () => {
+    // The end-to-end seam: a gate-red row whose reported reading is green — the
+    // required address was never retrieved, but a signed same-report identity was.
+    // Dropping the delivery writes no block, so the assertion fails instead of
+    // publishing the gate's number under the reported name.
     const harness = await createStagingHarness(
       { databaseUrl: "postgres://unused:unused@127.0.0.1:1/unused" },
       {},
@@ -325,16 +327,17 @@ describe("REPORTED_CITATION_IDENTITY (shared staging harness)", () => {
         events,
         {
           sourceTypeOf: () => "primary",
-          citationOf: (id) => (id === "c0" ? "HR. Bukhari no. 1108" : undefined),
+          citationOf: (id) => (id === "c0" ? "HR. Bukhari no. 1110" : undefined),
           refusalMarkers: [],
           citationGrammar: harness.citationGrammar,
           citationIdentity: harness.citationIdentity,
           reportedCitationIdentity: harness.reportedCitationIdentity,
         },
-        frameOf(["HR. Nasai no. 598"]),
+        frameOf(["HR. Bukhari no. 1110"]),
       );
-      // The gate stays red on the same-ruling citation; the reported block reads it
-      // as satisfied. That difference is the figure this seam publishes.
+      // The gate stays red on the exact address this frame never retrieved; the
+      // reported block reads the identity as satisfying the address leg. That
+      // difference is the figure this seam publishes.
       expect(scored.passed).toBe(false);
       expect(scored.identitySatisfied).toEqual({
         citationAddressRecall: 1,
