@@ -29,3 +29,8 @@ Feature: Conversation history
     Then the row is marked expired and stays in the list
     When I remove it
     Then the list is empty
+
+  Scenario: A conversation can be downloaded as a Markdown file
+    When I open the chat with one stored conversation
+    And I open the conversation history
+    Then downloading that conversation writes a Markdown file

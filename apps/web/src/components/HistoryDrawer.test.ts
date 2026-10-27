@@ -195,3 +195,49 @@ describe("conversation history — consent", () => {
     expect(within(drawer).getByTestId("consent-enable")).toBeTruthy();
   });
 });
+
+describe("conversation history — download", () => {
+  it("writes the conversation to a Markdown file and leaves the drawer open", async () => {
+    archiveChatSession({ id: "sess-a", title: "Ayat kursi", locale: "id", startedAt: Date.now() });
+    const captured: Blob[] = [];
+    const clicks = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+    vi.stubGlobal("URL", {
+      createObjectURL: (blob: Blob) => {
+        captured.push(blob);
+        return "blob:conversation";
+      },
+      revokeObjectURL: () => {},
+    });
+    stubTranscript(200);
+    await renderApp("/faq");
+    const drawer = openDrawer();
+
+    fireEvent.click(within(drawer).getByTestId("history-download"));
+
+    await waitFor(() => expect(captured).toHaveLength(1));
+    const content = await captured[0]!.text();
+    expect(content).toContain("# Ayat kursi");
+    expect(content).toContain("## Anda");
+    expect(clicks).toHaveBeenCalled();
+    expect(screen.getByTestId("history-drawer")).toBeTruthy();
+    clicks.mockRestore();
+  });
+
+  it("marks a conversation the server no longer holds instead of saving an empty file", async () => {
+    archiveChatSession({
+      id: "sess-gone",
+      title: "Ayat kursi",
+      locale: "id",
+      startedAt: Date.now(),
+    });
+    stubTranscript(404);
+    await renderApp("/faq");
+    const drawer = openDrawer();
+
+    fireEvent.click(within(drawer).getByTestId("history-download"));
+
+    await waitFor(() => expect(within(drawer).getByTestId("history-notice")).toBeTruthy());
+    expect(within(drawer).getByTestId("history-entry").getAttribute("data-expired")).toBe("true");
+    expect(within(drawer).getByTestId("history-download")).toBeTruthy();
+  });
+});
