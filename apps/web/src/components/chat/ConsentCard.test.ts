@@ -59,6 +59,24 @@ describe("consent card", () => {
     expect(window.localStorage.getItem(CONSENT_KEY)).toBe("session-only");
   });
 
+  it("hands focus to the composer when the card goes away", async () => {
+    await renderApp("/");
+    fireEvent.click(screen.getByTestId("consent-decline"));
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByTestId("composer")));
+  });
+
+  it("follows another tab's answer without a reload", async () => {
+    setConsent("store");
+    await renderApp("/");
+    expect(screen.queryByTestId("consent-card")).toBeNull();
+
+    // Another tab withdrew: the stored record changed, so this tab asks again.
+    window.localStorage.removeItem(CONSENT_KEY);
+    window.dispatchEvent(new StorageEvent("storage", { key: CONSENT_KEY }));
+
+    await waitFor(() => expect(screen.getByTestId("consent-card")).toBeTruthy());
+  });
+
   it("does not ask again once the answer is recorded", async () => {
     setConsent("session-only");
     await renderApp("/");

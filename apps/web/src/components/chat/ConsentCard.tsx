@@ -23,6 +23,18 @@ export { useConsent as useChatConsent } from "../../lib/chat-store";
 export function ConsentCard() {
   const locale = useLocale();
   const consent = useConsent();
+
+  /** The card unmounts with the focus inside it, which would drop a keyboard
+   * reader back to the top of the page; the composer is where they were going. */
+  const answer = (choice: "store" | "session-only"): void => {
+    setConsent(choice);
+    if (choice === "store") persistChatState();
+    else forgetChatState();
+    requestAnimationFrame(() => {
+      document.querySelector<HTMLElement>('[data-testid="composer"]')?.focus();
+    });
+  };
+
   if (consent !== null) return null;
 
   return (
@@ -47,10 +59,7 @@ export function ConsentCard() {
         <button
           type="button"
           data-testid="consent-keep"
-          onClick={() => {
-            setConsent("store");
-            persistChatState();
-          }}
+          onClick={() => answer("store")}
           className="inline-flex h-9 items-center justify-center rounded-full bg-primary px-4 text-xs font-medium text-primary-foreground hover:opacity-90 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           {t(locale, "consentKeep")}
@@ -58,10 +67,7 @@ export function ConsentCard() {
         <button
           type="button"
           data-testid="consent-decline"
-          onClick={() => {
-            setConsent("session-only");
-            forgetChatState();
-          }}
+          onClick={() => answer("session-only")}
           className="inline-flex h-9 items-center justify-center rounded-full border border-border px-4 text-xs font-medium text-foreground hover:bg-secondary focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           {t(locale, "consentDontKeep")}

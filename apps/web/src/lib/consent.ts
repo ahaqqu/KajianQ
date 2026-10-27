@@ -45,7 +45,20 @@ export function setConsent(choice: ChatConsent): void {
   } catch {
     writeBlockedChoice = choice;
   }
+  notify();
+}
+
+function notify(): void {
   for (const listener of listeners) listener();
+}
+
+/**
+ * Another tab answered or withdrew: the record is the same one this tab reads,
+ * so its views follow without a reload (the `storage` event never fires in the
+ * tab that made the change, hence `setConsent`'s own notify).
+ */
+function onStorage(event: StorageEvent): void {
+  if (event.key === null || event.key === CONSENT_KEY) notify();
 }
 
 /** Whether the chat keys may be written to localStorage (ADR-0063's one gate). */
@@ -58,8 +71,11 @@ export function useConsent(): ChatConsent | null {
 }
 
 function subscribe(listener: () => void): () => void {
+  const watched = listeners.size === 0;
   listeners.add(listener);
+  if (watched) globalThis.window?.addEventListener?.("storage", onStorage);
   return () => {
     listeners.delete(listener);
+    if (listeners.size === 0) globalThis.window?.removeEventListener?.("storage", onStorage);
   };
 }
