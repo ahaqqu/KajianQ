@@ -249,9 +249,10 @@ describe("D1b — a signed same-ruling relation never satisfies the exact-addres
   });
 });
 
-/** The same-ruling members 006's opt-in set gained, pinned here as well as in the
- * fixture: the set pin below catches a dropped member, and this list makes the
- * per-member disposition fail with it rather than shrinking the loop silently. */
+/** The same-ruling members 006's opt-in set gained, listed here beside the
+ * fixture's own entry: the set pin below catches a dropped member, and this list
+ * makes the per-member disposition fail with it rather than shrinking the loop
+ * silently. */
 const ADDED_006_MEMBERS = [
   "HR. Bukhari no. 1109",
   "HR. Muslim no. 1621",
