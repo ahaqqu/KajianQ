@@ -2,11 +2,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vite-plus/test";
 import { citationIdentityResolver } from "./citation-identity";
-import {
-  GATING_IDENTITY_RELATIONS,
-  REPORTED_IDENTITY_RELATIONS,
-  parseHadithIdentitySet,
-} from "./hadith-identity";
+import { GATING_IDENTITY_RELATIONS, parseHadithIdentitySet } from "./hadith-identity";
 import { IdentityMapError } from "./identity-map";
 import {
   parseQuranIdentitySet,
@@ -85,7 +81,6 @@ describe("the shipped Qur'an identity map", () => {
 
 describe("citationIdentityResolver — the composed domain resolver", () => {
   const gateOf = citationIdentityResolver(HADITH, QURAN, GATING_IDENTITY_RELATIONS);
-  const reportedOf = citationIdentityResolver(HADITH, QURAN, REPORTED_IDENTITY_RELATIONS);
 
   it("resolves a hadith group and a Qur'an pair in one opaque key space", () => {
     expect(gateOf("HR. Bukhari no. 191")).toBe("HR. Bukhari no. 186");
@@ -94,11 +89,11 @@ describe("citationIdentityResolver — the composed domain resolver", () => {
     expect(gateOf("HR. Bukhari no. 191")).not.toBe(gateOf("QS. 1:1"));
   });
 
-  it("reads the Qur'an pair under both relation sets, and the same-ruling group only when reported", () => {
+  it("reads the Qur'an pair and the same-ruling group under the gate's relation set", () => {
     expect(gateOf("QS. 1:3")).toBe(gateOf("QS. 1:1"));
-    expect(reportedOf("QS. 1:3")).toBe(reportedOf("QS. 1:1"));
-    expect(gateOf("HR. Nasai no. 598")).toBeNull();
-    expect(reportedOf("HR. Nasai no. 598")).toBe(reportedOf("HR. Bukhari no. 1108"));
+    expect(gateOf("HR. Nasai no. 598")).toBe(gateOf("HR. Bukhari no. 1108"));
+    // The composed key spaces stay apart for a same-ruling member too.
+    expect(gateOf("HR. Nasai no. 598")).not.toBe(gateOf("QS. 1:1"));
   });
 });
 

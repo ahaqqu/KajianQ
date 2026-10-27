@@ -72,9 +72,9 @@ const GRAMMAR: CitationGrammar = {
 };
 
 /**
- * The domain's two signed relation sets, loaded exactly as the staging harness
- * loads them: the gate's same-report resolver and the broader reported resolver
- * that also reads the same-ruling groups.
+ * The domain's signed relation sets, loaded exactly as the staging harness loads
+ * them: the gate reads both relations, and the reported resolver reads the same
+ * union for its own address comparison.
  */
 const { gating: GATE_IDENTITY, reported: REPORTED_IDENTITY } = curatedIdentityResolvers();
 
@@ -286,16 +286,17 @@ describe("the head identity instruments on the recorded run", () => {
     }
   });
 
-  it("recovers the recorded rows whose evidence cites a signed same-report identity", () => {
-    // 003's draft cited the wudu group's canonical 186 for a requirement of 191, and
+  it("recovers the recorded rows whose evidence cites a signed identity", () => {
+    // 003's draft cited the wudu group's canonical 186 for a requirement of 191,
     // 013's cited 5264 (and Tirmidhi 1800) for a requirement of 5265 — both are
-    // pre-existing same-report groups, so the gate accepts them. The fold's own
-    // replay never injected the identity resolver, which is why these did not show
+    // same-report groups — and 008's cited 1862, 1464 and 3780 for a requirement
+    // of 5026, which the map records as the same ruling. The fold's own replay
+    // never injected the identity resolver, which is why these did not show
     // there. Every recovered row was recorded as a failure.
     const recovered = ROWS.filter(
       (row) => instrumentOutcome(row).passed && !headOutcome(row).passed,
     );
-    expect(recovered.map((row) => row.questionId)).toEqual(["gs-v0-003", "gs-v0-013"]);
+    expect(recovered.map((row) => row.questionId)).toEqual(["gs-v0-003", "gs-v0-008", "gs-v0-013"]);
     for (const row of recovered) expect(row.recorded.passed).toBe(false);
   });
 

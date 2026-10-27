@@ -20,11 +20,13 @@ import type { CitationGrammar, TraceEventLike } from "./harness-types";
  * suffixes are omitted from the quoted labels because the gate's own fold strips
  * them; the decision is the same.
  *
- * The trust invariant under test: a cited address is gate-accepted only when it is
- * the requirement's own address (or a curated any-of alternative of it) or a signed
- * **same-report** identity of it. A signed **same-ruling** relation is reported by
- * the identity-satisfied block and never satisfies the gate; exact-address recall
- * stays exact, so the gate's number remains comparable with past runs.
+ * The trust invariant under test: a cited address is gate-accepted when it is the
+ * requirement's own address, a curated any-of alternative of it, or a signed
+ * identity of it under either relation the map records. A same-report group is a
+ * parallel chain; a same-ruling group is another report of the same ruling, and
+ * both satisfy citation validity. Exact-address recall stays exact and has no
+ * identity parameter; only the reported identity-satisfied block widens its
+ * address comparison, so the gate's number remains comparable with past runs.
  */
 
 const {
@@ -61,6 +63,7 @@ function headRow(id: string): GoldenQuestion {
 }
 
 const HEAD_006 = headRow("gs-v0-006");
+const HEAD_008 = headRow("gs-v0-008");
 const HEAD_017 = headRow("gs-v0-017");
 const HEAD_022 = headRow("gs-v0-022");
 
@@ -228,6 +231,12 @@ const ROWS = {
   },
 } as const;
 
+/** 008's retrieved frame, widened with the reports the row read and ruled out. */
+const GS_008_EXCLUDED_FRAME: Retrieved[] = [
+  ...ROWS["gs-v0-008"].retrieved,
+  ...(HEAD_008.excludedCitations ?? []).map((label) => ({ label, sourceType: "primary" })),
+];
+
 /** The row's requirement without its opt-in alternative set: the shape that
  * isolates what the signed relation decides, since the row's own set is a
  * separate curation decision whose effect is asserted below. */
@@ -263,31 +272,31 @@ describe("D1a — the signed same-report identity of 1395 (016)", () => {
   });
 });
 
-describe("D1b — a signed same-ruling relation never satisfies the exact-address gate", () => {
-  it("keeps 006's gate validity at 0 without its opt-in set while the reported measure reads 1", () => {
+describe("D1b — the signed same-ruling relation satisfies the gate", () => {
+  it("accepts 006 without its opt-in set through the map, and the row passes", () => {
     const entry = ROWS["gs-v0-006"];
     const scored = score(withoutOptIn(entry.row), entry.cited, entry.retrieved, WITH_BOTH);
-    expect(scored.citationValidity).toBe(0); // 598 is the same ruling, not the same report
+    expect(scored.citationValidity).toBe(1); // 598 and 1070 state the same ruling
     expect(scored.citationAddressRecall).toBe(1); // the required address was retrieved
-    expect(scored.passed).toBe(false);
+    expect(scored.passed).toBe(true);
     expect(scored.identitySatisfied?.citationValidity).toBe(1);
     expect(scored.identitySatisfied?.passed).toBe(true);
   });
 
-  it("keeps 017's gate validity at 0 without its opt-in set while the reported measure reads 1", () => {
+  it("accepts 017 without its opt-in set through the map, and the row passes", () => {
     const entry = ROWS["gs-v0-017"];
     const scored = score(withoutOptIn(entry.row), entry.cited, entry.retrieved, WITH_BOTH);
-    expect(scored.citationValidity).toBe(0);
+    expect(scored.citationValidity).toBe(1); // 5148 and 3597 state the same ruling
     expect(scored.citationAddressRecall).toBe(1);
-    expect(scored.passed).toBe(false);
+    expect(scored.passed).toBe(true);
     expect(scored.identitySatisfied?.citationValidity).toBe(1);
     expect(scored.identitySatisfied?.passed).toBe(true);
   });
 
-  it("does not leak the broader resolver into the gate when only that resolver is injected", () => {
-    // The gate's resolver comes from `citationIdentity`, never from the reported
-    // one; a scoreQuestion that read the broader resolver for both would accept
-    // 598 here and fail this trap.
+  it("does not read the reported resolver in the gate's place", () => {
+    // `citationIdentity` is the gate's injection; `reportedCitationIdentity` only
+    // feeds the reported block. A scoreQuestion that read the reported resolver
+    // for both would accept 598 without the gate's map and fail this trap.
     const entry = ROWS["gs-v0-006"];
     const scored = score(withoutOptIn(entry.row), entry.cited, entry.retrieved, {
       gate: undefined,
@@ -304,6 +313,35 @@ describe("D1b — a signed same-ruling relation never satisfies the exact-addres
     const scored = outcome("gs-v0-016");
     expect(scored.citationAddressRecall).toBe(0);
     expect(scored.identitySatisfied?.citationAddressRecall).toBe(1);
+  });
+});
+
+describe("D1c — an opt-in alternative is a label, not an identity entry point", () => {
+  // 5144 is a gold-and-silk narration, foreign to 5026's recitation-merit
+  // component: only its own label may satisfy the row, never its same-ruling
+  // sibling 5145.
+  const row = question(
+    "gs-v0-foreign-alternative",
+    ["HR. Bukhari no. 5026"],
+    ["HR. Nasai no. 5144"],
+  );
+
+  it("passes on the alternative's own normalized label", () => {
+    const label = "HR. Nasai no. 5144";
+    const scored = score(row, [label], [{ label, sourceType: "primary" }], WITH_BOTH);
+    expect(scored.citationValidity).toBe(1);
+    expect(scored.identitySatisfied?.citationValidity).toBe(1);
+  });
+
+  it("fails on a same-ruling sibling of a foreign alternative", () => {
+    const sibling = "HR. Nasai no. 5145";
+    expect(gateIdentity.identityOf(sibling)).toBe(gateIdentity.identityOf("HR. Nasai no. 5144"));
+    expect(gateIdentity.identityOf(sibling)).not.toBe(
+      gateIdentity.identityOf("HR. Bukhari no. 5026"),
+    );
+    const scored = score(row, [sibling], [{ label: sibling, sourceType: "primary" }], WITH_BOTH);
+    expect(scored.citationValidity).toBe(0);
+    expect(scored.identitySatisfied?.citationValidity).toBe(0);
   });
 });
 
@@ -333,7 +371,7 @@ describe("D3b — the curated alternative sets are the opt-in that widens 006 an
     }
   });
 
-  it("accepts each map same-ruling member alone, and only through the set", () => {
+  it("accepts each map same-ruling member alone, with or without the set", () => {
     const entry = ROWS["gs-v0-006"];
     // The list is the fixture's own set, so a member added to the curation is
     // disposed of here without a hand edit.
@@ -343,13 +381,13 @@ describe("D3b — the curated alternative sets are the opt-in that widens 006 an
       const alone = score(entry.row, [member], entry.retrieved, WITH_BOTH);
       expect(alone.citationValidity, member).toBe(1);
       expect(alone.passed, member).toBe(true);
-      // The signed same-ruling relation is reported, never gating: without the
-      // opt-in set the same member leaves the gate at 0, and only the reported
-      // measure reads it — including 1070, which the map records beside the Ibn
-      // Umar reports as the Mu'adh report of the same ruling.
+      // The row's opt-in set widens the exact-address leg, not the validity
+      // decision: the map's signed same-ruling relation validates the member
+      // with the set removed too — including 1070, the Mu'adh report.
       const withoutSet = score(withoutOptIn(entry.row), [member], entry.retrieved, WITH_BOTH);
-      expect(withoutSet.citationValidity, member).toBe(0);
+      expect(withoutSet.citationValidity, member).toBe(1);
       expect(withoutSet.identitySatisfied?.citationValidity, member).toBe(1);
+      expect(withoutSet.passed, member).toBe(true);
     }
   });
 
@@ -442,13 +480,12 @@ describe("D3c — 022's same-ruling siblings are the opt-in that widens it", () 
     }
   });
 
-  it("accepts each same-ruling member only through the set, and reports the map relation", () => {
+  it("accepts each same-ruling member without the set through the map", () => {
     for (const member of GS_022.row.citationAlternatives ?? []) {
       const withoutSet = score(withoutOptIn(GS_022.row), [member], GS_022.retrieved, WITH_BOTH);
-      expect(withoutSet.citationValidity, member).toBe(0);
+      expect(withoutSet.citationValidity, member).toBe(1);
       expect(withoutSet.identitySatisfied?.citationValidity, member).toBe(1);
-      expect(withoutSet.passed, member).toBe(false);
-      expect(withoutSet.identitySatisfied?.passed, member).toBe(true);
+      expect(withoutSet.passed, member).toBe(true);
     }
   });
 
@@ -496,7 +533,15 @@ describe("D2 — the curated verse pair {QS. 1:1, QS. 1:3}", () => {
   });
 });
 
-describe("D3 — 008's opt-in any-of requirement is a set, not a loosened substring", () => {
+describe("D3 — 008's requirement is the map's same-ruling family, not a loosened substring", () => {
+  it("anchors the requirement in the signed same-ruling group", () => {
+    const group = identityGroup("same-ruling", requiredAddress(HEAD_008));
+    expect(group, "008's requirement anchors a same-ruling map group").toBeDefined();
+    for (const alternative of HEAD_008.citationAlternatives ?? []) {
+      expect(group?.members, alternative).toContain(alternative);
+    }
+  });
+
   it("passes both dimensions through the curated alternative", () => {
     const scored = outcome("gs-v0-008");
     expect(scored.citationValidity).toBe(1); // 5027 is a curator-accepted answer to the question
@@ -504,13 +549,45 @@ describe("D3 — 008's opt-in any-of requirement is a set, not a loosened substr
     expect(scored.passed).toBe(true);
   });
 
-  it("stays failed without the opt-in set: the default requirement is the exact 5026", () => {
+  it("accepts Tirmidhi 2910 alone through the map, though it is not in the row's set", () => {
+    const entry = ROWS["gs-v0-008"];
+    const cited = ["HR. Tirmidhi no. 2910"];
+    const scored = score(entry.row, cited, entry.retrieved, WITH_BOTH);
+    expect(scored.citationValidity).toBe(1); // the same-ruling relation validates it
+    expect(scored.citationAddressRecall).toBe(1); // 5027, a set member, was retrieved
+    expect(scored.passed).toBe(true);
+    // Without the signed map the address is not the row's requirement, so it fails.
+    expect(score(entry.row, cited, entry.retrieved).citationValidity).toBe(0);
+  });
+
+  it("without the opt-in set the map validates the citation while the exact address stays 0", () => {
     const entry = ROWS["gs-v0-008"];
     const withoutSet = question("gs-v0-008", ["HR. Bukhari no. 5026"]);
     const scored = score(withoutSet, entry.cited, entry.retrieved, WITH_BOTH);
-    expect(scored.citationValidity).toBe(0);
-    expect(scored.citationAddressRecall).toBe(0);
+    expect(scored.citationValidity).toBe(1); // 5027 and 4937 are map members
+    expect(scored.citationAddressRecall).toBe(0); // the set is what widens the exact leg
     expect(scored.passed).toBe(false);
+  });
+
+  it("does not accept a narration the curator read and ruled out", () => {
+    const excludedLabels = HEAD_008.excludedCitations ?? [];
+    expect(excludedLabels.length).toBeGreaterThan(0);
+    for (const label of excludedLabels) {
+      const excluded = score(ROWS["gs-v0-008"].row, [label], GS_008_EXCLUDED_FRAME, WITH_BOTH);
+      expect(excluded.citationValidity, label).toBe(0);
+      expect(excluded.identitySatisfied?.citationValidity, label).toBe(0);
+    }
+  });
+
+  it("keeps a row whose required address anchors no group on the exact address", () => {
+    const frame = [{ label: "HR. Bukhari no. 5029", sourceType: "primary" }];
+    const row = question("gs-v0-unanchored", ["HR. Bukhari no. 5029"]);
+    const exact = score(row, ["HR. Bukhari no. 5029"], frame, WITH_BOTH);
+    expect(exact.citationValidity).toBe(1);
+    // A neighbour the map places in another group is not this requirement.
+    const neighbour = score(row, ["HR. Bukhari no. 5026"], frame, WITH_BOTH);
+    expect(neighbour.citationValidity).toBe(0);
+    expect(neighbour.identitySatisfied?.citationValidity).toBe(0);
   });
 });
 
@@ -566,9 +643,9 @@ describe("the projection the PR states is derived from these decisions", () => {
     ]);
     // 007 is the only row neither instrument reaches; it needs the concept lever.
     expect(outcome("gs-v0-007").identitySatisfied?.passed).toBe(false);
-    // 012 moves on the curated verse pair; 006, 008 and 017 move on their own
-    // alternative sets; 016 stays red on the exact address this recorded evidence
-    // never retrieved, and the reported figure shows it.
+    // 012 moves on the curated verse pair; 006, 008 and 017 move on the map's
+    // same-ruling relations; 016 stays red on the exact address this recorded
+    // evidence never retrieved, and the reported figure shows it.
     expect(gatePassing.length).toBe(4);
     expect(reportedPassing.length).toBe(5);
   });

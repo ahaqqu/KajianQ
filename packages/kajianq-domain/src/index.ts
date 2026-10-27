@@ -78,7 +78,8 @@ export {
   type HadithRecord,
   type HadithSourceType,
 } from "./hadith-source";
-/** One loader for the signed maps: the gate's resolver and the reported resolver. */
+/** One loader for the signed maps: the gate's resolver, which the reported block
+ * also reads. */
 export { curatedIdentityResolvers, type CuratedIdentityResolvers } from "./curated-identities";
 export { alignEditions, type AlignmentStats } from "./hadith-align";
 export {

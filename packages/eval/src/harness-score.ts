@@ -17,8 +17,8 @@ import {
 /** The one verdict composition: a question passes when its behaviour, citation
  * validity and source-type recall are complete, and its address recall too unless
  * the run gates only on the others (`gateAddressRecall: false`). The gate and the
- * reported counterfactual call this same function with different citation
- * readings, so a change to the acceptance rule cannot move one without the other. */
+ * reported counterfactual call this same function with different address readings,
+ * so a change to the acceptance rule cannot move one without the other. */
 function verdict(input: {
   behavior: boolean;
   citationValidity: number;
@@ -40,13 +40,13 @@ function verdict(input: {
  * excepted when the run gates only on the others (`gateAddressRecall: false`). The
  * trap rule's residual lives in `behaviorAccepted`.
  *
- * The `identitySatisfied` block is REPORTED, never gating: it repeats the address
- * and validity readings through the broader signed relation and derives the
- * counterfactual verdict, so an exact-address residual is visible as a number
- * without redefining `passed`. It is written only when the caller injected
- * `reportedCitationIdentity`; a run without one keeps its historical outcome
- * shape, so a composition root that forgets the reported resolver publishes no
- * figure rather than the gate's relation under the reported name. */
+ * The `identitySatisfied` block is REPORTED, never gating: it recomputes the
+ * address reading through the signed identity and repeats the gate's validity
+ * reading, then derives the counterfactual verdict, so an exact-address residual is
+ * visible as a number without redefining `passed`. It is written only when the
+ * caller injected `reportedCitationIdentity`; a run without one keeps its
+ * historical outcome shape, so a composition root that does not publish the
+ * counterfactual writes no block. */
 export function scoreQuestion(
   question: GoldenQuestion,
   answerText: string,
@@ -128,13 +128,13 @@ export function scoreQuestion(
 }
 
 /**
- * The reported identity-satisfied block: the address and validity readings through
- * the broader resolver, then the counterfactual verdict from {@link verdict} — the
- * same composition the gate uses, including the run's address-gating policy — so
- * the two verdicts are like-for-like and the difference is only which relation the
- * citation dimensions read. `undefined` when the caller injected no reported
- * resolver, because the block would then be a copy of the gate's own numbers under
- * a name that claims more. The gate resolver alone never stands in for it.
+ * The reported identity-satisfied block: the address reading through the signed
+ * identity (the leg it widens) and the gate's citation-validity reading repeated,
+ * then the counterfactual verdict from {@link verdict} — the same composition the
+ * gate uses, including the run's address-gating policy — so the two verdicts are
+ * like-for-like. `undefined` when the caller injected no reported resolver, because
+ * the block exists only for a composition root that opts into publishing the
+ * counterfactual; the gate resolver is the same signed map.
  */
 function reportedIdentityOutcome(input: {
   question: GoldenQuestion;

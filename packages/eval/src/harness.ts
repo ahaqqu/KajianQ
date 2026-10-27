@@ -76,14 +76,16 @@ export type HarnessDeps = {
   gateAddressRecall?: boolean;
   /** The canonical citation-identity resolver, supplied by the composition root
    * (the engine compares opaque keys). Omitted, citation validity keeps the
-   * exact-label comparison; supplied, a required citation is also satisfied by
-   * a parallel narration of it. */
+   * exact-label comparison; supplied, a required citation is also satisfied by any
+   * label of its signed identity — a parallel chain or another report of the same
+   * ruling. */
   citationIdentity?: CitationIdentity;
-  /** The broader resolver the REPORTED identity-satisfied block reads: every group
-   * the gate may read plus those signed as the same ruling. Supplied only by a
-   * composition root that curates that relation; omitted, no reported block is
-   * written, so a forgotten delivery publishes no figure rather than the gate's
-   * own relation under the reported name. Never read by `passed`. */
+  /** The resolver the REPORTED identity-satisfied block reads. It is the gate's own
+   * signed map; the block differs from the gate only in the leg it widens (the
+   * address comparison), because citation validity is the gate's reading repeated.
+   * Supplied only by a composition root that publishes the counterfactual; omitted,
+   * no reported block is written, so a forgotten delivery publishes no figure under
+   * the reported name. Never read by `passed`. */
   reportedCitationIdentity?: CitationIdentity;
   /** The opaque `origin` label the domain pack puts on chunks its scope expansion
    * added (ADR-0045), supplied by the composition root — the engine must not

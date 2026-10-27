@@ -48,18 +48,20 @@ const GoldenQuestionShape = v.object({
   /**
    * OPT-IN any-of requirement: citations that also satisfy this question's single
    * required citation. A curator names a set when the question admits several valid
-   * answers that are different reports — an identity relation is the wrong vehicle
-   * for that, because identity means one report. Validity accepts any member, and
-   * address recall accepts a retrieved member; absent, the all-required default is
-   * unchanged. Legal only on a question with exactly one required citation, which
-   * is the requirement the set widens.
+   * answers that are different reports. A member is matched as its own normalized
+   * label in citation validity and in address recall; it never resolves through the
+   * identity map, whose signed `same-report`/`same-ruling` widening applies only to
+   * the required citation. Validity accepts any member, and address recall accepts a
+   * retrieved member; absent, the all-required default is unchanged. Legal only on
+   * a question with exactly one required citation, which is the requirement the set
+   * widens.
    */
   citationAlternatives: v.optional(v.pipe(v.array(GoldenCitationSchema), v.minLength(1))),
   /**
-   * Citations the curator read and ruled out for this row: a same-ruling map
-   * sibling the row declines to accept, or a near-miss report. Structured, so an
-   * exclusion is a recorded curation decision rather than a note a reader can
-   * mistake for one; only the reason lives in prose (`excludedNote`).
+   * Citations the curator read and ruled out for this row: a near-miss report, or
+   * a narration no group in the identity map carries. Structured, so an exclusion
+   * is a recorded curation decision rather than a note a reader can mistake for
+   * one; only the reason lives in prose (`excludedNote`).
    */
   excludedCitations: v.optional(v.pipe(v.array(GoldenCitationSchema), v.minLength(1))),
   /** One-line reason for the row's `excludedCitations`, naming each excluded

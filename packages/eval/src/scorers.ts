@@ -129,18 +129,20 @@ function textCandidateLabels(answerText: string, grammar?: CitationGrammar): str
  * nothing. A `null` declaration refuses on either side; without a grammar the
  * comparison stays the byte-exact substring test.
  *
- * A citation that is not the same row but is the same **narration** matches
- * through the injected {@link CitationIdentity}: the identity is consulted only
- * after the address comparison misses, and only when the required label
- * resolves; a label the map does not carry resolves to `null` and matches
- * nothing. That keeps the exact-row path and the fail-closed behavior for
- * unmapped, fabricated, and unrelated citations.
+ * A citation that is not the same row but carries the same signed **identity** —
+ * a parallel chain or another report of the same ruling — matches through the
+ * injected {@link CitationIdentity}: the identity is consulted only after the
+ * address comparison misses, and only when the required label resolves; a label
+ * the map does not carry resolves to `null` and matches nothing. That keeps the
+ * exact-row path and the fail-closed behavior for unmapped, fabricated, and
+ * unrelated citations.
  *
  * `alternatives` is a curator's opt-in any-of set for a single-requirement row:
- * a requirement is satisfied when any member of the set matches, exactly as the
- * requirement itself would. The members are different reports, so the set is a
- * requirement decision rather than an identity — a same-ruling identity never
- * reaches this path under the gate's resolver.
+ * the requirement is satisfied when any member is present as its own normalized
+ * label, exactly as the requirement's own address would be. A member never
+ * resolves through {@link CitationIdentity}, so the set can widen which addresses
+ * satisfy the requirement but never which narration's family does; the identity
+ * widening applies only to the required citation.
  */
 function groundedLabels(
   required: readonly string[],
@@ -150,20 +152,28 @@ function groundedLabels(
   alternatives: readonly string[] = [],
 ): string[] {
   if (grammar === undefined) {
-    const textMatches = (citation: string): boolean =>
-      evidence.some((label) => label.includes(citation)) ||
-      sameIdentity(identity, citation, evidence);
-    return required.filter((citation) => [citation, ...alternatives].some(textMatches));
+    const textMatches = (label: string): boolean =>
+      evidence.some((evidenceLabel) => evidenceLabel.includes(label));
+    return required.filter(
+      (citation) =>
+        textMatches(citation) ||
+        sameIdentity(identity, citation, evidence) ||
+        alternatives.some((alternative) => textMatches(alternative)),
+    );
   }
   // One set per row: the evidence's addresses do not change per requirement, and
   // every rebuild re-parses each evidence label through the grammar.
   const named = new Set(evidence.flatMap((label) => comparedAddressesOf(label, grammar) ?? []));
-  const addressMatches = (citation: string): boolean => {
-    const addresses = comparedAddressesOf(citation, grammar);
-    if (addresses !== null && addresses.every((address) => named.has(address))) return true;
-    return sameIdentity(identity, citation, evidence);
+  const addressMatches = (label: string): boolean => {
+    const addresses = comparedAddressesOf(label, grammar);
+    return addresses !== null && addresses.every((address) => named.has(address));
   };
-  return required.filter((citation) => [citation, ...alternatives].some(addressMatches));
+  return required.filter(
+    (citation) =>
+      addressMatches(citation) ||
+      sameIdentity(identity, citation, evidence) ||
+      alternatives.some((alternative) => addressMatches(alternative)),
+  );
 }
 
 /** Whether one required citation names the same curated identity as any
@@ -185,10 +195,11 @@ function sameIdentity(
  * answer's evidence contains, in the preference order
  * {@link citationLabelsPresent} owns. No required citations scores 1; without a
  * grammar the text path keeps its two-argument semantics. An injected
- * {@link CitationIdentity} lets a required citation be satisfied by a parallel
- * narration of it, never by a different one. `alternatives` is the row's opt-in
- * any-of set (see {@link groundedLabels}); absent, the all-required default is
- * unchanged.
+ * {@link CitationIdentity} lets a required citation be satisfied by any label of
+ * its signed identity — a parallel chain or another report of the same ruling —
+ * never by an unrelated narration. `alternatives` is the row's opt-in any-of set,
+ * matched as labels only (see {@link groundedLabels}); absent, the all-required
+ * default is unchanged.
  */
 export function citationValidity(
   requiredCitations: readonly string[],

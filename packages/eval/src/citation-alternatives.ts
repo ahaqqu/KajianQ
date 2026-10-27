@@ -2,7 +2,10 @@
  * The opt-in any-of set's scope contract, enforced at the scorer boundary.
  *
  * `citationAlternatives` answers a single-requirement row: the curator ruled that
- * any member of the set is a valid answer to that one question. The Golden Set
+ * any member of the set is a valid answer to that one question. A member is
+ * matched as its own normalized label, never as an entry point into its identity
+ * family: the map's same-report/same-ruling widening applies only to the required
+ * citation, so a set cannot broaden what narration the row accepts. The Golden Set
  * contract rejects a set on a multi-requirement row, but the scorers are package
  * exports and `scoreQuestion` takes a hand-built `GoldenQuestion`, so a set that
  * reached them on a multi-requirement row would widen every requirement it was
