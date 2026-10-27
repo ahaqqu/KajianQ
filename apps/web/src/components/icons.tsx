@@ -170,3 +170,19 @@ export function HistoryIcon({ className = BASE }: IconProps) {
     </svg>
   );
 }
+
+export function DownloadIcon({ className = BASE }: IconProps) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      className={className}
+      aria-hidden="true"
+    >
+      <path d="M12 4v10m0 0 4-4m-4 4-4-4" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M5 18h14" strokeLinecap="round" />
+    </svg>
+  );
+}

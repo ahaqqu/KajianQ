@@ -4,16 +4,20 @@ import { useChatHistory, type HistoryNotice } from "../lib/use-chat-history";
 import { HistoryCloseButton, HistoryEntryRow } from "./HistoryDrawerParts";
 
 /** The list's message for each reason, so the row keeps its place. */
-const NOTICE_KEYS: Record<HistoryNotice, "historyExpiredHint" | "historyOpenFailed"> = {
+const NOTICE_KEYS: Record<
+  HistoryNotice,
+  "historyExpiredHint" | "historyOpenFailed" | "historyDownloadFailed"
+> = {
   expired: "historyExpiredHint",
   failed: "historyOpenFailed",
+  "download-failed": "historyDownloadFailed",
 };
 
 /**
  * The conversation-history drawer: the conversations this browser has held,
- * newest first, each one reopenable. The list itself is local metadata
- * (`useChatHistory`), and the storage switch at the foot is where the reader
- * changes what the chat may keep (ADR-0063).
+ * newest first, each one reopenable or downloadable. The list itself is local
+ * metadata (`useChatHistory`), and the storage switch at the foot is where the
+ * reader changes what the chat may keep (ADR-0063).
  */
 export function HistoryDrawer({ onClose }: { onClose: () => void }) {
   const locale = useLocale();
@@ -93,6 +97,7 @@ export function HistoryDrawer({ onClose }: { onClose: () => void }) {
                   locale={locale}
                   busy={history.busy}
                   onOpen={() => void history.open(entry)}
+                  onDownload={() => void history.download(entry)}
                   onRemove={() => history.remove(entry.id)}
                 />
               ))}

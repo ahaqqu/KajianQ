@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useNavigate, useRouterState } from "@tanstack/react-router";
 import type { ChatSessionMessages } from "@app/contracts";
+import { conversationFileName, conversationMarkdown, saveConversationFile } from "./chat-export";
 import {
   OPEN_SESSION_EVENT,
   clearChatHistory,
@@ -17,8 +18,8 @@ import {
 } from "./chat-store";
 
 /**
- * The conversation-history drawer's state: the list, the request a row makes
- * (open), the removal, and the storage switch. It lives out of
+ * The conversation-history drawer's state: the list, the two requests a row can
+ * make (open, download), the removal, and the storage switch. It lives out of
  * the drawer because that is where the logic belongs — the drawer is layout.
  *
  * Opening rehydrates through the transcript endpoint FIRST, then hands the
@@ -30,10 +31,12 @@ import {
  */
 
 /** Why the list is showing a message instead of acting on the row. */
-export type HistoryNotice = "expired" | "failed";
+export type HistoryNotice = "expired" | "failed" | "download-failed";
 
 /** A row's request: the transcript, or why there is none. */
-type Loaded = { ok: true; transcript: ChatSessionMessages } | { ok: false; notice: HistoryNotice };
+type Loaded =
+  | { ok: true; transcript: ChatSessionMessages }
+  | { ok: false; notice: Exclude<HistoryNotice, "download-failed"> };
 
 export function useChatHistory(onOpened: () => void) {
   const navigate = useNavigate();
@@ -95,6 +98,17 @@ export function useChatHistory(onOpened: () => void) {
       "failed",
     );
 
+  const download = (entry: ChatHistoryEntry): Promise<void> =>
+    run(
+      entry,
+      (transcript) =>
+        saveConversationFile(
+          conversationFileName(entry.title, entry.startedAt),
+          conversationMarkdown(transcript, entry.locale, entry.title),
+        ),
+      "download-failed",
+    );
+
   const remove = (id: string): void => {
     removeChatHistoryEntry(id);
     refresh();
@@ -123,6 +137,7 @@ export function useChatHistory(onOpened: () => void) {
     notice,
     busy: busyId !== null,
     open,
+    download,
     remove,
     clear,
     setKeep,

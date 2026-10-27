@@ -1,7 +1,7 @@
 import type { Ref } from "react";
 import type { ChatHistoryEntry } from "../lib/chat-store";
 import { formatMessage, t, type Locale } from "../lib/i18n";
-import { CloseIcon, HistoryIcon } from "./icons";
+import { CloseIcon, DownloadIcon, HistoryIcon } from "./icons";
 
 /**
  * The drawer's parts: the close control and one conversation row. They hold no
@@ -40,7 +40,7 @@ export function HistoryCloseButton({
 /**
  * One row of the conversation-history drawer: the conversation's first question,
  * the language it was started in, how long ago, and — while the server still
- * holds it — the open action. The row owns no state; the drawer
+ * holds it — the open and download actions. The row owns no state; the drawer
  * owns the requests and the busy flags.
  */
 export function HistoryEntryRow({
@@ -48,12 +48,14 @@ export function HistoryEntryRow({
   locale,
   busy,
   onOpen,
+  onDownload,
   onRemove,
 }: {
   entry: ChatHistoryEntry;
   locale: Locale;
   busy: boolean;
   onOpen: () => void;
+  onDownload: () => void;
   onRemove: () => void;
 }) {
   const expired = entry.expired === true;
@@ -83,6 +85,16 @@ export function HistoryEntryRow({
             </span>
           )}
         </span>
+      </button>
+      <button
+        type="button"
+        data-testid="history-download"
+        aria-label={t(locale, "historyDownload")}
+        disabled={busy}
+        onClick={onDownload}
+        className={ROW_ACTION}
+      >
+        <DownloadIcon className="size-3.5" />
       </button>
       <button
         type="button"

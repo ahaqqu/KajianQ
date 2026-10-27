@@ -1,3 +1,4 @@
+import { readFile } from "node:fs/promises";
 import { createBdd } from "playwright-bdd";
 import { expect } from "@playwright/test";
 
@@ -108,4 +109,20 @@ When("I remove it", async ({ page }) => {
 
 Then("the list is empty", async ({ page }) => {
   await expect(page.getByTestId("history-empty")).toBeVisible();
+});
+
+Then("downloading that conversation writes a Markdown file", async ({ page }) => {
+  const downloadPromise = page.waitForEvent("download");
+  await page.getByTestId("history-download").click();
+  const download = await downloadPromise;
+
+  expect(download.suggestedFilename()).toMatch(
+    /^kajianq-apa-itu-ayat-kursi-\d{4}-\d{2}-\d{2}\.md$/,
+  );
+  const path = await download.path();
+  expect(path).not.toBeNull();
+  const content = await readFile(path!, "utf8");
+  expect(content).toContain("# Apa itu ayat kursi?");
+  expect(content).toContain("## Anda");
+  expect(content).toContain("## KajianQ");
 });
