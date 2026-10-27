@@ -59,9 +59,31 @@
         "HR. Nasai no. 598",
         "HR. Bukhari no. 1109",
         "HR. Muslim no. 1621",
-        "HR. Muslim no. 1624"
+        "HR. Muslim no. 1624",
+        "HR. Ibn Majah no. 1070"
       ],
-      "rationale": "Bukhari 1108 (Anas, through Yahya ← Hafsh) and these Ibn Umar rows state the same ruling — combining Maghrib and Isha while travelling — under different chains and wording: Nasai 598 and Muslim 1621 are the Malik ← Nafi' ← Ibn Umar report, Bukhari 1109 and Muslim 1624 the Zuhri ← Salim ← Ibn Umar report. None of them is a chain of the Anas report, so the exact-address gate does not read this group."
+      "rationale": "Bukhari 1108 (Anas, through Yahya ← Hafsh) and these rows state the same ruling — combining prayers while travelling — under different chains and wording: Nasai 598 and Muslim 1621 are the Malik ← Nafi' ← Ibn Umar report, Bukhari 1109 and Muslim 1624 the Zuhri ← Salim ← Ibn Umar report, and Ibn Majah 1070 the Mu'adh ibn Jabal report of combining all four prayers at Tabuk. None of them is a chain of the Anas report, so the exact-address gate does not read this group."
+    },
+    {
+      "id": "mother-precedence-companionship",
+      "relation": "same-report",
+      "canonical": "HR. Bukhari no. 5971",
+      "members": [
+        "HR. Muslim no. 6500",
+        "HR. Muslim no. 6501",
+        "HR. Muslim no. 6502",
+        "HR. Muslim no. 6503",
+        "HR. Ibn Majah no. 2706",
+        "HR. Ibn Majah no. 3658"
+      ],
+      "rationale": "One report from Abu Hurayra — a man asked who is most entitled to his good companionship, and the Prophet answered \"your mother\" three times, then \"then your father\" — narrated through the same lower chain ('Umarah ibn al-Qa'qa' ← Abu Zur'a ← Abu Hurayra) from different top links: Muslim 6500 through Jarir, 6501 through Ibn Fudayl, 6502 and Ibn Majah 2706 through Sharik and Ibn Shubruma, 6503 through Ibn Shubruma, and Ibn Majah 3658 through Sufyan. Wording varies: 6501 adds \"then your nearest, nearest\", Ibn Majah 3658 states the mother twice and closes with the nearest, and 6502/6503 carry the matn only by reference to Jarir's report. They are chains of one report, not different reports; the different reports of the same ruling sit in the group beside this one."
+    },
+    {
+      "id": "mother-precedence-companionship-ruling",
+      "relation": "same-ruling",
+      "canonical": "HR. Bukhari no. 5971",
+      "members": ["HR. Abu Dawud no. 5139", "HR. Tirmidhi no. 1897", "HR. Ibn Majah no. 3661"],
+      "rationale": "Bukhari 5971 (Abu Hurayra) and these narrations state the same ruling — the mother is owed precedence three times, then the father — under different reports: Abu Dawud 5139 and Tirmidhi 1897 are Bahz ibn Hakim ← his father ← his grandfather, answering \"whom shall I honour?\", and Ibn Majah 3661 is Miqdam ibn Ma'dikarib (\"Allah enjoins you to your mothers three times, then to your fathers, then to the nearest of kin\"). Different companions and wording, each adding the nearest of kin after the father; none is a chain of the Abu Hurayra report. Ibn Majah 3657 states the same instruction but every grader grades it Daif, and Abu Dawud 5140 lists mother, father, sister and brother in one breath and is Daif by both graders, so neither is a member."
     },
     {
       "id": "zakat-obligation-ibn-abbas",
@@ -113,10 +135,9 @@
         "HR. Nasai no. 5148",
         "HR. Nasai no. 5265",
         "HR. Ibn Majah no. 3597",
-        "HR. Ibn Majah no. 3590",
         "HR. Tirmidhi no. 1720"
       ],
-      "rationale": "One instruction — gold and silk are prohibited to the men of this ummah and permitted to its women — narrated from different companions through different chains: 5148/5265/1720 are the Abu Musa report, 3597 the 'Abdullah ibn 'Amr report, and 3590 states the prohibition without the male/female clause. Nasai 5149 and 5160 are not members: they state the exception (\"إلا مقطعًا\" — gold or silk in a cut piece is permitted), a different ruling."
+      "rationale": "One instruction — gold and silk are prohibited to the men of this ummah and permitted to its women — narrated from different companions through different chains: 5148/5265/1720 are the Abu Musa report and 3597 the 'Abdullah ibn 'Amr report. Ibn Majah 3590 is not a member: its matn reads «نَهَى رَسُولُ اللَّهِ ـ صلى الله عليه وسلم ـ عَنْ لُبْسِ الْحَرِيرِ وَالذَّهَبِ وَقَالَ هُوَ لَهُمْ فِي الدُّنْيَا وَلَنَا فِي الآخِرَةِ» — the prohibition, with \"it is for them in this world and for us in the Hereafter\" and no male/female clause — so it does not state the men/women ruling this group records. Nasai 5149 and 5160 are not members either: they state the exception (\"إلا مقطعًا\" — gold or silk in a cut piece is permitted), a different ruling."
     }
   ]
 }

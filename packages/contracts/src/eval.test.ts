@@ -279,6 +279,56 @@ describe("GoldenQuestionSchema — the opt-in any-of requirement (D3)", () => {
       }).success,
     ).toBe(false);
   });
+
+  it("parses a structured exclusion set with its one-line reason", () => {
+    const parsed = v.parse(GoldenQuestionSchema, {
+      ...question,
+      excludedCitations: ["HR. Bukhari no. 5028"],
+      excludedNote: "HR. Bukhari no. 5028 is another report on the same subject.",
+    });
+    expect(parsed.excludedCitations).toEqual(["HR. Bukhari no. 5028"]);
+    expect(parsed.excludedNote).toBe("HR. Bukhari no. 5028 is another report on the same subject.");
+  });
+
+  it("requires the exclusion reason beside the exclusion set, on one line", () => {
+    expect(
+      v.safeParse(GoldenQuestionSchema, {
+        ...question,
+        excludedCitations: ["HR. Bukhari no. 5028"],
+      }).success,
+    ).toBe(false);
+    expect(
+      v.safeParse(GoldenQuestionSchema, {
+        ...question,
+        excludedNote: "HR. Bukhari no. 5028 is another report.",
+      }).success,
+    ).toBe(false);
+    expect(
+      v.safeParse(GoldenQuestionSchema, {
+        ...question,
+        excludedCitations: ["HR. Bukhari no. 5028"],
+        excludedNote: "HR. Bukhari no. 5028 is one report.\nHR. Bukhari no. 5029 is another.",
+      }).success,
+    ).toBe(false);
+  });
+
+  it("rejects an exclusion that is also required or opted in", () => {
+    expect(
+      v.safeParse(GoldenQuestionSchema, {
+        ...question,
+        excludedCitations: ["HR. Bukhari no. 5026"],
+        excludedNote: "HR. Bukhari no. 5026 is the requirement.",
+      }).success,
+    ).toBe(false);
+    expect(
+      v.safeParse(GoldenQuestionSchema, {
+        ...question,
+        citationAlternatives: ["HR. Bukhari no. 5027"],
+        excludedCitations: ["HR. Bukhari no. 5027"],
+        excludedNote: "HR. Bukhari no. 5027 is already accepted.",
+      }).success,
+    ).toBe(false);
+  });
 });
 
 describe("the reported identity-satisfied block", () => {
