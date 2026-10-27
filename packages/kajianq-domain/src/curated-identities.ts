@@ -4,6 +4,7 @@ import {
   GATING_IDENTITY_RELATIONS,
   REPORTED_IDENTITY_RELATIONS,
   parseHadithIdentitySet,
+  type HadithIdentityGroup,
 } from "./hadith-identity";
 import { parseQuranIdentitySet } from "./quran-identity";
 
@@ -24,6 +25,9 @@ import { parseQuranIdentitySet } from "./quran-identity";
 export type CuratedIdentityResolvers = {
   gating: { identityOf: (label: string) => string | null };
   reported: { identityOf: (label: string) => string | null };
+  /** The parsed matn-identity map's groups, so a consumer that must account for
+   * every relation reads the same parse the resolvers are built from. */
+  groups: readonly HadithIdentityGroup[];
 };
 
 const HADITH_FIXTURE = new URL("../fixtures/hadith-identities-v0.json", import.meta.url);
@@ -41,5 +45,6 @@ export function curatedIdentityResolvers(): CuratedIdentityResolvers {
   return {
     gating: { identityOf: citationIdentityResolver(hadith, quran, GATING_IDENTITY_RELATIONS) },
     reported: { identityOf: citationIdentityResolver(hadith, quran, REPORTED_IDENTITY_RELATIONS) },
+    groups: hadith.groups,
   };
 }

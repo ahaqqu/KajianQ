@@ -55,6 +55,16 @@ const GoldenQuestionShape = v.object({
    * is the requirement the set widens.
    */
   citationAlternatives: v.optional(v.pipe(v.array(GoldenCitationSchema), v.minLength(1))),
+  /**
+   * Citations the curator read and ruled out for this row: a same-ruling map
+   * sibling the row declines to accept, or a near-miss report. Structured, so an
+   * exclusion is a recorded curation decision rather than a note a reader can
+   * mistake for one; only the reason lives in prose (`excludedNote`).
+   */
+  excludedCitations: v.optional(v.pipe(v.array(GoldenCitationSchema), v.minLength(1))),
+  /** One-line reason for the row's `excludedCitations`, naming each excluded
+   * label. Curation metadata: no scorer reads it. */
+  excludedNote: v.optional(v.pipe(v.string(), v.minLength(1))),
   /** Whether the pipeline should answer or refuse. */
   expectedBehavior: ExpectedBehaviorSchema,
   /** Trap/coverage tags (e.g. a weak-grade trap, a refusal case). Opaque. */
@@ -72,6 +82,27 @@ export const GoldenQuestionSchema = v.pipe(
           question.requiredCitations.some((required) => required.trim() === alternative.trim()),
         )),
     "citationAlternatives widens exactly one required citation and may not repeat it",
+  ),
+  v.check(
+    (question) =>
+      (question.excludedCitations === undefined) === (question.excludedNote === undefined),
+    "excludedCitations and excludedNote are recorded together",
+  ),
+  v.check(
+    (question) => question.excludedNote === undefined || !/[\r\n]/.test(question.excludedNote),
+    "excludedNote is one line",
+  ),
+  v.check(
+    (question) =>
+      question.excludedCitations === undefined ||
+      !question.excludedCitations.some((excluded) => {
+        const label = excluded.trim();
+        return (
+          question.requiredCitations.some((required) => required.trim() === label) ||
+          (question.citationAlternatives ?? []).some((alternative) => alternative.trim() === label)
+        );
+      }),
+    "excludedCitations may not repeat a required or opted-in citation",
   ),
 );
 

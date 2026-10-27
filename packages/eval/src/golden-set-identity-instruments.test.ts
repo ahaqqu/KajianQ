@@ -27,7 +27,11 @@ import type { CitationGrammar, TraceEventLike } from "./harness-types";
  * stays exact, so the gate's number remains comparable with past runs.
  */
 
-const { gating: gateIdentity, reported: reportedIdentity } = curatedIdentityResolvers();
+const {
+  gating: gateIdentity,
+  reported: reportedIdentity,
+  groups: IDENTITY_GROUPS,
+} = curatedIdentityResolvers();
 const GRAMMAR: CitationGrammar = {
   normalizeLabel: normalizeCitationLabel,
   labelsInText: citationCandidatesIn,
@@ -57,7 +61,29 @@ function headRow(id: string): GoldenQuestion {
 }
 
 const HEAD_006 = headRow("gs-v0-006");
+const HEAD_017 = headRow("gs-v0-017");
 const HEAD_022 = headRow("gs-v0-022");
+
+/** The row's single required address; a row with none cannot anchor a group. */
+function requiredAddress(row: GoldenQuestion): string {
+  const [address] = row.requiredCitations;
+  if (address === undefined) throw new Error(`the fixture row ${row.id} has no required citation`);
+  return address;
+}
+
+/** The group the requirement anchors, by relation. A changed requirement stops
+ * resolving here, so the fixture/map drift is a red case rather than a silent
+ * re-read of another group. */
+function identityGroup(
+  relation: "same-report" | "same-ruling",
+  canonical: string,
+): (typeof IDENTITY_GROUPS)[number] | undefined {
+  const normalized = normalizeCitationLabel(canonical);
+  return IDENTITY_GROUPS.find(
+    (group) =>
+      group.relation === relation && normalizeCitationLabel(group.canonical) === normalized,
+  );
+}
 
 type Retrieved = { label: string; sourceType: string };
 
@@ -110,10 +136,9 @@ function score(
 
 const WITH_BOTH = { gate: gateIdentity, reported: reportedIdentity };
 
-/** 022's curated disposition, not a recorded cited set: the draw retrieved the
- * required address (address recall 1.000) and the answer grounded a sibling. The
- * retrieved frame carries the required address and every curated sibling, so each
- * member below can be grounded alone. */
+/** 022's curated disposition, not a recorded cited set: the retrieved frame
+ * carries the required address and every curated sibling, so each member below
+ * can be grounded alone. */
 const GS_022 = {
   row: question("gs-v0-022", HEAD_022.requiredCitations, HEAD_022.citationAlternatives),
   retrieved: [
@@ -129,6 +154,13 @@ const GS_022 = {
     { label: "HR. Ibn Majah no. 3658", sourceType: "primary" },
   ] as Retrieved[],
 };
+
+/** The same frame plus each report the fixture records as excluded, so the
+ * rejection is decided on retrieved evidence rather than on absence. */
+const GS_022_EXCLUDED_FRAME: Retrieved[] = [
+  ...GS_022.retrieved,
+  ...(HEAD_022.excludedCitations ?? []).map((label) => ({ label, sourceType: "primary" })),
+];
 
 /**
  * The recorded inputs, one entry per failing row of the QA report. The cited set
@@ -185,16 +217,7 @@ const ROWS = {
     ],
   },
   "gs-v0-017": {
-    row: question(
-      "gs-v0-017",
-      ["HR. Nasai no. 5144"],
-      [
-        "HR. Nasai no. 5148",
-        "HR. Nasai no. 5265",
-        "HR. Tirmidhi no. 1720",
-        "HR. Ibn Majah no. 3597",
-      ],
-    ),
+    row: question("gs-v0-017", ["HR. Nasai no. 5144"], HEAD_017.citationAlternatives),
     cited: ["HR. Nasai no. 5148", "HR. Nasai no. 5149", "HR. Ibn Majah no. 3597"],
     retrieved: [
       { label: "HR. Nasai no. 5144", sourceType: "primary" },
@@ -284,31 +307,21 @@ describe("D1b — a signed same-ruling relation never satisfies the exact-addres
   });
 });
 
-/** The map's same-ruling members for 006's required address, listed for the
- * per-member disposition. The curation test requires the row's opt-in set to
- * accept every member the map records; this list disposes of each of those
- * members, so a member the set loses fails here too. */
-const SAME_RULING_006_MEMBERS = [
-  "HR. Nasai no. 598",
-  "HR. Ibn Majah no. 1070",
-  "HR. Bukhari no. 1109",
-  "HR. Muslim no. 1621",
-  "HR. Muslim no. 1624",
-] as const;
-
 describe("D3b — the curated alternative sets are the opt-in that widens 006 and 017", () => {
+  it("pins the fixture set to 006's map group, so either side's edit flows through", () => {
+    const group = identityGroup("same-ruling", requiredAddress(HEAD_006));
+    expect(group, "006's requirement anchors a same-ruling map group").toBeDefined();
+    if (group === undefined) return;
+    // The per-member loop below reads the fixture, so a member added there is
+    // covered without a hand edit; adding it to the map instead reds this pin
+    // until the fixture accepts it.
+    expect(new Set(HEAD_006.citationAlternatives)).toEqual(new Set(group.members));
+  });
+
   it("passes 006 through its own set and accepts each member alone", () => {
     const entry = ROWS["gs-v0-006"];
-    // The curated set is this case's input; pin it so a dropped member cannot
-    // quietly shrink the loop below.
     const alternatives = entry.row.citationAlternatives ?? [];
-    expect(alternatives).toEqual([
-      "HR. Nasai no. 598",
-      "HR. Ibn Majah no. 1070",
-      "HR. Bukhari no. 1109",
-      "HR. Muslim no. 1621",
-      "HR. Muslim no. 1624",
-    ]);
+    expect(alternatives.length).toBeGreaterThan(0);
     const scored = outcome("gs-v0-006");
     expect(scored.citationValidity).toBe(1); // every member is a curator-accepted answer
     expect(scored.citationAddressRecall).toBe(1); // the required address was retrieved
@@ -322,11 +335,11 @@ describe("D3b — the curated alternative sets are the opt-in that widens 006 an
 
   it("accepts each map same-ruling member alone, and only through the set", () => {
     const entry = ROWS["gs-v0-006"];
-    // The premise of this case: the map records the group. An empty list would
-    // make the loop vacuous, not green.
-    expect(SAME_RULING_006_MEMBERS.length).toBeGreaterThan(0);
-    for (const member of SAME_RULING_006_MEMBERS) {
-      expect(entry.row.citationAlternatives, member).toContain(member);
+    // The list is the fixture's own set, so a member added to the curation is
+    // disposed of here without a hand edit.
+    const alternatives = HEAD_006.citationAlternatives ?? [];
+    expect(alternatives.length).toBeGreaterThan(0);
+    for (const member of alternatives) {
       const alone = score(entry.row, [member], entry.retrieved, WITH_BOTH);
       expect(alone.citationValidity, member).toBe(1);
       expect(alone.passed, member).toBe(true);
@@ -342,11 +355,13 @@ describe("D3b — the curated alternative sets are the opt-in that widens 006 an
 
   it("passes 017 through its own set and accepts each member alone", () => {
     const entry = ROWS["gs-v0-017"];
+    const alternatives = entry.row.citationAlternatives ?? [];
+    expect(alternatives.length).toBeGreaterThan(0);
     const scored = outcome("gs-v0-017");
     expect(scored.citationValidity).toBe(1);
     expect(scored.citationAddressRecall).toBe(1);
     expect(scored.passed).toBe(true);
-    for (const alternative of entry.row.citationAlternatives ?? []) {
+    for (const alternative of alternatives) {
       const alone = score(entry.row, [alternative], entry.retrieved, WITH_BOTH);
       expect(alone.citationValidity, alternative).toBe(1);
     }
@@ -399,15 +414,22 @@ describe("D3b — the curated alternative sets are the opt-in that widens 006 an
 });
 
 describe("D3c — 022's same-ruling siblings are the opt-in that widens it", () => {
+  it("pins the fixture's set and the map's groups, so either side's edit flows through", () => {
+    const report = identityGroup("same-report", requiredAddress(HEAD_022));
+    const ruling = identityGroup("same-ruling", requiredAddress(HEAD_022));
+    expect(report, "022's requirement anchors a same-report map group").toBeDefined();
+    expect(ruling, "022's requirement anchors a same-ruling map group").toBeDefined();
+    if (report === undefined || ruling === undefined) return;
+    // The opt-in set is the fixture's and the chains below are the map's. A
+    // member added to either curation is covered without a hand edit, and a
+    // requirement changed away from the anchor stops resolving here.
+    expect(new Set(HEAD_022.citationAlternatives ?? [])).toEqual(new Set(ruling.members));
+    expect(report.members.length).toBeGreaterThan(0);
+  });
+
   it("passes through its own set and accepts each same-ruling member alone", () => {
     const alternatives = GS_022.row.citationAlternatives ?? [];
-    // The set is read from the fixture; pin its curated membership so a dropped
-    // member cannot quietly shrink the loop below.
-    expect(alternatives).toEqual([
-      "HR. Abu Dawud no. 5139",
-      "HR. Tirmidhi no. 1897",
-      "HR. Ibn Majah no. 3661",
-    ]);
+    expect(alternatives.length).toBeGreaterThan(0);
     const scored = score(GS_022.row, ["HR. Abu Dawud no. 5139"], GS_022.retrieved, WITH_BOTH);
     expect(scored.citationValidity).toBe(1);
     expect(scored.citationAddressRecall).toBe(1);
@@ -431,14 +453,9 @@ describe("D3c — 022's same-ruling siblings are the opt-in that widens it", () 
   });
 
   it("accepts the report's own parallel chains as the signed same-report identity", () => {
-    for (const chain of [
-      "HR. Muslim no. 6500",
-      "HR. Muslim no. 6501",
-      "HR. Muslim no. 6502",
-      "HR. Muslim no. 6503",
-      "HR. Ibn Majah no. 2706",
-      "HR. Ibn Majah no. 3658",
-    ]) {
+    const chains = identityGroup("same-report", requiredAddress(HEAD_022))?.members ?? [];
+    expect(chains.length).toBeGreaterThan(0);
+    for (const chain of chains) {
       // These are chains of 5971's own Abu Hurayra report, so the map's
       // same-report relation satisfies the gate without the opt-in set; the
       // required address is present in the frame, so the row passes.
@@ -449,14 +466,12 @@ describe("D3c — 022's same-ruling siblings are the opt-in that widens it", () 
   });
 
   it("does not accept the excluded reports", () => {
-    for (const label of [
-      "HR. Ibn Majah no. 3657", // the same instruction, Daif by every grader
-      "HR. Abu Dawud no. 5140", // Daif, and mother/father/sister/brother in one breath
-      "HR. Bukhari no. 5970", // ranks deeds rather than who comes first
-      "HR. Tirmidhi no. 1898", // the same deeds ranking through Ibn Mas'ud
-      "HR. Bukhari no. 5975", // the rights of mothers, not the precedence
-    ]) {
-      const excluded = score(GS_022.row, [label], GS_022.retrieved, WITH_BOTH);
+    const excludedLabels = HEAD_022.excludedCitations ?? [];
+    expect(excludedLabels.length).toBeGreaterThan(0);
+    for (const label of excludedLabels) {
+      // Each is a report the fixture records as read and ruled out in
+      // excludedCitations; neither the opt-in set nor the map accepts it.
+      const excluded = score(GS_022.row, [label], GS_022_EXCLUDED_FRAME, WITH_BOTH);
       expect(excluded.citationValidity, label).toBe(0);
       expect(excluded.identitySatisfied?.citationValidity, label).toBe(0);
     }

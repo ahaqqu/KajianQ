@@ -55,7 +55,7 @@
       "language": "id",
       "expectedSourceTypes": ["hadith"],
       "requiredCitations": ["HR. Bukhari no. 1108"],
-      "$comment": "citationAlternatives: the question asks the ruling — combining Maghrib and Isha in travel — not one narration's address, so the curator accepts these different reports that state it as an opt-in any-of set instead of widening the identity map, where a same-ruling relation is reported and never gates (ADR-0054). The required 1108 is the Anas report (Husayn ← Yahya ibn Abi Kathir ← Hafsh ibn Ubaydillah ← Anas); its parallel Anas chain, 1110, is recorded as the map's same-report identity and is not a set member. Every member here is a same-ruling narration — a different report, not a chain of 1108's Anas report: HR. Nasai no. 598 and HR. Muslim no. 1621 are Ibn Umar through Malik ← Nafi' (Sahih and ungraded sahihayn), HR. Bukhari no. 1109 and HR. Muslim no. 1624 are Ibn Umar through Zuhri ← Salim (both ungraded sahihayn), and HR. Ibn Majah no. 1070 is Mu'adh at Tabuk combining all four prayers (Sahih). Excluded: HR. Malik no. 331, Ibn Shihab asking Salim ibn Abdullah about Dhuhr and Asr — a Successor's fatwa, a Maqtu chain, not a Prophetic report, which the grade fold nonetheless renders \"(Sahih)\"; HR. Ibn Majah no. 1069, the same travel ruling but Daif by every grader; HR. Ibn Majah no. 1194, qasr rather than jamak; HR. Nasai no. 602, combining while resident in Madinah without fear or rain; HR. Bukhari no. 1668 and HR. Tirmidhi no. 888, Muzdalifah/Hajj material; and HR. Bukhari nos. 1111-1112 and HR. Malik no. 326, which combine Dhuhr and Asr only.",
+      "$comment": "citationAlternatives: the question asks the ruling — combining Maghrib and Isha in travel — not one narration's address, so the curator accepts these different reports that state it as an opt-in any-of set instead of widening the identity map, where a same-ruling relation is reported and never gates (ADR-0054). The required 1108 is the Anas report (Husayn ← Yahya ibn Abi Kathir ← Hafsh ibn Ubaydillah ← Anas); its parallel Anas chain, 1110, is recorded as the map's same-report identity and is not a set member. Every member here is a same-ruling narration — a different report, not a chain of 1108's Anas report: HR. Nasai no. 598 and HR. Muslim no. 1621 are Ibn Umar through Malik ← Nafi' (Sahih and ungraded sahihayn), HR. Bukhari no. 1109 and HR. Muslim no. 1624 are Ibn Umar through Zuhri ← Salim (both ungraded sahihayn), and HR. Ibn Majah no. 1070 is Mu'adh at Tabuk combining all four prayers (Sahih). Excluded neighbours read and ruled out are recorded in excludedCitations, each with its reason in excludedNote.",
       "citationAlternatives": [
         "HR. Nasai no. 598",
         "HR. Ibn Majah no. 1070",
@@ -63,6 +63,18 @@
         "HR. Muslim no. 1621",
         "HR. Muslim no. 1624"
       ],
+      "excludedCitations": [
+        "HR. Malik no. 331",
+        "HR. Ibn Majah no. 1069",
+        "HR. Ibn Majah no. 1194",
+        "HR. Nasai no. 602",
+        "HR. Bukhari no. 1668",
+        "HR. Tirmidhi no. 888",
+        "HR. Bukhari no. 1111",
+        "HR. Bukhari no. 1112",
+        "HR. Malik no. 326"
+      ],
+      "excludedNote": "HR. Malik no. 331 is a Successor's fatwa (a Maqtu chain, not a Prophetic report); HR. Ibn Majah no. 1069 states the same travel ruling but is Daif by every grader; HR. Ibn Majah no. 1194 is qasr rather than jamak; HR. Nasai no. 602 combines while resident, not on a journey; HR. Bukhari no. 1668 and HR. Tirmidhi no. 888 are Muzdalifah/Hajj material; HR. Bukhari no. 1111, HR. Bukhari no. 1112 and HR. Malik no. 326 combine Dhuhr and Asr only.",
       "expectedBehavior": "answer",
       "tags": ["fikih", "hadith"]
     },
@@ -158,14 +170,15 @@
       "language": "en",
       "expectedSourceTypes": ["hadith"],
       "requiredCitations": ["HR. Nasai no. 5144"],
-      "$comment": "citationAlternatives: the question asks the ruling on gold and silk for men, which 5144 states — the Prophet took silk in one hand and gold in the other and said these are forbidden to the males of his ummah — without any prayer setting, so the curator accepts five different reports of the same ruling as an opt-in any-of set: HR. Nasai no. 5148 (Abu Musa, Sahih), HR. Nasai no. 5265 (Abu Musa, Hasan), HR. Tirmidhi no. 1720 (Abu Musa, Hasan), HR. Ibn Majah no. 3597 ('Abdullah ibn 'Amr, Sahih) and HR. Ibn Majah no. 3590 (Hudhayfa, Sahih) all state that gold and silk are prohibited, the first four adding that they are lawful to the women of this ummah and forbidden to its men. The parallel chains of Ali's report (5145, 5146, 5147, Abu Dawud 4057, Ibn Majah 3595) are carried by the signed same-report identity map instead. Excluded: HR. Nasai no. 5149 and HR. Nasai no. 5160, which state the exception (إلا مقطعًا — gold or silk in a cut piece is permitted) and so a different ruling.",
+      "$comment": "citationAlternatives: the question asks the ruling on gold and silk for men, which 5144 states — the Prophet took silk in one hand and gold in the other and said these are forbidden to the males of his ummah — without any prayer setting, so the curator accepts four different reports of the same ruling as an opt-in any-of set: HR. Nasai no. 5148 (Abu Musa, Sahih), HR. Nasai no. 5265 (Abu Musa, Hasan), HR. Tirmidhi no. 1720 (Abu Musa, Hasan) and HR. Ibn Majah no. 3597 ('Abdullah ibn 'Amr, Sahih), all four adding that gold and silk are lawful to the women of this ummah and forbidden to its men. The parallel chains of Ali's report (5145, 5146, 5147, Abu Dawud 4057, Ibn Majah 3595) are carried by the signed same-report identity map instead. HR. Ibn Majah no. 3590 was read and is not accepted: its matn carries the prohibition with \"it is for them in this world and for us in the Hereafter\" and no male/female clause, so it does not state the ruling this question asks for. The remaining excluded neighbours, each with its reason, are in excludedCitations and excludedNote.",
       "citationAlternatives": [
         "HR. Nasai no. 5148",
         "HR. Nasai no. 5265",
         "HR. Tirmidhi no. 1720",
-        "HR. Ibn Majah no. 3597",
-        "HR. Ibn Majah no. 3590"
+        "HR. Ibn Majah no. 3597"
       ],
+      "excludedCitations": ["HR. Nasai no. 5149", "HR. Nasai no. 5160", "HR. Ibn Majah no. 3590"],
+      "excludedNote": "HR. Nasai no. 5149 and HR. Nasai no. 5160 state the exception (إلا مقطعًا — gold or silk in a cut piece is permitted), a different ruling; HR. Ibn Majah no. 3590 carries only the prohibition with «هو لهم في الدنيا ولنا في الآخرة» and no male/female clause, so it does not state the men/women ruling this question asks for.",
       "expectedBehavior": "answer",
       "tags": ["fikih", "hadith", "english"]
     },
@@ -212,12 +225,26 @@
       "language": "id",
       "expectedSourceTypes": ["hadith"],
       "requiredCitations": ["HR. Bukhari no. 5971"],
-      "$comment": "citationAlternatives: the question asks who is owed precedence, and the corpus carries the ruling — the mother three times, then the father — in more than one narration. The required 5971 is the Abu Hurayra report; the map records its parallel chains (Muslim 6500-6503, Ibn Majah 2706 and 3658, all through 'Umarah ← Abu Zur'a ← Abu Hurayra) as one same-report identity, so an answer that grounds one of them carries the required narration and this set does not repeat them. The set carries the different reports the map records as the same ruling: HR. Abu Dawud no. 5139 and HR. Tirmidhi no. 1897 are the Bahz ibn Hakim report (Hasan), HR. Ibn Majah no. 3661 the Miqdam ibn Ma'dikarib report (Hasan) — each states the same precedence with the mother three times, then the father, then the nearest of kin. Excluded: HR. Ibn Majah no. 3657 (the same instruction, Daif by every grader), HR. Abu Dawud no. 5140 (Daif by both graders, and it lists mother, father, sister and brother in one breath), HR. Bukhari no. 5970 and HR. Tirmidhi no. 1898 (they rank deeds — prayer, then birr al-walidayn, then jihad — not who comes first), HR. Bukhari no. 5972 and HR. Muslim no. 6504 (jihad with living parents), HR. Bukhari no. 5973, HR. Bukhari no. 5975 and HR. Abu Dawud no. 5141 (cursing or disobeying parents), HR. Tirmidhi no. 1899 (the Lord's pleasure in the parent's pleasure) and HR. Ibn Majah no. 3659 (a child's repayment of a parent).",
+      "$comment": "citationAlternatives: the question asks who is owed precedence, and the corpus carries the ruling — the mother three times, then the father — in more than one narration. The required 5971 is the Abu Hurayra report; the map records its parallel chains (Muslim 6500-6503, Ibn Majah 2706 and 3658, all through 'Umarah ← Abu Zur'a ← Abu Hurayra) as one same-report identity, so an answer that grounds one of them carries the required narration and this set does not repeat them. The set carries the different reports the map records as the same ruling: HR. Abu Dawud no. 5139 and HR. Tirmidhi no. 1897 are the Bahz ibn Hakim report (Hasan), HR. Ibn Majah no. 3661 the Miqdam ibn Ma'dikarib report (Hasan) — each states the same precedence with the mother three times, then the father, then the nearest of kin. The neighbours read and ruled out are recorded in excludedCitations, each with its reason in excludedNote. The three accepted members are hasan, so they widen only the unfiltered route this row observes; a `grade:[\"sahih\"]` route reaches the row through 5971 and its same-report chains, not through them.",
       "citationAlternatives": [
         "HR. Abu Dawud no. 5139",
         "HR. Tirmidhi no. 1897",
         "HR. Ibn Majah no. 3661"
       ],
+      "excludedCitations": [
+        "HR. Ibn Majah no. 3657",
+        "HR. Abu Dawud no. 5140",
+        "HR. Bukhari no. 5970",
+        "HR. Tirmidhi no. 1898",
+        "HR. Bukhari no. 5972",
+        "HR. Muslim no. 6504",
+        "HR. Bukhari no. 5973",
+        "HR. Bukhari no. 5975",
+        "HR. Abu Dawud no. 5141",
+        "HR. Tirmidhi no. 1899",
+        "HR. Ibn Majah no. 3659"
+      ],
+      "excludedNote": "HR. Ibn Majah no. 3657 states the same instruction but every grader grades it Daif; HR. Abu Dawud no. 5140 is Daif by both graders and lists mother, father, sister and brother in one breath; HR. Bukhari no. 5970 and HR. Tirmidhi no. 1898 rank deeds — prayer, then birr al-walidayn, then jihad — not who comes first; HR. Bukhari no. 5972 and HR. Muslim no. 6504 are jihad with living parents; HR. Bukhari no. 5973, HR. Bukhari no. 5975 and HR. Abu Dawud no. 5141 are cursing or disobeying parents; HR. Tirmidhi no. 1899 is the Lord's pleasure in the parent's pleasure; HR. Ibn Majah no. 3659 is a child's repayment of a parent.",
       "expectedBehavior": "answer",
       "tags": ["adab", "hadith"]
     }

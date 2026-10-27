@@ -194,11 +194,14 @@ describe("the shipped identity map", () => {
       "HR. Nasai no. 5148",
       "HR. Nasai no. 5265",
       "HR. Ibn Majah no. 3597",
-      "HR. Ibn Majah no. 3590",
       "HR. Tirmidhi no. 1720",
     ]) {
       expect(gateIdentityOf(label), label).toBeNull();
     }
+    // Ibn Majah 3590 states the prohibition without the male/female clause, so
+    // it is not a member of the men/women ruling: neither relation reads it.
+    expect(gateIdentityOf("HR. Ibn Majah no. 3590")).toBeNull();
+    expect(reportedIdentityOf("HR. Ibn Majah no. 3590")).toBeNull();
     // The exception narrations are in no group of either relation.
     for (const label of ["HR. Nasai no. 5149", "HR. Nasai no. 5160"]) {
       expect(gateIdentityOf(label), label).toBeNull();
@@ -231,7 +234,6 @@ describe("the shipped identity map", () => {
       "HR. Nasai no. 5148",
       "HR. Nasai no. 5265",
       "HR. Ibn Majah no. 3597",
-      "HR. Ibn Majah no. 3590",
       "HR. Ibn Majah no. 3595",
       "HR. Tirmidhi no. 1720",
       "HR. Abu Dawud no. 4057",
