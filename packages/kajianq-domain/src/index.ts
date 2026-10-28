@@ -183,8 +183,7 @@ export {
 // for readers of the trace.
 export { CALLER_PRIORITY_ORIGIN } from "./chat-caller-priority";
 // The fusion arithmetic and the two deterministic expansions live in their own
-// modules (the 300-line and 5-import agentic caps); the barrel keeps one public
-// surface, so consumers import from `@app/kajianq-domain`.
+// modules (the 300-line and 5-import agentic caps) so consumers get one public surface.
 export { hierarchyBonus, rrfFuse, RRF_K, HIERARCHY_BONUS } from "./chat-fusion";
 // The store-facing half of stage 3: the exhaustive dimension map, the loud
 // unexpressible-dimension failure, and the per-dimension relaxation order.
@@ -247,6 +246,7 @@ export {
   // route's `traceRefused` and the eval harness.
   type RefusalTrigger,
 } from "./chat-reviewer";
+export { CITATION_SUPPORT_PURPOSE } from "./chat-reviewer-pregate";
 // Eval quote fidelity: language-specific equivalences injected at the eval root.
 export { QUOTE_EQUIVALENCES } from "./chat-quote-equivalences";
 export {

@@ -393,3 +393,179 @@ describe("the routing decision in the technical layer", () => {
     expect(frame.technical.routing).toEqual({ sources: ["src_a"], filters: { dim_a: ["v1"] } });
   });
 });
+
+/**
+ * The reviewer pre-gate's verdict is the persisted `decision` event projected,
+ * never a client-side reading: a skip that cleared every citation, an escalate
+ * that names its reason and leaves a citation unjudged, and — when the run never
+ * entered the pre-gate — no block at all, because absence is not "cleared".
+ */
+describe("the reviewer pre-gate verdict in the technical layer", () => {
+  const decisionEvent = (
+    stage: "reviewer" | "router",
+    detail: {
+      purpose?: string;
+      outcome: "skip" | "escalate";
+      reason?: "below_threshold" | "no_items" | "malformed_answer" | "vendor_failure";
+      threshold?: number;
+      items: { index: number; key: string; score?: number }[];
+    },
+    at = 7,
+  ) =>
+    ({
+      stage,
+      kind: "decision" as const,
+      detail: { purpose: "citation_support", ...detail },
+      at,
+    }) satisfies Trace["events"][number];
+
+  it("projects a skip: outcome, threshold, and the per-citation scores", () => {
+    const frame = deriveTraceFrame({
+      trace: traceOf(
+        [{ id: "c1" }],
+        [
+          decisionEvent("reviewer", {
+            outcome: "skip",
+            threshold: 0.5,
+            items: [
+              { index: 0, key: "QS. 2:255", score: 0.93 },
+              { index: 1, key: "HR. Malik no. 18", score: 0.61 },
+            ],
+          }),
+        ],
+      ),
+      messageId: "m1",
+      chunksById: new Map<string, DocChildById>(),
+    });
+    expect(frame.technical.reviewer).toEqual({
+      outcome: "skip",
+      threshold: 0.5,
+      items: [
+        { index: 0, key: "QS. 2:255", score: 0.93 },
+        { index: 1, key: "HR. Malik no. 18", score: 0.61 },
+      ],
+    });
+    expect(() => v.parse(ChatTraceFrameSchema, frame)).not.toThrow();
+  });
+
+  it("projects an escalate with its reason and an unjudged citation left unscored", () => {
+    const frame = deriveTraceFrame({
+      trace: traceOf(
+        [{ id: "c1" }],
+        [
+          decisionEvent("reviewer", {
+            outcome: "escalate",
+            reason: "malformed_answer",
+            threshold: 0.5,
+            items: [{ index: 0, key: "QS. 2:255" }],
+          }),
+        ],
+      ),
+      messageId: "m1",
+      chunksById: new Map<string, DocChildById>(),
+    });
+    expect(frame.technical.reviewer).toEqual({
+      outcome: "escalate",
+      reason: "malformed_answer",
+      threshold: 0.5,
+      items: [{ index: 0, key: "QS. 2:255" }],
+    });
+    // "Not judged" is the absence of a score, never a zero.
+    expect(frame.technical.reviewer?.items[0]?.score).toBeUndefined();
+    expect(() => v.parse(ChatTraceFrameSchema, frame)).not.toThrow();
+  });
+
+  it("omits the block when the trace recorded no reviewer decision", () => {
+    const frame = deriveTraceFrame({
+      trace: traceOf([{ id: "c1" }]),
+      messageId: "m1",
+      chunksById: new Map<string, DocChildById>(),
+    });
+    expect(frame.technical).not.toHaveProperty("reviewer");
+    expect(() => v.parse(ChatTraceFrameSchema, frame)).not.toThrow();
+  });
+
+  it("reads the last reviewer-stage decision, and only the reviewer stage's", () => {
+    // Append order is the trace's precedence: a re-entered stage appends its new
+    // verdict rather than replacing the old one, so the last record is the run's.
+    // A decision another stage recorded is not the pre-gate's — and it is the LAST
+    // event here, so a stage-blind `findLast` would return its 0.9 threshold and
+    // fail the assertion below. That event deliberately shares the pre-gate's
+    // purpose, passed explicitly at its call site rather than inherited from the
+    // helper, so the stage clause — not the purpose clause — is what excludes it.
+    const frame = deriveTraceFrame({
+      trace: traceOf(
+        [{ id: "c1" }],
+        [
+          decisionEvent(
+            "reviewer",
+            { outcome: "escalate", reason: "below_threshold", threshold: 0.5, items: [] },
+            7,
+          ),
+          decisionEvent("router", { outcome: "escalate", threshold: 0.9, items: [] }, 8),
+          decisionEvent("reviewer", { outcome: "skip", threshold: 0.5, items: [] }, 9),
+          decisionEvent(
+            "router",
+            { purpose: "citation_support", outcome: "skip", threshold: 0.9, items: [] },
+            10,
+          ),
+        ],
+      ),
+      messageId: "m1",
+      chunksById: new Map<string, DocChildById>(),
+    });
+    expect(frame.technical.reviewer).toEqual({ outcome: "skip", threshold: 0.5, items: [] });
+  });
+
+  it("ignores another screen's decision recorded inside the reviewer stage", () => {
+    // The stage is not the screen: a second Decider inside the reviewer stage
+    // records its own purpose, and the pre-gate's verdict must not be shadowed by
+    // it even though it is the newest decision on the trace.
+    const frame = deriveTraceFrame({
+      trace: traceOf(
+        [{ id: "c1" }],
+        [
+          decisionEvent(
+            "reviewer",
+            { outcome: "escalate", reason: "below_threshold", threshold: 0.5, items: [] },
+            7,
+          ),
+          decisionEvent(
+            "reviewer",
+            { purpose: "answer_completeness", outcome: "skip", threshold: 0.9, items: [] },
+            8,
+          ),
+        ],
+      ),
+      messageId: "m1",
+      chunksById: new Map<string, DocChildById>(),
+    });
+    expect(frame.technical.reviewer).toEqual({
+      outcome: "escalate",
+      reason: "below_threshold",
+      threshold: 0.5,
+      items: [],
+    });
+  });
+
+  it("projects the verdict without a threshold when the decision event carried none", () => {
+    // The verdict is the contract's point: a record without the number it was
+    // judged against is shown without that number, never dropped and never given a
+    // fabricated threshold.
+    const frame = deriveTraceFrame({
+      trace: traceOf(
+        [{ id: "c1" }],
+        [decisionEvent("reviewer", { outcome: "escalate", reason: "no_items", items: [] })],
+      ),
+      messageId: "m1",
+      chunksById: new Map<string, DocChildById>(),
+    });
+    expect(frame.technical.reviewer).toEqual({
+      outcome: "escalate",
+      reason: "no_items",
+      items: [],
+    });
+    expect(frame.technical.reviewer).not.toHaveProperty("threshold");
+    expect(() => v.parse(ChatTraceFrameSchema, frame)).not.toThrow();
+  });
+});

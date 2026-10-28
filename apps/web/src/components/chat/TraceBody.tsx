@@ -1,17 +1,17 @@
 import { useState } from "react";
-import type { ChatTraceChunk, ChatTraceFrame } from "@app/contracts";
+import type { ChatTraceFrame } from "@app/contracts";
 import { t, useLocale, type Locale } from "../../lib/i18n";
 import { MonoLabel } from "../ui";
-import { FlagButton } from "./FeedbackControls";
+import { ChunkRow, ReviewerSection, SourceRow, Step } from "./TraceSections";
 
 /**
  * The user-facing Trace panel (ADR-0007): every answer expands to show how it
  * was built, in two layers. The default view lists the sources consulted in
  * plain language — readable by a non-technical user. One tap deeper, the
  * technical layer shows the router intent, sub-queries, the retrieved passages
- * with their scores, and the model identities — all server-derived from the
- * persisted answer trace and rendered as-is; the client never reconstructs
- * pipeline machinery. ADR-0007's warning stands: this panel is the feedback
+ * with their scores, the model identities, and the reviewer pre-gate's verdict
+ * when the trace recorded one — all server-derived from the persisted answer
+ * trace and rendered as-is; the client never reconstructs pipeline machinery. ADR-0007's warning stands: this panel is the feedback
  * instrument, not UI clutter — do not clean it up.
  *
  * Each source row carries a flag affordance anchoring an "irrelevant chunk"
@@ -167,6 +167,11 @@ export function TraceBody({
                 </div>
               </Step>
             )}
+            {technical.reviewer !== undefined && (
+              <Step>
+                <ReviewerSection reviewer={technical.reviewer} locale={locale} score={score} />
+              </Step>
+            )}
             {technical.models.length > 0 && (
               <Step>
                 <div data-testid="trace-models">
@@ -184,101 +189,6 @@ export function TraceBody({
           </div>
         )}
       </section>
-    </div>
-  );
-}
-
-/**
- * One source on record: its ordinal, its display title (or id), its fused score
- * when the trace recorded one, and the anchor for an "irrelevant passage"
- * report. The number is the consultation order the frame preserved.
- */
-function SourceRow({
-  chunk,
-  index,
-  locale,
-  score,
-  messageId,
-  persisted,
-}: {
-  chunk: ChatTraceChunk;
-  index: number;
-  locale: Locale;
-  score: Intl.NumberFormat;
-  messageId: string;
-  persisted: boolean;
-}) {
-  return (
-    <li
-      data-testid="trace-source"
-      className="flex flex-col items-start gap-1 border-t border-rule py-2 first:border-t-0 sm:flex-row sm:items-center sm:justify-between sm:gap-3"
-    >
-      <span className="min-w-0 max-w-full truncate text-sm text-card-foreground sm:flex-1">
-        <span className="mr-2 font-mono text-[11px] text-muted-foreground">
-          {String(index + 1).padStart(2, "0")}
-        </span>
-        {chunk.source ?? <span className="font-mono text-xs">{chunk.id}</span>}
-      </span>
-      <span className="flex shrink-0 items-center gap-2">
-        {chunk.score !== undefined && (
-          <span data-testid="trace-score" className="font-mono text-[11px] text-muted-foreground">
-            {t(locale, "traceScoreLabel")} {score.format(chunk.score)}
-          </span>
-        )}
-        <FlagButton
-          messageId={messageId}
-          persisted={persisted}
-          anchor={{ type: "chunk", category: "irrelevant_chunk", id: chunk.id }}
-          labelKey="flagIrrelevantChunk"
-          testId={`trace-flag-${chunk.id}`}
-        />
-      </span>
-    </li>
-  );
-}
-
-/** One technical-layer passage: display title (or id) plus its scores. */
-function ChunkRow({
-  chunk,
-  locale,
-  score,
-}: {
-  chunk: ChatTraceChunk;
-  locale: Locale;
-  score: Intl.NumberFormat;
-}) {
-  return (
-    <li className="text-sm text-card-foreground">
-      {chunk.source ?? <span className="font-mono text-xs">{chunk.id}</span>}
-      {chunk.score !== undefined && (
-        <span
-          data-testid="trace-score"
-          className="ml-2 font-mono text-[11px] text-muted-foreground"
-        >
-          {t(locale, "traceScoreLabel")} {score.format(chunk.score)}
-        </span>
-      )}
-      {chunk.rerankScore !== undefined && (
-        <span
-          data-testid="trace-rerank-score"
-          className="ml-2 font-mono text-[11px] text-muted-foreground"
-        >
-          {t(locale, "traceRerankScoreLabel")} {score.format(chunk.rerankScore)}
-        </span>
-      )}
-    </li>
-  );
-}
-
-/** A timeline step: the accent dot sits on the section's left rule. */
-function Step({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="relative">
-      <span
-        aria-hidden="true"
-        className="absolute top-1.5 -left-[22px] size-2 rounded-full bg-accent"
-      />
-      {children}
     </div>
   );
 }
