@@ -83,8 +83,10 @@ export const AdminTraceListSchema = v.object({
 export type AdminTraceList = v.InferOutput<typeof AdminTraceListSchema>;
 
 /** A model config's price: micro-USD per million tokens, the unit the provider
- * config states and the adapter's cost arithmetic reads. */
-const ModelPriceSchema = v.object({
+ * config states and the adapter's cost arithmetic reads. Exported because the admin
+ * detail re-reads a mirror row's payload with it: an unreadable price is refused, not
+ * reported as a model the config does not name. */
+export const ModelPriceSchema = v.object({
   in: v.pipe(v.number(), v.integer(), v.minValue(0)),
   out: v.pipe(v.number(), v.integer(), v.minValue(0)),
 });

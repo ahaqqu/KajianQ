@@ -146,6 +146,7 @@ export {
   AdminTraceListItemSchema,
   AdminTraceListSchema,
   AdminTraceQuerySchema,
+  ModelPriceSchema,
   type AdminCallModelConfig,
   type AdminCallModelMatch,
   type AdminError,

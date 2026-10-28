@@ -142,6 +142,29 @@ run("RagStore model-config mirror contract (real Postgres)", () => {
     ]);
   });
 
+  it("revives a named row marked inactive out of band", async () => {
+    const entries = [entry("m-chat")];
+    await Effect.runPromise(store.syncModelConfigs(entries));
+    // Out of band: the row the config names stops being current — the state a
+    // hand-written UPDATE or a half-finished retention job leaves behind.
+    await sql!.query(
+      `UPDATE model_configs SET active = false
+       WHERE role = 'generator' AND provider = 'alpha' AND model_id = 'm-chat'`,
+    );
+    expect(modelConfigDrift(entries, await rowsOf()).inactive).toHaveLength(1);
+    // The sync is the repair, not just for unexpected rows: the same entry makes the
+    // named row active again, so `inactive` drift cannot survive every later sync.
+    await Effect.runPromise(store.syncModelConfigs(entries));
+    const rows = await rowsOf();
+    expect(rows[0]?.active).toBe(true);
+    expect(modelConfigDrift(entries, rows)).toEqual({
+      missing: [],
+      unexpected: [],
+      changed: [],
+      inactive: [],
+    });
+  });
+
   it("sees a row written out of band as drift, and the next sync removes it", async () => {
     const entries = [entry("m-chat")];
     await Effect.runPromise(store.syncModelConfigs(entries));

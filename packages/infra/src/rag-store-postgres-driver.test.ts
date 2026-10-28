@@ -1,6 +1,11 @@
 import { describe, expect, it, vi } from "vite-plus/test";
 import type { Pool } from "pg";
-import { postgresSqlRunner } from "./rag-store-postgres-driver";
+import {
+  postgresPool,
+  postgresSqlRunner,
+  POSTGRES_CONNECT_TIMEOUT_MS,
+  POSTGRES_STATEMENT_TIMEOUT_MS,
+} from "./rag-store-postgres-driver";
 
 /**
  * The Postgres driver adapter (ADR-0044). Two properties are load-bearing
@@ -125,5 +130,17 @@ describe("postgresSqlRunner", () => {
     expect(rows).toEqual([{ id: "pool-row" }]);
     expect(calls).toHaveLength(1);
     expect(calls[0]?.connection).toBe("pool");
+  });
+});
+
+describe("postgresPool", () => {
+  it("bounds a blackholed connect and lets Postgres cancel a runaway statement", () => {
+    // No query runs: these are the pool's construction options. Without them the boot
+    // sync can wait on a connect forever and a hung statement keeps doing work after
+    // its caller has given up (`Type=simple` never restarts a process that is alive
+    // but not listening).
+    const pool = postgresPool("postgres://contract:contract@127.0.0.1:1/unreachable");
+    expect(pool.options.connectionTimeoutMillis).toBe(POSTGRES_CONNECT_TIMEOUT_MS);
+    expect(pool.options.statement_timeout).toBe(POSTGRES_STATEMENT_TIMEOUT_MS);
   });
 });

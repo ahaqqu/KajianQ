@@ -1,5 +1,5 @@
 import { Effect } from "effect";
-import { modelConfigKey, type ModelConfigRecord, type RagStore } from "@app/infra";
+import { modelConfigKey, StoreError, type ModelConfigRecord, type RagStore } from "@app/infra";
 
 /**
  * The in-memory `model_configs` mirror — the test seam's twin of the Postgres
@@ -11,6 +11,12 @@ import { modelConfigKey, type ModelConfigRecord, type RagStore } from "@app/infr
  * sorted the way the adapter's `ORDER BY (role, provider, model_id)` does. The write
  * is a single synchronous swap, the in-memory stand-in for the adapter's one
  * transaction.
+ *
+ * Two entries sharing a `(role, provider, model_id)` key are refused, not collapsed:
+ * the adapter's single `ON CONFLICT DO UPDATE` rejects that pair with SQLSTATE 21000,
+ * which the driver's taxonomy classifies as `transport`. Last-wins here would accept
+ * input the deployment cannot, the one way this double could be more forgiving than
+ * the store it stands in for.
  */
 export type MemoryModelConfigState = {
   rows: Map<string, ModelConfigRecord>;
@@ -33,14 +39,32 @@ export function memoryModelConfigMethods(state: MemoryModelConfigState): MemoryM
   return {
     allModelConfigs: () => [...state.rows.values()].sort(compare),
     syncModelConfigs(entries) {
-      return Effect.sync(() => {
-        const next = new Map<string, ModelConfigRecord>();
-        const updatedAt = state.now();
+      return Effect.suspend(() => {
+        const seen = new Set<string>();
         for (const entry of entries) {
-          next.set(modelConfigKey(entry), { ...entry, active: true, updatedAt });
+          const key = modelConfigKey(entry);
+          if (seen.has(key)) {
+            return Effect.fail(
+              new StoreError({
+                kind: "transport",
+                cause: new Error(
+                  `model_configs sync: duplicate key ${key}: ` +
+                    "ON CONFLICT DO UPDATE command cannot affect row a second time",
+                ),
+              }),
+            );
+          }
+          seen.add(key);
         }
-        state.rows.clear();
-        for (const [key, row] of next) state.rows.set(key, row);
+        const updatedAt = state.now();
+        return Effect.sync(() => {
+          const rows = new Map<string, ModelConfigRecord>();
+          for (const entry of entries) {
+            rows.set(modelConfigKey(entry), { ...entry, active: true, updatedAt });
+          }
+          state.rows.clear();
+          for (const [key, row] of rows) state.rows.set(key, row);
+        });
       });
     },
     listModelConfigs() {

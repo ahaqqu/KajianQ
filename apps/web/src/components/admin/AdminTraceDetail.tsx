@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { adminRawTraceUrl, fetchAdminTrace } from "../../lib/admin-client";
-import { formatNumber, t, type Locale } from "../../lib/i18n";
+import { formatNumber, t, type Locale, type MessageKey } from "../../lib/i18n";
 import { TraceBody } from "../chat/TraceBody";
 
 /**
@@ -16,17 +16,18 @@ import { TraceBody } from "../chat/TraceBody";
 type Detail = Awaited<ReturnType<typeof fetchAdminTrace>>;
 type Consistency = Detail["calls"][number]["modelConfig"]["status"];
 
+/** The sentence per consistency status, total over the closed vocabulary: a fourth
+ * status reddens the typecheck instead of inheriting the "not in config" copy. */
+const CONSISTENCY_MESSAGES: { [S in Consistency]: MessageKey } = {
+  consistent: "adminCostConsistent",
+  mismatch: "adminCostMismatch",
+  unresolved: "adminCostUnresolved",
+};
+
 /** Whether the configured price accounts for the recorded figure. The recorded
  * `costMicroUsd` stays the figure shown beside the call; this only explains it. */
 function consistencyLabel(locale: Locale, status: Consistency): string {
-  return t(
-    locale,
-    status === "consistent"
-      ? "adminCostConsistent"
-      : status === "mismatch"
-        ? "adminCostMismatch"
-        : "adminCostUnresolved",
-  );
+  return t(locale, CONSISTENCY_MESSAGES[status]);
 }
 
 export function AdminTraceDetail({ locale, traceId }: { locale: Locale; traceId: string }) {

@@ -55,6 +55,13 @@ export const adminTraceRoutes = newRouter()
       modelConfigs: mirror.rows,
       warn: context.warn,
     });
+    if (lookup.kind === "unreadable") {
+      // The mirror names a requested call's model but its payload is not the shape the
+      // contract reads. Refusing is honest (the model is NOT absent); answering
+      // `unresolved` here would print a false sentence about a model the mirror names.
+      context.log.error("admin.model_config_unreadable", { row: lookup.key });
+      return c.json({ error: "model_config_unavailable" }, 503);
+    }
     if (lookup.kind === "missing") return c.json({ error: "not_found" }, 404);
     // The adapter answers a stored trace this contract cannot parse with a `constraint`
     // StoreError; naming that condition is honest, and the raw download still serves
