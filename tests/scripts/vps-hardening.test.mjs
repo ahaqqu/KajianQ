@@ -1387,6 +1387,18 @@ describe("provisioning config as code stays true to the ADR", () => {
     expect(fallback).toMatch(/try_files\s+\$uri\s+\$uri\/\s+\/index\.html/);
   });
 
+  it("the setup doc carries the post-deploy probe for the proxy's top-level API paths", () => {
+    // The location set above is only true of a box that re-applied the config: a deploy of an
+    // API change alone does not reload nginx. The probe is what distinguishes "the proxy is
+    // wired" from "the SPA fallback answered 200", so it must stay in the runbook.
+    const setup = read("docs/VPS-SETUP.md");
+    expect(setup).toMatch(/Verify the admin surface reached the API/);
+    expect(setup).toContain("/admin/v1/session");
+    expect(setup).toMatch(/content_type/);
+    // The probe must say which answer means "not wired", or an operator reads a 200 as success.
+    expect(setup).toMatch(/SPA fallback/);
+  });
+
   it("HTTP only redirects and logs nothing, so the IP-bearing log is confined to the TLS server block", () => {
     const conf = directives("provision/vps/nginx/kajianq.conf");
     const plain = conf.slice(conf.indexOf("listen 80"));

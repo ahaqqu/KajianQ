@@ -34,7 +34,7 @@ The obvious shortcut — a shared token in a header, or the public session — w
 refused. A token in a URL or a header leaks into browser history, proxies and
 screenshots, and the public session is the caller's own — reading on their behalf
 without their act. A separate credential and a
-separate cookie keep the two identities disjoint: a stolen callers' token opens no
+separate cookie keep the two identities disjoint: a stolen caller's token opens no
 trace, and an operator's browser carries no caller session.
 
 The access log is the counterweight to that power. Reading chat content is a

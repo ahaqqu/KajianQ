@@ -699,6 +699,28 @@ The `logrotate --debug` runs matter: a syntax error in a stanza fails the apply
 now, rather than surfacing weeks later as a silent rotation failure — which is
 the shape of failure that makes a retention promise quietly false.
 
+### Verify the admin surface reached the API
+
+The admin Trace browser is a **top-level path**, so it is reachable only because
+`nginx/kajianq.conf` carries `location /admin/`: without that block the SPA
+fallback answers `/admin/v1/*` with `index.html` and a 200, and the surface is
+absent from the box rather than closed. `apply.sh` installs the block and
+reloads nginx; a deploy of an API change alone does not (the grant can restart
+the API, not reload nginx), so re-apply the config whenever a top-level API path
+is added:
+
+```bash
+sudo provision/vps/apply.sh --env /etc/kajianq/proxy.env   # installs the block, reloads nginx
+curl -s -o /dev/null -w '%{http_code}\n' https://<your-host>/admin/     # 200, the SPA shell
+curl -s -o /dev/null -w '%{content_type}\n' https://<your-host>/admin/v1/session
+# application/json — an HTML content type means nginx is still serving the SPA fallback
+curl -s https://<your-host>/admin/v1/session                # {"authenticated":false,"csrfToken":"…"}
+```
+
+The session probe is the one request that tells the two topologies apart: the
+API answers JSON to it whether or not `ADMIN_PASSWORD` is set, while the SPA
+fallback answers the shell.
+
 ### Verify retention once traffic exists
 
 A retention policy is a claim about files that only exist after the site has
