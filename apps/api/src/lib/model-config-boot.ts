@@ -99,7 +99,7 @@ export async function syncModelConfigMirror(
       return { ok: false, skipped: false, synced: entries.length, drift };
     }
     logger.info("model_config.synced", { rows: entries.length });
-    return { ok: true, skipped: false, synced: entries.length, drift };
+    return { ok: true, skipped: false, synced: entries.length, drift: null };
   } catch (err) {
     logger.error("model_config.sync_failed", { reason: "store", error: messageOf(err) });
     return { ok: false, skipped: false, synced: 0, drift: null };

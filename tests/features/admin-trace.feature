@@ -5,8 +5,9 @@ Feature: Admin trace browser
   The operator's failure-search surface. It stays closed — the same 401 for every
   miss — until the admin password is given, and the public shell never points at
   it. Once open it shows an answer's own question and answer, the totals summed
-  over every provider call that answer made, the stored trace as a download, and
-  the same Trace panel the chat renders for that answer.
+  over every provider call that answer made, each call's model identity and cost
+  consistency from the provider config, the stored trace as a download, and the
+  same Trace panel the chat renders for that answer.
 
   Background:
     Given the admin trace data is stubbed
@@ -23,6 +24,7 @@ Feature: Admin trace browser
     And I open the first answer in the list
     Then I see the answer's tokens, cost and latency
     And I see every provider call, the embedding included
+    And I see the model identity and cost consistency of every provider call
     And the Trace panel shows the answer's sources
     And the stored trace downloads as JSON
 

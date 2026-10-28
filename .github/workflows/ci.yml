@@ -183,6 +183,10 @@ jobs:
           # job — but the suite must not infer that from an empty log, so the marker is set
           # here, where the target is undeniably a throwaway.
           KAJIANQ_ADMIN_TEST_DISPOSABLE: "1"
+          # The model-config mirror suite replaces a table the running deployment derives
+          # from its config, so it requires the same positive statement: this container is
+          # the throwaway, stated here rather than inferred from an empty mirror.
+          KAJIANQ_MODEL_CONFIG_TEST_DISPOSABLE: "1"
         run: |
           set -euo pipefail
           FILES="$(bun scripts/pg-contract.mjs --list)"
