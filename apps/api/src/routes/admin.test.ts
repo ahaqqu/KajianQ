@@ -774,7 +774,9 @@ describe("admin login: the declared media type is part of the boundary", () => {
     return instance.fetch(request, env as never);
   }
 
-  it("refuses a non-JSON declaration with the uniform 401, before reading the body", async () => {
+  // The gate's POSITION — that the body is never read for a refused type — is observable at
+  // the helper (`admin-login.test.ts`), where the read is an argument a test can watch.
+  it("refuses a non-JSON declaration with the uniform 401", async () => {
     await seededStore();
     const instance = api();
     const env = adminEnv();
