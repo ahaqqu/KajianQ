@@ -42,6 +42,9 @@ export {
   type ChatCompletionsOptions,
 } from "./providers/chat-completions-adapter";
 export { resolveRole, type ResolvedRole, type ResolveOptions } from "./providers/provider-factory";
+// One cost arithmetic for the adapter's recorded figure and the admin's
+// config-vs-recorded consistency check: the same ceiling, never a second formula.
+export { computeCost } from "./providers/chat-wire";
 export {
   createSystemOneDecider,
   resolveDecider,
@@ -75,6 +78,18 @@ export {
   type SimilarChild,
 } from "./rag-store";
 export { type RagStoreCorpus } from "./rag-store-corpus-seam";
+export {
+  type ModelConfigEntry,
+  type ModelConfigRecord,
+  type RagStoreModelConfig,
+} from "./rag-store-model-config-seam";
+export {
+  modelConfigDrift,
+  modelConfigDriftEmpty,
+  modelConfigEntries,
+  modelConfigKey,
+  type ModelConfigDrift,
+} from "./providers/model-config-mirror";
 export {
   ADMIN_ACCESS_LOG_RETENTION_DAYS,
   type AdminAccessEntry,

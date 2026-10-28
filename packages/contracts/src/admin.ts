@@ -82,19 +82,77 @@ export const AdminTraceListSchema = v.object({
 
 export type AdminTraceList = v.InferOutput<typeof AdminTraceListSchema>;
 
+/** A model config's price: micro-USD per million tokens, the unit the provider
+ * config states and the adapter's cost arithmetic reads. Exported because the admin
+ * detail re-reads a mirror row's payload with it: an unreadable price is refused, not
+ * reported as a model the config does not name. */
+export const ModelPriceSchema = v.object({
+  in: v.pipe(v.number(), v.integer(), v.minValue(0)),
+  out: v.pipe(v.number(), v.integer(), v.minValue(0)),
+});
+
+/**
+ * One `model_configs` row that publishes a call's model id. An id can be carried by
+ * more than one row on different terms (the free-tier and paid-terms embedding rows
+ * share a model id), so every candidate is listed; the browser never has to trust a
+ * provider this payload picked silently.
+ */
+export const AdminCallModelMatchSchema = v.object({
+  provider: nonEmpty(),
+  /** Roles whose chain includes this model, sorted. */
+  roles: v.array(nonEmpty()),
+  priceMicroUsdPerMTok: ModelPriceSchema,
+  /** ceil((tokensIn×in + tokensOut×out) / 1e6) — the provider adapter's own cost
+   * arithmetic, so an equality here means "this row's price reproduces the figure
+   * the trace recorded", not "a second cost was computed a different way". */
+  computedCostMicroUsd: v.pipe(v.number(), v.integer(), v.minValue(0)),
+  /** True when `computedCostMicroUsd` equals the call's recorded `costMicroUsd`. */
+  consistent: v.boolean(),
+});
+
+export type AdminCallModelMatch = v.InferOutput<typeof AdminCallModelMatchSchema>;
+
+/**
+ * A provider call's model identity and pricing consistency, read from the
+ * `model_configs` mirror. The call's recorded `costMicroUsd` stays the figure the
+ * browser shows; this half only says whether the config's price accounts for it and
+ * under which provider row.
+ *
+ * `status` is a closed vocabulary: `consistent` when a mirrored price reproduces the
+ * recorded figure, `mismatch` when the model is mirrored but no price does, and
+ * `unresolved` when no mirror row names the id. A trace naming a model the config no
+ * longer carries is not mirror drift — the mirror is current and the trace is old —
+ * so this is a reported state, never a failed read.
+ */
+export const AdminCallModelConfigSchema = v.object({
+  status: v.picklist(["consistent", "mismatch", "unresolved"]),
+  matches: v.array(AdminCallModelMatchSchema),
+});
+
+export type AdminCallModelConfig = v.InferOutput<typeof AdminCallModelConfigSchema>;
+
+/** One recorded provider call plus the mirror's model-identity half. */
+export const AdminTraceCallSchema = v.object({
+  ...TraceProviderCallSchema.entries,
+  modelConfig: AdminCallModelConfigSchema,
+});
+
+export type AdminTraceCall = v.InferOutput<typeof AdminTraceCallSchema>;
+
 /**
  * One trace in full: the same message fields as the list, the per-message totals
- * and the per-provider-call list (the embedding call included), and the two-layer
- * Trace frame derived SERVER-SIDE by the same `deriveTraceFrame`/`TraceBody`
- * derivation the user-facing panel renders — never a second renderer. The raw
- * persisted trace is a separate download, so this payload never ships the raw
- * event stream.
+ * and the per-provider-call list (the embedding call included), each call carrying
+ * its model identity and cost consistency from the `model_configs` mirror, and the
+ * two-layer Trace frame derived SERVER-SIDE by the same
+ * `deriveTraceFrame`/`TraceBody` derivation the user-facing panel renders — never a
+ * second renderer. The raw persisted trace is a separate download, so this payload
+ * never ships the raw event stream.
  */
 export const AdminTraceDetailSchema = v.object({
   // The detail's message half IS the list item: one declaration, so a fact added
   // to one payload cannot be missing from the other.
   ...AdminTraceListItemSchema.entries,
-  calls: v.array(TraceProviderCallSchema),
+  calls: v.array(AdminTraceCallSchema),
   frame: ChatTraceFrameSchema,
 });
 

@@ -1,8 +1,15 @@
 import { runStoreEffect } from "@app/kajianq-domain";
 import { createMemoryRagStore } from "@app/kajianq-domain/test-utils/memory-rag-store";
 import { createMemoryRateLimiter } from "@app/rate";
-import { StoreError } from "@app/infra";
-import { traceTotals, type Trace } from "@app/contracts";
+import {
+  computeCost,
+  loadProviderConfig,
+  modelConfigEntries,
+  parseCandidateKey,
+  StoreError,
+  type ModelConfigEntry,
+} from "@app/infra";
+import { traceTotals, type AdminTraceCall, type Trace } from "@app/contracts";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { createApi } from "../app";
 import type { AssetFetcher } from "@app/hardening";
@@ -20,7 +27,10 @@ import type { AssetFetcher } from "@app/hardening";
  *     question text must not appear in the log, and the log is written before the
  *     rows are served (a failed write serves nothing);
  *  3. **the derived view is the chat panel's derivation**, and the totals it shows
- *     are the trace's own arithmetic — every provider call, embedding included.
+ *     are the trace's own arithmetic — every provider call, embedding included;
+ *  4. **the detail never decorates a trace with a mirror that disagrees with the
+ *     config** — a drifted mirror answers a 503 with no content, logs structurally,
+ *     and leaves the raw download available.
  */
 
 const PASSWORD = "correct horse battery staple";
@@ -159,6 +169,12 @@ type SeedOptions = {
   createdAt?: number;
   costMicroUsd?: number;
   latencyMs?: number;
+  /** The generator call's model identity and token counts, for the mirror cases. */
+  generatorModelId?: string;
+  generatorTokensIn?: number;
+  generatorTokensOut?: number;
+  /** The generator's recorded cost, when a case needs it to agree with the mirror. */
+  generatorCostMicroUsd?: number;
 };
 
 /** Seed one answer: a chunk, a user question, an assistant answer, and its trace. */
@@ -221,7 +237,15 @@ async function seedAnswer(
       stage: "generator",
       kind: "llm_call",
       detail: { purpose: "generate" },
-      cost: { ...cost, modelId: "generator-stub", tokensOut: 40 },
+      cost: {
+        ...cost,
+        modelId: opts.generatorModelId ?? "generator-stub",
+        ...(opts.generatorTokensIn !== undefined ? { tokensIn: opts.generatorTokensIn } : {}),
+        tokensOut: opts.generatorTokensOut ?? 40,
+        ...(opts.generatorCostMicroUsd !== undefined
+          ? { costMicroUsd: opts.generatorCostMicroUsd }
+          : {}),
+      },
       at: 5,
     },
     ...(opts.refused === true
@@ -273,10 +297,23 @@ async function seedAnswer(
   return { traceId, messageId };
 }
 
+/** The checked-in config's derived mirror rows — what a booted deployment holds. */
+function mirrorEntries(): ModelConfigEntry[] {
+  return modelConfigEntries(loadProviderConfig());
+}
+
+async function storeWithMirror(
+  entries: readonly ModelConfigEntry[] = mirrorEntries(),
+): Promise<ReturnType<typeof createMemoryRagStore>> {
+  const store = createMemoryRagStore();
+  await runStoreEffect(store.syncModelConfigs(entries));
+  return store;
+}
+
 async function seededStore(
   seeds: SeedOptions[] = [{}],
 ): Promise<ReturnType<typeof createMemoryRagStore>> {
-  const store = createMemoryRagStore();
+  const store = await storeWithMirror();
   for (const seed of seeds) await seedAnswer(store, seed);
   currentStore = store;
   return store;
@@ -833,6 +870,9 @@ describe("admin detail: the chat panel's derivation, every provider call", () =>
       },
       // The raw read's value, handed over unparsed; the identity bridge below resolves it.
       getAdminTraceRaw: () => ({ trace: { nope: true }, row }),
+      // The mirror read is a resolved value for the identity bridge too: the drift gate
+      // runs before the trace read this case is about, and it must see a current mirror.
+      listModelConfigs: () => store.allModelConfigs(),
     });
     currentRunStore = (async (effect: unknown) => effect) as typeof runStoreEffect;
     try {
@@ -890,6 +930,154 @@ describe("admin detail: the chat panel's derivation, every provider call", () =>
       const res = await instance.request(`/admin/v1/traces/${id}`, { headers }, adminEnv());
       expect(res.status, id).toBe(404);
       expect(await res.json()).toEqual({ error: "not_found" });
+    }
+  });
+});
+
+describe("admin detail: model identity and cost consistency from the mirror", () => {
+  /** A generator call on a real config model with its price's own cost figure. */
+  async function consistentSeed(): Promise<{
+    store: ReturnType<typeof createMemoryRagStore>;
+    provider: string;
+    modelId: string;
+    price: { in: number; out: number };
+    expected: number;
+  }> {
+    const config = loadProviderConfig();
+    const candidate = config.roles.generator?.chain[0];
+    if (candidate === undefined) throw new Error("admin test: the generator chain is empty");
+    const [provider, modelId] = parseCandidateKey(candidate);
+    const model = config.vendors[provider]?.models[modelId];
+    if (model === undefined)
+      throw new Error("admin test: the generator candidate does not resolve");
+    const expected = computeCost(modelId, model.priceMicroUsdPerMTok, 10, 7, 100).costMicroUsd;
+    const store = await seededStore([
+      {
+        generatorModelId: modelId,
+        generatorTokensIn: 10,
+        generatorTokensOut: 7,
+        generatorCostMicroUsd: expected,
+      },
+    ]);
+    return { store, provider, modelId, price: model.priceMicroUsdPerMTok, expected };
+  }
+
+  async function detailOf(store: ReturnType<typeof createMemoryRagStore>): Promise<{
+    headers: Record<string, string>;
+    traceId: string;
+    instance: ReturnType<typeof api>;
+  }> {
+    const { traceId } = (await runStoreEffect(store.listAdminTraces({}, { limit: 1, offset: 0 })))
+      .rows[0]!;
+    const instance = api();
+    const { session } = await login(instance, adminEnv());
+    return { headers: { cookie: session!.cookie }, traceId, instance };
+  }
+
+  it("reports a consistent configured price without replacing the recorded cost", async () => {
+    const { store, provider, modelId, price, expected } = await consistentSeed();
+    const { headers, traceId, instance } = await detailOf(store);
+    const res = await instance.request(`/admin/v1/traces/${traceId}`, { headers }, adminEnv());
+    expect(res.status).toBe(200);
+    const detail = (await res.json()) as { calls: AdminTraceCall[] };
+    const call = detail.calls.find((entry) => entry.stage === "generator")!;
+    // The recorded figure stays the call's cost…
+    expect(call.costMicroUsd).toBe(expected);
+    expect(call.modelConfig.status).toBe("consistent");
+    const match = call.modelConfig.matches.find((entry) => entry.provider === provider)!;
+    expect(match.roles).toContain("generator");
+    expect(match.priceMicroUsdPerMTok).toEqual(price);
+    expect(match.computedCostMicroUsd).toBe(expected);
+    expect(match.consistent).toBe(true);
+    // …and the trace is not otherwise changed by carrying the mirror half.
+    expect(detail.calls.map((entry) => entry.modelId)).toContain(modelId);
+  });
+
+  it("reports a mismatch when the recorded cost does not match today's price", async () => {
+    const config = loadProviderConfig();
+    const candidate = config.roles.generator?.chain[0];
+    if (candidate === undefined) throw new Error("admin test: the generator chain is empty");
+    const [provider, modelId] = parseCandidateKey(candidate);
+    const model = config.vendors[provider]?.models[modelId];
+    if (model === undefined)
+      throw new Error("admin test: the generator candidate does not resolve");
+    const expected = computeCost(modelId, model.priceMicroUsdPerMTok, 10, 7, 100).costMicroUsd;
+    // The trace recorded a cost one micro-USD above what the configured price yields —
+    // the shape a price edit leaves on an older trace. The recorded figure must stay the
+    // figure shown, and the mirror half must say it no longer matches.
+    const store = await seededStore([
+      {
+        generatorModelId: modelId,
+        generatorTokensIn: 10,
+        generatorTokensOut: 7,
+        generatorCostMicroUsd: expected + 1,
+      },
+    ]);
+    const { headers, traceId, instance } = await detailOf(store);
+    const res = await instance.request(`/admin/v1/traces/${traceId}`, { headers }, adminEnv());
+    const detail = (await res.json()) as { calls: AdminTraceCall[] };
+    const call = detail.calls.find((entry) => entry.stage === "generator")!;
+    expect(call.costMicroUsd).toBe(expected + 1);
+    expect(call.modelConfig.status).toBe("mismatch");
+    expect(call.modelConfig.matches.every((match) => match.consistent === false)).toBe(true);
+    expect(call.modelConfig.matches[0]?.computedCostMicroUsd).toBe(expected);
+  });
+
+  it("reports an unresolved model explicitly instead of omitting the call", async () => {
+    const store = await seededStore();
+    const { headers, traceId, instance } = await detailOf(store);
+    const res = await instance.request(`/admin/v1/traces/${traceId}`, { headers }, adminEnv());
+    const detail = (await res.json()) as { calls: AdminTraceCall[] };
+    const call = detail.calls.find((entry) => entry.stage === "generator")!;
+    expect(call.modelId).toBe("generator-stub");
+    expect(call.modelConfig).toEqual({ status: "unresolved", matches: [] });
+  });
+
+  it("refuses the detail on a drifted mirror, logs structurally, and keeps the raw download", async () => {
+    const store = await seededStore();
+    // A row left behind by a config edit that never went through the sync: the mirror
+    // still names a model the config does not carry. Serving the detail would present a
+    // retired price as current.
+    await runStoreEffect(
+      store.syncModelConfigs([
+        ...mirrorEntries(),
+        {
+          role: "generator",
+          provider: "retired-provider",
+          modelId: "retired-model",
+          config: { priceMicroUsdPerMTok: { in: 1, out: 1 } },
+        },
+      ]),
+    );
+    const { headers, traceId, instance } = await detailOf(store);
+    const lines: string[] = [];
+    const spy = vi.spyOn(console, "log").mockImplementation((line: unknown) => {
+      lines.push(String(line));
+    });
+    try {
+      const res = await instance.request(`/admin/v1/traces/${traceId}`, { headers }, adminEnv());
+      expect(res.status).toBe(503);
+      expect(await res.json()).toEqual({ error: "model_config_drift" });
+      const drift = lines
+        .filter((line) => line.includes("admin.model_config_drift"))
+        .map((line) => JSON.parse(line) as Record<string, unknown>)[0];
+      expect(drift).toMatchObject({
+        level: "error",
+        outcome: "drift",
+        missing: 0,
+        unexpected: 1,
+        changed: 0,
+        inactive: 0,
+      });
+      // The raw download carries no mirror-derived data, so the escape hatch still works.
+      const raw = await instance.request(
+        `/admin/v1/traces/${traceId}/raw`,
+        { headers },
+        adminEnv(),
+      );
+      expect(raw.status).toBe(200);
+    } finally {
+      spy.mockRestore();
     }
   });
 });

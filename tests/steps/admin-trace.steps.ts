@@ -66,6 +66,8 @@ function detailOf(item: typeof rulingItem) {
         tokensOut: 0,
         latencyMs: 12,
         costMicroUsd: 7,
+        // A model the current config does not carry: the mirror half must say so.
+        modelConfig: { status: "unresolved", matches: [] },
       },
       {
         stage: "generator",
@@ -75,6 +77,20 @@ function detailOf(item: typeof rulingItem) {
         tokensOut: 34,
         latencyMs: 888,
         costMicroUsd: 35,
+        // ceil(4×0.25 + 34×1.0) = 35: the configured price accounts for the recorded
+        // figure, which is what the consistency line reports.
+        modelConfig: {
+          status: "consistent",
+          matches: [
+            {
+              provider: "provider-stub",
+              roles: ["generator", "reviewer"],
+              priceMicroUsdPerMTok: { in: 250_000, out: 1_000_000 },
+              computedCostMicroUsd: 35,
+              consistent: true,
+            },
+          ],
+        },
       },
     ],
     frame: {
@@ -186,6 +202,27 @@ Then("I see every provider call, the embedding included", async ({ page }) => {
   const calls = page.getByTestId("admin-calls");
   await expect(calls).toContainText("embedder-stub");
   await expect(calls).toContainText("generator-stub");
+});
+
+Then("I see the model identity and cost consistency of every provider call", async ({ page }) => {
+  const calls = page.getByTestId("admin-calls");
+  // The generation call's mirror half: which provider row publishes the model, the
+  // roles it serves, its configured price, and that the price reproduces the cost.
+  const generation = calls.getByTestId("admin-call-model-1");
+  await expect(generation).toContainText("provider-stub");
+  await expect(generation).toContainText("generator, reviewer");
+  // The shell is Indonesian-first: the price is formatted in the reader's locale.
+  await expect(generation).toContainText("250.000 / 1.000.000");
+  await expect(calls.getByTestId("admin-call-consistency-1")).toHaveAttribute(
+    "data-status",
+    "consistent",
+  );
+  // The embedding call's model is not in the config, so the surface says that rather
+  // than omitting the call or inventing a price.
+  await expect(calls.getByTestId("admin-call-consistency-0")).toHaveAttribute(
+    "data-status",
+    "unresolved",
+  );
 });
 
 Then("the Trace panel shows the answer's sources", async ({ page }) => {

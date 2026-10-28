@@ -1,7 +1,7 @@
 import type { RagStore } from "./rag-store";
 import type { SqlRunner } from "./rag-store-postgres-errors";
 import { postgresAdminMethods } from "./rag-store-postgres-admin";
-import { postgresStoreMethods } from "./rag-store-postgres-parts";
+import { postgresMethods } from "./rag-store-postgres-methods";
 import {
   DEFAULT_SLOW_QUERY_MS,
   instrumentRunner,
@@ -47,5 +47,5 @@ export function createPostgresRagStore(
   const sql = logger === null ? rawSql : instrumentRunner(rawSql, logger, slowQueryMs);
   // The admin concern is composed here rather than in the parts barrel: this file
   // has room for its import, and the split modules stay one concern each.
-  return { ...postgresStoreMethods(sql), ...postgresAdminMethods(sql) };
+  return { ...postgresMethods(sql), ...postgresAdminMethods(sql) };
 }

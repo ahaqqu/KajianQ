@@ -52,6 +52,9 @@ const detailPayload = {
       tokensOut: 0,
       latencyMs: 12,
       costMicroUsd: 7,
+      // No mirror row names this model: an older trace whose model the config no
+      // longer carries must render as unresolved, never as an unlabelled blank.
+      modelConfig: { status: "unresolved", matches: [] },
     },
     {
       stage: "generator",
@@ -61,6 +64,20 @@ const detailPayload = {
       tokensOut: 34,
       latencyMs: 888,
       costMicroUsd: 35,
+      // 250,000/1,000,000 µUSD per MTok: ceil((4×0.25 + 34×1.0)) = 35, the recorded
+      // figure — so the mirror explains the cost rather than replacing it.
+      modelConfig: {
+        status: "consistent",
+        matches: [
+          {
+            provider: "provider-stub",
+            roles: ["generator", "reviewer"],
+            priceMicroUsdPerMTok: { in: 250_000, out: 1_000_000 },
+            computedCostMicroUsd: 35,
+            consistent: true,
+          },
+        ],
+      },
     },
   ],
   frame: {
@@ -147,6 +164,24 @@ describe("admin browser", () => {
     const calls = within(detail).getByTestId("admin-calls");
     expect(within(calls).getByText(/embedder-stub/)).toBeTruthy();
     expect(within(calls).getByText(/generator-stub/)).toBeTruthy();
+    // The mirror explains the generation call — provider, roles, price — and says the
+    // configured price reproduces the recorded figure…
+    const generatorModel = within(calls).getByTestId("admin-call-model-1");
+    expect(within(generatorModel).getByText(/provider-stub/)).toBeTruthy();
+    expect(within(generatorModel).getByText(/generator, reviewer/)).toBeTruthy();
+    // The shell is Indonesian-first, so the price is formatted in the reader's locale.
+    expect(
+      within(generatorModel).getByTestId("admin-call-match-1-provider-stub").textContent,
+    ).toContain(
+      `${new Intl.NumberFormat("id").format(250_000)} / ${new Intl.NumberFormat("id").format(1_000_000)}`,
+    );
+    expect(within(generatorModel).getByTestId("admin-call-consistency-1").textContent).toContain(
+      "cocok dengan harga di konfigurasi",
+    );
+    // …while a call whose model the config no longer carries is explicit, not blank.
+    expect(within(calls).getByTestId("admin-call-consistency-0").textContent).toContain(
+      "tidak ada di konfigurasi penyedia",
+    );
     // The stored artifact is a plain link the browser downloads.
     const raw = within(detail).getByTestId("admin-raw-link") as HTMLAnchorElement;
     expect(raw.getAttribute("href")).toBe(`/admin/v1/traces/${TRACE_ID}/raw`);

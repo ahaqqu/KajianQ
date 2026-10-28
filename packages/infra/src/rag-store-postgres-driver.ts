@@ -137,6 +137,22 @@ export function postgresSqlRunner(pool: Pool): SqlRunner {
 }
 
 /**
+ * How long one pooled connection may wait to be established. A blackholed route or a
+ * server still starting must fail the awaiting query, not stay in `connect` forever:
+ * the boot sync runs before the socket binds and the deployment's unit never restarts
+ * a process that is alive but not listening. node-postgres defaults this to no limit.
+ */
+export const POSTGRES_CONNECT_TIMEOUT_MS = 5_000;
+
+/**
+ * The server-side ceiling on one statement. This is what makes a hung query actually
+ * stop doing work: Postgres cancels it at the deadline instead of the adapter merely
+ * giving up on the wait. Generous enough for the maintenance reads and batched
+ * writes the CLIs run through this pool; no request path approaches it.
+ */
+export const POSTGRES_STATEMENT_TIMEOUT_MS = 30_000;
+
+/**
  * One pool per connection string, created on first use.
  *
  * A pool per request would open a connection per request and exhaust the
@@ -150,7 +166,12 @@ const pools = new Map<string, Pool>();
 export function postgresPool(connectionString: string): Pool {
   const existing = pools.get(connectionString);
   if (existing !== undefined) return existing;
-  const created = new Pool({ connectionString, max: 10 });
+  const created = new Pool({
+    connectionString,
+    max: 10,
+    connectionTimeoutMillis: POSTGRES_CONNECT_TIMEOUT_MS,
+    statement_timeout: POSTGRES_STATEMENT_TIMEOUT_MS,
+  });
   // A pooled connection dropped by the server (restart, idle timeout) emits on
   // the pool; without a listener node-postgres turns it into an unhandled
   // 'error' event and the process dies. Log-free on purpose: the adapter's

@@ -1,15 +1,19 @@
 import {
   AdminTraceListSchema,
   ChatTraceFrameSchema,
+  ModelPriceSchema,
   traceProviderCalls,
+  type AdminCallModelMatch,
+  type AdminTraceCall,
   type AdminTraceDetail,
   type AdminTraceList,
   type AdminTraceListItem,
   type AdminTraceQuery,
   type ChatTraceFrame,
   type Trace,
+  type TraceProviderCall,
 } from "@app/contracts";
-import { StoreError, type AdminTraceRow } from "@app/infra";
+import { computeCost, StoreError, type AdminTraceRow, type ModelConfigRecord } from "@app/infra";
 import type { StoreWiring } from "./chat-wiring";
 import * as v from "valibot";
 import {
@@ -20,6 +24,27 @@ import {
   type CitationChunkSource,
   type Warn,
 } from "./chat-trace";
+
+/** The mirror row's price carrier: the one payload field this module reads. */
+const MirrorPricePayloadSchema = v.object({ priceMicroUsdPerMTok: ModelPriceSchema });
+
+/**
+ * A mirror row names a call's model but its payload carries no price the contract can
+ * read. That is not "the model is not in the config" (`unresolved`): the mirror does
+ * name the model, so the detail refuses the read rather than print a false sentence.
+ * The drift gate makes this unreachable while the derived payload and this reader
+ * agree; the typed failure is what keeps a later payload edit from degrading silently.
+ */
+export class ModelConfigPayloadError extends Error {
+  /** `role/provider/model` of the row the caller could not read, for the structural log. */
+  readonly key: string;
+
+  constructor(row: ModelConfigRecord) {
+    super(`model_configs row ${row.role}/${row.provider}/${row.modelId} has no readable price`);
+    this.name = "ModelConfigPayloadError";
+    this.key = `${row.role}/${row.provider}/${row.modelId}`;
+  }
+}
 
 /**
  * The message half of an admin payload — the one projection of an `AdminTraceRow` onto
@@ -57,9 +82,91 @@ export function adminTraceListOf(input: {
   });
 }
 
+/** One mirror price, read strictly: an unreadable payload throws rather than looking
+ * like a model the config does not name. The drift check compares the payload
+ * canonically before this runs, so a failure here means the row is not the derived
+ * shape the caller believed it read. */
+function priceOf(row: ModelConfigRecord): { in: number; out: number } {
+  const parsed = v.safeParse(MirrorPricePayloadSchema, row.config);
+  if (!parsed.success) throw new ModelConfigPayloadError(row);
+  return parsed.output.priceMicroUsdPerMTok;
+}
+
+/**
+ * The mirror's candidates for one call's model id, collapsed by `(provider, price)` so
+ * the roles sharing a model on the same terms are one match rather than one per role.
+ * A model id can legitimately live on two rows with different terms (the free-tier and
+ * paid-terms embedding rows), which is why this is a list and not a single provider.
+ */
+function mirrorMatches(
+  rows: readonly ModelConfigRecord[],
+  modelId: string,
+  call: TraceProviderCall,
+): AdminCallModelMatch[] {
+  const groups = new Map<
+    string,
+    { provider: string; price: { in: number; out: number }; roles: Set<string> }
+  >();
+  for (const row of rows) {
+    if (row.modelId !== modelId) continue;
+    const price = priceOf(row);
+    const key = `${row.provider}\u0000${price.in}\u0000${price.out}`;
+    const group = groups.get(key);
+    if (group === undefined) {
+      groups.set(key, { provider: row.provider, price, roles: new Set([row.role]) });
+    } else {
+      group.roles.add(row.role);
+    }
+  }
+  return [...groups.values()]
+    .sort((a, b) => a.provider.localeCompare(b.provider))
+    .map((group) => {
+      const computed = computeCost(
+        modelId,
+        group.price,
+        call.tokensIn,
+        call.tokensOut,
+        call.latencyMs,
+      ).costMicroUsd;
+      return {
+        provider: group.provider,
+        roles: [...group.roles].sort(),
+        priceMicroUsdPerMTok: group.price,
+        computedCostMicroUsd: computed,
+        // The recorded figure stays the call's cost; this says whether the config's
+        // price accounts for it, using the adapter's own ceiling arithmetic.
+        consistent: computed === call.costMicroUsd,
+      };
+    });
+}
+
+/**
+ * One recorded provider call plus its model identity and cost consistency from the
+ * mirror. `consistent` when a mirrored price reproduces the recorded figure,
+ * `mismatch` when the model is mirrored but none does, `unresolved` when no row names
+ * the id — an older trace whose model the config no longer carries, reported rather
+ * than hidden or turned into a failed read. A row that DOES name the id but carries no
+ * readable price throws `ModelConfigPayloadError`: the mirror names the model, so
+ * reporting `unresolved` would be a false sentence and the read is refused instead.
+ */
+export function adminTraceCallOf(
+  call: TraceProviderCall,
+  rows: readonly ModelConfigRecord[],
+): AdminTraceCall {
+  const matches = mirrorMatches(rows, call.modelId, call);
+  const status =
+    matches.length === 0
+      ? "unresolved"
+      : matches.some((match) => match.consistent)
+        ? "consistent"
+        : "mismatch";
+  return { ...call, modelConfig: { status, matches } };
+}
+
 /**
  * The admin detail payload (ADR-0064): a message's own fields, its per-message
- * totals, its per-provider-call list, and the Trace panel frame.
+ * totals, its per-provider-call list with each call's model identity and pricing
+ * consistency, and the Trace panel frame.
  *
  * The frame is produced by the SAME `deriveTraceFrame` derivation the user-facing
  * panel renders and parsed against the same `ChatTraceFrameSchema` — the admin view
@@ -70,11 +177,14 @@ export function adminTraceListOf(input: {
  * The totals and calls come from the trace's own cost records through the shared
  * contract functions, so the list's SQL aggregate, the detail's totals, and the
  * per-call rows are one arithmetic: a total can never disagree with the calls it
- * claims to sum.
+ * claims to sum. The mirror half is additive: it never replaces a recorded cost, it
+ * explains which mirrored price reproduces it.
  */
 export async function adminTraceDetail(input: {
   row: AdminTraceRow;
   trace: Trace;
+  /** The mirror rows the caller verified against the config — never a stale set. */
+  modelConfigs: readonly ModelConfigRecord[];
   fetchChunks: CitationChunkSource;
   warn: Warn;
 }): Promise<AdminTraceDetail> {
@@ -92,17 +202,20 @@ export async function adminTraceDetail(input: {
   );
   return {
     ...adminTraceItemOf(row),
-    calls: traceProviderCalls(trace),
+    calls: traceProviderCalls(trace).map((call) => adminTraceCallOf(call, input.modelConfigs)),
     frame,
   };
 }
 
 /** One trace lookup's outcome. `unparseable` is the stored shape this contract cannot
- * read: the raw download serves it, the structured detail names the condition. */
+ * read: the raw download serves it, the structured detail names the condition.
+ * `unreadable` is a mirror row whose payload this contract cannot read: the mirror
+ * names the requested model, so the detail refuses rather than reporting it absent. */
 export type AdminTraceLookup =
   | { kind: "found"; detail: AdminTraceDetail; trace: Trace }
   | { kind: "missing" }
-  | { kind: "unparseable" };
+  | { kind: "unparseable" }
+  | { kind: "unreadable"; key: string };
 
 /**
  * Resolve one trace and build its detail payload. `missing` is "no such row" — the route
@@ -114,6 +227,7 @@ export type AdminTraceLookup =
 export async function adminTracePayload(input: {
   store: StoreWiring;
   traceId: string;
+  modelConfigs: readonly ModelConfigRecord[];
   warn: Warn;
 }): Promise<AdminTraceLookup> {
   let record;
@@ -124,11 +238,17 @@ export async function adminTracePayload(input: {
     throw err;
   }
   if (record === null) return { kind: "missing" };
-  const detail = await adminTraceDetail({
-    row: record.row,
-    trace: record.trace,
-    fetchChunks: chunkFetcher(input.store.fullStore, input.store.runStore),
-    warn: input.warn,
-  });
-  return { kind: "found", detail, trace: record.trace };
+  try {
+    const detail = await adminTraceDetail({
+      row: record.row,
+      trace: record.trace,
+      modelConfigs: input.modelConfigs,
+      fetchChunks: chunkFetcher(input.store.fullStore, input.store.runStore),
+      warn: input.warn,
+    });
+    return { kind: "found", detail, trace: record.trace };
+  } catch (err) {
+    if (err instanceof ModelConfigPayloadError) return { kind: "unreadable", key: err.key };
+    throw err;
+  }
 }
