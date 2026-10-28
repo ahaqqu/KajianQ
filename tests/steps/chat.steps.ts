@@ -24,7 +24,7 @@ const ANSWER_FIXTURE = [
   'event: citations\ndata: {"messageId":"m-live","refusal":false,"dhaifWarning":false,"citations":[{"label":"QS. 2:255","arabic":"اللَّهُ لَا إِلَٰهَ إِلَّا هُوَ","translation":"Allah, tidak ada tuhan selain Dia.","machineTranslated":true,"source":"Al-Baqarah"}]}\n\n',
   // The route selected quran + hadith and then gave the source dimension up, so
   // its row names the route's SELECTION, not a restriction the search dropped.
-  'event: trace\ndata: {"messageId":"m-live","sources":[{"id":"chunk-1","source":"Al-Baqarah"}],"technical":{"intent":"ruling","routing":{"sources":["quran","hadith"],"filters":{"grade":["sahih"],"textLayer":["sharh"],"sourceType":["quran","hadith"]},"relaxed":[{"key":"textLayer","values":["sharh"]},{"key":"sourceType","values":["quran","hadith"]}]},"subQueries":["apa itu ayat kursi","QS 2:255 makna"],"chunks":[{"id":"chunk-1","source":"Al-Baqarah","score":0.03125}],"models":["router-stub","generator-stub"]}}\n\n',
+  'event: trace\ndata: {"messageId":"m-live","sources":[{"id":"chunk-1","source":"Al-Baqarah"}],"technical":{"intent":"ruling","routing":{"sources":["quran","hadith"],"filters":{"grade":["sahih"],"textLayer":["sharh"],"sourceType":["quran","hadith"]},"relaxed":[{"key":"textLayer","values":["sharh"]},{"key":"sourceType","values":["quran","hadith"]}]},"subQueries":["apa itu ayat kursi","QS 2:255 makna"],"chunks":[{"id":"chunk-1","source":"Al-Baqarah","score":0.03125}],"models":["router-stub","generator-stub"],"reviewer":{"outcome":"skip","threshold":0.5,"items":[{"index":0,"key":"QS. 2:255","score":0.93},{"index":1,"key":"HR. Malik no. 18","score":0.61}]}}}\n\n',
   "event: done\ndata: {}\n\n",
 ].join("");
 
@@ -822,7 +822,7 @@ Then("I see the sources consulted with no technical detail", async ({ page }) =>
 });
 
 Then(
-  "I see the router intent, the routing decision, sub-queries, retrieval scores, and model identity",
+  "I see the router intent, the routing decision, sub-queries, retrieval scores, model identity, and the reviewer pre-gate verdict",
   async ({ page }) => {
     const tech = page.getByTestId("trace-technical");
     await expect(tech).toBeVisible();
@@ -841,6 +841,19 @@ Then(
     // The filters the run GAVE UP, so a hint the corpus cannot serve is not
     // displayed as one that ran.
     await expect(tech.getByTestId("trace-routing-relaxed")).toContainText("textLayer: sharh");
+    // The reviewer pre-gate's verdict, rendered from the frame the server
+    // derived: the clear, the threshold it decided against, and each citation's
+    // support score.
+    const reviewer = tech.getByTestId("trace-reviewer");
+    await expect(reviewer).toContainText("Saringan awal reviewer");
+    await expect(reviewer.getByTestId("trace-reviewer-outcome")).toHaveText(
+      "Lolos — reviewer dilewati",
+    );
+    await expect(reviewer.getByTestId("trace-reviewer-threshold")).toHaveText("0,5");
+    await expect(reviewer.getByTestId("trace-reviewer-item").first()).toContainText("QS. 2:255");
+    await expect(reviewer.getByTestId("trace-reviewer-score").first()).toContainText(
+      "skor dukungan 0,93",
+    );
   },
 );
 
