@@ -183,7 +183,7 @@ export {
 // for readers of the trace.
 export { CALLER_PRIORITY_ORIGIN } from "./chat-caller-priority";
 // The fusion arithmetic and the two deterministic expansions live in their own
-// modules (the agentic caps) so the barrel keeps one public surface.
+// modules (the 300-line and 5-import agentic caps) so consumers get one public surface.
 export { hierarchyBonus, rrfFuse, RRF_K, HIERARCHY_BONUS } from "./chat-fusion";
 // The store-facing half of stage 3: the exhaustive dimension map, the loud
 // unexpressible-dimension failure, and the per-dimension relaxation order.

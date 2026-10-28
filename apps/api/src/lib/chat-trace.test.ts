@@ -490,7 +490,9 @@ describe("the reviewer pre-gate verdict in the technical layer", () => {
     // verdict rather than replacing the old one, so the last record is the run's.
     // A decision another stage recorded is not the pre-gate's — and it is the LAST
     // event here, so a stage-blind `findLast` would return its 0.9 threshold and
-    // fail the assertion below.
+    // fail the assertion below. That event deliberately shares the pre-gate's
+    // purpose, passed explicitly at its call site rather than inherited from the
+    // helper, so the stage clause — not the purpose clause — is what excludes it.
     const frame = deriveTraceFrame({
       trace: traceOf(
         [{ id: "c1" }],
@@ -502,7 +504,11 @@ describe("the reviewer pre-gate verdict in the technical layer", () => {
           ),
           decisionEvent("router", { outcome: "escalate", threshold: 0.9, items: [] }, 8),
           decisionEvent("reviewer", { outcome: "skip", threshold: 0.5, items: [] }, 9),
-          decisionEvent("router", { outcome: "skip", threshold: 0.9, items: [] }, 10),
+          decisionEvent(
+            "router",
+            { purpose: "citation_support", outcome: "skip", threshold: 0.9, items: [] },
+            10,
+          ),
         ],
       ),
       messageId: "m1",
