@@ -24,8 +24,6 @@ export {
   isStorableText,
   ChatCitationSchema,
   ChatCitationsFrameSchema,
-  ChatTraceChunkSchema,
-  ChatTraceFrameSchema,
   ChatSessionMessageSchema,
   ChatSessionMessagesSchema,
   type ChatError,
@@ -33,11 +31,19 @@ export {
   type ChatRequest,
   type ChatCitation,
   type ChatCitationsFrame,
-  type ChatTraceChunk,
-  type ChatTraceFrame,
   type ChatSessionMessage,
   type ChatSessionMessages,
 } from "./chat";
+export {
+  ChatTraceChunkSchema,
+  ChatTraceFrameSchema,
+  ChatTraceReviewerItemSchema,
+  ChatTraceReviewerSchema,
+  type ChatTraceChunk,
+  type ChatTraceFrame,
+  type ChatTraceReviewer,
+  type ChatTraceReviewerItem,
+} from "./chat-trace";
 export {
   FEEDBACK_INITIAL_STATUS,
   FeedbackAnchorSchema,

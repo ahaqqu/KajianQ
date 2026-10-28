@@ -1,5 +1,5 @@
 import * as v from "valibot";
-import { sourceRoutingDetailSchema } from "./trace-source-routing";
+import { ChatTraceFrameSchema } from "./chat-trace";
 
 /**
  * Chat API contracts: the `/v1/chat` request/response surface — request body
@@ -189,80 +189,6 @@ export const ChatCitationsFrameSchema = v.object({
 });
 
 export type ChatCitationsFrame = v.InferOutput<typeof ChatCitationsFrameSchema>;
-
-/**
- * One chunk reference in the user-facing Trace frame: the persisted
- * `retrieval` event's provenance (fused score, both channel ranks, the
- * reranker's score, the opaque `origin` label) plus the server-joined display
- * title. The top "sources consulted" layer reuses the shape with those fields
- * absent.
- *
- * `source` is joined by chunk id — a missing row renders by id, never a
- * fabricated title. `rerankScore` sits beside `score` because the panel lists
- * the retrieval order — guarantee-led, then reranked — not a fused score order.
- */
-export const ChatTraceChunkSchema = v.object({
-  id: v.pipe(v.string(), v.minLength(1)),
-  source: v.optional(v.pipe(v.string(), v.minLength(1))),
-  score: v.optional(v.number()),
-  rankDense: v.optional(v.number()),
-  rankSparse: v.optional(v.number()),
-  rerankScore: v.optional(v.pipe(v.number(), v.minValue(0), v.maxValue(1))),
-  origin: v.optional(v.pipe(v.string(), v.minLength(1))),
-});
-
-export type ChatTraceChunk = v.InferOutput<typeof ChatTraceChunkSchema>;
-
-/**
- * The user-facing Trace payload: how an answer was built, in two layers, both
- * derived SERVER-SIDE from the answer's persisted trace (`answer_traces`) — the
- * client renders the frame, never reconstructing pipeline machinery. The top
- * `sources` layer lists the sources consulted in plain language (retrieval
- * order, deduplicated); `technical` carries the router intent, the sub-queries,
- * the scored chunks, and the model identities (opaque `modelId` strings from
- * `model_configs`). Emitted live as the SSE `trace` frame (after `citations`,
- * before `done`) and per assistant message on the rehydration transcript;
- * `messageId` names the message it renders for, in both views.
- */
-export const ChatTraceFrameSchema = v.object({
-  messageId: v.pipe(v.string(), v.minLength(1)),
-  sources: v.array(ChatTraceChunkSchema),
-  technical: v.object({
-    intent: v.optional(v.pipe(v.string(), v.minLength(1))),
-    confidence: v.optional(v.number()),
-    /**
-     * The routing decision: which source types the route selected and the
-     * metadata filter record retrieval should run with, projected verbatim from
-     * the persisted trace's `source_routing` event. Opaque strings — the domain
-     * pack owns what a source type or a filter dimension means. An empty
-     * `sources` list is a decision ("every source was in play"), never
-     * "unknown". `relaxed` names the dimensions the run gave up on the trace's
-     * `filter_relaxed` events, so the effective record is `filters − relaxed`;
-     * a relaxed run would otherwise show a filter the search had already given
-     * up. Shared with the trace variant's schema — only the drop list, which
-     * lives on the retriever's events, is declared here.
-     */
-    routing: v.optional(
-      v.object({
-        ...sourceRoutingDetailSchema.entries,
-        relaxed: v.optional(
-          v.array(
-            v.object({
-              key: v.pipe(v.string(), v.minLength(1)),
-              values: v.pipe(v.array(v.pipe(v.string(), v.minLength(1))), v.minLength(1)),
-            }),
-          ),
-        ),
-      }),
-    ),
-    subQueries: v.array(v.pipe(v.string(), v.minLength(1))),
-    chunks: v.array(ChatTraceChunkSchema),
-    /** Distinct model identities, in first-call order (opaque ids). */
-    models: v.array(v.pipe(v.string(), v.minLength(1))),
-  }),
-});
-
-export type ChatTraceFrame = v.InferOutput<typeof ChatTraceFrameSchema>;
 
 /**
  * One rehydrated transcript message, mapped from the persisted chat rows. `id`

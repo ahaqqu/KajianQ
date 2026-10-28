@@ -76,7 +76,7 @@ export const INTERNAL_MODULES = {
   "packages/contracts/src/trace-product-rules.ts":
     "composed into the TraceEvent union in ./trace-events.ts — a reader parses that union and branches on `kind`, never on a variant module",
   "packages/contracts/src/trace-source-routing.ts":
-    "composed into the TraceEvent union in ./trace-events.ts and spread into chat's trace frame in ./chat.ts — both publish the fields inline, so no consumer parses these schemas by name",
+    "composed into the TraceEvent union in ./trace-events.ts and spread into the chat trace frame in ./chat-trace.ts — both publish the fields inline, so no consumer parses these schemas by name",
   "packages/contracts/src/trace-retriever.ts":
     "composed into the TraceEvent union in ./trace-events.ts — a reader parses that union and branches on `kind`, never on a variant module",
 };

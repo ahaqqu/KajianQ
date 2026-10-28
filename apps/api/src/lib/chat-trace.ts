@@ -169,6 +169,20 @@ export function deriveTraceFrame(input: {
       relaxed.push({ key, values: [...(typeof values === "string" ? [values] : values)] });
     }
   }
+  // The reviewer pre-gate's verdict (ADR-0042), projected from its own `decision`
+  // event. The stage records one decision per answer — one batched call inside the
+  // reviewer stage's single entry — so the LAST reviewer-stage decision is the
+  // current verdict: events are append-ordered, and a re-entered stage appends
+  // rather than replaces. Another stage's decision is not the pre-gate's, which is
+  // the stage filter's job. The block needs the threshold the outcome was computed
+  // against; the event can carry a decision without one, and such a record is left
+  // unprojected rather than shown against a fabricated threshold. Absent when the
+  // run never reached the pre-gate (a refusal, a validator failure, an unwired
+  // decider) — absence is never "cleared".
+  const reviewerEvent = trace.events.findLast(
+    (event) => event.kind === "decision" && event.stage === "reviewer",
+  );
+  const reviewerThreshold = reviewerEvent?.detail.threshold;
   return {
     messageId,
     sources: refs.map((ref) => toSource(ref, chunksById)),
@@ -192,6 +206,18 @@ export function deriveTraceFrame(input: {
       subQueries,
       chunks: refs.map((ref) => toTechnicalChunk(ref, chunksById)),
       models,
+      ...(reviewerEvent !== undefined && reviewerThreshold !== undefined
+        ? {
+            reviewer: {
+              outcome: reviewerEvent.detail.outcome,
+              ...(reviewerEvent.detail.reason !== undefined
+                ? { reason: reviewerEvent.detail.reason }
+                : {}),
+              threshold: reviewerThreshold,
+              items: reviewerEvent.detail.items,
+            },
+          }
+        : {}),
     },
   };
 }

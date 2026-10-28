@@ -10,11 +10,10 @@ import {
   ChatRequestSchema,
   ChatSessionMessageSchema,
   ChatSessionMessagesSchema,
-  ChatTraceChunkSchema,
-  ChatTraceFrameSchema,
   isChatSessionId,
   isStorableText,
 } from "./chat";
+import { ChatTraceChunkSchema, ChatTraceFrameSchema, ChatTraceReviewerSchema } from "./chat-trace";
 
 /**
  * Contracts for the structured citation payload and the session-rehydration
@@ -623,6 +622,79 @@ describe("ChatTraceFrameSchema", () => {
     expect(v.safeParse(ChatTraceFrameSchema, { ...FRAME, sources: [{ id: "" }] }).success).toBe(
       false,
     );
+  });
+
+  /**
+   * The reviewer pre-gate's verdict rides the technical layer as one optional
+   * block: a trace persisted before the decision event existed (or one whose run
+   * never reached the pre-gate) carries no block, and the two outcomes carry
+   * different payloads — a skip is an affirmative clear, an escalation names why.
+   */
+  describe("the reviewer pre-gate block", () => {
+    const reviewer = (value: unknown) => ({
+      ...FRAME,
+      technical: { ...FRAME.technical, reviewer: value },
+    });
+
+    it("accepts a skip: every citation cleared, with its per-citation scores", () => {
+      const parsed = v.parse(
+        ChatTraceFrameSchema,
+        reviewer({
+          outcome: "skip",
+          threshold: 0.5,
+          items: [
+            { index: 0, key: "QS. 2:255", score: 0.93 },
+            { index: 1, key: "HR. Malik no. 18", score: 0.61 },
+          ],
+        }),
+      );
+      expect(parsed.technical.reviewer?.outcome).toBe("skip");
+      expect(parsed.technical.reviewer?.reason).toBeUndefined();
+      expect(parsed.technical.reviewer?.threshold).toBe(0.5);
+      expect(parsed.technical.reviewer?.items).toHaveLength(2);
+    });
+
+    it("accepts an escalate, with its reason and an unscored item", () => {
+      const parsed = v.parse(
+        ChatTraceFrameSchema,
+        reviewer({
+          outcome: "escalate",
+          reason: "below_threshold",
+          threshold: 0.5,
+          items: [
+            { index: 0, key: "QS. 2:255", score: 0.31 },
+            { index: 1, key: "HR. Malik no. 18" },
+          ],
+        }),
+      );
+      expect(parsed.technical.reviewer?.outcome).toBe("escalate");
+      expect(parsed.technical.reviewer?.reason).toBe("below_threshold");
+      // An unscored item is "not judged", never a zero the panel could render as one.
+      expect(parsed.technical.reviewer?.items[1]?.score).toBeUndefined();
+    });
+
+    it("accepts a frame with no reviewer block (older traces stay readable)", () => {
+      const parsed = v.parse(ChatTraceFrameSchema, FRAME);
+      expect(parsed.technical.reviewer).toBeUndefined();
+    });
+
+    it("rejects an outcome outside skip/escalate (the frame carries the decision, not a label)", () => {
+      for (const outcome of ["pass", "SKIP", "", 1, null]) {
+        expect(
+          v.safeParse(ChatTraceFrameSchema, reviewer({ outcome, threshold: 0.5, items: [] }))
+            .success,
+        ).toBe(false);
+      }
+    });
+
+    it("rejects a block without the threshold the outcome was computed against", () => {
+      expect(
+        v.safeParse(ChatTraceFrameSchema, reviewer({ outcome: "skip", items: [] })).success,
+      ).toBe(false);
+      expect(v.safeParse(ChatTraceReviewerSchema, { outcome: "skip", items: [] }).success).toBe(
+        false,
+      );
+    });
   });
 
   it("accepts a session message carrying the optional trace frame, and a user turn without one", () => {
