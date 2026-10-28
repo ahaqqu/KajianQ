@@ -145,6 +145,15 @@ function fakeStore() {
     purgeAdminAccessLog() {
       return Effect.succeed(0);
     },
+    revokeAdminSession() {
+      return Effect.succeed(undefined);
+    },
+    isAdminSessionRevoked() {
+      return Effect.succeed(false);
+    },
+    purgeAdminSessionRevocations() {
+      return Effect.succeed(0);
+    },
     syncModelConfigs() {
       return Effect.succeed(undefined);
     },

@@ -1,18 +1,16 @@
-import { AdminLoginRequestSchema, type AdminSession } from "@app/contracts";
-import * as v from "valibot";
 import { ADMIN_SESSION_ROUTE } from "../lib/admin-paths";
 import {
   adminCredential,
-  adminSessionActive,
   adminUnauthorized,
   clearAdminCookies,
-  credentialMatches,
   csrfMatches,
   issueSessionToken,
   sameOrigin,
   setAdminCookie,
   setCsrfCookie,
 } from "../lib/admin-auth";
+import { loginBodyMatches, sessionBody } from "../lib/admin-login";
+import { adminSessionActive, revokePresentedSession } from "../lib/admin-route";
 import { newRouter } from "../lib/guard";
 
 /**
@@ -20,19 +18,21 @@ import { newRouter } from "../lib/guard";
  *
  * The login POST is the only state-changing unauthenticated request on the admin
  * surface, so it carries the full set of controls and every auth control answers
- * the same 401: a cross-site Origin, a missing CSRF pair, a wrong credential, a
- * body that is not the contract, and a surface with no credential configured at
- * all. Nothing distinguishes them from outside, so the endpoint is not a probe for
- * whether an admin credential exists — and a malformed body cannot become an
- * oracle for the credential's presence.
+ * the same 401: a cross-site Origin, a missing CSRF pair, a media type other than
+ * JSON, a wrong credential, a body that is not the contract, and a surface with no
+ * credential configured at all. Nothing distinguishes them from outside, so the
+ * endpoint is not a probe for whether an admin credential exists — and a malformed
+ * body or a foreign media type cannot become an oracle for the credential's presence.
  *
  * Login is rate-limited by the admin middleware (a tighter budget than the public
  * `/v1` meter), so a guessing loop never reaches the comparison at full speed.
+ *
+ * The probe answers whether a live session is held, which means the token's session
+ * id is checked against the revocation denylist: a signed-out session reads as signed
+ * out here too. Logout revokes that session id before it clears the cookies, so the
+ * pre-logout token is dead the moment the response says 204; its absence or an
+ * already-invalid token still answers 204 and clears, keeping every miss uniform.
  */
-
-function sessionBody(authenticated: boolean, csrfToken: string): AdminSession {
-  return { authenticated, csrfToken };
-}
 
 export const adminSessionRoutes = newRouter()
   // Bootstrap: a fresh CSRF token every time, plus whether a live session is
@@ -41,7 +41,7 @@ export const adminSessionRoutes = newRouter()
   .get(ADMIN_SESSION_ROUTE, async (c) => {
     const csrfToken = setCsrfCookie(c);
     c.header("Cache-Control", "no-store");
-    return c.json(sessionBody(await adminSessionActive(c, c.env), csrfToken));
+    return c.json(sessionBody(await adminSessionActive(c), csrfToken));
   })
   .post(ADMIN_SESSION_ROUTE, async (c) => {
     const credential = adminCredential(c.env);
@@ -59,19 +59,9 @@ export const adminSessionRoutes = newRouter()
       return adminUnauthorized(c);
     }
     if (!(await csrfMatches(c))) return adminUnauthorized(c);
-    let body: unknown;
-    try {
-      body = await c.req.raw.json();
-    } catch {
-      body = null;
-    }
-    const parsed = v.safeParse(AdminLoginRequestSchema, body);
-    // A malformed body is the same miss as a wrong password: answering 400 only
-    // when a credential is configured would tell an unauthenticated caller
-    // whether this deployment has one.
-    if (!parsed.success || !(await credentialMatches(parsed.output.password, credential))) {
-      return adminUnauthorized(c);
-    }
+    // The media type, the body and the credential are one boundary: a request the
+    // server will not read is the same miss as a wrong password.
+    if (!(await loginBodyMatches(c, credential))) return adminUnauthorized(c);
     const { token } = await issueSessionToken(credential);
     setAdminCookie(c, token);
     // Rotating the CSRF token on privilege change keeps a token obtained before
@@ -84,6 +74,12 @@ export const adminSessionRoutes = newRouter()
     // Logout: a cross-site logout is a nuisance rather than a compromise, but the
     // CSRF pair is required all the same so every state change has one rule.
     if (!(await csrfMatches(c))) return adminUnauthorized(c);
+    if (!(await revokePresentedSession(c))) {
+      // The revocation could not be written, so the token would stay live. Reporting
+      // 204 and clearing the cookie would be a sign-out that did not happen; the
+      // cookie stays where it was and the operator can retry.
+      return c.json({ error: "admin_unavailable" }, 503);
+    }
     clearAdminCookies(c);
     return c.body(null, 204);
   });

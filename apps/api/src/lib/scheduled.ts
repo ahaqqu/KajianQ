@@ -35,6 +35,9 @@ export type ScheduledResult = {
   /** Admin access records past the retention window that were removed, or null on a
    * failure — the log's own window, applied by the store (ADR-0064). */
   adminLogDeleted: number | null;
+  /** Revoked admin sessions whose token had already expired, or null on a failure.
+   * The denylist's rows are reclaimable on the token's own schedule. */
+  revocationsDeleted: number | null;
   ok: boolean;
 };
 
@@ -43,6 +46,8 @@ export type ScheduledDeps = {
   createStore?: (env: ScheduledEnv) => RagStore;
   /** Bridge one store Effect to a promise; defaults to the domain's runner. */
   runStore?: StoreBridge;
+  /** The clock the retention cutoffs are taken from; defaults to `Date.now`. */
+  now?: () => number;
 };
 
 /**
@@ -55,6 +60,7 @@ export async function cleanupExpiredSessions(
 ): Promise<ScheduledResult> {
   const logger = createLogger({ service: "api", route: "scheduled" });
   const createStore = deps.createStore ?? createRagStoreFromEnv;
+  const now = (deps.now ?? Date.now)();
   let store: RagStore;
   try {
     store = createStore(env);
@@ -63,7 +69,7 @@ export async function cleanupExpiredSessions(
       // No database binding in this environment (local dev, an environment without
       // a configured store): the feature is disabled, not broken.
       logger.warn("scheduled.cleanup_skipped", { missing: err.missing ?? "unknown" });
-      return { deleted: null, adminLogDeleted: null, ok: false };
+      return { deleted: null, adminLogDeleted: null, revocationsDeleted: null, ok: false };
     }
     throw err;
   }
@@ -73,11 +79,12 @@ export async function cleanupExpiredSessions(
   const runStore = deps.runStore ?? (await import("@app/kajianq-domain")).runStoreEffect;
 
   /**
-   * One retention step, with its OWN error boundary: the two windows are independent
-   * obligations, and a persistent fault in the session cleanup must not silently stop
-   * enforcing the access log's published 90 days. A failed or non-numeric step is
-   * logged and reported as null (a store that resolves to a non-number is a contract
-   * violation worth seeing, not a count to report as "0 removed"), never thrown.
+   * One retention step, with its OWN error boundary: each retention step is an
+   * independent obligation, and a persistent fault in one (the session cleanup, say)
+   * must not silently stop the others from enforcing their published windows. A failed
+   * or non-numeric step is logged and reported as null (a store that resolves to a
+   * non-number is a contract violation worth seeing, not a count to report as "0
+   * removed"), never thrown.
    */
   const step = async (
     effect: RetentionCall,
@@ -93,7 +100,7 @@ export async function cleanupExpiredSessions(
       return removed;
     } catch (err) {
       // A transient store fault must not fail the cron run, and must not stop the
-      // other retention step: log and let the next tick retry (the rows are still
+      // other retention steps: log and let the next tick retry (the rows are still
       // there, still harmless).
       logger.error(names.failed, {
         error: err instanceof Error ? err.message : String(err),
@@ -115,5 +122,21 @@ export async function cleanupExpiredSessions(
     unexpected: "scheduled.admin_log_unexpected_result",
     done: "scheduled.admin_log_purged",
   });
-  return { deleted, adminLogDeleted, ok: deleted !== null && adminLogDeleted !== null };
+  // The revocation denylist's expired rows. Same independent boundary as the log: a
+  // logout must not stop working because an earlier purge fault persisted, and the rows
+  // are harmless while they wait for the next tick. The cutoff is THIS process's clock,
+  // the one the token check compares `exp` against: the store must not measure the same
+  // app-clock value against the database's `now()`, or a skewed app clock could reclaim
+  // a row while the token it ends still verifies.
+  const revocationsDeleted = await step(store.purgeAdminSessionRevocations(now), {
+    failed: "scheduled.admin_session_revocations_failed",
+    unexpected: "scheduled.admin_session_revocations_unexpected_result",
+    done: "scheduled.admin_session_revocations_purged",
+  });
+  return {
+    deleted,
+    adminLogDeleted,
+    revocationsDeleted,
+    ok: deleted !== null && adminLogDeleted !== null && revocationsDeleted !== null,
+  };
 }

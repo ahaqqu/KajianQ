@@ -13,6 +13,7 @@ import { traceTotals, type AdminTraceCall, type Trace } from "@app/contracts";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { createApi } from "../app";
 import { ADMIN_API_PREFIX, ADMIN_COOKIE_PATH, ADMIN_LOGIN_PATH } from "../lib/admin-paths";
+import { legacyAdminToken } from "../test-utils/legacy-admin-token";
 import type { AssetFetcher } from "@app/hardening";
 
 /**
@@ -87,6 +88,33 @@ function cookieValue(response: Response, name: string): string {
   return "";
 }
 
+/** The signed token inside the admin cookie (`name=token`). */
+function sessionToken(cookie: string): string {
+  return cookie.slice("kajianq_admin=".length);
+}
+
+/** The session id the signed payload names. Decoding without verifying is enough here:
+ * the test holds the token the server just minted, and a tampered one is covered by the
+ * 401 cases. */
+function sessionJti(cookie: string): string {
+  const payload = sessionToken(cookie).split(".")[1] ?? "";
+  const json = atob(payload.replaceAll("-", "+").replaceAll("_", "/"));
+  return (JSON.parse(json) as { jti: string }).jti;
+}
+
+/** A base64url payload, the way the token encodes one — for a tampered-token case. */
+function encodePayload(value: unknown): string {
+  return btoa(JSON.stringify(value)).replaceAll("+", "-").replaceAll("/", "_").replaceAll("=", "");
+}
+
+/** The expiry the signed payload names, in epoch milliseconds. The test decodes the
+ * token the server just minted; verification is covered by the 401 cases. */
+function sessionExpiry(cookie: string): number {
+  const payload = sessionToken(cookie).split(".")[1] ?? "";
+  const json = atob(payload.replaceAll("-", "+").replaceAll("_", "/"));
+  return (JSON.parse(json) as { exp: number }).exp;
+}
+
 /** The bootstrap: a CSRF token plus the cookie that must accompany it. */
 async function csrf(
   instance: ReturnType<typeof api>,
@@ -131,6 +159,25 @@ async function login(
     session: { cookie: cookieValue(response, "kajianq_admin"), csrfToken: body.csrfToken },
     response,
   };
+}
+
+/** The logout a signed-in operator performs: both cookies plus the echoed CSRF header. */
+async function logout(
+  instance: ReturnType<typeof api>,
+  env: Record<string, unknown>,
+  session: Session,
+): Promise<Response> {
+  return instance.request(
+    "/v1/admin/session",
+    {
+      method: "DELETE",
+      headers: {
+        cookie: `${session.cookie}; kajianq_admin_csrf=${session.csrfToken}`,
+        "x-csrf-token": session.csrfToken,
+      },
+    },
+    env,
+  );
 }
 
 /** A login POST with the caller's own headers, at the caller's own URL: the Origin and
@@ -502,7 +549,11 @@ describe("admin auth: nothing is readable without the credential", () => {
           "/v1/admin/session",
           {
             method: "POST",
-            headers: { cookie: boot.cookie, "x-csrf-token": boot.token },
+            headers: {
+              cookie: boot.cookie,
+              "x-csrf-token": boot.token,
+              "content-type": "application/json",
+            },
             body: JSON.stringify(body),
           },
           env,
@@ -707,6 +758,311 @@ describe("admin auth: nothing is readable without the credential", () => {
   });
 });
 
+describe("admin login: the declared media type is part of the boundary", () => {
+  /** The login POST without a content type: a byte-array body is the one form the
+   * platform does not label for the caller, which is what a raw client sends. */
+  async function loginWithoutContentType(
+    instance: ReturnType<typeof api>,
+    env: Record<string, unknown>,
+  ): Promise<Response> {
+    const boot = await csrf(instance, env);
+    const request = new Request("http://localhost/v1/admin/session", {
+      method: "POST",
+      headers: { cookie: boot.cookie, "x-csrf-token": boot.token },
+      body: new TextEncoder().encode(JSON.stringify({ password: PASSWORD })),
+    });
+    return instance.fetch(request, env as never);
+  }
+
+  // The gate's POSITION — that the body is never read for a refused type — is observable at
+  // the helper (`admin-login.test.ts`), where the read is an argument a test can watch.
+  it("refuses a non-JSON declaration with the uniform 401", async () => {
+    await seededStore();
+    const instance = api();
+    const env = adminEnv();
+    const attempts: [string, Response][] = [];
+    for (const contentType of [
+      "application/x-www-form-urlencoded",
+      "text/plain",
+      "multipart/form-data; boundary=----kajianq",
+    ]) {
+      const response = await loginAttempt(instance, env, { "content-type": contentType });
+      attempts.push([contentType, response]);
+    }
+    attempts.push(["missing", await loginWithoutContentType(instance, env)]);
+    // The wrong-password answer is the reference the body must be byte-identical to.
+    const wrong = await loginAttempt(instance, env, {}, "/v1/admin/session", "wrong credential");
+    const reference = await wrong.text();
+    expect(wrong.status).toBe(401);
+
+    for (const [label, response] of attempts) {
+      expect(response.status, label).toBe(401);
+      expect(await response.text(), label).toBe(reference);
+      // A refused login never hands out a session, whatever it declared.
+      expect(response.headers.getSetCookie(), label).toHaveLength(0);
+    }
+  });
+
+  it("accepts application/json with a charset parameter", async () => {
+    await seededStore();
+    const instance = api();
+    const response = await loginAttempt(instance, adminEnv(), {
+      "content-type": "application/json; charset=utf-8",
+    });
+    expect(response.status).toBe(200);
+    expect(((await response.json()) as { authenticated: boolean }).authenticated).toBe(true);
+  });
+
+  it("keeps the documented 401s for a malformed body, an empty object and an oversized password", async () => {
+    await seededStore();
+    const instance = api();
+    const env = adminEnv();
+    const bodies = [
+      "{not json",
+      "{}",
+      JSON.stringify({ password: "" }),
+      JSON.stringify({ password: "x".repeat(513) }),
+    ];
+    const bodiesSeen: string[] = [];
+    for (const body of bodies) {
+      const boot = await csrf(instance, env);
+      const response = await instance.request(
+        "/v1/admin/session",
+        {
+          method: "POST",
+          headers: {
+            cookie: boot.cookie,
+            "x-csrf-token": boot.token,
+            "content-type": "application/json",
+          },
+          body,
+        },
+        env,
+      );
+      expect(response.status, body.slice(0, 20)).toBe(401);
+      bodiesSeen.push(await response.text());
+      expect(response.headers.getSetCookie()).toHaveLength(0);
+    }
+    expect(new Set(bodiesSeen)).toEqual(new Set(['{"error":"unauthorized"}']));
+  });
+});
+
+describe("admin session revocation: sign-out ends the token, not just the browser copy", () => {
+  const list = (instance: ReturnType<typeof api>, env: Record<string, unknown>, session: Session) =>
+    instance.request("/v1/admin/traces?pageSize=1", { headers: { cookie: session.cookie } }, env);
+
+  it("replaying the pre-logout cookie answers the same 401, and spends no audit row", async () => {
+    const store = await seededStore();
+    const traceId = (await runStoreEffect(store.listAdminTraces({}, { limit: 1, offset: 0 })))
+      .rows[0]!.traceId;
+    const instance = api();
+    const env = adminEnv();
+    const { session } = await login(instance, env);
+    expect((await list(instance, env, session!)).status).toBe(200);
+    const logged = store.allAdminAccess().length;
+    expect(logged).toBe(1);
+
+    const cleared = await logout(instance, env, session!);
+    expect(cleared.status).toBe(204);
+    expect(cleared.headers.getSetCookie()).toHaveLength(2);
+
+    // The replay the sign-out invariant exists for: the cookie captured before logout.
+    // Every read and the probe itself must read the session as ended, with one body.
+    const replayPaths = [
+      "/v1/admin/traces?pageSize=1",
+      `/v1/admin/traces/${traceId}`,
+      `/v1/admin/traces/${traceId}/raw`,
+    ];
+    for (const path of replayPaths) {
+      const replay = await instance.request(path, { headers: { cookie: session!.cookie } }, env);
+      expect(replay.status, path).toBe(401);
+      expect(await replay.json(), path).toEqual({ error: "unauthorized" });
+      expect(replay.headers.get("cache-control"), path).toBe("no-store");
+    }
+    const probe = await instance.request(
+      "/v1/admin/session",
+      { headers: { cookie: session!.cookie } },
+      env,
+    );
+    expect(probe.status).toBe(200);
+    expect(((await probe.json()) as { authenticated: boolean }).authenticated).toBe(false);
+    // A refused read is not an audit: the replayed misses wrote nothing.
+    expect(store.allAdminAccess()).toHaveLength(logged);
+  });
+
+  it("ends only the session that signed out: a second live session keeps working", async () => {
+    const store = await seededStore();
+    const instance = api();
+    const env = adminEnv();
+    const first = (await login(instance, env)).session!;
+    const second = (await login(instance, env)).session!;
+    expect(sessionJti(first.cookie)).not.toBe(sessionJti(second.cookie));
+    expect((await logout(instance, env, first)).status).toBe(204);
+
+    expect((await list(instance, env, first)).status).toBe(401);
+    expect((await list(instance, env, second)).status).toBe(200);
+    // Only the signed-out id is on the denylist.
+    expect(await runStoreEffect(store.isAdminSessionRevoked(sessionJti(first.cookie)))).toBe(true);
+    expect(await runStoreEffect(store.isAdminSessionRevoked(sessionJti(second.cookie)))).toBe(
+      false,
+    );
+  });
+
+  it("answers 204 and clears both cookies for an absent or forged token", async () => {
+    await seededStore();
+    const instance = api();
+    const env = adminEnv();
+    for (const cookie of [undefined, "kajianq_admin=v1.forged.signature"]) {
+      const boot = await csrf(instance, env);
+      const csrfCookie = cookieValue(boot.response, "kajianq_admin_csrf");
+      const headers: Record<string, string> = {
+        cookie: cookie === undefined ? csrfCookie : `${cookie}; ${csrfCookie}`,
+        "x-csrf-token": boot.token,
+      };
+      const response = await instance.request(
+        "/v1/admin/session",
+        { method: "DELETE", headers },
+        env,
+      );
+      // Nothing to revoke is still a completed sign-out: the miss stays uniform.
+      expect(response.status, cookie).toBe(204);
+      expect(response.headers.getSetCookie(), cookie).toHaveLength(2);
+    }
+  });
+
+  it("purges an expiry-passed revocation row, and a token with that id lives again", async () => {
+    // The retention property: a row outlives its token by design, then is pruned. Because
+    // the id is random, the "same id" half is exercised by the token the row named — a
+    // future token never reuses it.
+    const store = await seededStore();
+    const instance = api();
+    const env = adminEnv();
+    const { session } = await login(instance, env);
+    const jti = sessionJti(session!.cookie);
+    await runStoreEffect(store.revokeAdminSession({ jti, expiresAt: Date.now() - 60_000 }));
+    expect((await list(instance, env, session!)).status).toBe(401);
+    expect(await runStoreEffect(store.purgeAdminSessionRevocations(Date.now()))).toBe(1);
+    expect(await runStoreEffect(store.isAdminSessionRevoked(jti))).toBe(false);
+    expect((await list(instance, env, session!)).status).toBe(200);
+
+    // An unexpired row is not pruned, and keeps blocking; a newer login is a new id.
+    const second = (await login(instance, env)).session!;
+    await runStoreEffect(
+      store.revokeAdminSession({
+        jti: sessionJti(second.cookie),
+        expiresAt: Date.now() + 60_000,
+      }),
+    );
+    expect(await runStoreEffect(store.purgeAdminSessionRevocations(Date.now()))).toBe(0);
+    expect((await list(instance, env, second)).status).toBe(401);
+    const third = (await login(instance, env)).session!;
+    expect(sessionJti(third.cookie)).not.toBe(jti);
+    expect((await list(instance, env, third)).status).toBe(200);
+  });
+
+  it("records the signed-out token's own expiry, so the purge cannot reclaim it early", async () => {
+    const store = await seededStore();
+    const instance = api();
+    const env = adminEnv();
+    const { session } = await login(instance, env);
+    const exp = sessionExpiry(session!.cookie);
+    expect((await logout(instance, env, session!)).status).toBe(204);
+
+    // The row's only input is the token's own `exp`. A purge at that exact instant keeps
+    // it — the token still verifies until then — and one millisecond later reclaims it.
+    // A logout that wrote `0`, or its own clock, would already be gone at the first purge
+    // and the token it named would read again.
+    expect(await runStoreEffect(store.purgeAdminSessionRevocations(exp))).toBe(0);
+    expect((await list(instance, env, session!)).status).toBe(401);
+    expect(await runStoreEffect(store.purgeAdminSessionRevocations(exp + 1))).toBe(1);
+    expect((await list(instance, env, session!)).status).toBe(200);
+  });
+
+  it("refuses a validly signed legacy token that names no session", async () => {
+    await seededStore();
+    const instance = api();
+    const env = adminEnv();
+    // The pre-change mint: the same credential-derived key, a payload carrying `exp` and
+    // no `jti`. The signature verifies (pinned in `admin-auth.test.ts`); only the
+    // session-id requirement refuses it. Without that requirement this token would be a
+    // session nothing can revoke.
+    const legacy = await legacyAdminToken(PASSWORD, Date.now() + 60 * 60 * 1000);
+    const cookie = `kajianq_admin=${legacy}`;
+    for (const path of ["/v1/admin/traces", `/v1/admin/traces/${crypto.randomUUID()}`]) {
+      const res = await instance.request(path, { headers: { cookie } }, env);
+      expect(res.status, path).toBe(401);
+      expect(await res.json(), path).toEqual({ error: "unauthorized" });
+    }
+    const probe = await instance.request("/v1/admin/session", { headers: { cookie } }, env);
+    expect(((await probe.json()) as { authenticated: boolean }).authenticated).toBe(false);
+  });
+
+  it("reads a malformed or tampered session id as a normal 401, never an error", async () => {
+    await seededStore();
+    const instance = api();
+    const env = adminEnv();
+    const { session } = await login(instance, env);
+    const [version, payload, signature] = sessionToken(session!.cookie).split(".");
+    const decoded = JSON.parse(atob((payload ?? "").replaceAll("-", "+").replaceAll("_", "/"))) as {
+      exp: number;
+      jti: string;
+    };
+    const replaced = encodePayload({ exp: decoded.exp, jti: "A".repeat(22) });
+    const candidates = [
+      // A well-formed but never-issued id with the old signature: tampering.
+      `${version}.${replaced}.${signature}`,
+      // A payload with no session id at all: a token that could never be revoked.
+      `${version}.${encodePayload({ exp: decoded.exp })}.${signature}`,
+      "v1.bogus.bogus",
+      "",
+    ];
+    for (const candidate of candidates) {
+      const response = await instance.request(
+        "/v1/admin/traces",
+        { headers: { cookie: `kajianq_admin=${candidate}` } },
+        env,
+      );
+      expect(response.status, candidate).toBe(401);
+      expect(await response.json(), candidate).toEqual({ error: "unauthorized" });
+    }
+  });
+
+  it("fails closed when the revocation store cannot answer, and a failed write is not 204", async () => {
+    const store = await seededStore();
+    const instance = api();
+    const env = adminEnv();
+    const { session } = await login(instance, env);
+    currentStore = Object.assign(store, {
+      isAdminSessionRevoked: () => {
+        throw new Error("denylist unavailable");
+      },
+    }) as never;
+    const read = await instance.request(
+      "/v1/admin/traces",
+      { headers: { cookie: session!.cookie } },
+      env,
+    );
+    expect(read.status).toBe(503);
+    expect(await read.text()).toContain("admin_unavailable");
+    const probe = await instance.request(
+      "/v1/admin/session",
+      { headers: { cookie: session!.cookie } },
+      env,
+    );
+    expect(((await probe.json()) as { authenticated: boolean }).authenticated).toBe(false);
+
+    currentStore = Object.assign(store, {
+      revokeAdminSession: () => {
+        throw new Error("denylist unavailable");
+      },
+    }) as never;
+    const logoutResponse = await logout(instance, env, session!);
+    // A 204 here would report a sign-out that did not happen; the cookie must stay.
+    expect(logoutResponse.status).toBe(503);
+    expect(logoutResponse.headers.getSetCookie()).toHaveLength(0);
+  });
+});
+
 describe("admin list: the failure-search seam", () => {
   it("returns each message's own question and answer, with its trace totals", async () => {
     const store = await seededStore([
@@ -816,6 +1172,73 @@ describe("admin list: the failure-search seam", () => {
       expect(res.headers.get("cache-control"), query).toBe("no-store");
     }
     expect(storeReadCount).toBe(0);
+  });
+
+  it("refuses a NUL in the filter before the log write and the read, and still searches pasted text", async () => {
+    const store = await seededStore([{ question: "Apa itu ayat\nkursi?" }]);
+    const instance = api();
+    const { session } = await login(instance, adminEnv());
+    let listReads = 0;
+    const readTraces = store.listAdminTraces.bind(store);
+    currentStore = Object.assign(store, {
+      listAdminTraces: (...args: Parameters<typeof readTraces>) => {
+        listReads += 1;
+        return readTraces(...args);
+      },
+    }) as never;
+
+    // `%00` is the URL-decoded NUL that would reach the store as a bound parameter and
+    // raise there. Every NUL shape is the documented 400, never the 500 a bound NUL
+    // produces in the store.
+    for (const q of ["%00", "ayat%00kursi"]) {
+      const res = await instance.request(
+        `/v1/admin/traces?q=${q}&pageSize=5`,
+        { headers: { cookie: session!.cookie } },
+        adminEnv(),
+      );
+      expect(res.status, q).toBe(400);
+      expect(await res.json(), q).toEqual({ error: "invalid_request" });
+      expect(res.headers.get("cache-control"), q).toBe("no-store");
+    }
+    // Neither side effect was spent on a refused filter: no audit row, no content read.
+    expect(store.allAdminAccess()).toHaveLength(0);
+    expect(listReads).toBe(0);
+
+    // The newline a pasted multi-line question carries is text the store binds like any
+    // other, so it reaches the store and matches the stored question.
+    const pasted = await instance.request(
+      `/v1/admin/traces?q=${encodeURIComponent("ayat\nkursi")}&pageSize=5`,
+      { headers: { cookie: session!.cookie } },
+      adminEnv(),
+    );
+    expect(pasted.status).toBe(200);
+    expect(((await pasted.json()) as { total: number }).total).toBe(1);
+
+    // The adjacent adversarial shapes keep their answers: injection-shaped text is an
+    // ordinary empty match, the length ceiling is still a 400, and the remaining control
+    // characters are searchable text rather than a refused class (only NUL is).
+    for (const encoded of [
+      encodeURIComponent("' OR 1=1--"),
+      encodeURIComponent("'; DROP TABLE answer_traces;--"),
+      "ayat%07kursi",
+      "%7F",
+    ]) {
+      const res = await instance.request(
+        `/v1/admin/traces?q=${encoded}`,
+        { headers: { cookie: session!.cookie } },
+        adminEnv(),
+      );
+      expect(res.status, encoded).toBe(200);
+      expect(((await res.json()) as { total: number }).total, encoded).toBe(0);
+    }
+    const overLong = await instance.request(
+      `/v1/admin/traces?q=${"x".repeat(201)}`,
+      { headers: { cookie: session!.cookie } },
+      adminEnv(),
+    );
+    expect(overLong.status).toBe(400);
+    // One audit row per served read: the pasted multi-line match and the four above.
+    expect(store.allAdminAccess()).toHaveLength(5);
   });
 });
 
@@ -955,6 +1378,9 @@ describe("admin detail: the chat panel's derivation, every provider call", () =>
     // structured read; the raw read hands the stored value back untouched. Both halves are
     // what the operator's escape hatch means, so neither may answer a generic 500.
     currentStore = Object.assign(store, {
+      // The identity bridge below resolves plain values, so the revocation check is
+      // answered as the boolean the seam promises rather than as an Effect.
+      isAdminSessionRevoked: () => false,
       // The adapter raises this typed failure when the stored JSONB does not parse; the
       // double raises it directly, which is the branch the route has to answer.
       getAdminTrace: () => {

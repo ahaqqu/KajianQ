@@ -2,59 +2,59 @@
 
 ## Decision
 
-The deployment may expose a trace browser to its own operator, and only to them.
-It answers under the existing API prefix — not a namespace of its own — with its
-own session cookie and no other credential, and it is excluded from the public API
-description. Shipping it is a code change: the proxy already serving the API
-carries it, so no host configuration or privileged reload is needed.
+The deployment may expose a trace browser to its own operator, and only to them. It
+answers under the existing API prefix — not a namespace of its own — with its own
+session cookie and no other credential, and it is excluded from the public API
+description. It is off until the deployment configures a credential; until then every
+path on it answers exactly what a wrong credential answers — "not enabled" is "not you".
 
-It is off until the deployment configures a credential; until then every path on
-it answers exactly what a wrong credential answers — the same refusal, with
-nothing distinguishing "not enabled" from "not you".
+The session is a signed token with a short lifetime and a random session id. Signing out
+revokes that id in a server-side denylist before it clears the browser's cookies, so the
+token stops working on every instance serving the surface, and a copied cookie is dead
+from then on; every other live session keeps working. An expired, forged, malformed or
+revoked token is the same refusal, and a failed revocation is a failed sign-out.
 
-It is read-only. It lists answers by the stored question and answer text, a date
-range, the routed intent, the models that served the run, refusal, relaxed
-retrieval, and per-answer latency and cost floors, over server-side pagination with
-a stable link per answer. The detail is the chat panel's own derivation over the
-persisted trace, plus the stored trace download and the answer's totals over every
-provider call it made.
+It is read-only: it lists answers by the stored question and answer text, date, routed
+intent, models, refusal, relaxed retrieval, and per-answer latency and cost floors, over
+server-side pagination with a stable link per answer. The detail is the chat panel's own
+derivation over the persisted trace, plus the stored trace download and the answer's
+totals over every provider call it made.
 
-Every read is recorded before it is served, in an append-only log of when, which
-route, and a summary of the filters' dimensions. The log carries no question, no
-answer and no search text, and a read whose record cannot be written is not
-served. The log has a retention window enforced by the nightly cleanup, and the
-store refuses to rewrite or delete a record the window still holds.
+Every read is recorded before it is served, in an append-only log of when, which route,
+and a summary of the filters' dimensions — never the question, the answer or the search
+text — and a read whose record cannot be written is not served. The log has a retention
+window the nightly cleanup enforces and the store refuses to rewrite or delete inside.
+The revocation rows hold only a random id and the token's expiry, pruned by that step.
 
 ## Why
 
-The support question this answers is "this answer was wrong — why". Nothing in the
-public surface can answer it: the trace exists, but only the caller who owns the
-message can see it, and an operator investigating a report does not hold the
-reporter's session; logs cannot reconstruct it, since the machinery is on the trace.
+The support question this answers is "this answer was wrong — why". Nothing in the public
+surface can answer it: the trace exists, but only its caller can see it, and an operator
+investigating a report does not hold that session; logs cannot reconstruct it.
 
-The obvious shortcut — a shared header token, or the public session — was refused.
-A token in a URL or header leaks into browser history, proxies and screenshots,
-and the public session is the caller's own — reading on their behalf without their
-act. A separate credential and cookie keep the identities disjoint, and scoping
-that cookie to the admin namespace keeps it off public routes.
+The obvious shortcut — a shared header token, or the public session — was refused. A token
+in a URL or header leaks into browser history, proxies and screenshots, and the public
+session is the caller's own — reading on their behalf without their act. A separate
+credential and cookie keep the identities disjoint, and scoping it to the admin namespace
+keeps it off public routes; sharing the API prefix keeps enabling it a code change.
 
-Sharing the API prefix instead of claiming a top-level one makes the surface
-deployable without root: a top-level path is absent from a host whose proxy predates
-it — closed, but indistinguishable from missing — and fixing that needs root.
+A sign-out that only clears the browser's copy does not end the credential: a stolen or
+copied cookie keeps read access for its lifetime. The denylist is the smallest server-side
+state that closes that gap: an opaque session table would replace the stateless signature
+check with a per-request identity store, while a revocation list keeps verification
+stateless, stays correct across instances, and expires with the token it revokes.
 
-The access log is the counterweight to that power. Reading chat content is a
-personal-data access, and the obligation is to say who read what and when, which
-cannot be reconstructed afterwards. Logging dimensions rather than text is what
-makes the log safe to keep: it records that a search happened without recording
-what was searched for, so it never becomes a second copy of the content it audits.
-Failing closed is deliberate — the log is only evidence if it cannot have a hole
-where a read happened.
+The access log is the counterweight to that power. Reading chat content is a personal-data
+access, and the obligation is to say who read what and when, which cannot be reconstructed
+afterwards. Logging dimensions rather than text is what makes the log safe to keep: it
+records that a search happened without recording what was searched for, so it never becomes
+a second copy of the content it audits; failing closed keeps the record without holes.
 
 ## Consequences
 
-- The credential, the session lifetime and the log's window are deployment
-  configuration; an unset credential disables the surface without blocking boot.
-- Operator access to personal data joins the RoPA, and the log's retention joins
-  the published retention values.
-- The surface is excluded from the public API description, the public shell carries
-  no link to it, and the detail and chat panel share one derivation.
+- The credential and the log's window are deployment configuration; a session's lifetime
+  is code, and an unset credential disables the surface without blocking boot.
+- Operator access to personal data joins the RoPA; the log's retention joins the
+  published values, and revocation rows are reclaimed at the cleanup after expiry.
+- The surface is excluded from the public API description, the public shell carries no
+  link to it, and the detail and chat panel share one derivation.

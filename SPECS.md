@@ -116,7 +116,11 @@ top-level namespace of its own, so the proxy that already serves the API carries
 and enabling it needs no host configuration. A deployment with no credential
 configured serves none of them, and every path on the surface answers a miss
 identically — the same refusal whether the credential is wrong, the session is
-absent, or the surface is off.
+absent, expired or revoked, or the surface is off.
+The session is a signed token carrying a random session id and its expiry. Signing
+out revokes that id in a server-side denylist, so a replayed pre-logout cookie is the
+same miss while every other live session keeps working, and the denylist's expired
+rows are reclaimed by the same nightly retention step as the access log.
 The surface is read-only, and its reads of chat content are recorded in an
 append-only access log of when, which route and a summary of the filters' dimensions —
 never the question, the answer or the search text — written before the read is
@@ -275,7 +279,7 @@ Success factors and per-phase metrics live in `docs/SUCCESS_FACTORS_AND_METRICS.
 | `adr/0061` | The caller's verbatim question is always searched as its own sub-query beside the router model's paraphrases: a paraphrase is an additive angle that never displaces the caller's words, so the model's vocabulary cannot silently narrow what the corpus is searched for                                                                                                                                                                                                                                                                                      |
 | `adr/0062` | The caller's own query is a priority retrieval angle: its leading dense hits are guaranteed into the context whatever their fusion rank, labelled with their own provenance so the rerank keeps their position, bounded by one small fixed number, and recorded as their own typed event — a paraphrase vote cannot outvote the words the user actually wrote                                                                                                                                                                                                  |
 | `adr/0063` | Keeping a conversation in the browser is opt-in: the chat asks once, keeps nothing until the reader agrees, gates every chat key behind one storage seam, and lets the choice be changed from the history drawer                                                                                                                                                                                                                                                                                                                                               |
-| `adr/0064` | The operator's trace browser is credential-gated and read-only: its own session and cookie, off until configuration supplies a credential, the same refusal on every miss, and every read recorded in an append-only log of the filters' dimensions — never the question, the answer or the search text — written before the read is served, with a retention window the nightly cleanup enforces                                                                                                                                                              |
+| `adr/0064` | The operator's trace browser is credential-gated and read-only: its own session and cookie, off until configuration supplies a credential, the same refusal on every miss — including a revoked session, whose sign-out ends the token server-side while other sessions keep working — and every read recorded in an append-only log of the filters' dimensions — never the question, the answer or the search text — written before the read is served, with a retention window the nightly cleanup enforces for the log and the revocation denylist alike    |
 
 ## 9. v2 Plan — Sanadset: Isnad data & per-chain grades (targeted for v2.0)
 

@@ -1,3 +1,4 @@
+import { fc, test as fcTest } from "@fast-check/vitest";
 import { describe, expect, it } from "vite-plus/test";
 import {
   accessSummaryOf,
@@ -55,6 +56,51 @@ describe("parseAdminQuery", () => {
     expect(parsed.ok).toBe(true);
     if (parsed.ok) expect(parsed.query.page).toBe(2);
   });
+
+  it("refuses NUL — the one character the store cannot bind — and keeps the rest searchable", () => {
+    // The trap: the store binds this value into SQL text, and Postgres text has no NUL —
+    // the read raises, the route answers 500, and the access-log row is already spent.
+    // Rejecting at the parse turns it into the documented 400, before either side effect.
+    for (const value of ["\u0000", "ayat\u0000kursi"]) {
+      expect(parseAdminQuery(query({ q: value })).ok, JSON.stringify(value)).toBe(false);
+    }
+    // `intent` and `model` are free text too: they reach the store as bound text, so a
+    // NUL there is the same unrepresentable parameter, not a second path.
+    for (const key of ["intent", "model"]) {
+      expect(parseAdminQuery(query({ [key]: "rul\u0000ing" })).ok, key).toBe(false);
+    }
+    // The rest of the control range is storable and matches as bound text — including the
+    // whitespace a pasted multi-line question carries, which used to be refused.
+    for (const value of [
+      "ayat kursi",
+      "ayat\tkursi",
+      "ayat\nkursi",
+      "ayat\r\nkursi",
+      "ayat\u0007kursi",
+      "ayat\u007f",
+    ]) {
+      expect(parseAdminQuery(query({ q: value })).ok, JSON.stringify(value)).toBe(true);
+    }
+  });
+
+  fcTest.prop([
+    fc
+      .string({ minLength: 1, maxLength: 150 })
+      .filter((value) => !/[\u0000-\u001F\u007F]/.test(value)),
+    fc.integer({ min: 0, max: 31 }),
+    fc.nat({ max: 150 }),
+  ])(
+    "a NUL inserted anywhere in q is refused; any other control character is not",
+    (base, code, at) => {
+      const clean = parseAdminQuery(query({ q: base }));
+      expect(clean.ok).toBe(true);
+      const position = Math.min(at, base.length);
+      const injected = `${base.slice(0, position)}${String.fromCharCode(code)}${base.slice(position)}`;
+      // One rule, no class: NUL fails the parse wherever it sits, and every other code
+      // point in the range reaches the store as the same bound parameter any text does.
+      expect(parseAdminQuery(query({ q: injected })).ok, JSON.stringify(injected)).toBe(code !== 0);
+    },
+  );
 });
 
 describe("adminFilterOf", () => {

@@ -95,6 +95,7 @@ export {
   type AdminAccessEntry,
   type AdminAccessRoute,
   type AdminAccessSummary,
+  type AdminSessionRevocation,
   type AdminTraceFilter,
   type AdminTracePage,
   type AdminTraceRecord,

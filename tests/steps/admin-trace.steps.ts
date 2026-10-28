@@ -10,6 +10,13 @@ import { E2E_ADMIN_PASSWORD } from "../support/admin-fixture";
  * only stubs the trace data, which needs a database the e2e server does not have. So
  * the "closed until signed in" scenarios prove the deployed guard, not a fixture.
  *
+ * Sign-out is exercised on both branches. The host has no database, so its own DELETE
+ * answers 503 and that scenario is real: the page must keep the operator signed in and
+ * say the sign-out failed. The 204 branch cannot happen on this host, so it is driven by
+ * answering the DELETE with the 204 a migrated host sends — the cookie deletion included —
+ * while store-backed revocation is covered by the route-integration suite and the
+ * real-Postgres contract suite.
+ *
  * This feature is tagged `@local` and filtered out of an external `E2E_BASE_URL` run by
  * `playwright.config.ts`: it drives an embedded host that the config boots with the
  * fixture credential below, so against an external host it would fail on a credential
@@ -18,6 +25,11 @@ import { E2E_ADMIN_PASSWORD } from "../support/admin-fixture";
 const { Given, When, Then } = createBdd();
 
 const PASSWORD = E2E_ADMIN_PASSWORD;
+
+/** The session cookie's path and name, as `apps/api/src/lib/admin-auth.ts` sets them:
+ * the 204 stub must delete the same cookie the server would. */
+const ADMIN_COOKIE_PATH = "/v1/admin";
+const ADMIN_COOKIE = "kajianq_admin";
 
 const RULING_TRACE = "11111111-1111-4111-8111-111111111111";
 const RULING_MESSAGE = "22222222-2222-4222-8222-222222222222";
@@ -283,4 +295,48 @@ When("I search the traces for {string}", async ({ page }, text: string) => {
 Then("only the answer mentioning riba is listed", async ({ page }) => {
   await expect(page.getByTestId(`admin-trace-${RIBA_MESSAGE}`)).toBeVisible();
   await expect(page.getByTestId(`admin-trace-${RULING_MESSAGE}`)).toHaveCount(0);
+});
+
+When("I try to sign out", async ({ page }) => {
+  // No store on this host, so the real DELETE answers 503 and keeps the cookie. That is
+  // the branch under test: the page must not fall through to the probe (which fails closed
+  // with `authenticated:false`) and show a sign-in form over a live session.
+  await page.getByTestId("admin-sign-out").click();
+  await expect(page.getByTestId("admin-sign-out-failed")).toBeVisible();
+});
+
+Then("I am told the sign-out failed and the session may still be active", async ({ page }) => {
+  // The copy is Indonesian-first, like the rest of the shell.
+  await expect(page.getByTestId("admin-sign-out-failed")).toContainText("Gagal keluar");
+});
+
+Then("the trace list is still shown", async ({ page }) => {
+  await expect(page.getByTestId("admin-traces")).toBeVisible();
+  await expect(page.getByTestId("admin-password")).toHaveCount(0);
+});
+
+When("I complete the sign-out against a host that can revoke", async ({ page }) => {
+  await page.route("**/v1/admin/session", async (route) => {
+    if (route.request().method() !== "DELETE") return route.fallback();
+    // The answer a migrated host gives when it can write the revocation: 204 plus the
+    // session cookie's deletion. The e2e host has no database, so this is the one branch it
+    // cannot produce itself; the page's move to signed-out is what this scenario proves.
+    await route.fulfill({
+      status: 204,
+      headers: {
+        "set-cookie": `${ADMIN_COOKIE}=; Path=${ADMIN_COOKIE_PATH}; Max-Age=0; HttpOnly; SameSite=Strict`,
+      },
+    });
+  });
+  await page.getByTestId("admin-sign-out").click();
+});
+
+Then("the admin session cookie is gone", async ({ page }) => {
+  // The cookie the 204 deleted is the only credential: with it gone, the probe that follows
+  // answers `authenticated:false` for the honest reason.
+  await expect
+    .poll(async () =>
+      (await page.context().cookies()).some((cookie) => cookie.name === ADMIN_COOKIE),
+    )
+    .toBe(false);
 });
