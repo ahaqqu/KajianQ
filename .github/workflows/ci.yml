@@ -178,6 +178,11 @@ jobs:
         if: steps.contract.outputs.touched == 'true'
         env:
           DATABASE_URL: postgres://contract:contract@127.0.0.1:5432/postgres
+          # The admin contract suite writes append-only access-log rows, so it requires a
+          # positive disposability statement. This service container is destroyed with the
+          # job — but the suite must not infer that from an empty log, so the marker is set
+          # here, where the target is undeniably a throwaway.
+          KAJIANQ_ADMIN_TEST_DISPOSABLE: "1"
         run: |
           set -euo pipefail
           FILES="$(bun scripts/pg-contract.mjs --list)"

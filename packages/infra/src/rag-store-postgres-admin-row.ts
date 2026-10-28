@@ -3,9 +3,12 @@ import type { AdminTraceRow } from "./rag-store-admin-seam";
 /**
  * The list and detail row projection (ADR-0064): the SQL that turns an `answer_traces`
  * row plus its transcript join into the browser's facts, and the mapping onto the wire
- * row. Kept beside the adapter that binds it so a projected column and its `toRow` field
- * are one edit — a column added without its field (or the reverse) is a compile error,
- * not a silently blank cell.
+ * row. Kept beside the adapter that binds it so the SQL and `Row` are one edit. The SQL
+ * is a template literal and `Row` is hand-written, so nothing ties them together at
+ * compile time; `ROW_FIELDS` is pinned to `Row`'s fields by the compiler, and the
+ * Postgres suite compares the columns `ROW_COLUMNS` actually projects with that list —
+ * a column added on one side of the seam fails a gate instead of arriving as an
+ * silently blank cell.
  *
  * `tot` is the per-message aggregate the list filters and displays; it sums **every**
  * event's cost record, so the embedding call is included exactly as it is in the
@@ -105,6 +108,31 @@ export type Row = {
   cost_micro_usd: number | string | null;
   estimated: boolean | null;
 };
+
+/**
+ * `Row`'s field names, one entry each. The mapped type is the compile-time link the
+ * template-literal SQL cannot give: a field added to `Row` without its entry, or an
+ * entry with no field, fails to type-check. `ROW_FIELDS` is the runtime list the
+ * Postgres suite compares against the columns the SQL projects.
+ */
+const ROW_FIELD_NAMES: { readonly [K in keyof Row]: K } = {
+  trace_id: "trace_id",
+  message_id: "message_id",
+  created_at_ms: "created_at_ms",
+  question: "question",
+  answer: "answer",
+  intent: "intent",
+  models: "models",
+  refused: "refused",
+  filter_relaxed: "filter_relaxed",
+  tokens_in: "tokens_in",
+  tokens_out: "tokens_out",
+  latency_ms: "latency_ms",
+  cost_micro_usd: "cost_micro_usd",
+  estimated: "estimated",
+};
+
+export const ROW_FIELDS = Object.keys(ROW_FIELD_NAMES) as readonly (keyof Row)[];
 
 /** node-postgres hands some numeric columns back as strings; one coercion, one place. */
 export const num = (value: number | string | null): number => (value === null ? 0 : Number(value));

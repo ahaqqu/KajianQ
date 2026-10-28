@@ -14,6 +14,8 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 import { describe, expect, it } from "vite-plus/test";
+import { createApi } from "../../apps/api/src/app";
+import { ADMIN_LOGIN_PATH } from "../../apps/api/src/lib/admin-auth";
 import {
   BACKUP_KEEP_DAILY,
   LABEL_RE,
@@ -1343,25 +1345,25 @@ describe("provisioning config as code stays true to the ADR", () => {
     expect(conf).toMatch(/proxy_set_header CF-Connecting-IP\s+\$remote_addr/);
   });
 
+  /** The first path segment of every route the mounted API registers, wildcards excluded. */
+  const apiNamespaces = (api) => {
+    const namespaces = new Set();
+    for (const { path } of api.routes) {
+      if (typeof path !== "string") continue;
+      const first = path.split("/")[1];
+      if (first !== undefined && first !== "" && first !== "*") namespaces.add(`/${first}`);
+    }
+    return namespaces;
+  };
+
   it("an API top-level path cannot ship without its proxy location", () => {
     // A new top-level API namespace is a DEPLOY change, not only a code change: nginx proxies
     // only paths it has a location for, and every other path falls into `location /` and
     // answers index.html with a 200 (a closed surface then looks absent, and the client's JSON
-    // parse fails instead of the API answering). The namespace set is DERIVED from the route
-    // modules, so adding /foo/ to the API reddens here until the config carries `location /foo/`.
-    const routeDir = resolve(process.cwd(), "apps/api/src/routes");
-    const namespaces = new Set();
-    for (const name of readdirSync(routeDir).filter(
-      (file) => file.endsWith(".ts") && !file.endsWith(".test.ts"),
-    )) {
-      const text = readFileSync(resolve(routeDir, name), "utf8");
-      for (const match of text.matchAll(/["'`](\/[^"'`\s]*)["'`]/g)) {
-        const path = match[1];
-        if (path.startsWith("//")) continue;
-        const first = path.split("/")[1];
-        if (first !== undefined && first !== "") namespaces.add(`/${first}`);
-      }
-    }
+    // parse fails instead of the API answering). The namespace set is DERIVED from the mounted
+    // app's route table — the registration sites themselves, constants included — so adding
+    // /foo/ to the API reddens here until the config carries `location /foo/`.
+    const namespaces = apiNamespaces(createApi());
     expect([...namespaces].sort()).toEqual(["/admin", "/docs", "/openapi.json", "/v1"]);
 
     const conf = directives("provision/vps/nginx/kajianq.conf");
@@ -1387,6 +1389,32 @@ describe("provisioning config as code stays true to the ADR", () => {
     expect(fallback).toMatch(/try_files\s+\$uri\s+\$uri\/\s+\/index\.html/);
   });
 
+  it("a top-level API path registered through a constant is derived, not scraped from literals", () => {
+    // Mutation check for the derivation above. `admin-session.ts` registers its routes at
+    // `ADMIN_LOGIN_PATH` (lib/admin-auth.ts), so that module holds no quoted `/admin`
+    // literal: a scan of routes/*.ts would leave the namespace set unchanged while the
+    // route exists. A fake app whose route is registered at a constant must still be caught.
+    const OPERATOR_PATH = "/operator/v1/traces";
+    // A route table shaped like Hono's: the derivation reads registration sites, so it is the
+    // constant's value that must surface, never a scan of this test's own literals.
+    const fake = { routes: [{ method: "GET", path: OPERATOR_PATH, handler: () => {} }] };
+    expect([...apiNamespaces(fake)]).toEqual(["/operator"]);
+    // …and the real app's route table carries the constant-registered admin route, so the
+    // expected set above is not an accident of the other admin modules spelling their paths.
+    expect(createApi().routes.map((route) => route.path)).toContain(ADMIN_LOGIN_PATH);
+  });
+
+  it("the admin namespace is uncacheable at the proxy, refusals included", () => {
+    const conf = directives("provision/vps/nginx/kajianq.conf");
+    const at = conf.indexOf("location /admin/");
+    expect(at).toBeGreaterThan(-1);
+    const block = conf.slice(at, conf.indexOf("}", at));
+    // The API sets `no-store` on the reads it decorates; its 400/404/422/503 refusals and
+    // nginx's own error pages carry no `Cache-Control`, so the proxy's `always` is what
+    // makes the namespace uncacheable end to end rather than only on the happy path.
+    expect(block).toMatch(/add_header\s+Cache-Control\s+"no-store"\s+always;/);
+  });
+
   it("the setup doc carries the post-deploy probe for the proxy's top-level API paths", () => {
     // The location set above is only true of a box that re-applied the config: a deploy of an
     // API change alone does not reload nginx. The probe is what distinguishes "the proxy is
@@ -1397,6 +1425,13 @@ describe("provisioning config as code stays true to the ADR", () => {
     expect(setup).toMatch(/content_type/);
     // The probe must say which answer means "not wired", or an operator reads a 200 as success.
     expect(setup).toMatch(/SPA fallback/);
+    // The un-wired box answers the `/admin/` root with the SPA shell (200); the wired one
+    // reaches the API, whose trimTrailingSlash answers 301. Expecting 200 would bless the
+    // failure this section exists to catch.
+    const rootProbe = setup
+      .split("\n")
+      .find((line) => line.includes("/admin/") && line.includes("http_code"));
+    expect(rootProbe).toContain("301");
   });
 
   it("HTTP only redirects and logs nothing, so the IP-bearing log is confined to the TLS server block", () => {

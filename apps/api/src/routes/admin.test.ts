@@ -722,8 +722,10 @@ describe("admin access log: append-only evidence that never carries content", ()
     expect(serialized).not.toContain("Apa itu");
     expect(serialized).not.toContain("ruling");
     expect(JSON.stringify(entry.summary)).not.toContain("q=");
-    // Every value in the record is a boolean or a bounded number: no field can carry a
-    // string, so no future edit can smuggle free text through one.
+    // Every value in a list summary is a boolean or a bounded number: the free-text
+    // filters are recorded as presence, so no future projection can smuggle the operator's
+    // string through one. (The type alone does not enforce this — a detail read's summary
+    // carries the opaque trace row id — so the projection is the guard this test pins.)
     for (const [key, value] of Object.entries(entry.summary)) {
       expect(["boolean", "number"], key).toContain(typeof value);
     }

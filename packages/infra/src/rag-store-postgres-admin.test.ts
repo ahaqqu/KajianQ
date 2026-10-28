@@ -3,6 +3,7 @@ import { traceTotals, type Trace } from "@app/contracts";
 import { Effect, Exit } from "effect";
 import { afterAll, beforeAll, describe, expect, it } from "vite-plus/test";
 import { createPostgresRagStore } from "./rag-store-postgres";
+import { ROW_COLUMNS, ROW_FIELDS, ROW_FROM } from "./rag-store-postgres-admin-row";
 import { disposePostgresPools, postgresPool, postgresSqlRunner } from "./rag-store-postgres-driver";
 import type { SqlRunner } from "./rag-store-postgres-errors";
 import type { RagStore } from "./rag-store";
@@ -27,12 +28,18 @@ import type { RagStore } from "./rag-store";
  * deleting a fresh row is the thing the table forbids — so its records stay behind,
  * and its backdated fixture is deleted by the purge. Run against a shared or staging
  * database it would inject fake accountability evidence that no one can remove for 90
- * days, so `beforeAll` refuses a database that already holds a record this suite did
- * not write (any actor not prefixed `ct-`) instead of doing that silently.
+ * days; an empty log is no evidence of a throwaway — a freshly migrated staging box has
+ * one too — so `beforeAll` refuses unless `KAJIANQ_ADMIN_TEST_DISPOSABLE=1` accompanies
+ * `DATABASE_URL`, and then refuses again if the log already holds a record this suite
+ * did not write (any actor not prefixed `ct-`). Disposability is a fact the operator
+ * states, never one this suite infers.
  */
 
 const URL = process.env.DATABASE_URL;
 const run = URL ? describe : describe.skip;
+
+/** The explicit disposability fact: an operator states it; the suite never infers it. */
+const DISPOSABLE = process.env.KAJIANQ_ADMIN_TEST_DISPOSABLE === "1";
 
 const ACTOR = `ct-actor-${Math.floor(Math.random() * 1e9).toString(36)}`;
 
@@ -153,11 +160,22 @@ function twoCallTrace(
 run("RagStore admin contract (real Postgres)", () => {
   beforeAll(async () => {
     if (!URL) return;
+    // First gate: disposability is a positive fact. An empty log cannot tell a throwaway
+    // database from a staging box whose admin surface is still off, so the run only proceeds
+    // when the operator says the target is disposable.
+    if (!DISPOSABLE) {
+      throw new Error(
+        "rag-store-postgres-admin: DATABASE_URL is set but this run did not state that the " +
+          "database is disposable. Set KAJIANQ_ADMIN_TEST_DISPOSABLE=1 when DATABASE_URL names a " +
+          "throwaway database (a scratch instance with `bun run db:up:all`); this suite writes " +
+          "append-only admin_access_log rows that cannot be removed for 90 days, so it will not " +
+          "guess from an empty log.",
+      );
+    }
     sql = postgresSqlRunner(postgresPool(URL));
-    // The preflight that keeps a shared box out of the accountability log's history: this
-    // suite's runs are the only rows it may find. A database holding a record written by
-    // anyone else is not disposable, and the append-only rule means this run cannot undo
-    // what it would add.
+    // Second gate: this suite's runs are the only rows the log may already hold. A database
+    // holding a record written by anyone else is not disposable, and the append-only rule
+    // means this run cannot undo what it would add.
     const foreign = (await sql.query(
       `SELECT 1 FROM admin_access_log WHERE actor NOT LIKE 'ct-%' LIMIT 1`,
     )) as unknown[];
@@ -192,6 +210,24 @@ run("RagStore admin contract (real Postgres)", () => {
     expect(row?.models).toEqual(["embedder-contract", "generator-contract"]);
     expect(row?.refused).toBe(false);
     expect(row?.filterRelaxed).toBe(false);
+  });
+
+  it("projects exactly the Row's fields, so the SQL and the mapping cannot drift", async () => {
+    if (!URL) return;
+    // `ROW_COLUMNS` is template-literal SQL and `Row` is a hand-written type, so the
+    // compiler cannot compare the two sides. A live row can: the driver reports the select
+    // list's alias set, which must be exactly the runtime list `Row` is compiled from.
+    // A column dropped from the SQL while its `Row` field stays would read `undefined`;
+    // this is the gate that reddens instead of blanking the cell.
+    await seedAnswer({ question: "column set", answer: "column set", trace: twoCallTrace() });
+    const rows = (await sql!.query(`SELECT ${ROW_COLUMNS} ${ROW_FROM} LIMIT 5`)) as Record<
+      string,
+      unknown
+    >[];
+    expect(rows.length).toBeGreaterThan(0);
+    for (const row of rows) {
+      expect(Object.keys(row).sort()).toEqual([...ROW_FIELDS].sort());
+    }
   });
 
   it("stores the list's totals with the same arithmetic the detail shows", async () => {

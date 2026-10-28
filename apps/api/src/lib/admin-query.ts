@@ -14,8 +14,13 @@ import * as v from "valibot";
  *    content, so recording it would put a fragment of a question in the log; and
  *    `intent`/`model` are operator free text too (bounded, not closed), so the
  *    summary records the same dimensions as `intentFiltered`/`modelFiltered`
- *    booleans. The type has no field a string could travel in, so the log cannot
- *    accumulate content even by a future edit that forgets this rule.
+ *    booleans.
+ *
+ * The projection is the guard, not the type: `AdminAccessSummary` also carries
+ * `traceId?: string` (the opaque row id a detail read names), so a `toSummary`
+ * that returned a string would compile. What keeps free text out is that every
+ * projection here adds presence, pinned by the value-level test that walks a
+ * recorded summary in `routes/admin.test.ts`.
  */
 
 type FilterDimension = {
