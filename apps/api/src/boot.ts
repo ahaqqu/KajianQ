@@ -13,7 +13,15 @@
  * takes over rather than leaving a half-configured instance up.
  */
 import { createApi } from "./app";
+import { syncModelConfigMirror } from "./lib/model-config-boot";
 import { serveApi } from "./lib/server";
+
+// The `model_configs` mirror is derived from the provider config and refreshed before
+// the socket opens, so an admin read never starts against a mirror the deployment has
+// not populated. A fault is logged by the sync and does not block serving: the admin
+// detail refuses a mirror that disagrees with the config, so stale identity/price is
+// unreadable rather than silently served.
+await syncModelConfigMirror(process.env);
 
 const { stop } = serveApi({ api: createApi() });
 

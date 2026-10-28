@@ -145,6 +145,12 @@ function fakeStore() {
     purgeAdminAccessLog() {
       return Effect.succeed(0);
     },
+    syncModelConfigs() {
+      return Effect.succeed(undefined);
+    },
+    listModelConfigs() {
+      return Effect.succeed([]);
+    },
   };
   return {
     store,

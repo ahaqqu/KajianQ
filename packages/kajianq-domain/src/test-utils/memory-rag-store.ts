@@ -5,6 +5,7 @@ import {
   type DocChildInsert,
   type DocParentInsert,
   type FeedbackInsert,
+  type ModelConfigRecord,
   type RagStore,
   type SimilarChild,
 } from "@app/infra";
@@ -15,6 +16,7 @@ import {
   memoryChatMethods,
   memoryEvalMethods,
   memoryFeedbackMethods,
+  memoryModelConfigMethods,
   memoryScopeMethods,
   toReadChild,
   type MemoryAdminAccessRecord,
@@ -48,6 +50,8 @@ export function createMemoryRagStore(): RagStore & {
   allFeedback: () => readonly (FeedbackInsert & { id: string })[];
   /** The append-only admin access log, in append order (test introspection). */
   allAdminAccess: () => readonly MemoryAdminAccessRecord[];
+  /** The model-config mirror, sorted like the adapter's read (test introspection). */
+  allModelConfigs: () => readonly ModelConfigRecord[];
   cosineSearch: (
     track: "primary" | "fallback",
     query: readonly number[],
@@ -113,6 +117,11 @@ export function createMemoryRagStore(): RagStore & {
   });
   const chatMethods = memoryChatMethods({ chatSessions, chatMessages });
   const adminMethods = memoryAdminMethods({ chatMessages, traceRows, traceRowMessageIds });
+  const modelConfigRows = new Map<string, ModelConfigRecord>();
+  const modelConfigMethods = memoryModelConfigMethods({
+    rows: modelConfigRows,
+    now: () => Date.now(),
+  });
 
   const cosine = (a: readonly number[], b: readonly number[]): number => {
     let dot = 0;
@@ -128,6 +137,7 @@ export function createMemoryRagStore(): RagStore & {
 
   const store: RagStore = {
     ...adminMethods,
+    ...modelConfigMethods,
     insertDocParent(input) {
       return Effect.sync(() => {
         seq += 1;
@@ -261,6 +271,7 @@ export function createMemoryRagStore(): RagStore & {
     allEvalResults: () => [...evalResults.values()],
     allFeedback: () => [...feedback.values()],
     allAdminAccess: adminMethods.allAdminAccess,
+    allModelConfigs: modelConfigMethods.allModelConfigs,
     cosineSearch: (track, query, limit) =>
       Effect.runPromise(store.similaritySearch(track, query, { limit })),
   };

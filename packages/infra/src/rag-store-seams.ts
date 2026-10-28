@@ -8,4 +8,5 @@ export type { RagStoreAdmin } from "./rag-store-admin-seam";
 export type { RagStoreCorpus, StoreError } from "./rag-store-corpus-seam";
 export type { RagStoreEvalLedger, RagStoreEvalRunWrite } from "./rag-store-eval-seam";
 export type { RagStoreFeedback } from "./rag-store-feedback-seam";
+export type { RagStoreModelConfig } from "./rag-store-model-config-seam";
 export type { RagStoreTrace } from "./rag-store-trace-seam";

@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
 import { adminRawTraceUrl, fetchAdminTrace } from "../../lib/admin-client";
-import { t, type Locale } from "../../lib/i18n";
+import { formatNumber, t, type Locale } from "../../lib/i18n";
 import { TraceBody } from "../chat/TraceBody";
 
 /**
  * One answer, as the operator sees it: the question and answer text, the totals over
- * every provider call the answer made, the calls themselves, the stored trace as a
+ * every provider call the answer made, the calls themselves with each call's model
+ * identity and cost consistency from the provider config, the stored trace as a
  * download, and the Trace panel the chat renders — the same component, fed the frame
  * the server derived from the persisted trace, never a second rendering of the events.
  *
@@ -13,6 +14,20 @@ import { TraceBody } from "../chat/TraceBody";
  * feedback ledger, and this surface writes nothing.
  */
 type Detail = Awaited<ReturnType<typeof fetchAdminTrace>>;
+type Consistency = Detail["calls"][number]["modelConfig"]["status"];
+
+/** Whether the configured price accounts for the recorded figure. The recorded
+ * `costMicroUsd` stays the figure shown beside the call; this only explains it. */
+function consistencyLabel(locale: Locale, status: Consistency): string {
+  return t(
+    locale,
+    status === "consistent"
+      ? "adminCostConsistent"
+      : status === "mismatch"
+        ? "adminCostMismatch"
+        : "adminCostUnresolved",
+  );
+}
 
 export function AdminTraceDetail({ locale, traceId }: { locale: Locale; traceId: string }) {
   const [detail, setDetail] = useState<Detail | null>(null);
@@ -100,18 +115,52 @@ export function AdminTraceDetail({ locale, traceId }: { locale: Locale; traceId:
         <h3 className="font-mono text-[11px] uppercase tracking-wide text-muted-foreground">
           {t(locale, "adminCallsLabel")}
         </h3>
-        <ul className="space-y-1 text-xs">
+        <ul className="space-y-2 text-xs">
           {detail.calls.map((call, index) => (
             <li key={`${call.stage}-${call.modelId}-${index}`} className="font-mono">
-              <span className="text-accent">{call.stage}</span>
-              {" · "}
-              {call.modelId}
-              {" · "}
-              {call.tokensIn + call.tokensOut} {t(locale, "adminCallTokensLabel")}
-              {" · "}
-              {call.latencyMs} ms
-              {" · "}
-              {call.costMicroUsd} µUSD
+              <div>
+                <span className="text-accent">{call.stage}</span>
+                {" · "}
+                {call.modelId}
+                {" · "}
+                {call.tokensIn + call.tokensOut} {t(locale, "adminCallTokensLabel")}
+                {" · "}
+                {call.latencyMs} ms
+                {" · "}
+                {call.costMicroUsd} µUSD
+              </div>
+              <div
+                data-testid={`admin-call-model-${index}`}
+                className="pl-2 text-[11px] text-muted-foreground"
+              >
+                {call.modelConfig.matches.length > 0 && (
+                  <ul>
+                    {call.modelConfig.matches.map((match) => (
+                      <li
+                        key={match.provider}
+                        data-testid={`admin-call-match-${index}-${match.provider}`}
+                      >
+                        {t(locale, "adminCallProviderLabel")}: {match.provider}
+                        {" · "}
+                        {match.roles.join(", ")}
+                        {" · "}
+                        {t(locale, "adminCallPriceLabel")}:{" "}
+                        {formatNumber(locale, match.priceMicroUsdPerMTok.in)} /{" "}
+                        {formatNumber(locale, match.priceMicroUsdPerMTok.out)}
+                        {" · "}
+                        {t(locale, "adminCallConfigCostLabel")}:{" "}
+                        {formatNumber(locale, match.computedCostMicroUsd)} µUSD
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                <span
+                  data-testid={`admin-call-consistency-${index}`}
+                  data-status={call.modelConfig.status}
+                >
+                  {consistencyLabel(locale, call.modelConfig.status)}
+                </span>
+              </div>
             </li>
           ))}
         </ul>

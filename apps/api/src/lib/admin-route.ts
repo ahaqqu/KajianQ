@@ -1,4 +1,9 @@
-import { createLogger, type AdminAccessRoute, type AdminAccessSummary } from "@app/infra";
+import {
+  createLogger,
+  type AdminAccessRoute,
+  type AdminAccessSummary,
+  type Logger,
+} from "@app/infra";
 import type { Context } from "hono";
 import { adminGuard } from "./admin-auth";
 import { buildStoreWiring, wiringOr503, type StoreWiring } from "./chat-wiring";
@@ -26,7 +31,10 @@ export type AdminReadContext<T> = {
    * id — so the route reads on with the value that was narrowed behind the guard and
    * never re-derives it. */
   read: T;
-  /** The request's structured logger, for the read's own degradation warnings. */
+  /** The request's structured logger, for the read's own degradation warnings and for
+   * a read the route refuses because the data behind it is not current. */
+  log: Logger;
+  /** The warning shorthand over `log`, kept because most reads only warn. */
   warn: (msg: string, fields?: Record<string, string | number | boolean | null>) => void;
 };
 
@@ -80,6 +88,7 @@ export async function withAdminRead<T>(
     actor: identity.actor,
     store: wiring.wiring,
     read: resolved.read,
+    log: logger,
     warn: (msg, fields) => logger.warn(msg, fields),
   };
 }
