@@ -9,6 +9,13 @@ Feature: Admin trace browser
   consistency from the provider config, the stored trace as a download, and the
   same Trace panel the chat renders for that answer.
 
+  Sign-out is exercised on both of its outcomes. The embedded host has no
+  database, so its own DELETE answers 503 — that scenario is real — and the page
+  must keep the operator signed in and say the sign-out failed. The 204 branch is
+  driven with the answer a migrated host sends, because the e2e host cannot write
+  the revocation; store-backed revocation itself is covered by the route and
+  real-Postgres suites.
+
   Background:
     Given the admin trace data is stubbed
 
@@ -36,3 +43,18 @@ Feature: Admin trace browser
     And I sign in with the admin password
     And I search the traces for "riba"
     Then only the answer mentioning riba is listed
+
+  Scenario: A sign-out the server cannot complete keeps the operator signed in
+    When I open the admin surface
+    And I sign in with the admin password
+    And I try to sign out
+    Then I am told the sign-out failed and the session may still be active
+    And the trace list is still shown
+
+  Scenario: A completed sign-out returns the operator to the sign-in form
+    When I open the admin surface
+    And I sign in with the admin password
+    And I complete the sign-out against a host that can revoke
+    Then the admin session cookie is gone
+    And I am asked for the admin password
+    And the trace list is not shown
