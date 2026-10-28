@@ -219,7 +219,8 @@ Flags: `--dry-run` prints every action without writing; `--no-smoke` skips step
 failure — a half-shipped tree that reported success is worse than a failed
 deploy.
 
-A deploy **does not**: run migrations (operator action — §2.3), run
+A deploy **does not**: run migrations (operator action — §2.3, and when the
+release ships an `apps/api` migration the order is **migrate, then restart**), run
 `provision/vps/apply.sh` (step 1 refuses a stale box instead — applying is
 root's, on the box), take a snapshot (§2.4), touch DNS, or restart the backup
 timer.
@@ -731,6 +732,24 @@ From the box (loopback, so no tunnel):
 
 `db:status:all` must show every migration applied after a restore (the archive's
 `schema_migrations` ledger is the source of truth for what it already carries).
+
+**Ordering a deploy that ships a migration: migrate first, then restart.** A
+deploy restarts the API and runs no migrations (§1), so a
+release carrying an `apps/api` migration is an operator-ordered pair:
+
+```bash
+( export DATABASE_URL="postgres://kajianq:$(sudo cat /etc/kajianq/db-password)@127.0.0.1:5432/kajianq"
+  bun run db:up:api )
+# then the deploy (which restarts the API)
+```
+
+Apply-then-restart is the safe direction because the migrations are additive: the
+previous build ignores a table it does not read, while the new build fails closed
+with a 503 on the routes that need it until the table exists. Nothing in the
+pipeline enforces the order — the smoke checks (health, the anonymous mint, the
+chat page) all pass on the half-migrated box, because none of them touches the
+admin surface. The failure is visible only to the operator using it, which is why
+the order is written here rather than inferred from a green deploy.
 
 ### 2.4 Snapshots (ADR-0038 — the paid corpus's durability layer)
 

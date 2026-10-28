@@ -55,6 +55,6 @@ a second copy of the content it audits; failing closed keeps the record without 
 - The credential and the log's window are deployment configuration; a session's lifetime
   is code, and an unset credential disables the surface without blocking boot.
 - Operator access to personal data joins the RoPA; the log's retention joins the
-  published values, and the revocation rows live no longer than the tokens they end.
+  published values, and revocation rows are reclaimed at the cleanup after expiry.
 - The surface is excluded from the public API description, the public shell carries no
   link to it, and the detail and chat panel share one derivation.

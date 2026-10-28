@@ -24,6 +24,15 @@
 # file under /tmp to compare a rendered config), so a red costs an ssh round
 # trip and nothing else.
 #
+# A deploy runs no migrations: they are an operator action, and a release that
+# ships an `apps/api` migration is ordered MIGRATE, THEN RESTART — `bun run
+# db:up:api` before this script (docs/VPS-OPERATIONS.md §2.3). Apply-first is
+# safe because the migrations are additive, so the previous build ignores the
+# new table; the new build fails closed with 503 on the admin routes until it
+# exists. The smoke below cannot see that state (health, the anonymous mint and
+# the chat page never touch the admin surface), so do not read a green deploy as
+# "the schema is current".
+#
 # Usage:
 #   provision/vps/deploy/deploy.sh --env /etc/kajianq/deploy.env
 #   provision/vps/deploy/deploy.sh --env-file <path> [--dry-run] [--no-smoke]
