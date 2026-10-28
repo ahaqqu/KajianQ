@@ -117,12 +117,13 @@ export async function withAdminRead<T>(
  * state; a false answer is not an error, it is the login form. Fail-closed by
  * construction: a session whose revocation state cannot be read is reported as a
  * miss rather than as live, and no content read follows from this answer.
+ *
+ * Both session-lifecycle helpers take the request alone and read the token's
+ * environment and the denylist's store from that one source (`c.env`), so a helper
+ * cannot verify against one environment and ask another environment's store.
  */
-export async function adminSessionActive(
-  c: Context<ApiEnv>,
-  bindings: ApiEnv["Bindings"],
-): Promise<boolean> {
-  const identity = await liveAdminSession(c, bindings);
+export async function adminSessionActive(c: Context<ApiEnv>): Promise<boolean> {
+  const identity = await liveAdminSession(c);
   return identity !== null;
 }
 
@@ -133,13 +134,10 @@ export async function adminSessionActive(
  * did not happen. An absent, expired, forged or already-revoked token has nothing to
  * revoke and reads as a completed sign-out.
  */
-export async function revokePresentedSession(
-  c: Context<ApiEnv>,
-  bindings: ApiEnv["Bindings"],
-): Promise<boolean> {
+export async function revokePresentedSession(c: Context<ApiEnv>): Promise<boolean> {
   // `adminGuard` is the module's one cookie reader; its 401 for a miss is discarded
   // because a logout with no valid token is still a successful logout.
-  const identity = await adminGuard(c, bindings);
+  const identity = await adminGuard(c, c.env);
   if (identity instanceof Response) return true;
   try {
     const { fullStore, runStore } = buildStoreWiring(c.env);
@@ -157,11 +155,8 @@ export async function revokePresentedSession(
 
 /** Verify the token, then ask the denylist. `null` covers every miss, including a
  * revocation store that cannot answer. */
-async function liveAdminSession(
-  c: Context<ApiEnv>,
-  bindings: ApiEnv["Bindings"],
-): Promise<AdminSessionClaims | null> {
-  const identity = await adminGuard(c, bindings);
+async function liveAdminSession(c: Context<ApiEnv>): Promise<AdminSessionClaims | null> {
+  const identity = await adminGuard(c, c.env);
   if (identity instanceof Response) return null;
   try {
     const { fullStore, runStore } = buildStoreWiring(c.env);

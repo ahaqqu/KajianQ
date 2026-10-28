@@ -249,13 +249,17 @@ export function postgresAdminMethods(
       );
     },
 
-    purgeAdminSessionRevocations() {
+    purgeAdminSessionRevocations(cutoffMs) {
+      // The same conversion the revoke above applies, so both sides of the comparison
+      // are the app's clock: `now()` here would measure an app-written expiry against the
+      // database's clock and could reclaim a row while its token still verifies.
       return Effect.map(
         sqlEffect(sql, () =>
           sql.query(
             `DELETE FROM admin_session_revocations
-               WHERE expires_at < now()
+               WHERE expires_at < to_timestamp($1::double precision / 1000)
                RETURNING jti`,
+            [cutoffMs],
           ),
         ),
         (rows) => rows.length,

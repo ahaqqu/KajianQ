@@ -469,9 +469,31 @@ run("RagStore admin contract (real Postgres)", () => {
     await Effect.runPromise(
       store.revokeAdminSession({ jti: live, expiresAt: Date.now() + 60_000 }),
     );
-    expect(await Effect.runPromise(store.purgeAdminSessionRevocations())).toBeGreaterThanOrEqual(1);
+    expect(
+      await Effect.runPromise(store.purgeAdminSessionRevocations(Date.now())),
+    ).toBeGreaterThanOrEqual(1);
     expect(await Effect.runPromise(store.isAdminSessionRevoked(expired))).toBe(false);
     expect(await Effect.runPromise(store.isAdminSessionRevoked(live))).toBe(true);
+  });
+
+  it("deletes on the caller's cutoff, keeping a row at the boundary itself", async () => {
+    if (!URL) return;
+    // One clock domain: the row's `expires_at` is written from the app's clock and the
+    // purge compares it against the cutoff the APP passes — never the database's `now()`.
+    // A row whose token expires exactly at the cutoff is still needed (the token verifies
+    // until `exp`), so `<` keeps it and only a strictly earlier expiry is reclaimed. A
+    // skewed app clock therefore cannot reanimate a revoked token.
+    const at = Date.now() + 3_600_000;
+    // Clear the rows earlier cases left, so the count below is this test's own.
+    await Effect.runPromise(store.purgeAdminSessionRevocations(at + 24 * 3_600_000));
+    const boundary = `ct-jti-${crypto.randomUUID()}`;
+    const past = `ct-jti-${crypto.randomUUID()}`;
+    await Effect.runPromise(store.revokeAdminSession({ jti: boundary, expiresAt: at }));
+    await Effect.runPromise(store.revokeAdminSession({ jti: past, expiresAt: at - 1 }));
+
+    expect(await Effect.runPromise(store.purgeAdminSessionRevocations(at))).toBe(1);
+    expect(await Effect.runPromise(store.isAdminSessionRevoked(boundary))).toBe(true);
+    expect(await Effect.runPromise(store.isAdminSessionRevoked(past))).toBe(false);
   });
 
   it("keeps the denylist down to a random id, an expiry and a timestamp", async () => {
@@ -487,12 +509,28 @@ run("RagStore admin contract (real Postgres)", () => {
 
   it("refuses a NUL in the filter text at the database boundary", async () => {
     if (!URL) return;
-    // Why the query parser rejects control characters: a NUL is not representable in
-    // Postgres text, so a bound filter carrying one fails the read instead of matching
-    // nothing. The parser is the layer that keeps it out of the request path.
+    // Why the query parser rejects NUL: it is not representable in Postgres text, so a
+    // bound filter carrying one fails the read instead of matching nothing. The parser is
+    // the layer that keeps it out of the request path.
     const exit = await Effect.runPromiseExit(
       store.listAdminTraces({ text: "ayat\u0000kursi" }, { limit: 1, offset: 0 }),
     );
     expect(Exit.isFailure(exit)).toBe(true);
+  });
+
+  it("binds and matches the newline a pasted multi-line question carries", async () => {
+    if (!URL) return;
+    // The other half of that boundary: the whitespace controls are ordinary bound text, so
+    // an operator who pastes a two-line question searches it rather than getting a 400.
+    const question = "Apa itu ayat\nkursi?";
+    const seeded = await seedAnswer({
+      question,
+      answer: "Ayat kursi adalah QS. 2:255.",
+      trace: twoCallTrace(),
+    });
+    const page = await Effect.runPromise(
+      store.listAdminTraces({ text: "ayat\nkursi" }, { limit: 10, offset: 0 }),
+    );
+    expect(page.rows.map((row) => row.messageId)).toContain(seeded.messageId);
   });
 });

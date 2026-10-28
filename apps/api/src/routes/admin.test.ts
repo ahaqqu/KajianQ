@@ -13,6 +13,7 @@ import { traceTotals, type AdminTraceCall, type Trace } from "@app/contracts";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { createApi } from "../app";
 import { ADMIN_API_PREFIX, ADMIN_COOKIE_PATH, ADMIN_LOGIN_PATH } from "../lib/admin-paths";
+import { legacyAdminToken } from "../test-utils/legacy-admin-token";
 import type { AssetFetcher } from "@app/hardening";
 
 /**
@@ -104,6 +105,14 @@ function sessionJti(cookie: string): string {
 /** A base64url payload, the way the token encodes one — for a tampered-token case. */
 function encodePayload(value: unknown): string {
   return btoa(JSON.stringify(value)).replaceAll("+", "-").replaceAll("/", "_").replaceAll("=", "");
+}
+
+/** The expiry the signed payload names, in epoch milliseconds. The test decodes the
+ * token the server just minted; verification is covered by the 401 cases. */
+function sessionExpiry(cookie: string): number {
+  const payload = sessionToken(cookie).split(".")[1] ?? "";
+  const json = atob(payload.replaceAll("-", "+").replaceAll("_", "/"));
+  return (JSON.parse(json) as { exp: number }).exp;
 }
 
 /** The bootstrap: a CSRF token plus the cookie that must accompany it. */
@@ -930,7 +939,7 @@ describe("admin session revocation: sign-out ends the token, not just the browse
     const jti = sessionJti(session!.cookie);
     await runStoreEffect(store.revokeAdminSession({ jti, expiresAt: Date.now() - 60_000 }));
     expect((await list(instance, env, session!)).status).toBe(401);
-    expect(await runStoreEffect(store.purgeAdminSessionRevocations())).toBe(1);
+    expect(await runStoreEffect(store.purgeAdminSessionRevocations(Date.now()))).toBe(1);
     expect(await runStoreEffect(store.isAdminSessionRevoked(jti))).toBe(false);
     expect((await list(instance, env, session!)).status).toBe(200);
 
@@ -942,11 +951,48 @@ describe("admin session revocation: sign-out ends the token, not just the browse
         expiresAt: Date.now() + 60_000,
       }),
     );
-    expect(await runStoreEffect(store.purgeAdminSessionRevocations())).toBe(0);
+    expect(await runStoreEffect(store.purgeAdminSessionRevocations(Date.now()))).toBe(0);
     expect((await list(instance, env, second)).status).toBe(401);
     const third = (await login(instance, env)).session!;
     expect(sessionJti(third.cookie)).not.toBe(jti);
     expect((await list(instance, env, third)).status).toBe(200);
+  });
+
+  it("records the signed-out token's own expiry, so the purge cannot reclaim it early", async () => {
+    const store = await seededStore();
+    const instance = api();
+    const env = adminEnv();
+    const { session } = await login(instance, env);
+    const exp = sessionExpiry(session!.cookie);
+    expect((await logout(instance, env, session!)).status).toBe(204);
+
+    // The row's only input is the token's own `exp`. A purge at that exact instant keeps
+    // it — the token still verifies until then — and one millisecond later reclaims it.
+    // A logout that wrote `0`, or its own clock, would already be gone at the first purge
+    // and the token it named would read again.
+    expect(await runStoreEffect(store.purgeAdminSessionRevocations(exp))).toBe(0);
+    expect((await list(instance, env, session!)).status).toBe(401);
+    expect(await runStoreEffect(store.purgeAdminSessionRevocations(exp + 1))).toBe(1);
+    expect((await list(instance, env, session!)).status).toBe(200);
+  });
+
+  it("refuses a validly signed legacy token that names no session", async () => {
+    await seededStore();
+    const instance = api();
+    const env = adminEnv();
+    // The pre-change mint: the same credential-derived key, a payload carrying `exp` and
+    // no `jti`. The signature verifies (pinned in `admin-auth.test.ts`); only the
+    // session-id requirement refuses it. Without that requirement this token would be a
+    // session nothing can revoke.
+    const legacy = await legacyAdminToken(PASSWORD, Date.now() + 60 * 60 * 1000);
+    const cookie = `kajianq_admin=${legacy}`;
+    for (const path of ["/v1/admin/traces", `/v1/admin/traces/${crypto.randomUUID()}`]) {
+      const res = await instance.request(path, { headers: { cookie } }, env);
+      expect(res.status, path).toBe(401);
+      expect(await res.json(), path).toEqual({ error: "unauthorized" });
+    }
+    const probe = await instance.request("/v1/admin/session", { headers: { cookie } }, env);
+    expect(((await probe.json()) as { authenticated: boolean }).authenticated).toBe(false);
   });
 
   it("reads a malformed or tampered session id as a normal 401, never an error", async () => {
@@ -1126,8 +1172,8 @@ describe("admin list: the failure-search seam", () => {
     expect(storeReadCount).toBe(0);
   });
 
-  it("refuses a NUL or control character in the filter before the log write and the read", async () => {
-    const store = await seededStore([{ question: "Apa itu ayat kursi?" }]);
+  it("refuses a NUL in the filter before the log write and the read, and still searches pasted text", async () => {
+    const store = await seededStore([{ question: "Apa itu ayat\nkursi?" }]);
     const instance = api();
     const { session } = await login(instance, adminEnv());
     let listReads = 0;
@@ -1139,10 +1185,10 @@ describe("admin list: the failure-search seam", () => {
       },
     }) as never;
 
-    // `%00` is the URL-decoded NUL that reached the store as a bound parameter. The
-    // others are the same class — an embedded NUL, a C0 character, DEL — and every one
-    // must be the documented 400, never the 500 a bound NUL produces in the store.
-    for (const q of ["%00", "ayat%00kursi", "ayat%07kursi", "%7F"]) {
+    // `%00` is the URL-decoded NUL that would reach the store as a bound parameter and
+    // raise there. Every NUL shape is the documented 400, never the 500 a bound NUL
+    // produces in the store.
+    for (const q of ["%00", "ayat%00kursi"]) {
       const res = await instance.request(
         `/v1/admin/traces?q=${q}&pageSize=5`,
         { headers: { cookie: session!.cookie } },
@@ -1156,16 +1202,32 @@ describe("admin list: the failure-search seam", () => {
     expect(store.allAdminAccess()).toHaveLength(0);
     expect(listReads).toBe(0);
 
+    // The newline a pasted multi-line question carries is text the store binds like any
+    // other, so it reaches the store and matches the stored question.
+    const pasted = await instance.request(
+      `/v1/admin/traces?q=${encodeURIComponent("ayat\nkursi")}&pageSize=5`,
+      { headers: { cookie: session!.cookie } },
+      adminEnv(),
+    );
+    expect(pasted.status).toBe(200);
+    expect(((await pasted.json()) as { total: number }).total).toBe(1);
+
     // The adjacent adversarial shapes keep their answers: injection-shaped text is an
-    // ordinary empty match, and the length ceiling is still a 400.
-    for (const q of ["' OR 1=1--", "'; DROP TABLE answer_traces;--"]) {
+    // ordinary empty match, the length ceiling is still a 400, and the remaining control
+    // characters are searchable text rather than a refused class (only NUL is).
+    for (const encoded of [
+      encodeURIComponent("' OR 1=1--"),
+      encodeURIComponent("'; DROP TABLE answer_traces;--"),
+      "ayat%07kursi",
+      "%7F",
+    ]) {
       const res = await instance.request(
-        `/v1/admin/traces?q=${encodeURIComponent(q)}`,
+        `/v1/admin/traces?q=${encoded}`,
         { headers: { cookie: session!.cookie } },
         adminEnv(),
       );
-      expect(res.status, q).toBe(200);
-      expect(((await res.json()) as { total: number }).total, q).toBe(0);
+      expect(res.status, encoded).toBe(200);
+      expect(((await res.json()) as { total: number }).total, encoded).toBe(0);
     }
     const overLong = await instance.request(
       `/v1/admin/traces?q=${"x".repeat(201)}`,
@@ -1173,8 +1235,8 @@ describe("admin list: the failure-search seam", () => {
       adminEnv(),
     );
     expect(overLong.status).toBe(400);
-    // The two valid searches above are the only rows this test spends.
-    expect(store.allAdminAccess()).toHaveLength(2);
+    // One audit row per served read: the pasted multi-line match and the four above.
+    expect(store.allAdminAccess()).toHaveLength(5);
   });
 });
 

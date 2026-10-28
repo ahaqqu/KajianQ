@@ -92,9 +92,19 @@ const detailPayload = {
   },
 };
 
-type StubOptions = { authenticated: boolean; failLogout?: boolean };
+type StubOptions = {
+  authenticated: boolean;
+  failLogout?: boolean;
+  /** The store is unreachable once a sign-out has been attempted: the probe then answers
+   * `authenticated:false` (fail-closed) even though the cookie is still live. */
+  probeFailsClosedAfterLogout?: boolean;
+};
 
-function stubAdminApi({ authenticated, failLogout = false }: StubOptions) {
+function stubAdminApi({
+  authenticated,
+  failLogout = false,
+  probeFailsClosedAfterLogout = false,
+}: StubOptions) {
   // A session is the cookie the browser now holds: once the POST succeeds, every
   // later request is authenticated (the stub keeps the same state the cookie would).
   let signedIn = authenticated;
@@ -113,6 +123,9 @@ function stubAdminApi({ authenticated, failLogout = false }: StubOptions) {
         signedIn = true;
         return Response.json({ authenticated: true, csrfToken: "csrf-2" });
       }
+      if (probeFailsClosedAfterLogout && deletes > 0) {
+        return Response.json({ authenticated: false, csrfToken: "csrf-1" });
+      }
       return Response.json({ authenticated: signedIn, csrfToken: "csrf-1" });
     }
     if (!signedIn) return Response.json({ error: "unauthorized" }, { status: 401 });
@@ -122,6 +135,16 @@ function stubAdminApi({ authenticated, failLogout = false }: StubOptions) {
   });
   vi.stubGlobal("fetch", fetchFn);
   return fetchFn;
+}
+
+/** How many session probes the page made (GET /v1/admin/session). */
+function probeCount(fetchFn: ReturnType<typeof stubAdminApi>): number {
+  return fetchFn.mock.calls.filter(([url, init]) => {
+    return (
+      String(url).includes("/v1/admin/session") &&
+      ((init as RequestInit | undefined)?.method ?? "GET") === "GET"
+    );
+  }).length;
 }
 
 beforeEach(() => {
@@ -194,18 +217,50 @@ describe("admin browser", () => {
     expect(fetchFn.mock.calls.every(([url]) => !String(url).includes("/admin/v1"))).toBe(true);
   });
 
+  it("keeps the operator signed in and says so when the server refuses the sign-out", async () => {
+    // The composition the PR exists to prevent: the DELETE answers 503 (the store cannot
+    // write the revocation, so the cookie stays live) and the probe fails closed with
+    // `authenticated:false`. The page must not read that probe as a completed sign-out.
+    const fetchFn = stubAdminApi({
+      authenticated: true,
+      failLogout: true,
+      probeFailsClosedAfterLogout: true,
+    });
+    await renderApp("/admin");
+    await screen.findByTestId("admin-traces");
+    const probesBefore = probeCount(fetchFn);
+    fireEvent.click(screen.getByTestId("admin-sign-out"));
+
+    expect(await screen.findByTestId("admin-sign-out-failed")).toBeTruthy();
+    // The authenticated view stays: the cookie is still live, and only a 204 ends a session.
+    expect(screen.getByTestId("admin-traces")).toBeTruthy();
+    expect(screen.queryByTestId("admin-password")).toBeNull();
+    // No re-probe is what decided it: the fail-closed answer never reported the refusal.
+    expect(probeCount(fetchFn)).toBe(probesBefore);
+  });
+
+  it("returns to the sign-in form once the server answers 204", async () => {
+    stubAdminApi({ authenticated: true });
+    await renderApp("/admin");
+    await screen.findByTestId("admin-traces");
+    fireEvent.click(screen.getByTestId("admin-sign-out"));
+    // The probe after a real 204 finds no session and hands back the CSRF token the form
+    // needs; no "failed" alert, because the sign-out did happen.
+    expect(await screen.findByTestId("admin-password")).toBeTruthy();
+    expect(screen.queryByTestId("admin-traces")).toBeNull();
+    expect(screen.queryByTestId("admin-sign-out-failed")).toBeNull();
+  });
+
   it("keeps a usable CSRF token when logout fails, so the next sign-in is not refused", async () => {
     const fetchFn = stubAdminApi({ authenticated: true, failLogout: true });
     await renderApp("/admin");
     await screen.findByTestId("admin-traces");
     fireEvent.click(screen.getByTestId("admin-sign-out"));
-    // The failed logout does not fabricate a signed-out state with an empty token: the
-    // re-probe finds the session still live, so the page stays signed in and keeps a token
-    // the next write can echo. (Seeding `csrfToken: ""` is what made every later sign-in
-    // answer 401 and read as a wrong password.)
-    await waitFor(() =>
-      expect(fetchFn.mock.calls.some(([url]) => String(url).includes("/session"))).toBe(true),
-    );
+    // The failed logout does not fabricate a signed-out state with an empty token: the page
+    // stays signed in with the token it already had, which the next write can echo.
+    // (Seeding `csrfToken: ""` is what made every later sign-in answer 401 and read as a
+    // wrong password.)
+    expect(await screen.findByTestId("admin-sign-out-failed")).toBeTruthy();
     expect(screen.getByTestId("admin-traces")).toBeTruthy();
     expect(screen.queryByTestId("admin-password")).toBeNull();
     // A later logout that succeeds signs the operator out normally…

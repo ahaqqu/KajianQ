@@ -9,7 +9,7 @@ import {
   setAdminCookie,
   setCsrfCookie,
 } from "../lib/admin-auth";
-import { loginBodyMatches } from "../lib/admin-login";
+import { loginBodyMatches, sessionBody } from "../lib/admin-login";
 import { adminSessionActive, revokePresentedSession } from "../lib/admin-route";
 import { newRouter } from "../lib/guard";
 
@@ -34,10 +34,6 @@ import { newRouter } from "../lib/guard";
  * already-invalid token still answers 204 and clears, keeping every miss uniform.
  */
 
-function sessionBody(authenticated: boolean, csrfToken: string) {
-  return { authenticated, csrfToken };
-}
-
 export const adminSessionRoutes = newRouter()
   // Bootstrap: a fresh CSRF token every time, plus whether a live session is
   // already held. Reachable without a session by construction — it is how the
@@ -45,7 +41,7 @@ export const adminSessionRoutes = newRouter()
   .get(ADMIN_SESSION_ROUTE, async (c) => {
     const csrfToken = setCsrfCookie(c);
     c.header("Cache-Control", "no-store");
-    return c.json(sessionBody(await adminSessionActive(c, c.env), csrfToken));
+    return c.json(sessionBody(await adminSessionActive(c), csrfToken));
   })
   .post(ADMIN_SESSION_ROUTE, async (c) => {
     const credential = adminCredential(c.env);
@@ -78,7 +74,7 @@ export const adminSessionRoutes = newRouter()
     // Logout: a cross-site logout is a nuisance rather than a compromise, but the
     // CSRF pair is required all the same so every state change has one rule.
     if (!(await csrfMatches(c))) return adminUnauthorized(c);
-    if (!(await revokePresentedSession(c, c.env))) {
+    if (!(await revokePresentedSession(c))) {
       // The revocation could not be written, so the token would stay live. Reporting
       // 204 and clearing the cookie would be a sign-out that did not happen; the
       // cookie stays where it was and the operator can retry.

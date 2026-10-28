@@ -188,10 +188,13 @@ export interface RagStoreAdmin {
   isAdminSessionRevoked(jti: string): Effect.Effect<boolean, StoreError>;
 
   /**
-   * Delete revocation rows whose token has already expired and return the count. The
-   * signature's own expiry check refuses such a token with or without the row, so this
-   * is storage reclamation on the token's schedule — and the reason the denylist cannot
-   * grow without bound.
+   * Delete revocation rows whose token expired before `cutoffMs` and return the count.
+   * The cutoff is the CALLER's clock — the one the token check compares `exp` against —
+   * so a row is never reclaimed while the token it names still verifies on that clock;
+   * the store does not measure the app-written `expires_at` against the database's own
+   * `now()`. The signature's expiry check refuses an expired token with or without the
+   * row, so this is storage reclamation on the token's schedule, and the reason the
+   * denylist cannot grow without bound.
    */
-  purgeAdminSessionRevocations(): Effect.Effect<number, StoreError>;
+  purgeAdminSessionRevocations(cutoffMs: number): Effect.Effect<number, StoreError>;
 }

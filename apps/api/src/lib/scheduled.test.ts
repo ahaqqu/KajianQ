@@ -34,7 +34,7 @@ vi.mock("pg", () => ({
 function storeWith(
   cleanup: () => unknown,
   purgeLog: () => unknown = () => 0,
-  purgeRevocations: () => unknown = () => 0,
+  purgeRevocations: (cutoffMs: number) => unknown = () => 0,
 ): RagStore {
   return {
     cleanupExpiredSessions: cleanup,
@@ -80,6 +80,31 @@ describe("cleanupExpiredSessions", () => {
       revocationsDeleted: 2,
       ok: true,
     });
+  });
+
+  it("hands the revocation purge this process's clock, not the store's", async () => {
+    // The same clock the token check compares `exp` against: the purge must not measure an
+    // app-written expiry against the database's `now()`. The cutoff is the one value that
+    // decides both, so it is asserted rather than left to `Date.now()` inside the adapter.
+    const cutoffs: number[] = [];
+    const store = storeWith(
+      () => ({ __effect: "sessions" }),
+      () => ({ __effect: "admin-log" }),
+      (cutoffMs: number) => {
+        cutoffs.push(cutoffMs);
+        return { __effect: "revocations" };
+      },
+    );
+    const result = await cleanupExpiredSessions(
+      { DATABASE_URL: "postgres://x" },
+      {
+        createStore: () => store,
+        runStore: bridge(() => 0),
+        now: () => 1_700_000_000_000,
+      },
+    );
+    expect(cutoffs).toEqual([1_700_000_000_000]);
+    expect(result.ok).toBe(true);
   });
 
   it("purges the admin access log by its own window in the same nightly run", async () => {

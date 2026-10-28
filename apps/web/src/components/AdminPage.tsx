@@ -14,20 +14,22 @@ import { AdminLogin, AdminTraceDetail, AdminTraceSearch } from "./admin/admin-pa
  * outcome rather than guessing why.
  *
  * The session is a union, not a nullable boolean: every signed-out state carries a live
- * CSRF token the next sign-in must echo, so an empty token is not representable. A
- * failed logout therefore re-probes instead of fabricating one — a token-less
- * "signed out" page would 401 the operator's next sign-in and report it as a wrong
- * password.
+ * CSRF token the next sign-in must echo, so an empty token is not representable. Only a
+ * 204 from the sign-out moves the page to signed-out. Any other outcome keeps the
+ * authenticated view with the token it already had and says the sign-out failed: the
+ * cookie is still live, so a probe that fails closed (a store fault) would otherwise
+ * report a sign-out the server refused, and the operator would be shown a login form
+ * while their session still works.
  */
 type AdminSessionState =
   | { kind: "probing" }
   | { kind: "unreachable" }
   | { kind: "signed-out"; csrfToken: string }
-  | { kind: "signed-in"; csrfToken: string };
+  | { kind: "signed-in"; csrfToken: string; signOutFailed: boolean };
 
 function stateOf(session: { authenticated: boolean; csrfToken: string }): AdminSessionState {
   return session.authenticated
-    ? { kind: "signed-in", csrfToken: session.csrfToken }
+    ? { kind: "signed-in", csrfToken: session.csrfToken, signOutFailed: false }
     : { kind: "signed-out", csrfToken: session.csrfToken };
 }
 
@@ -64,17 +66,23 @@ export function AdminPage() {
                 data-testid="admin-sign-out"
                 className="rounded-lg border border-rule px-3 py-1.5"
                 onClick={() => {
-                  logOut(session.csrfToken)
-                    // A failed logout leaves the cookie exactly where it was: swallow it
-                    // and let the probe say what is true (still signed in, with a fresh
-                    // token) rather than seeding a token the next sign-in cannot use.
-                    .catch(() => undefined)
-                    .then(() => {
+                  const csrfToken = session.csrfToken;
+                  // A 204 is the only answer that ended the session server-side; every
+                  // other outcome (a 503 it fails closed with, a refused CSRF pair, a
+                  // network fault) leaves the cookie live, so the page keeps the
+                  // authenticated view and says the sign-out failed. Re-probing here would
+                  // be the trap: a probe whose store is unreachable answers
+                  // `authenticated:false`, which is how the login form used to appear over
+                  // a session that still worked.
+                  logOut(csrfToken).then(
+                    () => {
                       selectTrace(undefined);
-                      return fetchAdminSession();
-                    })
-                    .then((next) => setSession(stateOf(next)))
-                    .catch(() => setSession({ kind: "unreachable" }));
+                      fetchAdminSession()
+                        .then((next) => setSession(stateOf(next)))
+                        .catch(() => setSession({ kind: "unreachable" }));
+                    },
+                    () => setSession({ kind: "signed-in", csrfToken, signOutFailed: true }),
+                  );
                 }}
               >
                 {t(locale, "adminSignOut")}
@@ -86,6 +94,16 @@ export function AdminPage() {
 
       <main className="mx-auto w-full max-w-6xl flex-1 space-y-6 px-4 py-8">
         <p className="max-w-3xl text-sm text-muted-foreground">{t(locale, "adminLead")}</p>
+
+        {session.kind === "signed-in" && session.signOutFailed && (
+          <p
+            role="alert"
+            data-testid="admin-sign-out-failed"
+            className="max-w-3xl rounded-lg border border-rule px-3 py-2 text-sm"
+          >
+            {t(locale, "adminSignOutFailed")}
+          </p>
+        )}
 
         {session.kind === "unreachable" && (
           <p role="alert" data-testid="admin-unreachable" className="text-sm text-muted-foreground">

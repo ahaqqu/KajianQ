@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
+import { base64url, legacyAdminToken, tokenSignature } from "../test-utils/legacy-admin-token";
 import {
   ADMIN_SESSION_TTL_MS,
   adminActor,
@@ -15,8 +16,9 @@ import {
  * The invariants: the credential comparison is true for exactly one input; a session
  * token is unforgeable without the credential and dies when the credential rotates
  * (the signing key is derived from it); an expired token is a miss; every token names
- * one random session so a sign-out can end exactly that session; and the actor
- * fingerprint identifies a credential version without storing the credential or
+ * one random session so a sign-out can end exactly that session, and a signed token
+ * that omits it — the shape every pre-change deployment issued — is refused; and the
+ * actor fingerprint identifies a credential version without storing the credential or
  * anything an offline guess could confirm.
  *
  * The media-type check is the login boundary's first gate, so its truth table is
@@ -85,13 +87,28 @@ describe("session tokens", () => {
       `${version}.${payload}`,
       // A payload that decodes but was never signed by the key.
       `${version}.${btoa(JSON.stringify({ exp: Date.now() + 1e9 }))}.${signature}`,
-      // The trap this session model adds: a signed token must name a session. Swapping
-      // in a payload with no `jti` — a token that cannot be revoked — is the same miss.
-      `${version}.${btoa(JSON.stringify({ exp: Date.now() + 1e9 })).replaceAll("=", "")}.${signature}`,
     ];
     for (const candidate of forged) {
       expect(await verifySessionClaims(CREDENTIAL, candidate, 1_000), candidate).toBeNull();
     }
+  });
+
+  it("refuses a validly signed legacy token that names no session", async () => {
+    // The property the session model exists for: a token in the shape every pre-change
+    // deployment issued — a signed `{ exp }` with no session id — must be a miss, because
+    // nothing could ever revoke it. The signature is real: the positive control below is
+    // the SAME recipe signing a payload that does name a session, and it verifies. So the
+    // only difference between the accepted token and the refused one is the session id,
+    // and deleting that requirement reddens this test rather than passing elsewhere.
+    const exp = 1_000 + ADMIN_SESSION_TTL_MS;
+    const jti = "A".repeat(22);
+    const acceptedPayload = base64url({ exp, jti });
+    const accepted = `v1.${acceptedPayload}.${await tokenSignature(CREDENTIAL, acceptedPayload)}`;
+    expect(await verifySessionClaims(CREDENTIAL, accepted, 1_000)).toEqual({ jti, expiresAt: exp });
+
+    const legacy = await legacyAdminToken(CREDENTIAL, exp);
+    expect(decodePayload(legacy)).toEqual({ exp });
+    expect(await verifySessionClaims(CREDENTIAL, legacy, 1_000)).toBeNull();
   });
 
   it("mints a distinct session id and token per login", async () => {

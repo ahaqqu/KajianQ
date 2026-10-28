@@ -167,11 +167,13 @@ export const ADMIN_PAGE_SIZE_MAX = 50;
 /** The free-text ceiling; a longer query is a 400, never a truncated search. */
 export const ADMIN_QUERY_TEXT_MAX = 200;
 
-/** The characters no free-text filter may carry: NUL, the rest of C0, and DEL. The
- * store binds a filter into SQL text, where Postgres has no NUL, so accepting one
- * turns a search into an internal error after the audit row is already spent —
- * while every other control character has no match to offer either. */
-const CONTROL_CHARACTERS = /[\u0000-\u001F\u007F]/;
+/** The one character no free-text filter may carry: NUL. The store binds a filter into
+ * SQL text, where Postgres has no NUL, so accepting one turns a search into an internal
+ * error after the audit row is already spent. Every other control character — tab,
+ * newline, carriage return, BEL, DEL — is storable and matches as bound text, so it is
+ * not the parser's business to refuse it: a pasted multi-line question is a legitimate
+ * search, not an attack. */
+const NUL_CHARACTER = /\u0000/;
 
 /** A bounded free-text filter that can always reach the store as a parameter. */
 const filterText = (maxLength: number) =>
@@ -179,7 +181,7 @@ const filterText = (maxLength: number) =>
     v.string(),
     v.minLength(1),
     v.maxLength(maxLength),
-    v.check((value) => !CONTROL_CHARACTERS.test(value)),
+    v.check((value) => !NUL_CHARACTER.test(value)),
   );
 
 const epochsMs = () => v.optional(v.pipe(v.string(), v.regex(/^\d{1,15}$/), v.transform(Number)));

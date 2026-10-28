@@ -193,12 +193,13 @@ export function memoryAdminMethods(
     isAdminSessionRevoked(jti) {
       return Effect.sync(() => revocations.has(jti));
     },
-    purgeAdminSessionRevocations() {
+    purgeAdminSessionRevocations(cutoffMs) {
+      // The caller's cutoff, as the seam spells it: the double must not invent its own
+      // clock any more than the adapter may use the database's.
       return Effect.sync(() => {
-        const now = Date.now();
         let removed = 0;
         for (const [jti, expiresAt] of revocations) {
-          if (expiresAt < now) {
+          if (expiresAt < cutoffMs) {
             revocations.delete(jti);
             removed += 1;
           }
