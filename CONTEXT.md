@@ -113,6 +113,10 @@ _Avoid_: default route, degraded mode (implies a configuration state rather than
 The per-answer record of how it was built — router intent and Query category, Sub-queries with their roles, retrieved chunks with scores, model identity, tokens, cost. User-visible in expanded form per ADR-0007; a fuller version lives in admin.
 _Avoid_: log, debug info
 
+**Admin access log**:
+The append-only record of an operator's reads on the admin surface — when, which route, and a summary of the filters' dimensions. It never carries a question, an answer or a search text, and a read that cannot be recorded is not served; the window bounds what the nightly cleanup may reclaim (ADR-0064).
+_Avoid_: audit trail, access history (both imply a wider record than this one is)
+
 **Golden Set**:
 The versioned collection of Indonesian/English test questions with expected sources and citations, run against real services as the integration-test regression gate.
 _Avoid_: eval set, test set (unqualified)

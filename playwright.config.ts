@@ -43,6 +43,10 @@ export default defineConfig({
           KAJIANQ_WEB_ROOT: "apps/web/dist",
           PORT: "8787",
           APP_ENV: "development",
+          // The admin browser is enabled per deployment by its credential; the e2e
+          // host enables it so the sign-in scenarios exercise the real guard. A value
+          // no deployment uses, and the only place it appears.
+          ADMIN_PASSWORD: "bdd-admin-password",
         },
       },
 });

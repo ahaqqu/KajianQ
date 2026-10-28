@@ -23,6 +23,7 @@ export function SourceRow({
   score,
   messageId,
   persisted,
+  feedback = true,
 }: {
   chunk: ChatTraceChunk;
   index: number;
@@ -30,6 +31,7 @@ export function SourceRow({
   score: Intl.NumberFormat;
   messageId: string;
   persisted: boolean;
+  feedback?: boolean;
 }) {
   return (
     <li
@@ -48,13 +50,15 @@ export function SourceRow({
             {t(locale, "traceScoreLabel")} {score.format(chunk.score)}
           </span>
         )}
-        <FlagButton
-          messageId={messageId}
-          persisted={persisted}
-          anchor={{ type: "chunk", category: "irrelevant_chunk", id: chunk.id }}
-          labelKey="flagIrrelevantChunk"
-          testId={`trace-flag-${chunk.id}`}
-        />
+        {feedback && (
+          <FlagButton
+            messageId={messageId}
+            persisted={persisted}
+            anchor={{ type: "chunk", category: "irrelevant_chunk", id: chunk.id }}
+            labelKey="flagIrrelevantChunk"
+            testId={`trace-flag-${chunk.id}`}
+          />
+        )}
       </span>
     </li>
   );

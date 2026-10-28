@@ -1,4 +1,5 @@
 export { AboutPage } from "./AboutPage";
+export { AdminPage } from "./AdminPage";
 export { ChatPage } from "./ChatPage";
 export { CollectionPage } from "./CollectionPage";
 export { FaqPage } from "./FaqPage";

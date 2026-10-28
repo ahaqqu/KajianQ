@@ -5,10 +5,12 @@
  * copy lives in its own file so `i18n.ts` stays the machinery module, under
  * the agentic-limits cap a growing message list would otherwise break.
  */
+import { adminMessages } from "./i18n-messages-admin";
 import { chatMessages } from "./i18n-messages-chat";
 export const messages = {
   en: {
     ...chatMessages.en,
+    ...adminMessages.en,
     appTitle: "KajianQ",
     homeTitle: "KajianQ",
     homeSubtitle:
@@ -139,6 +141,7 @@ export const messages = {
   },
   id: {
     ...chatMessages.id,
+    ...adminMessages.id,
     appTitle: "KajianQ",
     homeTitle: "KajianQ",
     homeSubtitle:
