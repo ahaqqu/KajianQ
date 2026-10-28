@@ -1,10 +1,12 @@
 import {
+  ADMIN_API_PREFIX,
   ADMIN_LOGIN_PATH,
   allowRequest,
   corsGuard,
   createRequestContext,
   fnv1aHex,
   installSecurityHeaders,
+  isAdminApiPath,
   resolveRateLimiter,
 } from "./";
 import { checkBypassHeader, RATE_BYPASS_HEADER } from "./rate-bypass";
@@ -44,11 +46,16 @@ export function applyMiddleware(api: Hono<ApiEnv>, opts?: MiddlewareOpts): void 
     c.header("X-Correlation-Id", id);
     await next();
   });
-  // Rate limiting is an API-surface policy (ADR-0041): only /v1/* is metered.
+  // Rate limiting is an API-surface policy (ADR-0041): the public `/v1/*` surface is
+  // metered, while the admin namespace under it has meters of its own (below) — a
+  // path test, not a separate top-level prefix, keeps the two budgets disjoint.
   // Static assets and the doc routes flow through unmetered — asset fetches
   // cannot carry credentials, and metering them steals the per-IP budget from
   // real chat calls.
   api.use("/v1/*", async (c, next) => {
+    // The admin surface is not public: it must neither spend nor be throttled by the
+    // chat meter. The admin middleware below bills its own namespaces.
+    if (isAdminApiPath(c.req.path)) return next();
     // A valid bypass token (Ed25519 JWT, ADR-0041) exempts the request from
     // metering — harness traffic (DAST/load tests), never user sessions: the
     // token grants nothing else. An invalid or absent token degrades to
@@ -76,11 +83,14 @@ export function applyMiddleware(api: Hono<ApiEnv>, opts?: MiddlewareOpts): void 
   });
   // The admin surface has its own budget (ADR-0064), in namespaces of its own: the
   // login POST — the admin surface's only unauthenticated write — gets a tight one,
-  // and the reads get the browsing one. It is NOT metered by the public `/v1` meter,
-  // whose budget protects the chat's spend; sharing that namespace would let either
-  // surface exhaust the other. The client IP is digested before it names a counter,
-  // exactly as on the public path, so no raw address is held here either.
-  api.use("/admin/*", async (c, next) => {
+  // and the reads get the browsing one. Sharing the public `/v1` namespace would let
+  // either surface exhaust the other. The client IP is digested before it names a
+  // counter, exactly as on the public path, so no raw address is held here either.
+  // Every answer from this namespace, refusals included, is `no-store`: a 400/404/422/
+  // 503 is a per-request verdict, and a cached one would outlive the condition it
+  // reported.
+  api.use(`${ADMIN_API_PREFIX}/*`, async (c, next) => {
+    c.header("Cache-Control", "no-store");
     const login = c.req.method === "POST" && c.req.path === ADMIN_LOGIN_PATH;
     const limit = login
       ? (opts?.adminLoginLimit ?? ADMIN_LOGIN_LIMIT)

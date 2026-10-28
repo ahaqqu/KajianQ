@@ -14,10 +14,11 @@ import { healthRoutes } from "./health";
 /**
  * Mounts every route module, then the doc routes that introspect them.
  *
- * The admin surface (ADR-0064) is mounted here but deliberately **absent from the
- * public OpenAPI document** — `registerDocRoutes` excludes it — so no client
- * generated from `/openapi.json` can see it exists. Its routes are also served a
- * machine-readable JSON 404 when unknown, never the SPA.
+ * The admin surface (ADR-0064) is mounted under the public API prefix so the
+ * deployment's existing `/v1` proxy carries it, but it is deliberately **absent
+ * from the public OpenAPI document** — `registerDocRoutes` excludes it — so no
+ * client generated from `/openapi.json` can see it exists. Its routes are also
+ * served a machine-readable JSON 404 when unknown, never the SPA.
  */
 export function registerRoutes(api: Hono<ApiEnv>): void {
   api.route("/", healthRoutes);
@@ -33,6 +34,6 @@ export function registerRoutes(api: Hono<ApiEnv>): void {
   // SPA catch-all: non-API paths serve the static assets through the Hono
   // stack, so security headers and CORS cover the SPA too; rate limiting
   // meters /v1 only (ADR-0041).
-  // API namespaces get a machine-readable JSON 404 instead of the SPA.
-  api.all("*", (c) => serveAssets(c.req.raw, c.env.ASSETS, { apiPrefixes: ["/v1/", "/admin/"] }));
+  // API paths get a machine-readable JSON 404 instead of the SPA.
+  api.all("*", (c) => serveAssets(c.req.raw, c.env.ASSETS, { apiPrefixes: ["/v1/"] }));
 }

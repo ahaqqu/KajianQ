@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vite-plus/test";
 import { createApi } from "./app";
 import { CHAT_MESSAGE_MAX_LENGTH, STORABLE_TEXT_PATTERN } from "@app/contracts";
 import type { AssetFetcher } from "@app/hardening";
+import { isAdminApiPath } from "./lib/admin-auth";
 import { toOpenApiPath } from "./lib/openapi-path";
 
 const { captureException } = vi.hoisted(() => ({
@@ -150,10 +151,12 @@ describe("generated OpenAPI doc", () => {
     // Hono's route table uses `:param`; hono-openapi documents `{param}`, so
     // both sides normalize through the shared owner that
     // scripts/openapi-check.mjs also imports — the two checks agree.
+    // The admin namespace lives under `/v1` but is excluded from the public
+    // document (ADR-0064), so the registered set excludes it by the same owner.
     const registered = [
       ...new Set(
         api.routes
-          .filter((r) => r.path.startsWith("/v1/") && r.method !== "ALL")
+          .filter((r) => r.path.startsWith("/v1/") && !isAdminApiPath(r.path) && r.method !== "ALL")
           .map((r) => `${r.method} ${toOpenApiPath(r.path)}`),
       ),
     ].sort();

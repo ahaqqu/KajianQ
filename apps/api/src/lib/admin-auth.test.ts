@@ -1,11 +1,14 @@
 import { describe, expect, it } from "vite-plus/test";
 import {
+  ADMIN_API_PREFIX,
+  ADMIN_LOGIN_PATH,
+  ADMIN_SESSION_TTL_MS,
   adminActor,
   credentialMatches,
+  isAdminApiPath,
   issueSessionToken,
   newCsrfToken,
   verifySessionToken,
-  ADMIN_SESSION_TTL_MS,
 } from "./admin-auth";
 
 /**
@@ -99,5 +102,21 @@ describe("newCsrfToken", () => {
     const tokens = new Set(Array.from({ length: 32 }, () => newCsrfToken()));
     expect(tokens.size).toBe(32);
     for (const token of tokens) expect(token).toMatch(/^[0-9a-f]{48}$/);
+  });
+});
+
+describe("admin namespace", () => {
+  it("scopes the API to one prefix, with the login under it and a clean boundary", () => {
+    expect(ADMIN_API_PREFIX).toBe("/v1/admin");
+    expect(ADMIN_LOGIN_PATH).toBe(`${ADMIN_API_PREFIX}/session`);
+    expect(isAdminApiPath(ADMIN_API_PREFIX)).toBe(true);
+    expect(isAdminApiPath(ADMIN_LOGIN_PATH)).toBe(true);
+    expect(isAdminApiPath(`${ADMIN_API_PREFIX}/traces`)).toBe(true);
+    // The SPA page's route is not the API namespace…
+    expect(isAdminApiPath("/admin")).toBe(false);
+    // …and a path that merely shares the characters is public: a bare prefix test
+    // would silently exempt it from the public meter.
+    expect(isAdminApiPath("/v1/administer")).toBe(false);
+    expect(isAdminApiPath("/v1/")).toBe(false);
   });
 });

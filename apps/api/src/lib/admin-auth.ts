@@ -21,7 +21,7 @@ import { allowedOrigins, type ApiEnv, type AppBindings } from "../env";
  *  - a missing credential, a missing cookie, a malformed token, a bad signature and
  *    an expired token are ONE answer: `401 {"error":"unauthorized"}`;
  *  - the cookie is httpOnly, SameSite=Strict and Secure outside development, and is
- *    scoped to `/admin`, so no public route ever receives it.
+ *    scoped to the admin API prefix, so no public `/v1` route ever receives it.
  *
  * The one value this module derives that leaves the process is the **actor**
  * fingerprint: an HMAC of a fixed label under the session key, truncated to 16 hex
@@ -29,9 +29,25 @@ import { allowedOrigins, type ApiEnv, type AppBindings } from "../env";
  * the credential, a hash of it, or anything an offline guess could confirm.
  */
 
+/**
+ * The admin surface's API prefix. It sits under the public API namespace so the proxy
+ * that already serves `/v1` carries the admin read surface too; a top-level namespace
+ * would be a deployment change (a new proxy location) rather than a code change.
+ */
+export const ADMIN_API_PREFIX = "/v1/admin";
+
+/** The session and CSRF cookies' path: the admin API prefix, never the whole API. */
+export const ADMIN_COOKIE_PATH = ADMIN_API_PREFIX;
+
 /** The login route's own path. The admin middleware keys its tighter budget off this one
  * spelling, so a route move cannot leave credential guessing on the browsing budget. */
-export const ADMIN_LOGIN_PATH = "/admin/v1/session";
+export const ADMIN_LOGIN_PATH = `${ADMIN_API_PREFIX}/session`;
+
+/** True for the admin namespace itself and every path under it, and for nothing that
+ * merely shares the prefix's characters (`/v1/administer` is a public path). */
+export function isAdminApiPath(path: string): boolean {
+  return path === ADMIN_API_PREFIX || path.startsWith(`${ADMIN_API_PREFIX}/`);
+}
 
 /** The session cookie. Never readable from script, never sent cross-site. */
 export const ADMIN_COOKIE = "kajianq_admin";
@@ -142,13 +158,13 @@ function secureCookies(c: Context<ApiEnv>): boolean {
   return c.get("ctx")?.envName !== undefined && c.get("ctx").envName !== "development";
 }
 
-/** Set the session cookie, scoped to the admin surface only. */
+/** Set the session cookie, scoped to the admin API only. */
 export function setAdminCookie(c: Context<ApiEnv>, token: string): void {
   setCookie(c, ADMIN_COOKIE, token, {
     httpOnly: true,
     sameSite: "Strict",
     secure: secureCookies(c),
-    path: "/admin",
+    path: ADMIN_COOKIE_PATH,
     maxAge: Math.floor(ADMIN_SESSION_TTL_MS / 1000),
   });
 }
@@ -160,7 +176,7 @@ export function setCsrfCookie(c: Context<ApiEnv>): string {
     httpOnly: true,
     sameSite: "Strict",
     secure: secureCookies(c),
-    path: "/admin",
+    path: ADMIN_COOKIE_PATH,
     maxAge: Math.floor(ADMIN_SESSION_TTL_MS / 1000),
   });
   return token;
@@ -169,7 +185,7 @@ export function setCsrfCookie(c: Context<ApiEnv>): string {
 /** Clear both cookies on logout, with the same attributes they were set with. */
 export function clearAdminCookies(c: Context<ApiEnv>): void {
   const options = {
-    path: "/admin",
+    path: ADMIN_COOKIE_PATH,
     sameSite: "Strict" as const,
     secure: secureCookies(c),
   };

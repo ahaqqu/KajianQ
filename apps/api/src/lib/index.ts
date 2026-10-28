@@ -1,4 +1,9 @@
-export { ADMIN_LOGIN_PATH } from "./admin-auth";
+export {
+  ADMIN_API_PREFIX,
+  ADMIN_COOKIE_PATH,
+  ADMIN_LOGIN_PATH,
+  isAdminApiPath,
+} from "./admin-auth";
 export { createRequestContext } from "./context";
 export { corsGuard } from "./cors";
 export { authGuard } from "./auth";

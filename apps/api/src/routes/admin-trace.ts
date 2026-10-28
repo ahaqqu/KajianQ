@@ -1,3 +1,4 @@
+import { ADMIN_API_PREFIX } from "../lib/admin-auth";
 import { adminTracePayload } from "../lib/admin-detail";
 import { readModelConfigMirror } from "../lib/admin-model-config";
 import { traceReadPlan } from "../lib/admin-query";
@@ -5,7 +6,7 @@ import { withAdminRead } from "../lib/admin-route";
 import { newRouter } from "../lib/guard";
 
 /**
- * GET /admin/v1/traces/:id and .../raw — one answer's trace, in full (ADR-0064).
+ * GET /v1/admin/traces/:id and .../raw — one answer's trace, in full (ADR-0064).
  *
  * The detail is the structured view: totals over every provider call, the per-call
  * list with each call's model identity and cost consistency from the
@@ -26,7 +27,7 @@ import { newRouter } from "../lib/guard";
  * content) before serving, through the one plan they share.
  */
 export const adminTraceRoutes = newRouter()
-  .get("/admin/v1/traces/:id", async (c): Promise<Response> => {
+  .get(`${ADMIN_API_PREFIX}/traces/:id`, async (c): Promise<Response> => {
     const context = await withAdminRead(c, "traces.detail", () => traceReadPlan(c.req.param("id")));
     if (context instanceof Response) return context;
     const mirror = await readModelConfigMirror({
@@ -70,7 +71,7 @@ export const adminTraceRoutes = newRouter()
     c.header("Cache-Control", "no-store");
     return c.json(lookup.detail);
   })
-  .get("/admin/v1/traces/:id/raw", async (c): Promise<Response> => {
+  .get(`${ADMIN_API_PREFIX}/traces/:id/raw`, async (c): Promise<Response> => {
     const context = await withAdminRead(c, "traces.raw", () => traceReadPlan(c.req.param("id")));
     if (context instanceof Response) return context;
     const record = await context.store.runStore(
