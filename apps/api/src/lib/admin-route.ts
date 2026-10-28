@@ -5,7 +5,7 @@ import {
   type Logger,
 } from "@app/infra";
 import type { Context } from "hono";
-import { adminGuard } from "./admin-auth";
+import { adminGuard, adminUnauthorized, type AdminSessionClaims } from "./admin-auth";
 import { buildStoreWiring, wiringOr503, type StoreWiring } from "./chat-wiring";
 import type { ApiEnv } from "../env";
 
@@ -15,12 +15,16 @@ import type { ApiEnv } from "../env";
  * Order matters and is the invariant:
  *
  *  1. **authenticate first** — an unauthenticated request must not learn whether
- *     the store is configured, nor whether its query was valid, so the 503 wiring
- *     posture and the 400 validation answer are both behind the credential check;
- *  2. **resolve what will be logged** — the caller's own resolver runs here, so the
+ *     the store is configured, nor whether its query was valid, so every other
+ *     answer is behind the credential check;
+ *  2. **the session must be live** — a token whose session id is on the revocation
+ *     denylist is the same miss as an expired or forged one, and it is refused
+ *     before anything is logged or read. A store that cannot answer that question
+ *     fails closed: an unverifiable session is not served;
+ *  3. **resolve what will be logged** — the caller's own resolver runs here, so the
  *     read's 400/404 verdict and its summary are both computed behind the guard and a
  *     read cannot be served with a summary computed somewhere else;
- *  3. **log before serving** — a read that cannot be recorded is not served. The
+ *  4. **log before serving** — a read that cannot be recorded is not served. The
  *     access log is the accountability evidence for reading chat content, so a
  *     failed write fails closed with a 503 that carries no content.
  */
@@ -55,9 +59,6 @@ export async function withAdminRead<T>(
   const identity = await adminGuard(c, c.env);
   if (identity instanceof Response) return identity;
 
-  const resolved = resolve();
-  if ("refuse" in resolved) return c.json({ error: resolved.refuse.error }, resolved.refuse.status);
-
   const logger = createLogger({
     service: "api",
     route: "admin",
@@ -65,8 +66,26 @@ export async function withAdminRead<T>(
   });
   const wiring = wiringOr503(() => buildStoreWiring(c.env), logger, "admin_not_configured");
   if ("response" in wiring) return wiring.response;
-
   const { fullStore, runStore } = wiring.wiring;
+
+  // The session is authenticated; now it must still be live. Asking the denylist is
+  // the only check that can distinguish a signed-out token from a live one, so a store
+  // that cannot answer fails closed — a revoked session must not become readable
+  // because the check errored.
+  let revoked: boolean;
+  try {
+    revoked = await runStore(fullStore.isAdminSessionRevoked(identity.jti));
+  } catch (err) {
+    logger.error("admin.session_revocation_check_failed", {
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return c.json({ error: "admin_unavailable" }, 503);
+  }
+  if (revoked) return adminUnauthorized(c);
+
+  const resolved = resolve();
+  if ("refuse" in resolved) return c.json({ error: resolved.refuse.error }, resolved.refuse.status);
+
   try {
     await runStore(
       fullStore.recordAdminAccess({
@@ -91,4 +110,68 @@ export async function withAdminRead<T>(
     log: logger,
     warn: (msg, fields) => logger.warn(msg, fields),
   };
+}
+
+/**
+ * Is a live, non-revoked admin session present? Drives the shell's `authenticated`
+ * state; a false answer is not an error, it is the login form. Fail-closed by
+ * construction: a session whose revocation state cannot be read is reported as a
+ * miss rather than as live, and no content read follows from this answer.
+ */
+export async function adminSessionActive(
+  c: Context<ApiEnv>,
+  bindings: ApiEnv["Bindings"],
+): Promise<boolean> {
+  const identity = await liveAdminSession(c, bindings);
+  return identity !== null;
+}
+
+/**
+ * Revoke the session the request presents, if it names a live one. Returns false
+ * ONLY when a live token's revocation could not be written: the caller must then
+ * answer a failure rather than a success, because a 204 would report a sign-out that
+ * did not happen. An absent, expired, forged or already-revoked token has nothing to
+ * revoke and reads as a completed sign-out.
+ */
+export async function revokePresentedSession(
+  c: Context<ApiEnv>,
+  bindings: ApiEnv["Bindings"],
+): Promise<boolean> {
+  // `adminGuard` is the module's one cookie reader; its 401 for a miss is discarded
+  // because a logout with no valid token is still a successful logout.
+  const identity = await adminGuard(c, bindings);
+  if (identity instanceof Response) return true;
+  try {
+    const { fullStore, runStore } = buildStoreWiring(c.env);
+    await runStore(
+      fullStore.revokeAdminSession({ jti: identity.jti, expiresAt: identity.expiresAt }),
+    );
+    return true;
+  } catch (err) {
+    c.get("ctx")?.logger.error("admin.session_revocation_failed", {
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return false;
+  }
+}
+
+/** Verify the token, then ask the denylist. `null` covers every miss, including a
+ * revocation store that cannot answer. */
+async function liveAdminSession(
+  c: Context<ApiEnv>,
+  bindings: ApiEnv["Bindings"],
+): Promise<AdminSessionClaims | null> {
+  const identity = await adminGuard(c, bindings);
+  if (identity instanceof Response) return null;
+  try {
+    const { fullStore, runStore } = buildStoreWiring(c.env);
+    const revoked = await runStore(fullStore.isAdminSessionRevoked(identity.jti));
+    if (revoked) return null;
+    return identity;
+  } catch (err) {
+    c.get("ctx")?.logger.warn("admin.session_revocation_unavailable", {
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return null;
+  }
 }

@@ -128,8 +128,15 @@ export function memoryAdminMethods(
   | "getAdminTrace"
   | "getAdminTraceRaw"
   | "purgeAdminAccessLog"
+  | "revokeAdminSession"
+  | "isAdminSessionRevoked"
+  | "purgeAdminSessionRevocations"
 > & { allAdminAccess: () => readonly MemoryAdminAccessRecord[] } {
   const log: MemoryAdminAccessRecord[] = [];
+  // The denylist's whole state: random session id → the revoked token's expiry. The
+  // double keeps it in-process exactly as the adapter keeps it in one table; no test
+  // reaches into it, because the seam's calls are the behaviour under test.
+  const revocations = new Map<string, number>();
   return {
     allAdminAccess: () => log,
     recordAdminAccess(entry) {
@@ -175,6 +182,27 @@ export function memoryAdminMethods(
         const removed = log.length - kept.length;
         log.length = 0;
         log.push(...kept);
+        return removed;
+      });
+    },
+    revokeAdminSession({ jti, expiresAt }) {
+      return Effect.sync(() => {
+        revocations.set(jti, expiresAt);
+      });
+    },
+    isAdminSessionRevoked(jti) {
+      return Effect.sync(() => revocations.has(jti));
+    },
+    purgeAdminSessionRevocations() {
+      return Effect.sync(() => {
+        const now = Date.now();
+        let removed = 0;
+        for (const [jti, expiresAt] of revocations) {
+          if (expiresAt < now) {
+            revocations.delete(jti);
+            removed += 1;
+          }
+        }
         return removed;
       });
     },

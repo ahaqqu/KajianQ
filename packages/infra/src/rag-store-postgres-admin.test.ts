@@ -191,6 +191,13 @@ run("RagStore admin contract (real Postgres)", () => {
   });
 
   afterAll(async () => {
+    // Revocation rows carry no evidence value and the table is not append-only: this
+    // suite removes only the ids it minted, so a re-run starts from its own state.
+    if (sql) {
+      await sql
+        .query(`DELETE FROM admin_session_revocations WHERE jti LIKE 'ct-%'`)
+        .catch(() => {});
+    }
     await disposePostgresPools();
   });
 
@@ -435,5 +442,57 @@ run("RagStore admin contract (real Postgres)", () => {
     expect(new Date(rows[0]!.oldest).getTime()).toBeGreaterThan(
       Date.now() - 90 * 24 * 60 * 60 * 1000,
     );
+  });
+
+  it("revokes exactly one session id, and a retried revoke is a no-op", async () => {
+    if (!URL) return;
+    const first = `ct-jti-${crypto.randomUUID()}`;
+    const second = `ct-jti-${crypto.randomUUID()}`;
+    const expiresAt = Date.now() + 60_000;
+    expect(await Effect.runPromise(store.isAdminSessionRevoked(first))).toBe(false);
+    await Effect.runPromise(store.revokeAdminSession({ jti: first, expiresAt }));
+    expect(await Effect.runPromise(store.isAdminSessionRevoked(first))).toBe(true);
+    // A second sign-out with the same token cannot fail on its own first success.
+    await Effect.runPromise(store.revokeAdminSession({ jti: first, expiresAt }));
+    expect(await Effect.runPromise(store.isAdminSessionRevoked(first))).toBe(true);
+    // The other live session is untouched.
+    expect(await Effect.runPromise(store.isAdminSessionRevoked(second))).toBe(false);
+  });
+
+  it("prunes a revocation row once its token has expired, and keeps a live one", async () => {
+    if (!URL) return;
+    const expired = `ct-jti-${crypto.randomUUID()}`;
+    const live = `ct-jti-${crypto.randomUUID()}`;
+    await Effect.runPromise(
+      store.revokeAdminSession({ jti: expired, expiresAt: Date.now() - 60_000 }),
+    );
+    await Effect.runPromise(
+      store.revokeAdminSession({ jti: live, expiresAt: Date.now() + 60_000 }),
+    );
+    expect(await Effect.runPromise(store.purgeAdminSessionRevocations())).toBeGreaterThanOrEqual(1);
+    expect(await Effect.runPromise(store.isAdminSessionRevoked(expired))).toBe(false);
+    expect(await Effect.runPromise(store.isAdminSessionRevoked(live))).toBe(true);
+  });
+
+  it("keeps the denylist down to a random id, an expiry and a timestamp", async () => {
+    if (!URL) return;
+    const rows = (await sql!.query(
+      `SELECT column_name FROM information_schema.columns
+       WHERE table_name = 'admin_session_revocations' ORDER BY column_name`,
+    )) as { column_name: string }[];
+    // Same rule as the access log: a column that is not here cannot be filled later by
+    // accident. No credential, no user, no content — only the session's random id.
+    expect(rows.map((row) => row.column_name)).toEqual(["expires_at", "jti", "revoked_at"]);
+  });
+
+  it("refuses a NUL in the filter text at the database boundary", async () => {
+    if (!URL) return;
+    // Why the query parser rejects control characters: a NUL is not representable in
+    // Postgres text, so a bound filter carrying one fails the read instead of matching
+    // nothing. The parser is the layer that keeps it out of the request path.
+    const exit = await Effect.runPromiseExit(
+      store.listAdminTraces({ text: "ayat\u0000kursi" }, { limit: 1, offset: 0 }),
+    );
+    expect(Exit.isFailure(exit)).toBe(true);
   });
 });

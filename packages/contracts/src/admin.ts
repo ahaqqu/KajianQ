@@ -167,6 +167,21 @@ export const ADMIN_PAGE_SIZE_MAX = 50;
 /** The free-text ceiling; a longer query is a 400, never a truncated search. */
 export const ADMIN_QUERY_TEXT_MAX = 200;
 
+/** The characters no free-text filter may carry: NUL, the rest of C0, and DEL. The
+ * store binds a filter into SQL text, where Postgres has no NUL, so accepting one
+ * turns a search into an internal error after the audit row is already spent —
+ * while every other control character has no match to offer either. */
+const CONTROL_CHARACTERS = /[\u0000-\u001F\u007F]/;
+
+/** A bounded free-text filter that can always reach the store as a parameter. */
+const filterText = (maxLength: number) =>
+  v.pipe(
+    v.string(),
+    v.minLength(1),
+    v.maxLength(maxLength),
+    v.check((value) => !CONTROL_CHARACTERS.test(value)),
+  );
+
 const epochsMs = () => v.optional(v.pipe(v.string(), v.regex(/^\d{1,15}$/), v.transform(Number)));
 
 /**
@@ -178,11 +193,13 @@ const epochsMs = () => v.optional(v.pipe(v.string(), v.regex(/^\d{1,15}$/), v.tr
  * they believe they are looking at a narrowed set.
  */
 export const AdminTraceQuerySchema = v.object({
-  q: v.optional(v.pipe(v.string(), v.minLength(1), v.maxLength(ADMIN_QUERY_TEXT_MAX))),
+  q: v.optional(filterText(ADMIN_QUERY_TEXT_MAX)),
   from: epochsMs(),
   to: epochsMs(),
-  intent: v.optional(v.pipe(v.string(), v.minLength(1), v.maxLength(64))),
-  model: v.optional(v.pipe(v.string(), v.minLength(1), v.maxLength(200))),
+  // The two free-text filters carry the same no-control-character rule as `q`: they
+  // reach the store as bound text too, so a NUL would fail the read the same way.
+  intent: v.optional(filterText(64)),
+  model: v.optional(filterText(200)),
   refused: v.optional(v.picklist(["true", "false"])),
   filterRelaxed: v.optional(v.picklist(["true", "false"])),
   minLatencyMs: v.optional(

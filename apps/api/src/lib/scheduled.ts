@@ -35,6 +35,9 @@ export type ScheduledResult = {
   /** Admin access records past the retention window that were removed, or null on a
    * failure — the log's own window, applied by the store (ADR-0064). */
   adminLogDeleted: number | null;
+  /** Revoked admin sessions whose token had already expired, or null on a failure.
+   * The denylist's rows are reclaimable on the token's own schedule. */
+  revocationsDeleted: number | null;
   ok: boolean;
 };
 
@@ -63,7 +66,7 @@ export async function cleanupExpiredSessions(
       // No database binding in this environment (local dev, an environment without
       // a configured store): the feature is disabled, not broken.
       logger.warn("scheduled.cleanup_skipped", { missing: err.missing ?? "unknown" });
-      return { deleted: null, adminLogDeleted: null, ok: false };
+      return { deleted: null, adminLogDeleted: null, revocationsDeleted: null, ok: false };
     }
     throw err;
   }
@@ -115,5 +118,18 @@ export async function cleanupExpiredSessions(
     unexpected: "scheduled.admin_log_unexpected_result",
     done: "scheduled.admin_log_purged",
   });
-  return { deleted, adminLogDeleted, ok: deleted !== null && adminLogDeleted !== null };
+  // The revocation denylist's expired rows. Same independent boundary as the log: a
+  // logout must not stop working because an earlier purge fault persisted, and the rows
+  // are harmless while they wait for the next tick.
+  const revocationsDeleted = await step(store.purgeAdminSessionRevocations(), {
+    failed: "scheduled.admin_session_revocations_failed",
+    unexpected: "scheduled.admin_session_revocations_unexpected_result",
+    done: "scheduled.admin_session_revocations_purged",
+  });
+  return {
+    deleted,
+    adminLogDeleted,
+    revocationsDeleted,
+    ok: deleted !== null && adminLogDeleted !== null && revocationsDeleted !== null,
+  };
 }

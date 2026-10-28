@@ -18,9 +18,12 @@ import { ADMIN_COOKIE_PATH } from "./admin-paths";
  *  - the session is a stateless HMAC-signed token whose key is derived from the
  *    credential, so there is no in-process session table (one instance is the
  *    posture, not an assumption, ADR-0050) and rotating the credential invalidates
- *    every outstanding session;
- *  - a missing credential, a missing cookie, a malformed token, a bad signature and
- *    an expired token are ONE answer: `401 {"error":"unauthorized"}`;
+ *    every outstanding session; the token carries a random session id so a sign-out
+ *    can revoke exactly that session in a shared denylist, leaving every other live
+ *    session alone;
+ *  - a missing credential, a missing cookie, a malformed token, a bad signature, an
+ *    expired token and a revoked session id are ONE answer: `401
+ *    {"error":"unauthorized"}`;
  *  - the cookie is httpOnly, SameSite=Strict and Secure outside development, and is
  *    scoped to the admin API prefix, so no public `/v1` route ever receives it.
  *
@@ -43,6 +46,13 @@ const SESSION_VERSION = "v1";
 const KEY_LABEL = "kajianq/admin-session-key/v1\n";
 const ACTOR_LABEL = "kajianq/admin-actor/v1";
 const CSRF_HEADER = "x-csrf-token";
+
+/** The random session id's width and shape: 128 random bits, base64url (22 chars). */
+const SESSION_ID_BYTES = 16;
+const SESSION_ID_PATTERN = /^[A-Za-z0-9_-]{22}$/;
+
+/** What a verified token proves: which session it is, and when it stops being valid. */
+export type AdminSessionClaims = { jti: string; expiresAt: number };
 
 /** The configured credential, or null when the admin surface is disabled. */
 export function adminCredential(bindings: AppBindings): string | null {
@@ -87,39 +97,48 @@ export async function credentialMatches(provided: string, credential: string): P
 export async function issueSessionToken(
   credential: string,
   now: number = Date.now(),
-): Promise<{ token: string; expiresAt: number }> {
+): Promise<{ token: string; jti: string; expiresAt: number }> {
   const expiresAt = now + ADMIN_SESSION_TTL_MS;
-  const nonce = base64url(crypto.getRandomValues(new Uint8Array(12)));
-  const payload = base64url(new TextEncoder().encode(JSON.stringify({ exp: expiresAt, nonce })));
-  return { token: `${SESSION_VERSION}.${payload}.${await sign(credential, payload)}`, expiresAt };
+  const jti = base64url(crypto.getRandomValues(new Uint8Array(SESSION_ID_BYTES)));
+  const payload = base64url(new TextEncoder().encode(JSON.stringify({ exp: expiresAt, jti })));
+  return {
+    token: `${SESSION_VERSION}.${payload}.${await sign(credential, payload)}`,
+    jti,
+    expiresAt,
+  };
 }
 
 /**
  * Verify a session token: the shape, the signature (constant-time over digests),
- * then the expiry. Anything else is false, which the caller answers as a uniform
- * 401 — an expired session and a forged one are the same miss.
+ * then the expiry and the session id. Anything else is null, which the caller
+ * answers as a uniform 401 — an expired session, a forged one and a token minted
+ * before the session id existed are the same miss.
  */
-export async function verifySessionToken(
+export async function verifySessionClaims(
   credential: string,
   token: string,
   now: number = Date.now(),
-): Promise<boolean> {
+): Promise<AdminSessionClaims | null> {
   const parts = token.split(".");
-  if (parts.length !== 3 || parts[0] !== SESSION_VERSION) return false;
+  if (parts.length !== 3 || parts[0] !== SESSION_VERSION) return null;
   const payload = parts[1];
   const signature = parts[2];
   if (payload === undefined || signature === undefined || fromBase64url(payload) === null) {
-    return false;
+    return null;
   }
   const expected = await sign(credential, payload);
-  if (!constantTimeEqual(await sha256(expected), await sha256(signature))) return false;
+  if (!constantTimeEqual(await sha256(expected), await sha256(signature))) return null;
   try {
-    const decoded = JSON.parse(
+    const decoded: unknown = JSON.parse(
       new TextDecoder().decode(fromBase64url(payload) ?? new Uint8Array()),
     );
-    return typeof decoded.exp === "number" && decoded.exp > now;
+    if (typeof decoded !== "object" || decoded === null) return null;
+    const { exp, jti } = decoded as { exp?: unknown; jti?: unknown };
+    if (typeof exp !== "number" || !Number.isFinite(exp) || exp <= now) return null;
+    if (typeof jti !== "string" || !SESSION_ID_PATTERN.test(jti)) return null;
+    return { jti, expiresAt: exp };
   } catch {
-    return false;
+    return null;
   }
 }
 
@@ -207,13 +226,15 @@ export function sameOrigin(c: Context<ApiEnv>): boolean {
   return allowedOrigins(c.env.ALLOWED_ORIGINS).includes(origin);
 }
 
-export type AdminIdentity = { actor: string };
+export type AdminIdentity = AdminSessionClaims & { actor: string };
 
 /**
  * The guard every admin route runs before it touches the store: resolve the
  * credential, verify the session cookie, derive the actor. Every miss returns the
  * same 401 body — including "the admin surface is not configured in this
  * environment", which must read as a miss rather than as a configuration hint.
+ * The session id is returned with the identity so the caller can reject a revoked
+ * one; the token itself stays inside this module.
  */
 export async function adminGuard(
   c: Context<ApiEnv>,
@@ -224,21 +245,22 @@ export async function adminGuard(
   if (credential === null || token === undefined || token === "") {
     return adminUnauthorized(c);
   }
-  if (!(await verifySessionToken(credential, token))) return adminUnauthorized(c);
-  return { actor: await adminActor(credential) };
+  const claims = await verifySessionClaims(credential, token);
+  if (claims === null) return adminUnauthorized(c);
+  return { ...claims, actor: await adminActor(credential) };
 }
 
-/** Is a live admin session present? Drives the shell's `authenticated` state; a
- * false answer is not an error, it is the login form. */
-export async function adminSessionActive(
-  c: Context<ApiEnv>,
-  bindings: AppBindings,
-): Promise<boolean> {
-  const credential = adminCredential(bindings);
-  if (credential === null) return false;
-  const token = getCookie(c, ADMIN_COOKIE);
-  if (token === undefined || token === "") return false;
-  return verifySessionToken(credential, token);
+/**
+ * The login POST's declared media type: `application/json`, with an optional
+ * `charset` parameter. A missing header or any other declared type is refused as
+ * the same miss as a wrong credential, so the media type is part of the login
+ * boundary rather than a hint the body parser ignores.
+ */
+export function isJsonContentType(value: string | undefined): boolean {
+  if (value === undefined) return false;
+  const [mediaType, ...parameters] = value.split(";").map((part) => part.trim());
+  if (mediaType?.toLowerCase() !== "application/json") return false;
+  return parameters.every((parameter) => parameter === "" || /^charset=[^;\s]+$/i.test(parameter));
 }
 
 /** The one unauthorized answer the admin surface gives. */

@@ -3,8 +3,8 @@ import type { StoreError } from "@app/rag-core";
 import type { Effect } from "effect";
 
 /**
- * Admin half of the `RagStore` seam: the append-only access log and the read-only
- * trace browser's two reads (ADR-0064).
+ * Admin half of the `RagStore` seam: the append-only access log, the read-only
+ * trace browser's two reads, and the session revocation denylist (ADR-0064).
  *
  * The invariant this seam is cut around: **a trace-browser read is auditable
  * before it is served, and the audit record never carries content.** Two
@@ -18,6 +18,12 @@ import type { Effect } from "effect";
  *  - `listAdminTraces` reads content only from the transcript (`chat_messages`),
  *    joined by the trace's message reference. A trace is never parsed to
  *    reconstruct the question or the answer.
+ *
+ * The revocation denylist is the session model's one server-side state: a token
+ * stays verifiable on its own signature, but a jti on this list ends it. The list
+ * holds no credential and no user — only the token's random id and its own expiry —
+ * so it cannot become a second identity store, and it is reclaimed by its own
+ * expiry rather than kept for an investigator.
  */
 export type AdminAccessRoute = "traces.list" | "traces.detail" | "traces.raw";
 
@@ -66,6 +72,18 @@ export type AdminAccessEntry = {
   actor: string;
   route: AdminAccessRoute;
   summary: AdminAccessSummary;
+};
+
+/**
+ * One revoked admin session: the signed token's random id (`jti`) and the expiry the
+ * token itself carries. The expiry is stored with the row so the denylist can be
+ * pruned on the token's own schedule — after it, the signature's expiry check already
+ * refuses the token, so the row has nothing left to prove.
+ */
+export type AdminSessionRevocation = {
+  jti: string;
+  /** The revoked token's `exp`, in epoch milliseconds. */
+  expiresAt: number;
 };
 
 /**
@@ -156,4 +174,24 @@ export interface RagStoreAdmin {
    * and it is what makes the published retention value true rather than aspirational.
    */
   purgeAdminAccessLog(): Effect.Effect<number, StoreError>;
+
+  /**
+   * End one admin session by its token's `jti`. Re-revoking the same id is a no-op,
+   * so a retried logout cannot fail on its own first success. This is the only write
+   * on the surface that outlives its request, and it is what makes a sign-out end the
+   * token instead of only the browser's copy of it.
+   */
+  revokeAdminSession(revocation: AdminSessionRevocation): Effect.Effect<void, StoreError>;
+
+  /** Does the denylist hold this session id? A row is the whole answer: the id is
+   * random, so a token whose id is present was revoked, never reissued. */
+  isAdminSessionRevoked(jti: string): Effect.Effect<boolean, StoreError>;
+
+  /**
+   * Delete revocation rows whose token has already expired and return the count. The
+   * signature's own expiry check refuses such a token with or without the row, so this
+   * is storage reclamation on the token's schedule — and the reason the denylist cannot
+   * grow without bound.
+   */
+  purgeAdminSessionRevocations(): Effect.Effect<number, StoreError>;
 }

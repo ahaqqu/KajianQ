@@ -1,3 +1,4 @@
+import { fc, test as fcTest } from "@fast-check/vitest";
 import { describe, expect, it } from "vite-plus/test";
 import {
   accessSummaryOf,
@@ -55,6 +56,40 @@ describe("parseAdminQuery", () => {
     expect(parsed.ok).toBe(true);
     if (parsed.ok) expect(parsed.query.page).toBe(2);
   });
+
+  it("refuses NUL and every other C0 control character in a free-text filter", () => {
+    // The trap: the store binds these values into SQL text, and Postgres has no NUL —
+    // the read raises, the route answers 500, and the access-log row is already spent.
+    // Rejecting at the parse turns it into the documented 400, before either side effect.
+    for (const value of ["\u0000", "ayat\u0000kursi", "ayat\u0007kursi", "ayat\u007f"]) {
+      expect(parseAdminQuery(query({ q: value })).ok, JSON.stringify(value)).toBe(false);
+    }
+    // `intent` and `model` are free text too: they reach the store as bound text, so a
+    // control character there is the same unrepresentable parameter, not a second path.
+    for (const key of ["intent", "model"]) {
+      expect(parseAdminQuery(query({ [key]: "rul\u0000ing" })).ok, key).toBe(false);
+    }
+    // And the ordinary values around the trap still parse.
+    expect(parseAdminQuery(query({ q: "ayat kursi" })).ok).toBe(true);
+    expect(parseAdminQuery(query({ q: "ayat\tkursi" })).ok).toBe(false);
+  });
+
+  fcTest.prop([
+    fc
+      .string({ minLength: 1, maxLength: 150 })
+      .filter((value) => !/[\u0000-\u001F\u007F]/.test(value)),
+    fc.integer({ min: 0, max: 31 }),
+    fc.nat({ max: 150 }),
+  ])(
+    "any control character inserted anywhere in q is refused, and the insertion-free text parses",
+    (base, code, at) => {
+      const clean = parseAdminQuery(query({ q: base }));
+      expect(clean.ok).toBe(true);
+      const position = Math.min(at, base.length);
+      const injected = `${base.slice(0, position)}${String.fromCharCode(code)}${base.slice(position)}`;
+      expect(parseAdminQuery(query({ q: injected })).ok).toBe(false);
+    },
+  );
 });
 
 describe("adminFilterOf", () => {

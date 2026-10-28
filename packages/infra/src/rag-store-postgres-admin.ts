@@ -2,6 +2,7 @@ import { Effect } from "effect";
 import {
   ADMIN_ACCESS_LOG_RETENTION_DAYS,
   type AdminAccessEntry,
+  type AdminSessionRevocation,
   type AdminTraceFilter,
   type AdminTracePage,
   type AdminTraceRawRecord,
@@ -100,6 +101,9 @@ export function postgresAdminMethods(
   | "getAdminTrace"
   | "getAdminTraceRaw"
   | "purgeAdminAccessLog"
+  | "revokeAdminSession"
+  | "isAdminSessionRevoked"
+  | "purgeAdminSessionRevocations"
 > {
   return {
     recordAdminAccess(entry: AdminAccessEntry) {
@@ -206,6 +210,52 @@ export function postgresAdminMethods(
                WHERE accessed_at < now() - make_interval(days => $1::int)
                RETURNING id`,
             [ADMIN_ACCESS_LOG_RETENTION_DAYS],
+          ),
+        ),
+        (rows) => rows.length,
+      );
+    },
+
+    revokeAdminSession(revocation: AdminSessionRevocation) {
+      // The token's own `exp`, converted once here so the row and the signature agree
+      // on when the denylist entry stops mattering. A retried logout is a no-op: the
+      // first write already proved the session ended.
+      return Effect.as(
+        sqlEffect(sql, () =>
+          sql.query(
+            `INSERT INTO admin_session_revocations (jti, expires_at)
+             VALUES ($1, to_timestamp($2::double precision / 1000))
+             ON CONFLICT (jti) DO NOTHING`,
+            [revocation.jti, revocation.expiresAt],
+          ),
+        ),
+        undefined,
+      );
+    },
+
+    isAdminSessionRevoked(jti) {
+      return Effect.map(
+        sqlEffect(
+          sql,
+          () =>
+            sql.query(
+              `SELECT EXISTS (
+                 SELECT 1 FROM admin_session_revocations WHERE jti = $1
+               ) AS revoked`,
+              [jti],
+            ) as Promise<{ revoked?: boolean }[]>,
+        ),
+        (rows) => rows[0]?.revoked === true,
+      );
+    },
+
+    purgeAdminSessionRevocations() {
+      return Effect.map(
+        sqlEffect(sql, () =>
+          sql.query(
+            `DELETE FROM admin_session_revocations
+               WHERE expires_at < now()
+               RETURNING jti`,
           ),
         ),
         (rows) => rows.length,
