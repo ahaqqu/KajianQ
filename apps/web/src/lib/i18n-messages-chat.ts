@@ -1,5 +1,6 @@
 import { consentMessages } from "./i18n-messages-consent";
 import { historyMessages } from "./i18n-messages-history";
+import { traceMessages } from "./i18n-messages-trace";
 
 /**
  * The chat surface's copy, one object for `i18n-messages` to spread: the history
@@ -7,6 +8,6 @@ import { historyMessages } from "./i18n-messages-history";
  * and both locales stay key-for-key with the rest of the message list.
  */
 export const chatMessages = {
-  en: { ...historyMessages.en, ...consentMessages.en },
-  id: { ...historyMessages.id, ...consentMessages.id },
+  en: { ...historyMessages.en, ...consentMessages.en, ...traceMessages.en },
+  id: { ...historyMessages.id, ...consentMessages.id, ...traceMessages.id },
 } as const;
