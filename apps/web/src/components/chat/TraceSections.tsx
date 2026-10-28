@@ -109,9 +109,9 @@ export function Step({ children }: { children: ReactNode }) {
 /**
  * The reviewer pre-gate's verdict (ADR-0042), rendered from the frame the server
  * derived: which way the screening call decided, why it escalated, the threshold
- * the outcome was computed against, and how every citation scored. An unscored
- * citation reads as "not judged" — the pre-gate could not judge it, and a zero
- * would be a number it never produced.
+ * the outcome was computed against when the frame carries one, and how every
+ * citation scored. An unscored citation reads as "not judged" — the pre-gate could
+ * not judge it, and a zero would be a number it never produced.
  */
 export function ReviewerSection({
   reviewer,
@@ -136,17 +136,19 @@ export function ReviewerSection({
           {reasonLabel(locale, reviewer.reason)}
         </p>
       )}
-      <p className="mt-1 text-sm text-card-foreground">
-        <span className="mr-2 text-muted-foreground">
-          {t(locale, "traceReviewerThresholdLabel")}
-        </span>
-        <span
-          data-testid="trace-reviewer-threshold"
-          className="font-mono text-[11px] text-muted-foreground"
-        >
-          {score.format(reviewer.threshold)}
-        </span>
-      </p>
+      {reviewer.threshold !== undefined && (
+        <p className="mt-1 text-sm text-card-foreground">
+          <span className="mr-2 text-muted-foreground">
+            {t(locale, "traceReviewerThresholdLabel")}
+          </span>
+          <span
+            data-testid="trace-reviewer-threshold"
+            className="font-mono text-[11px] text-muted-foreground"
+          >
+            {score.format(reviewer.threshold)}
+          </span>
+        </p>
+      )}
       {reviewer.items.length > 0 && (
         <ul data-testid="trace-reviewer-items" className="mt-1 space-y-0.5">
           {reviewer.items.map((item) => (
@@ -185,16 +187,18 @@ export function ReviewerSection({
 /**
  * The event's escalation reason in the reader's language. The vocabulary is the
  * decision event's own; a value this copy has not learned yet renders verbatim
- * rather than disappearing.
+ * rather than disappearing. A Map, not an object literal: the reason is an opaque
+ * string, and an object would resolve `__proto__`/`constructor` to inherited
+ * members instead of reaching the verbatim fallback.
  */
-const REVIEWER_REASON_KEYS: Readonly<Record<string, MessageKey>> = {
-  below_threshold: "traceReviewerReasonBelowThreshold",
-  no_items: "traceReviewerReasonNoItems",
-  malformed_answer: "traceReviewerReasonMalformedAnswer",
-  vendor_failure: "traceReviewerReasonVendorFailure",
-};
+const REVIEWER_REASON_KEYS = new Map<string, MessageKey>([
+  ["below_threshold", "traceReviewerReasonBelowThreshold"],
+  ["no_items", "traceReviewerReasonNoItems"],
+  ["malformed_answer", "traceReviewerReasonMalformedAnswer"],
+  ["vendor_failure", "traceReviewerReasonVendorFailure"],
+]);
 
 function reasonLabel(locale: Locale, reason: string): string {
-  const key: MessageKey | undefined = REVIEWER_REASON_KEYS[reason];
+  const key = REVIEWER_REASON_KEYS.get(reason);
   return key === undefined ? reason : t(locale, key);
 }

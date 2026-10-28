@@ -687,13 +687,17 @@ describe("ChatTraceFrameSchema", () => {
       }
     });
 
-    it("rejects a block without the threshold the outcome was computed against", () => {
+    it("accepts a block without a threshold (the verdict is shown without its number)", () => {
       expect(
-        v.safeParse(ChatTraceFrameSchema, reviewer({ outcome: "skip", items: [] })).success,
-      ).toBe(false);
-      expect(v.safeParse(ChatTraceReviewerSchema, { outcome: "skip", items: [] }).success).toBe(
-        false,
+        v.safeParse(ChatTraceReviewerSchema, { outcome: "escalate", reason: "no_items", items: [] })
+          .success,
+      ).toBe(true);
+      const parsed = v.parse(
+        ChatTraceFrameSchema,
+        reviewer({ outcome: "escalate", reason: "no_items", items: [] }),
       );
+      expect(parsed.technical.reviewer?.outcome).toBe("escalate");
+      expect(parsed.technical.reviewer?.threshold).toBeUndefined();
     });
   });
 

@@ -123,6 +123,42 @@ describe("TracePanel — the reviewer pre-gate's verdict", () => {
     expect(texts("trace-reviewer-unscored")).toEqual(["tidak dinilai"]);
   });
 
+  it("renders an unknown reason verbatim, never an empty line", () => {
+    renderTechnical(
+      withReviewer({
+        outcome: "escalate",
+        reason: "future_reason",
+        threshold: 0.5,
+        items: [],
+      }),
+    );
+
+    // The reason is an opaque string in the frame: a value this copy has not
+    // learned yet must reach the reader, not resolve to a missing message key.
+    expect(texts("trace-reviewer-reason")).toEqual(["future_reason"]);
+  });
+
+  it("renders a reason naming an inherited object property verbatim", () => {
+    // The lookup must not read the prototype chain: these three strings are
+    // truthy on a plain object literal, so an object-keyed copy map would render
+    // an empty reason line instead of the value the trace carried.
+    for (const reason of ["constructor", "toString", "__proto__"]) {
+      cleanup();
+      renderTechnical(withReviewer({ outcome: "escalate", reason, threshold: 0.5, items: [] }));
+      expect(texts("trace-reviewer-reason")).toEqual([reason]);
+    }
+  });
+
+  it("renders the verdict without a threshold row when the frame carries none", () => {
+    renderTechnical(withReviewer({ outcome: "escalate", reason: "no_items", items: [] }));
+
+    // A decision the event recorded without its number is still shown: the
+    // verdict is the point, the threshold row is omitted rather than fabricated.
+    expect(texts("trace-reviewer-outcome")).toEqual(["Diteruskan ke reviewer"]);
+    expect(texts("trace-reviewer-reason")).toEqual(["Tidak ada sitasi untuk dinilai"]);
+    expect(screen.queryByTestId("trace-reviewer-threshold")).toBeNull();
+  });
+
   it("renders no reviewer block for a frame whose trace recorded no decision", () => {
     renderTechnical(frame);
 

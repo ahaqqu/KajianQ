@@ -43,8 +43,10 @@ export type ChatTraceReviewerItem = v.InferOutput<typeof ChatTraceReviewerItemSc
  * The reviewer pre-gate's verdict (ADR-0042), projected from the persisted
  * `decision` event: `skip` means every citation cleared the threshold and the
  * paid reviewer was skipped; `escalate` defers to it. `threshold` is the
- * support score the outcome was computed against, and `items` the per-citation
- * judgements in request order.
+ * support score the outcome was computed against, present only when the event
+ * recorded one — a verdict is shown without its number rather than dropped, so
+ * an escalation is never hidden. `items` are the per-citation judgements in
+ * request order.
  *
  * `reason` carries the event's own value as an opaque string rather than a
  * picklist here: the vocabulary is the event's, and a value this frame has not
@@ -54,7 +56,7 @@ export type ChatTraceReviewerItem = v.InferOutput<typeof ChatTraceReviewerItemSc
 export const ChatTraceReviewerSchema = v.object({
   outcome: v.picklist(["skip", "escalate"]),
   reason: v.optional(v.string()),
-  threshold: v.number(),
+  threshold: v.optional(v.number()),
   items: v.array(ChatTraceReviewerItemSchema),
 });
 

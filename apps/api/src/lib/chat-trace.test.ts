@@ -404,6 +404,7 @@ describe("the reviewer pre-gate verdict in the technical layer", () => {
   const decisionEvent = (
     stage: "reviewer" | "router",
     detail: {
+      purpose?: string;
       outcome: "skip" | "escalate";
       reason?: "below_threshold" | "no_items" | "malformed_answer" | "vendor_failure";
       threshold?: number;
@@ -487,7 +488,9 @@ describe("the reviewer pre-gate verdict in the technical layer", () => {
   it("reads the last reviewer-stage decision, and only the reviewer stage's", () => {
     // Append order is the trace's precedence: a re-entered stage appends its new
     // verdict rather than replacing the old one, so the last record is the run's.
-    // A decision another stage recorded is not the pre-gate's.
+    // A decision another stage recorded is not the pre-gate's — and it is the LAST
+    // event here, so a stage-blind `findLast` would return its 0.9 threshold and
+    // fail the assertion below.
     const frame = deriveTraceFrame({
       trace: traceOf(
         [{ id: "c1" }],
@@ -499,6 +502,7 @@ describe("the reviewer pre-gate verdict in the technical layer", () => {
           ),
           decisionEvent("router", { outcome: "escalate", threshold: 0.9, items: [] }, 8),
           decisionEvent("reviewer", { outcome: "skip", threshold: 0.5, items: [] }, 9),
+          decisionEvent("router", { outcome: "skip", threshold: 0.9, items: [] }, 10),
         ],
       ),
       messageId: "m1",
@@ -507,9 +511,41 @@ describe("the reviewer pre-gate verdict in the technical layer", () => {
     expect(frame.technical.reviewer).toEqual({ outcome: "skip", threshold: 0.5, items: [] });
   });
 
-  it("leaves the block unprojected when the decision event carried no threshold", () => {
-    // The block states the threshold its outcome was computed against; a record
-    // without one is not shown against a fabricated number.
+  it("ignores another screen's decision recorded inside the reviewer stage", () => {
+    // The stage is not the screen: a second Decider inside the reviewer stage
+    // records its own purpose, and the pre-gate's verdict must not be shadowed by
+    // it even though it is the newest decision on the trace.
+    const frame = deriveTraceFrame({
+      trace: traceOf(
+        [{ id: "c1" }],
+        [
+          decisionEvent(
+            "reviewer",
+            { outcome: "escalate", reason: "below_threshold", threshold: 0.5, items: [] },
+            7,
+          ),
+          decisionEvent(
+            "reviewer",
+            { purpose: "answer_completeness", outcome: "skip", threshold: 0.9, items: [] },
+            8,
+          ),
+        ],
+      ),
+      messageId: "m1",
+      chunksById: new Map<string, DocChildById>(),
+    });
+    expect(frame.technical.reviewer).toEqual({
+      outcome: "escalate",
+      reason: "below_threshold",
+      threshold: 0.5,
+      items: [],
+    });
+  });
+
+  it("projects the verdict without a threshold when the decision event carried none", () => {
+    // The verdict is the contract's point: a record without the number it was
+    // judged against is shown without that number, never dropped and never given a
+    // fabricated threshold.
     const frame = deriveTraceFrame({
       trace: traceOf(
         [{ id: "c1" }],
@@ -518,6 +554,12 @@ describe("the reviewer pre-gate verdict in the technical layer", () => {
       messageId: "m1",
       chunksById: new Map<string, DocChildById>(),
     });
-    expect(frame.technical).not.toHaveProperty("reviewer");
+    expect(frame.technical.reviewer).toEqual({
+      outcome: "escalate",
+      reason: "no_items",
+      items: [],
+    });
+    expect(frame.technical.reviewer).not.toHaveProperty("threshold");
+    expect(() => v.parse(ChatTraceFrameSchema, frame)).not.toThrow();
   });
 });

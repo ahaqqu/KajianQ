@@ -6,7 +6,7 @@ import {
   type TraceEvent,
 } from "@app/contracts";
 import type { DocChildById, RagStore } from "@app/infra";
-import type { StoreBridge } from "@app/kajianq-domain";
+import { CITATION_SUPPORT_PURPOSE, type StoreBridge } from "@app/kajianq-domain";
 
 /**
  * The user-facing Trace frame (ADR-0007) — the invariant this module owns:
@@ -121,7 +121,11 @@ function toTechnicalChunk(
 type ReviewerDecision = Extract<TraceEvent, { kind: "decision" }>;
 
 function isReviewerDecision(event: TraceEvent): event is ReviewerDecision {
-  return event.kind === "decision" && event.stage === "reviewer";
+  return (
+    event.kind === "decision" &&
+    event.stage === "reviewer" &&
+    event.detail.purpose === CITATION_SUPPORT_PURPOSE
+  );
 }
 
 /**
@@ -178,17 +182,16 @@ export function deriveTraceFrame(input: {
     }
   }
   // The reviewer pre-gate's verdict (ADR-0042), projected from its own `decision`
-  // event. The stage records one decision per answer — one batched call inside the
-  // reviewer stage's single entry — so the LAST reviewer-stage decision is the
-  // current verdict: events are append-ordered, and a re-entered stage appends
-  // rather than replaces. Another stage's decision is not the pre-gate's, which is
-  // the stage filter's job. The block needs the threshold the outcome was computed
-  // against; the event can carry a decision without one, and such a record is left
-  // unprojected rather than shown against a fabricated threshold. Absent when the
-  // run never reached the pre-gate (a refusal, a validator failure, an unwired
-  // decider) — absence is never "cleared".
+  // event. The pre-gate is the reviewer stage's `citation_support` screen, and the
+  // stage can host another screen later, so the purpose pins the pre-gate's event.
+  // The pre-gate records one decision per answer — one batched call inside the
+  // reviewer stage's single entry — so the LAST such decision is the current
+  // verdict: events are append-ordered, and a re-entered stage appends rather than
+  // replaces. The threshold rides along only when the event recorded one: a verdict
+  // without its number is still shown, never dropped or shown against a fabricated
+  // threshold. Absent when the run never reached the pre-gate (a refusal, a
+  // validator failure, an unwired decider) — absence is never "cleared".
   const reviewerEvent = trace.events.findLast(isReviewerDecision);
-  const reviewerThreshold = reviewerEvent?.detail.threshold;
   return {
     messageId,
     sources: refs.map((ref) => toSource(ref, chunksById)),
@@ -212,14 +215,16 @@ export function deriveTraceFrame(input: {
       subQueries,
       chunks: refs.map((ref) => toTechnicalChunk(ref, chunksById)),
       models,
-      ...(reviewerEvent !== undefined && reviewerThreshold !== undefined
+      ...(reviewerEvent !== undefined
         ? {
             reviewer: {
               outcome: reviewerEvent.detail.outcome,
               ...(reviewerEvent.detail.reason !== undefined
                 ? { reason: reviewerEvent.detail.reason }
                 : {}),
-              threshold: reviewerThreshold,
+              ...(reviewerEvent.detail.threshold !== undefined
+                ? { threshold: reviewerEvent.detail.threshold }
+                : {}),
               items: reviewerEvent.detail.items,
             },
           }
