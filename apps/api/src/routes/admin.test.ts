@@ -855,8 +855,8 @@ describe("admin session revocation: sign-out ends the token, not just the browse
     expect(cleared.status).toBe(204);
     expect(cleared.headers.getSetCookie()).toHaveLength(2);
 
-    // The QA probe: the exact cookie captured before the sign-out, replayed. Every read
-    // and the probe itself must read the session as ended, with the one uniform body.
+    // The replay the sign-out invariant exists for: the cookie captured before logout.
+    // Every read and the probe itself must read the session as ended, with one body.
     const replayPaths = [
       "/v1/admin/traces?pageSize=1",
       `/v1/admin/traces/${traceId}`,
@@ -963,7 +963,7 @@ describe("admin session revocation: sign-out ends the token, not just the browse
     const candidates = [
       // A well-formed but never-issued id with the old signature: tampering.
       `${version}.${replaced}.${signature}`,
-      // A payload with no session id at all: the pre-revocation token shape.
+      // A payload with no session id at all: a token that could never be revoked.
       `${version}.${encodePayload({ exp: decoded.exp })}.${signature}`,
       "v1.bogus.bogus",
       "",
@@ -1139,9 +1139,9 @@ describe("admin list: the failure-search seam", () => {
       },
     }) as never;
 
-    // `%00` is the QA probe: a URL-decoded NUL. The others are the same class — an
-    // embedded NUL and a C0 character — and every one must be the documented 400,
-    // never the 500 a bound NUL produces in the store.
+    // `%00` is the URL-decoded NUL that reached the store as a bound parameter. The
+    // others are the same class — an embedded NUL, a C0 character, DEL — and every one
+    // must be the documented 400, never the 500 a bound NUL produces in the store.
     for (const q of ["%00", "ayat%00kursi", "ayat%07kursi", "%7F"]) {
       const res = await instance.request(
         `/v1/admin/traces?q=${q}&pageSize=5`,

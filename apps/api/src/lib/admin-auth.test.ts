@@ -86,7 +86,7 @@ describe("session tokens", () => {
       // A payload that decodes but was never signed by the key.
       `${version}.${btoa(JSON.stringify({ exp: Date.now() + 1e9 }))}.${signature}`,
       // The trap this session model adds: a signed token must name a session. Swapping
-      // in a payload with no `jti` — the pre-revocation shape — is the same forged miss.
+      // in a payload with no `jti` — a token that cannot be revoked — is the same miss.
       `${version}.${btoa(JSON.stringify({ exp: Date.now() + 1e9 })).replaceAll("=", "")}.${signature}`,
     ];
     for (const candidate of forged) {

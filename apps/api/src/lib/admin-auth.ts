@@ -111,8 +111,8 @@ export async function issueSessionToken(
 /**
  * Verify a session token: the shape, the signature (constant-time over digests),
  * then the expiry and the session id. Anything else is null, which the caller
- * answers as a uniform 401 — an expired session, a forged one and a token minted
- * before the session id existed are the same miss.
+ * answers as a uniform 401 — an expired token, a forged one and a payload with no
+ * session id are the same miss.
  */
 export async function verifySessionClaims(
   credential: string,
