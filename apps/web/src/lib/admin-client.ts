@@ -9,7 +9,7 @@ import {
 import * as v from "valibot";
 
 /**
- * The admin surface's client: `/admin/v1`, same-origin cookies, and the CSRF
+ * The admin surface's client: `/v1/admin`, same-origin cookies, and the CSRF
  * header on the one write. The session is a cookie the browser holds (httpOnly),
  * so nothing here stores a token — and `credentials: "same-origin"` is what
  * carries it.
@@ -18,7 +18,7 @@ import * as v from "valibot";
  * admin screen that renders half a payload is a trap for the operator reading it,
  * so a shape mismatch is an error state, not a partially filled table.
  */
-const ADMIN_BASE = "/admin/v1";
+const ADMIN_BASE = "/v1/admin";
 
 export class AdminClientError extends Error {
   constructor(

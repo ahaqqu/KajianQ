@@ -106,9 +106,9 @@ function detailOf(item: typeof rulingItem) {
   };
 }
 
-/** The trace endpoints only: `/admin/v1/session` is never intercepted. */
+/** The trace endpoints only: `/v1/admin/session` is never intercepted. */
 async function stubTraceData(page: Page): Promise<void> {
-  await page.route("**/admin/v1/traces**", async (route) => {
+  await page.route("**/v1/admin/traces**", async (route) => {
     const url = new URL(route.request().url());
     const segments = url.pathname.split("/").filter(Boolean);
     const last = segments.at(-1);
@@ -243,7 +243,7 @@ Then("the stored trace downloads as JSON", async ({ page }) => {
   const body = await page.evaluate(async (url) => {
     const response = await fetch(url, { credentials: "same-origin" });
     return { status: response.status, text: await response.text() };
-  }, `/admin/v1/traces/${RULING_TRACE}/raw`);
+  }, `/v1/admin/traces/${RULING_TRACE}/raw`);
   expect(body.status).toBe(200);
   const parsed = JSON.parse(body.text) as { id: string; events: unknown[] };
   expect(parsed.id).toBe(RULING_TRACE);
@@ -257,9 +257,9 @@ Then(
     // reads through is the guard, so removing it reddens here (the route then answers 503
     // from the unconfigured store wiring instead of the uniform 401).
     const reads = [
-      "/admin/v1/traces",
-      `/admin/v1/traces/${RULING_TRACE}`,
-      `/admin/v1/traces/${RULING_TRACE}/raw`,
+      "/v1/admin/traces",
+      `/v1/admin/traces/${RULING_TRACE}`,
+      `/v1/admin/traces/${RULING_TRACE}/raw`,
     ];
     for (const path of reads) {
       const refused = await request.get(path);
@@ -267,7 +267,7 @@ Then(
       expect(await refused.json(), path).toEqual({ error: "unauthorized" });
     }
     // A forged session cookie is the same miss as no cookie at all.
-    const forged = await request.get("/admin/v1/traces", {
+    const forged = await request.get("/v1/admin/traces", {
       headers: { cookie: "kajianq_admin=v1.bogus.bogus" },
     });
     expect(forged.status()).toBe(401);

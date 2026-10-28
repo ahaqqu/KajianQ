@@ -110,10 +110,13 @@ The chat serving chains are selected by a **named provider profile** (ADR-0059):
 
 ### 3.6 Admin (v1 scope)
 
-Routes behind one env-configured admin credential, in a session of their own and
-outside the public API description. A deployment with no credential configured serves
-none of them, and every path on the surface answers a miss identically — the same
-refusal whether the credential is wrong, the session is absent, or the surface is off.
+Routes behind one env-configured admin credential, in a session of their own, under
+the existing API prefix and outside the public API description. The surface adds no
+top-level namespace of its own, so the proxy that already serves the API carries it
+and enabling it needs no host configuration. A deployment with no credential
+configured serves none of them, and every path on the surface answers a miss
+identically — the same refusal whether the credential is wrong, the session is
+absent, or the surface is off.
 The surface is read-only, and its reads of chat content are recorded in an
 append-only access log of when, which route and a summary of the filters' dimensions —
 never the question, the answer or the search text — written before the read is

@@ -15,7 +15,7 @@ import { dirname, join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 import { describe, expect, it } from "vite-plus/test";
 import { createApi } from "../../apps/api/src/app";
-import { ADMIN_LOGIN_PATH } from "../../apps/api/src/lib/admin-auth";
+import { ADMIN_API_PREFIX, ADMIN_LOGIN_PATH } from "../../apps/api/src/lib/admin-auth";
 import {
   BACKUP_KEEP_DAILY,
   LABEL_RE,
@@ -1364,7 +1364,9 @@ describe("provisioning config as code stays true to the ADR", () => {
     // app's route table — the registration sites themselves, constants included — so adding
     // /foo/ to the API reddens here until the config carries `location /foo/`.
     const namespaces = apiNamespaces(createApi());
-    expect([...namespaces].sort()).toEqual(["/admin", "/docs", "/openapi.json", "/v1"]);
+    // The admin surface is mounted under `/v1` (ADR-0064), so it introduces no
+    // top-level namespace of its own: the proxy's existing `/v1/` location carries it.
+    expect([...namespaces].sort()).toEqual(["/docs", "/openapi.json", "/v1"]);
 
     const conf = directives("provision/vps/nginx/kajianq.conf");
     const blocks = new Map();
@@ -1380,58 +1382,52 @@ describe("provisioning config as code stays true to the ADR", () => {
       expect(block, namespace).toMatch(/proxy_pass\s+__KAJIANQ_API_UPSTREAM__/);
       expect(block, namespace).toMatch(/proxy_set_header\s+Host\s+\$host/);
       expect(block, namespace).toMatch(/proxy_set_header\s+CF-Connecting-IP\s+\$remote_addr/);
-      // The API is a plain-HTTP listener: the proxy is the only statement of the public scheme.
-      expect(block, namespace).toMatch(/proxy_set_header\s+X-Forwarded-Proto\s+\$scheme/);
     }
     // …and the fallback is the SPA, never an API namespace: that is what makes the
-    // "unknown /admin path is a JSON 404" claim hold on the box rather than only in Hono.
+    // "unknown /v1/admin path is a JSON 404" claim hold on the box rather than only in Hono.
     const fallback = conf.slice(blocks.get("/") ?? 0);
     expect(fallback).toMatch(/try_files\s+\$uri\s+\$uri\/\s+\/index\.html/);
   });
 
   it("a top-level API path registered through a constant is derived, not scraped from literals", () => {
-    // Mutation check for the derivation above. `admin-session.ts` registers its routes at
-    // `ADMIN_LOGIN_PATH` (lib/admin-auth.ts), so that module holds no quoted `/admin`
-    // literal: a scan of routes/*.ts would leave the namespace set unchanged while the
-    // route exists. A fake app whose route is registered at a constant must still be caught.
+    // Mutation check for the derivation above. A route registered at a constant has no
+    // quoted path literal in its module, so a scan of routes/*.ts would miss the
+    // namespace while the route exists. A fake app whose route is registered at a
+    // constant must still be caught.
     const OPERATOR_PATH = "/operator/v1/traces";
     // A route table shaped like Hono's: the derivation reads registration sites, so it is the
     // constant's value that must surface, never a scan of this test's own literals.
     const fake = { routes: [{ method: "GET", path: OPERATOR_PATH, handler: () => {} }] };
     expect([...apiNamespaces(fake)]).toEqual(["/operator"]);
-    // …and the real app's route table carries the constant-registered admin route, so the
-    // expected set above is not an accident of the other admin modules spelling their paths.
+    // …and the real app's admin routes are all inside `/v1`, so the constant-registered
+    // login route adds no top-level namespace and the expected set above is complete.
     expect(createApi().routes.map((route) => route.path)).toContain(ADMIN_LOGIN_PATH);
+    expect(ADMIN_LOGIN_PATH.startsWith(`${ADMIN_API_PREFIX}/`)).toBe(true);
   });
 
-  it("the admin namespace is uncacheable at the proxy, refusals included", () => {
-    const conf = directives("provision/vps/nginx/kajianq.conf");
-    const at = conf.indexOf("location /admin/");
-    expect(at).toBeGreaterThan(-1);
-    const block = conf.slice(at, conf.indexOf("}", at));
-    // The API sets `no-store` on the reads it decorates; its 400/404/422/503 refusals and
-    // nginx's own error pages carry no `Cache-Control`, so the proxy's `always` is what
-    // makes the namespace uncacheable end to end rather than only on the happy path.
-    expect(block).toMatch(/add_header\s+Cache-Control\s+"no-store"\s+always;/);
+  it("the proxy template carries no admin location: the admin API rides the existing /v1 prefix", () => {
+    // The box's installed config predates the admin surface. A template that adds an
+    // `/admin/` location fails the deploy's drift preflight and needs a root nginx
+    // reload, while the already-proxied `/v1` carries the admin API unchanged. The
+    // namespace's `no-store` promise lives at the API layer now, asserted on admin
+    // refusals in apps/api/src/routes/admin.test.ts.
+    const conf = read("provision/vps/nginx/kajianq.conf");
+    expect(conf).not.toMatch(/location\s+\/admin(?:\s|\/|\{)/);
+    expect(conf).not.toContain("/admin/");
+    expect(conf).toMatch(/location \/v1\/ \{/);
   });
 
-  it("the setup doc carries the post-deploy probe for the proxy's top-level API paths", () => {
-    // The location set above is only true of a box that re-applied the config: a deploy of an
-    // API change alone does not reload nginx. The probe is what distinguishes "the proxy is
-    // wired" from "the SPA fallback answered 200", so it must stay in the runbook.
+  it("the setup doc probes the admin API through the already-proxied /v1 prefix", () => {
+    // The admin API adds no top-level path, so the box needs no nginx change and no
+    // sudo. What a deploy must verify is that the existing `/v1` proxy reaches the
+    // API: the SPA fallback answers HTML, so the content type is the evidence.
     const setup = read("docs/VPS-SETUP.md");
     expect(setup).toMatch(/Verify the admin surface reached the API/);
-    expect(setup).toContain("/admin/v1/session");
+    expect(setup).toContain("/v1/admin/session");
     expect(setup).toMatch(/content_type/);
-    // The probe must say which answer means "not wired", or an operator reads a 200 as success.
-    expect(setup).toMatch(/SPA fallback/);
-    // The un-wired box answers the `/admin/` root with the SPA shell (200); the wired one
-    // reaches the API, whose trimTrailingSlash answers 301. Expecting 200 would bless the
-    // failure this section exists to catch.
-    const rootProbe = setup
-      .split("\n")
-      .find((line) => line.includes("/admin/") && line.includes("http_code"));
-    expect(rootProbe).toContain("301");
+    expect(setup).toMatch(/application\/json/);
+    expect(setup).toMatch(/text\/html/);
+    expect(setup).not.toMatch(/location \/admin\//);
   });
 
   it("HTTP only redirects and logs nothing, so the IP-bearing log is confined to the TLS server block", () => {

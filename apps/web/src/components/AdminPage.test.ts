@@ -102,7 +102,7 @@ function stubAdminApi({ authenticated, failLogout = false }: StubOptions) {
   const fetchFn = vi.fn(async (url: string | URL, init?: RequestInit) => {
     const href = String(url);
     const method = init?.method ?? "GET";
-    if (href.startsWith("/admin/v1/session")) {
+    if (href.startsWith("/v1/admin/session")) {
       if (method === "DELETE") {
         // A failed logout leaves the cookie in place: the page must say what is true.
         if (failLogout && deletes++ === 0) return new Response(null, { status: 503 });
@@ -116,8 +116,8 @@ function stubAdminApi({ authenticated, failLogout = false }: StubOptions) {
       return Response.json({ authenticated: signedIn, csrfToken: "csrf-1" });
     }
     if (!signedIn) return Response.json({ error: "unauthorized" }, { status: 401 });
-    if (/\/admin\/v1\/traces\/[^/]+$/.test(href)) return Response.json(detailPayload);
-    if (href.includes("/admin/v1/traces")) return Response.json(listPayload);
+    if (/\/v1\/admin\/traces\/[^/]+$/.test(href)) return Response.json(detailPayload);
+    if (href.includes("/v1/admin/traces")) return Response.json(listPayload);
     return new Response(null, { status: 404 });
   });
   vi.stubGlobal("fetch", fetchFn);
@@ -144,7 +144,7 @@ describe("admin browser", () => {
   });
 
   it("signs in, searches and opens the trace's totals, calls and stored JSON", async () => {
-    stubAdminApi({ authenticated: false });
+    const fetchFn = stubAdminApi({ authenticated: false });
     await renderApp("/admin");
     fireEvent.change(await screen.findByTestId("admin-password"), {
       target: { value: "correct horse battery staple" },
@@ -184,11 +184,14 @@ describe("admin browser", () => {
     );
     // The stored artifact is a plain link the browser downloads.
     const raw = within(detail).getByTestId("admin-raw-link") as HTMLAnchorElement;
-    expect(raw.getAttribute("href")).toBe(`/admin/v1/traces/${TRACE_ID}/raw`);
+    expect(raw.getAttribute("href")).toBe(`/v1/admin/traces/${TRACE_ID}/raw`);
     // The panel is the chat's own Trace panel over the derived frame…
     expect(within(detail).getByTestId("trace-body")).toBeTruthy();
     // …in its read-only mode: no feedback flags.
     expect(within(detail).queryByTestId("trace-flag-chunk-1")).toBeNull();
+    // The page is the SPA's `/admin` route; every data call goes to the API's
+    // `/v1/admin` namespace, never to the old top-level path.
+    expect(fetchFn.mock.calls.every(([url]) => !String(url).includes("/admin/v1"))).toBe(true);
   });
 
   it("keeps a usable CSRF token when logout fails, so the next sign-in is not refused", async () => {
@@ -215,7 +218,7 @@ describe("admin browser", () => {
     await screen.findByTestId("admin-traces");
     const post = fetchFn.mock.calls.find(
       ([url, init]) =>
-        String(url).includes("/admin/v1/session") &&
+        String(url).includes("/v1/admin/session") &&
         (init as RequestInit | undefined)?.method === "POST",
     );
     const headers = (post?.[1] as RequestInit | undefined)?.headers as Record<string, string>;
@@ -241,7 +244,7 @@ describe("admin browser", () => {
     fireEvent.click(screen.getByTestId("admin-apply"));
     await waitFor(() => {
       const urls = fetchFn.mock.calls.map(([url]) => String(url));
-      expect(urls.some((url) => url.includes("/admin/v1/traces?q=riba"))).toBe(true);
+      expect(urls.some((url) => url.includes("/v1/admin/traces?q=riba"))).toBe(true);
     });
   });
 });
