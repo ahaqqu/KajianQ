@@ -128,6 +128,20 @@ function fakeStore() {
     getAnswerFeedbackTarget() {
       return Effect.succeed(null);
     },
+    // The admin reads are not part of ingestion's surface: this fake only has to
+    // satisfy the seam.
+    recordAdminAccess() {
+      return Effect.succeed(undefined);
+    },
+    listAdminTraces() {
+      return Effect.succeed({ rows: [], total: 0 });
+    },
+    getAdminTrace() {
+      return Effect.succeed(null);
+    },
+    purgeAdminAccessLog() {
+      return Effect.succeed(0);
+    },
   };
   return {
     store,
