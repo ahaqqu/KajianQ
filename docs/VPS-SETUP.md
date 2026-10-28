@@ -701,28 +701,31 @@ the shape of failure that makes a retention promise quietly false.
 
 ### Verify the admin surface reached the API
 
-The admin Trace browser is a **top-level path**, so it is reachable only because
-`nginx/kajianq.conf` carries `location /admin/`: without that block the SPA
-fallback answers `/admin/v1/*` with `index.html` and a 200, and the surface is
-absent from the box rather than closed. `apply.sh` installs the block and
-reloads nginx; a deploy of an API change alone does not (the grant can restart
-the API, not reload nginx), so re-apply the config whenever a top-level API path
-is added:
+The admin Trace browser's API is mounted under `/v1/admin`, so the existing
+`/v1/` proxy carries it and the deployed nginx config needs no change or reload.
+The page itself is the SPA's public `/admin` route: static HTML with no data of
+its own. Only the API calls behind it are credential-gated.
 
 ```bash
-sudo provision/vps/apply.sh --env /etc/kajianq/proxy.env   # installs the block, reloads nginx
-curl -s -o /dev/null -w '%{http_code}\n' https://<your-host>/admin/   # 301: the request reached the API
-curl -s -o /dev/null -w '%{content_type}\n' https://<your-host>/admin/v1/session
-# application/json — an HTML content type means nginx is still serving the SPA fallback
-curl -s https://<your-host>/admin/v1/session                # {"authenticated":false,"csrfToken":"…"}
+curl -s -o /dev/null -w '%{content_type}\n' https://<your-host>/v1/admin/session
+# application/json — a text/html content type means nginx is serving the SPA fallback
+curl -s https://<your-host>/v1/admin/session   # {"authenticated":false,"csrfToken":"…"}
 ```
 
-The trailing-slash probe is a first read: the API's `trimTrailingSlash` answers
-`301` with an empty JSON body, while the SPA fallback answers `200` with the
-shell — so a `200` on `/admin/` is the failure this section exists to catch, not
-success. The session probe is the gate that proves more than the root: the API
-answers it with JSON whether or not `ADMIN_PASSWORD` is set, while the SPA
-fallback answers the shell.
+The session probe is the gate: the API answers it with JSON whether or not
+`ADMIN_PASSWORD` is set, while a box whose proxy is not wired answers the shell.
+Because the admin API adds no top-level path, a normal code deploy is enough —
+no `apply.sh` run and no sudo. A new top-level API namespace would still need its
+own nginx location, which is why the hardening suite derives that set from the
+route table.
+
+Login additionally requires `ALLOWED_ORIGINS` to name this host's public https
+origin: the API is a plain-HTTP listener behind the TLS proxy, so an unset or
+stale allowlist refuses the login at the origin check even with the correct
+password. The probe above never exercises that check — a login that answers the
+uniform 401 with the right password is a wrong password only when
+`ALLOWED_ORIGINS` is correct; otherwise the API log carries
+`admin.login_origin_refused`, which names the route and never the origin or host.
 
 ### Verify retention once traffic exists
 

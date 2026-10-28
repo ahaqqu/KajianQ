@@ -12,6 +12,7 @@ import {
 import { traceTotals, type AdminTraceCall, type Trace } from "@app/contracts";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { createApi } from "../app";
+import { ADMIN_API_PREFIX, ADMIN_COOKIE_PATH, ADMIN_LOGIN_PATH } from "../lib/admin-paths";
 import type { AssetFetcher } from "@app/hardening";
 
 /**
@@ -90,7 +91,7 @@ function cookieValue(response: Response, name: string): string {
 async function csrf(
   instance: ReturnType<typeof api>,
   env: Record<string, unknown>,
-  url = "/admin/v1/session",
+  url = "/v1/admin/session",
 ) {
   const response = await instance.request(url, {}, env);
   const body = (await response.json()) as { csrfToken: string; authenticated: boolean };
@@ -112,7 +113,7 @@ async function login(
 ): Promise<{ session: Session | null; response: Response }> {
   const boot = await csrf(instance, env);
   const response = await instance.request(
-    "/admin/v1/session",
+    "/v1/admin/session",
     {
       method: "POST",
       headers: {
@@ -138,7 +139,7 @@ async function loginAttempt(
   instance: ReturnType<typeof api>,
   env: Record<string, unknown>,
   headers: Record<string, string> = {},
-  url = "/admin/v1/session",
+  url = "/v1/admin/session",
   password = PASSWORD,
 ): Promise<Response> {
   const boot = await csrf(instance, env, url);
@@ -324,10 +325,10 @@ describe("admin auth: nothing is readable without the credential", () => {
     await seededStore();
     const instance = api();
     const paths: [string, RequestInit | undefined][] = [
-      ["/admin/v1/traces", undefined],
-      ["/admin/v1/traces/00000000-0000-4000-8000-000000000000", undefined],
-      ["/admin/v1/traces/00000000-0000-4000-8000-000000000000/raw", undefined],
-      ["/admin/v1/session", { method: "POST", body: JSON.stringify({ password: PASSWORD }) }],
+      ["/v1/admin/traces", undefined],
+      ["/v1/admin/traces/00000000-0000-4000-8000-000000000000", undefined],
+      ["/v1/admin/traces/00000000-0000-4000-8000-000000000000/raw", undefined],
+      ["/v1/admin/session", { method: "POST", body: JSON.stringify({ password: PASSWORD }) }],
     ];
     for (const [path, init] of paths) {
       const res = await instance.request(path, init, adminEnv());
@@ -341,7 +342,7 @@ describe("admin auth: nothing is readable without the credential", () => {
   it("reads as a miss even when no credential is configured", async () => {
     await seededStore();
     const instance = api();
-    const res = await instance.request("/admin/v1/traces", {}, { ASSETS: mockAssets() });
+    const res = await instance.request("/v1/admin/traces", {}, { ASSETS: mockAssets() });
     expect(res.status).toBe(401);
     expect(await res.json()).toEqual({ error: "unauthorized" });
   });
@@ -349,7 +350,7 @@ describe("admin auth: nothing is readable without the credential", () => {
   it("answers 401 for a garbage session cookie", async () => {
     await seededStore();
     const res = await api().request(
-      "/admin/v1/traces",
+      "/v1/admin/traces",
       { headers: { cookie: "kajianq_admin=v1.bogus.bogus" } },
       adminEnv(),
     );
@@ -361,7 +362,7 @@ describe("admin auth: nothing is readable without the credential", () => {
     const instance = api();
     const boot = await csrf(instance, adminEnv());
     const noHeader = await instance.request(
-      "/admin/v1/session",
+      "/v1/admin/session",
       {
         method: "POST",
         headers: { cookie: boot.cookie, "content-type": "application/json" },
@@ -373,7 +374,7 @@ describe("admin auth: nothing is readable without the credential", () => {
     expect(noHeader.headers.getSetCookie()).toHaveLength(0);
 
     const wrongHeader = await instance.request(
-      "/admin/v1/session",
+      "/v1/admin/session",
       {
         method: "POST",
         headers: {
@@ -394,7 +395,7 @@ describe("admin auth: nothing is readable without the credential", () => {
     const instance = api();
     const boot = await csrf(instance, adminEnv());
     const res = await instance.request(
-      "/admin/v1/session",
+      "/v1/admin/session",
       {
         method: "POST",
         headers: {
@@ -424,7 +425,7 @@ describe("admin auth: nothing is readable without the credential", () => {
         {
           origin,
         },
-        "http://chat.example.org/admin/v1/session",
+        "http://chat.example.org/v1/admin/session",
       );
     expect((await post("https://chat.example.org")).status).toBe(200);
     // A different host is refused…
@@ -433,11 +434,14 @@ describe("admin auth: nothing is readable without the credential", () => {
     expect((await post("http://chat.example.org")).status).toBe(401);
   });
 
-  it("accepts a proxied https Origin only when the edge says it terminated TLS", async () => {
+  it("refuses a proxied https Origin unless ALLOWED_ORIGINS names it, whatever the client forwards", async () => {
     await seededStore();
     const instance = api();
-    // No ALLOWED_ORIGINS: the request's own host is the fallback, and the scheme mismatch
-    // is accepted only on the proxy's statement — never on the client's.
+    // ALLOWED_ORIGINS is the only source that can vouch for the browser's origin. The
+    // API is a plain-HTTP listener behind the TLS proxy, so the request URL cannot: with
+    // no configured origin every Origin-carrying login fails closed, and a client-supplied
+    // X-Forwarded-Proto is a hop's scheme claim, not the caller's origin, so it must not
+    // rescue a single one of these.
     const env = adminEnv();
     const post = (origin: string, headers: Record<string, string> = {}) =>
       loginAttempt(
@@ -447,16 +451,42 @@ describe("admin auth: nothing is readable without the credential", () => {
           origin,
           ...headers,
         },
-        "http://chat.example.org/admin/v1/session",
+        "http://chat.example.org/v1/admin/session",
       );
-    expect((await post("http://chat.example.org")).status).toBe(200);
-    expect((await post("https://chat.example.org", { "x-forwarded-proto": "https" })).status).toBe(
-      200,
-    );
-    // The scheme alone is not enough: an untrusted client cannot claim it.
+    expect((await post("http://chat.example.org")).status).toBe(401);
     expect((await post("https://chat.example.org")).status).toBe(401);
-    // The host check runs first, so a spoofed scheme cannot widen the origin to another host.
+    expect((await post("https://chat.example.org", { "x-forwarded-proto": "https" })).status).toBe(
+      401,
+    );
     expect((await post("https://evil.example", { "x-forwarded-proto": "https" })).status).toBe(401);
+    // Configuring the public origin is what accepts that browser origin.
+    const configured = await loginAttempt(
+      api(),
+      { ...adminEnv(), ALLOWED_ORIGINS: "https://chat.example.org" },
+      { origin: "https://chat.example.org" },
+      "http://chat.example.org/v1/admin/session",
+    );
+    expect(configured.status).toBe(200);
+  });
+
+  it("logs an origin refusal without the refused origin or the request host", async () => {
+    await seededStore();
+    const lines: string[] = [];
+    const spy = vi.spyOn(console, "log").mockImplementation((line: unknown) => {
+      lines.push(String(line));
+    });
+    try {
+      const res = await loginAttempt(api(), adminEnv(), { origin: "https://evil.example" });
+      expect(res.status).toBe(401);
+      const refused = lines.filter((line) => line.includes("admin.login_origin_refused"));
+      expect(refused).toHaveLength(1);
+      // The operator can tell this refusal from a wrong password; a caller cannot
+      // write a chosen origin or the host into the log, and the response is unchanged.
+      expect(refused[0]).not.toContain("evil.example");
+      expect(refused[0]).not.toContain("localhost");
+    } finally {
+      spy.mockRestore();
+    }
   });
 
   it("answers a malformed login body the same way whether or not a credential is configured", async () => {
@@ -469,7 +499,7 @@ describe("admin auth: nothing is readable without the credential", () => {
       const boot = await csrf(instance, env);
       const attempt = (body: unknown) =>
         instance.request(
-          "/admin/v1/session",
+          "/v1/admin/session",
           {
             method: "POST",
             headers: { cookie: boot.cookie, "x-csrf-token": boot.token },
@@ -499,21 +529,43 @@ describe("admin auth: nothing is readable without the credential", () => {
     expect(response.headers.getSetCookie()).toHaveLength(0);
   });
 
-  it("sets a separate httpOnly/SameSite=Strict session cookie scoped to /admin", async () => {
+  it("sets separate httpOnly/SameSite=Strict cookies scoped to /v1/admin", async () => {
     await seededStore();
-    const { session, response } = await login(api(), adminEnv());
+    const instance = api();
+    const { session, response } = await login(instance, adminEnv());
     expect(response.status).toBe(200);
     expect(session?.cookie).toMatch(/^kajianq_admin=/);
-    const setCookie = response.headers
-      .getSetCookie()
-      .find((entry) => entry.startsWith("kajianq_admin="));
-    expect(setCookie).toBeDefined();
-    expect(setCookie).toContain("HttpOnly");
-    expect(setCookie).toContain("SameSite=Strict");
-    expect(setCookie).toContain("Path=/admin");
+    const setCookies = response.headers.getSetCookie();
+    for (const name of ["kajianq_admin", "kajianq_admin_csrf"]) {
+      const entry = setCookies.find((cookie) => cookie.startsWith(`${name}=`));
+      expect(entry, name).toBeDefined();
+      expect(entry).toContain("HttpOnly");
+      expect(entry).toContain("SameSite=Strict");
+      // Exactly the admin API prefix: `/admin` would never be sent to the moved API,
+      // and `/v1` would attach the operator's credential to public chat routes.
+      expect(entry).toMatch(/Path=\/v1\/admin(;|$)/);
+    }
     // development serves plain http on loopback: Secure is a staging/production
     // property, and it is asserted there below.
-    expect(setCookie).not.toContain("Secure");
+    expect(setCookies.join(" ")).not.toContain("Secure");
+    expect(ADMIN_COOKIE_PATH).toBe(ADMIN_API_PREFIX);
+    // The logout clears at the same path: a mismatched clear leaves a live cookie in
+    // the browser for the rest of its Max-Age.
+    const logout = await instance.request(
+      ADMIN_LOGIN_PATH,
+      {
+        method: "DELETE",
+        headers: {
+          cookie: `${session!.cookie}; ${cookieValue(response, "kajianq_admin_csrf")}`,
+          "x-csrf-token": session!.csrfToken,
+        },
+      },
+      adminEnv(),
+    );
+    expect(logout.status).toBe(204);
+    const cleared = logout.headers.getSetCookie();
+    expect(cleared).toHaveLength(2);
+    for (const entry of cleared) expect(entry).toMatch(/Path=\/v1\/admin(;|$)/);
   });
 
   it("adds Secure to both cookies outside development", async () => {
@@ -536,7 +588,7 @@ describe("admin auth: nothing is readable without the credential", () => {
     const attempt = async () => {
       const boot = await csrf(instance, env);
       return instance.request(
-        "/admin/v1/session",
+        "/v1/admin/session",
         {
           method: "POST",
           headers: {
@@ -554,6 +606,7 @@ describe("admin auth: nothing is readable without the credential", () => {
     const limited = await attempt();
     expect(limited.status).toBe(429);
     expect(await limited.json()).toEqual({ error: "rate_limited" });
+    expect(limited.headers.get("cache-control")).toBe("no-store");
   });
 
   it("limits reads on the browsing budget, apart from the login's", async () => {
@@ -564,7 +617,7 @@ describe("admin auth: nothing is readable without the credential", () => {
     // budget's first slot respectively: the two meters are separate namespaces.
     const boot = await csrf(instance, env);
     const signedIn = await instance.request(
-      "/admin/v1/session",
+      "/v1/admin/session",
       {
         method: "POST",
         headers: {
@@ -579,15 +632,16 @@ describe("admin auth: nothing is readable without the credential", () => {
     expect(signedIn.status).toBe(200);
     const headers = { cookie: cookieValue(signedIn, "kajianq_admin") };
     for (const expected of [200, 200]) {
-      expect((await instance.request("/admin/v1/traces", { headers }, env)).status).toBe(expected);
+      expect((await instance.request("/v1/admin/traces", { headers }, env)).status).toBe(expected);
     }
-    const limited = await instance.request("/admin/v1/traces", { headers }, env);
+    const limited = await instance.request("/v1/admin/traces", { headers }, env);
     expect(limited.status).toBe(429);
     expect(await limited.json()).toEqual({ error: "rate_limited" });
+    expect(limited.headers.get("cache-control")).toBe("no-store");
     // The read budget is exhausted, yet a credential attempt still reaches the credential
     // check — the login has its own, tighter namespace and was not the meter that ran out.
     const attempt = await instance.request(
-      "/admin/v1/session",
+      "/v1/admin/session",
       {
         method: "POST",
         headers: {
@@ -602,18 +656,54 @@ describe("admin auth: nothing is readable without the credential", () => {
     expect(attempt.status).toBe(401);
   });
 
+  it("keeps the admin budget disjoint from the public /v1 budget", async () => {
+    await seededStore();
+    const env = adminEnv();
+    // An admin read must not spend the public chat meter...
+    const publicBudget = createApi({ limiter: createMemoryRateLimiter(), limit: 1 });
+    expect((await publicBudget.request("/v1/admin/traces", {}, env)).status).toBe(401);
+    expect((await publicBudget.request("/v1/health", {}, env)).status).toBe(200);
+    expect((await publicBudget.request("/v1/health", {}, env)).status).toBe(429);
+
+    // ...and an exhausted public budget must not close the admin surface: an operator
+    // paging through traces during a chat flood still reaches the credential check.
+    const mixedBudget = createApi({
+      limiter: createMemoryRateLimiter(),
+      limit: 1,
+      adminLimit: 2,
+    });
+    expect((await mixedBudget.request("/v1/health", {}, env)).status).toBe(200);
+    expect((await mixedBudget.request("/v1/health", {}, env)).status).toBe(429);
+    expect((await mixedBudget.request("/v1/admin/session", {}, env)).status).toBe(200);
+  });
+
   it("keeps every admin path off the public OpenAPI document", async () => {
     await seededStore();
     const res = await api().request("/openapi.json", {}, adminEnv());
-    const doc = (await res.json()) as { paths: Record<string, unknown> };
+    const body = await res.text();
+    const doc = JSON.parse(body) as { paths: Record<string, unknown> };
+    // Neither a path nor the namespace string: the surface is invisible to a
+    // generated client, not merely hidden from its list.
     expect(Object.keys(doc.paths).filter((path) => path.includes("admin"))).toEqual([]);
+    expect(body).not.toContain(ADMIN_API_PREFIX);
   });
 
-  it("answers an unknown admin path with a JSON 404, never the SPA", async () => {
+  it("answers every unknown admin path with an uncacheable JSON 404, never the SPA", async () => {
     await seededStore();
-    const res = await api().request("/admin/v1/nope", {}, adminEnv());
-    expect(res.status).toBe(404);
-    expect(await res.json()).toEqual({ error: "not_found" });
+    const probes: [string, RequestInit | undefined][] = [
+      // The bare namespace, a path under it, and a method no admin route serves all
+      // fall to the catch-all, which answers a raw Response: the post-`next` header
+      // is what makes these uncacheable, not Hono's prepared one.
+      ["/v1/admin", undefined],
+      ["/v1/admin/nope", undefined],
+      ["/v1/admin/traces", { method: "POST", body: "{}" }],
+    ];
+    for (const [path, init] of probes) {
+      const res = await api().request(path, init, adminEnv());
+      expect(res.status, path).toBe(404);
+      expect(await res.json(), path).toEqual({ error: "not_found" });
+      expect(res.headers.get("cache-control"), path).toBe("no-store");
+    }
   });
 });
 
@@ -627,7 +717,7 @@ describe("admin list: the failure-search seam", () => {
     ).rows[0]!;
     const { session } = await login(api(), adminEnv());
     const res = await api().request(
-      "/admin/v1/traces",
+      "/v1/admin/traces",
       { headers: { cookie: session!.cookie } },
       adminEnv(),
     );
@@ -671,7 +761,7 @@ describe("admin list: the failure-search seam", () => {
     ]);
     const { session } = await login(api(), adminEnv());
     const res = await api().request(
-      "/admin/v1/traces?pageSize=1&page=1",
+      "/v1/admin/traces?pageSize=1&page=1",
       { headers: { cookie: session!.cookie } },
       adminEnv(),
     );
@@ -690,7 +780,7 @@ describe("admin list: the failure-search seam", () => {
     const { session } = await login(instance, adminEnv());
     const list = async (query: string) => {
       const res = await instance.request(
-        `/admin/v1/traces?${query}`,
+        `/v1/admin/traces?${query}`,
         { headers: { cookie: session!.cookie } },
         adminEnv(),
       );
@@ -718,11 +808,12 @@ describe("admin list: the failure-search seam", () => {
     }) as never;
     for (const query of ["pageSize=0", "pageSize=51", "page=0", "minCostMicroUsd=-1", "q="]) {
       const res = await instance.request(
-        `/admin/v1/traces?${query}`,
+        `/v1/admin/traces?${query}`,
         { headers: { cookie: session!.cookie } },
         adminEnv(),
       );
       expect(res.status, query).toBe(400);
+      expect(res.headers.get("cache-control"), query).toBe("no-store");
     }
     expect(storeReadCount).toBe(0);
   });
@@ -735,7 +826,7 @@ describe("admin access log: append-only evidence that never carries content", ()
     const { session } = await login(instance, adminEnv());
     const secret = "ayat kursi rahasia";
     const res = await instance.request(
-      `/admin/v1/traces?q=${encodeURIComponent(secret)}&intent=ruling&page=2&pageSize=5`,
+      `/v1/admin/traces?q=${encodeURIComponent(secret)}&intent=ruling&page=2&pageSize=5`,
       { headers: { cookie: session!.cookie } },
       adminEnv(),
     );
@@ -776,10 +867,10 @@ describe("admin access log: append-only evidence that never carries content", ()
     const { session } = await login(instance, adminEnv());
     const headers = { cookie: session!.cookie };
     expect(
-      (await instance.request(`/admin/v1/traces/${traceId}`, { headers }, adminEnv())).status,
+      (await instance.request(`/v1/admin/traces/${traceId}`, { headers }, adminEnv())).status,
     ).toBe(200);
     expect(
-      (await instance.request(`/admin/v1/traces/${traceId}/raw`, { headers }, adminEnv())).status,
+      (await instance.request(`/v1/admin/traces/${traceId}/raw`, { headers }, adminEnv())).status,
     ).toBe(200);
     const routes = store.allAdminAccess().map((entry) => entry.route);
     expect(routes).toEqual(["traces.detail", "traces.raw"]);
@@ -804,11 +895,12 @@ describe("admin access log: append-only evidence that never carries content", ()
       },
     });
     const res = await instance.request(
-      "/admin/v1/traces",
+      "/v1/admin/traces",
       { headers: { cookie: session!.cookie } },
       adminEnv(),
     );
     expect(res.status).toBe(503);
+    expect(res.headers.get("cache-control")).toBe("no-store");
     const body = await res.text();
     expect(body).toContain("admin_unavailable");
     // The one thing that must NOT be in a failed read: content.
@@ -825,7 +917,7 @@ describe("admin detail: the chat panel's derivation, every provider call", () =>
     const instance = api();
     const { session } = await login(instance, adminEnv());
     const res = await instance.request(
-      `/admin/v1/traces/${traceId}`,
+      `/v1/admin/traces/${traceId}`,
       { headers: { cookie: session!.cookie } },
       adminEnv(),
     );
@@ -880,14 +972,15 @@ describe("admin detail: the chat panel's derivation, every provider call", () =>
       const { session } = await login(instance, adminEnv());
       const headers = { cookie: session!.cookie };
       const detail = await instance.request(
-        `/admin/v1/traces/${row.traceId}`,
+        `/v1/admin/traces/${row.traceId}`,
         { headers },
         adminEnv(),
       );
       expect(detail.status).toBe(422);
       expect(await detail.json()).toEqual({ error: "trace_unparseable" });
+      expect(detail.headers.get("cache-control")).toBe("no-store");
       const raw = await instance.request(
-        `/admin/v1/traces/${row.traceId}/raw`,
+        `/v1/admin/traces/${row.traceId}/raw`,
         { headers },
         adminEnv(),
       );
@@ -906,7 +999,7 @@ describe("admin detail: the chat panel's derivation, every provider call", () =>
     const instance = api();
     const { session } = await login(instance, adminEnv());
     const res = await instance.request(
-      `/admin/v1/traces/${traceId}/raw`,
+      `/v1/admin/traces/${traceId}/raw`,
       { headers: { cookie: session!.cookie } },
       adminEnv(),
     );
@@ -927,9 +1020,10 @@ describe("admin detail: the chat panel's derivation, every provider call", () =>
     const { session } = await login(instance, adminEnv());
     const headers = { cookie: session!.cookie };
     for (const id of [crypto.randomUUID(), "not-a-uuid"]) {
-      const res = await instance.request(`/admin/v1/traces/${id}`, { headers }, adminEnv());
+      const res = await instance.request(`/v1/admin/traces/${id}`, { headers }, adminEnv());
       expect(res.status, id).toBe(404);
       expect(await res.json()).toEqual({ error: "not_found" });
+      expect(res.headers.get("cache-control")).toBe("no-store");
     }
   });
 });
@@ -977,7 +1071,7 @@ describe("admin detail: model identity and cost consistency from the mirror", ()
   it("reports a consistent configured price without replacing the recorded cost", async () => {
     const { store, provider, modelId, price, expected } = await consistentSeed();
     const { headers, traceId, instance } = await detailOf(store);
-    const res = await instance.request(`/admin/v1/traces/${traceId}`, { headers }, adminEnv());
+    const res = await instance.request(`/v1/admin/traces/${traceId}`, { headers }, adminEnv());
     expect(res.status).toBe(200);
     const detail = (await res.json()) as { calls: AdminTraceCall[] };
     const call = detail.calls.find((entry) => entry.stage === "generator")!;
@@ -1014,7 +1108,7 @@ describe("admin detail: model identity and cost consistency from the mirror", ()
       },
     ]);
     const { headers, traceId, instance } = await detailOf(store);
-    const res = await instance.request(`/admin/v1/traces/${traceId}`, { headers }, adminEnv());
+    const res = await instance.request(`/v1/admin/traces/${traceId}`, { headers }, adminEnv());
     const detail = (await res.json()) as { calls: AdminTraceCall[] };
     const call = detail.calls.find((entry) => entry.stage === "generator")!;
     expect(call.costMicroUsd).toBe(expected + 1);
@@ -1026,7 +1120,7 @@ describe("admin detail: model identity and cost consistency from the mirror", ()
   it("reports an unresolved model explicitly instead of omitting the call", async () => {
     const store = await seededStore();
     const { headers, traceId, instance } = await detailOf(store);
-    const res = await instance.request(`/admin/v1/traces/${traceId}`, { headers }, adminEnv());
+    const res = await instance.request(`/v1/admin/traces/${traceId}`, { headers }, adminEnv());
     const detail = (await res.json()) as { calls: AdminTraceCall[] };
     const call = detail.calls.find((entry) => entry.stage === "generator")!;
     expect(call.modelId).toBe("generator-stub");
@@ -1055,9 +1149,10 @@ describe("admin detail: model identity and cost consistency from the mirror", ()
       lines.push(String(line));
     });
     try {
-      const res = await instance.request(`/admin/v1/traces/${traceId}`, { headers }, adminEnv());
+      const res = await instance.request(`/v1/admin/traces/${traceId}`, { headers }, adminEnv());
       expect(res.status).toBe(503);
       expect(await res.json()).toEqual({ error: "model_config_drift" });
+      expect(res.headers.get("cache-control")).toBe("no-store");
       const drift = lines
         .filter((line) => line.includes("admin.model_config_drift"))
         .map((line) => JSON.parse(line) as Record<string, unknown>)[0];
@@ -1071,7 +1166,7 @@ describe("admin detail: model identity and cost consistency from the mirror", ()
       });
       // The raw download carries no mirror-derived data, so the escape hatch still works.
       const raw = await instance.request(
-        `/admin/v1/traces/${traceId}/raw`,
+        `/v1/admin/traces/${traceId}/raw`,
         { headers },
         adminEnv(),
       );
@@ -1088,7 +1183,7 @@ describe("admin surface: the public product stays untouched", () => {
     const session = await runStoreEffect<{ token: string }>(store.createSession());
     // A public Bearer token opens no admin read…
     const admin = await api().request(
-      "/admin/v1/traces",
+      "/v1/admin/traces",
       { headers: { authorization: `Bearer ${session.token}` } },
       adminEnv(),
     );

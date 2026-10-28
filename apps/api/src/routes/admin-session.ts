@@ -1,7 +1,7 @@
 import { AdminLoginRequestSchema, type AdminSession } from "@app/contracts";
 import * as v from "valibot";
+import { ADMIN_SESSION_ROUTE } from "../lib/admin-paths";
 import {
-  ADMIN_LOGIN_PATH,
   adminCredential,
   adminSessionActive,
   adminUnauthorized,
@@ -38,20 +38,27 @@ export const adminSessionRoutes = newRouter()
   // Bootstrap: a fresh CSRF token every time, plus whether a live session is
   // already held. Reachable without a session by construction — it is how the
   // login form obtains the token its POST must echo.
-  .get(ADMIN_LOGIN_PATH, async (c) => {
+  .get(ADMIN_SESSION_ROUTE, async (c) => {
     const csrfToken = setCsrfCookie(c);
     c.header("Cache-Control", "no-store");
     return c.json(sessionBody(await adminSessionActive(c, c.env), csrfToken));
   })
-  .post(ADMIN_LOGIN_PATH, async (c) => {
+  .post(ADMIN_SESSION_ROUTE, async (c) => {
     const credential = adminCredential(c.env);
-    // Order: cross-site first (cheapest, no secret touched), then the CSRF pair,
-    // then the credential. Every failure is the same 401. The body is not read
-    // before the credential presence check, so an unconfigured surface never
-    // reaches a body verdict it could be distinguished by.
-    if (credential === null || !sameOrigin(c) || !(await csrfMatches(c))) {
+    // Every failure is the same 401. An unconfigured surface reads as a miss before
+    // any other check, so its answer never depends on the request's Origin or body.
+    if (credential === null) return adminUnauthorized(c);
+    // The cross-site check is next: cheapest, and it touches no secret. With
+    // `ALLOWED_ORIGINS` unset it fails closed behind the TLS proxy, where the API
+    // sees an http request URL and cannot vouch for the browser's https origin.
+    if (!sameOrigin(c)) {
+      // The only operator-visible signal that separates a stale or absent allowlist
+      // from a wrong password. Route-only: neither the refused Origin nor the request
+      // host enters the log, and the response stays the uniform 401.
+      c.get("ctx").logger.warn("admin.login_origin_refused", { route: "admin.login" });
       return adminUnauthorized(c);
     }
+    if (!(await csrfMatches(c))) return adminUnauthorized(c);
     let body: unknown;
     try {
       body = await c.req.raw.json();
@@ -73,7 +80,7 @@ export const adminSessionRoutes = newRouter()
     c.header("Cache-Control", "no-store");
     return c.json(sessionBody(true, csrfToken));
   })
-  .delete(ADMIN_LOGIN_PATH, async (c) => {
+  .delete(ADMIN_SESSION_ROUTE, async (c) => {
     // Logout: a cross-site logout is a nuisance rather than a compromise, but the
     // CSRF pair is required all the same so every state change has one rule.
     if (!(await csrfMatches(c))) return adminUnauthorized(c);

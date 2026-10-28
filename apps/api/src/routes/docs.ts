@@ -1,5 +1,6 @@
 import { openAPIRouteHandler } from "hono-openapi";
 import type { Hono } from "hono";
+import { ADMIN_API_PATH_PATTERN } from "../lib/admin-paths";
 import type { ApiEnv } from "../lib/guard";
 
 /**
@@ -13,10 +14,11 @@ export function registerDocRoutes(api: Hono<ApiEnv>): void {
       documentation: {
         info: { title: "KajianQ API", version: "1.0.0" },
       },
-      // The admin surface is not part of the public document (ADR-0064): its paths
-      // are excluded rather than described, so the published contract claims no
-      // admin route and a generated client cannot reach one.
-      exclude: [/^\/admin\//],
+      // The admin surface is not part of the public document (ADR-0064): its
+      // namespace is excluded rather than described, so the published contract
+      // claims no admin route and a generated client cannot reach one. The
+      // pattern is the namespace owner's own boundary, bare prefix included.
+      exclude: [ADMIN_API_PATH_PATTERN],
     }),
   );
   api.get("/docs", (c) =>

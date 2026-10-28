@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
 import { createApi } from "../apps/api/src/app";
+import { isAdminApiPath } from "../apps/api/src/lib/admin-paths";
 import { toOpenApiPath } from "../apps/api/src/lib/openapi-path";
 
 /**
@@ -10,9 +11,12 @@ import { toOpenApiPath } from "../apps/api/src/lib/openapi-path";
  * apps/api/src/app.test.ts is the real gate; this script gives a quick local
  * command and a non-zero exit code when the doc is broken or drifting.
  *
- * Bun runs this script, so it imports the TS owner of the path normalization
- * directly — the same `toOpenApiPath` the coverage test
- * uses, so the two checks cannot drift apart.
+ * Bun runs this script, so it imports the TS owners of the path normalization
+ * and the admin namespace boundary directly — the same `toOpenApiPath` and
+ * `isAdminApiPath` the coverage test uses, so the two checks cannot drift apart.
+ * The admin namespace sits under `/v1` but is excluded from the public document,
+ * so the registered set must exclude it too; the doc's own absence is pinned by
+ * the route-coverage equality (the admin routes carry no OpenAPI metadata).
  */
 
 const env = { ASSETS: { fetch } };
@@ -36,7 +40,7 @@ async function main() {
   const registered = [
     ...new Set(
       api.routes
-        .filter((r) => r.path.startsWith("/v1/") && r.method !== "ALL")
+        .filter((r) => r.path.startsWith("/v1/") && !isAdminApiPath(r.path) && r.method !== "ALL")
         .map((r) => `${r.method} ${toOpenApiPath(r.path)}`),
     ),
   ].sort();

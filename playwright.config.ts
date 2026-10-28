@@ -53,6 +53,10 @@ export default defineConfig({
           // enables it so the sign-in scenarios exercise the real guard. The value lives in
           // one place — tests/support/admin-fixture.ts, which the steps import too.
           ADMIN_PASSWORD: E2E_ADMIN_PASSWORD,
+          // Login's origin check accepts only a configured public origin, and the browser
+          // sends this host's origin on the POST. The embedded host serves the page and the
+          // API on one origin, so that origin is the allowlist.
+          ALLOWED_ORIGINS: "http://127.0.0.1:8787",
         },
       },
 });
