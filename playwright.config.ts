@@ -1,5 +1,6 @@
 import { defineConfig, devices } from "@playwright/test";
 import { defineBddConfig } from "playwright-bdd";
+import { E2E_ADMIN_PASSWORD } from "./tests/support/admin-fixture";
 
 const testDir = defineBddConfig({
   features: "tests/features/**/*.feature",
@@ -8,6 +9,11 @@ const testDir = defineBddConfig({
 
 export default defineConfig({
   testDir,
+  // The admin browser feature is LOCAL-ONLY: it signs in against the embedded host with a
+  // fixture credential and stubs the trace endpoints, so an external run has neither that
+  // credential nor the fixture rows. The feature carries `@local`; this filter is what skips
+  // it, rather than a run against staging failing red on a host it was never built to drive.
+  grepInvert: process.env.E2E_BASE_URL ? /@local/ : undefined,
   timeout: 60_000,
   fullyParallel: false,
   forbidOnly: !!process.env.CI,
@@ -43,6 +49,10 @@ export default defineConfig({
           KAJIANQ_WEB_ROOT: "apps/web/dist",
           PORT: "8787",
           APP_ENV: "development",
+          // The admin browser is enabled per deployment by its credential; the e2e host
+          // enables it so the sign-in scenarios exercise the real guard. The value lives in
+          // one place — tests/support/admin-fixture.ts, which the steps import too.
+          ADMIN_PASSWORD: E2E_ADMIN_PASSWORD,
         },
       },
 });

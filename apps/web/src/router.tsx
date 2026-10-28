@@ -1,6 +1,7 @@
 import { createRootRoute, createRoute, createRouter } from "@tanstack/react-router";
 import {
   AboutPage,
+  AdminPage,
   ChatPage,
   CollectionPage,
   FaqPage,
@@ -9,6 +10,7 @@ import {
   Shell,
   TermsPage,
 } from "./components/pages";
+import { validateAdminSearch } from "./lib/admin-deep-link";
 import { validateChatSearch } from "./lib/chat-prefill";
 import { useLocale } from "./lib/i18n";
 
@@ -52,6 +54,10 @@ function Privacy() {
 
 function Terms() {
   return <TermsPage locale={useLocale()} />;
+}
+
+function Admin() {
+  return <AdminPage />;
 }
 
 /** The route paths, in the order the header nav lists them. */
@@ -113,6 +119,16 @@ export function createRouteTree() {
     path: "/terms",
     component: Terms,
   });
+  // The admin browser is a route, not a link: `ROUTES` is the public header's list
+  // and the admin path is deliberately absent from it, so nothing in the public shell
+  // advertises the surface. It reads the open trace from its own search param, which
+  // is what makes a read shareable as a link.
+  const adminRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: "/admin",
+    component: Admin,
+    validateSearch: validateAdminSearch,
+  });
   return rootRoute.addChildren([
     indexRoute,
     healthRoute,
@@ -121,6 +137,7 @@ export function createRouteTree() {
     faqRoute,
     privacyRoute,
     termsRoute,
+    adminRoute,
   ]);
 }
 

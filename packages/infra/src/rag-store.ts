@@ -1,8 +1,13 @@
 import type { Effect } from "effect";
-import type { RagStoreCorpus, StoreError } from "./rag-store-corpus-seam";
-import type { RagStoreEvalLedger, RagStoreEvalRunWrite } from "./rag-store-eval-seam";
-import type { RagStoreFeedback } from "./rag-store-feedback-seam";
-import type { RagStoreTrace } from "./rag-store-trace-seam";
+import type {
+  RagStoreAdmin,
+  RagStoreCorpus,
+  RagStoreEvalLedger,
+  RagStoreEvalRunWrite,
+  RagStoreFeedback,
+  RagStoreTrace,
+  StoreError,
+} from "./rag-store-seams";
 
 /**
  * RagStore — the single persistence seam: every method returns
@@ -163,7 +168,8 @@ export interface RagStore
     RagStoreTrace,
     RagStoreEvalRunWrite,
     RagStoreEvalLedger,
-    RagStoreFeedback {
+    RagStoreFeedback,
+    RagStoreAdmin {
   // -- Chat (v1 conversational surface) ------------------------------------
 
   createChatSession(input: {
@@ -246,5 +252,6 @@ export interface RagStore
    * correctness concern. */
   cleanupExpiredSessions(before?: Date): Effect.Effect<number, StoreError>;
 }
+export type { RagStoreAdmin } from "./rag-store-admin-seam";
 export type { RagStoreEvalLedger, RagStoreEvalRunWrite } from "./rag-store-eval-seam";
 export type { AnswerFeedbackTarget, FeedbackInsert } from "./rag-store-feedback-seam";

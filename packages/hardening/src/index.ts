@@ -5,3 +5,4 @@ export {
   type HardeningOptions,
 } from "./security-headers";
 export { serveAssets, type AssetFetcher, type ServeAssetsOptions } from "./serve-assets";
+export { constantTimeEqual, hmacSha256, sha256, toHex, type Bytes } from "./constant-time";

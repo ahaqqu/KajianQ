@@ -23,10 +23,15 @@ export function TraceBody({
   trace,
   messageId,
   persisted,
+  feedback = true,
 }: {
   trace: ChatTraceFrame;
   messageId: string;
   persisted: boolean;
+  /** Whether the per-source flag buttons render. A read-only reader (the admin
+   * browser) passes `false`: the flags write to the feedback ledger, and that
+   * surface writes nothing. */
+  feedback?: boolean;
 }) {
   const locale: Locale = useLocale();
   const [techOpen, setTechOpen] = useState(false);
@@ -56,6 +61,7 @@ export function TraceBody({
                 score={score}
                 messageId={messageId}
                 persisted={persisted}
+                feedback={feedback}
               />
             ))}
           </ol>

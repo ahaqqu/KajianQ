@@ -69,6 +69,10 @@ export type AppBindings = {
    * refuses more ids than its ceiling, so a value above it is a typed config failure
    * when the chat wiring builds — never a trace that fails to parse. */
   CALLER_PRIORITY_K?: string;
+  /** The single admin credential (ADR-0064). Optional: unset means the admin surface
+   * is disabled — every admin route answers the uniform 401 — and the public
+   * product is untouched, so this variable can never be a boot precondition. */
+  ADMIN_PASSWORD?: string;
 };
 
 /** Resolved per-request identity, set by `authGuard` before guarded routes run; session

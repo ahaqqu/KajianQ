@@ -10,12 +10,14 @@ import {
 } from "@app/infra";
 import {
   matchesMetadataFilters,
+  memoryAdminMethods,
   memoryAuthMethods,
   memoryChatMethods,
   memoryEvalMethods,
   memoryFeedbackMethods,
   memoryScopeMethods,
   toReadChild,
+  type MemoryAdminAccessRecord,
 } from "./memory-rag-store-parts";
 
 /**
@@ -44,6 +46,8 @@ export function createMemoryRagStore(): RagStore & {
     outcome: unknown;
   }[];
   allFeedback: () => readonly (FeedbackInsert & { id: string })[];
+  /** The append-only admin access log, in append order (test introspection). */
+  allAdminAccess: () => readonly MemoryAdminAccessRecord[];
   cosineSearch: (
     track: "primary" | "fallback",
     query: readonly number[],
@@ -108,6 +112,7 @@ export function createMemoryRagStore(): RagStore & {
     nextId: () => (seq += 1),
   });
   const chatMethods = memoryChatMethods({ chatSessions, chatMessages });
+  const adminMethods = memoryAdminMethods({ chatMessages, traceRows, traceRowMessageIds });
 
   const cosine = (a: readonly number[], b: readonly number[]): number => {
     let dot = 0;
@@ -122,6 +127,7 @@ export function createMemoryRagStore(): RagStore & {
   };
 
   const store: RagStore = {
+    ...adminMethods,
     insertDocParent(input) {
       return Effect.sync(() => {
         seq += 1;
@@ -254,6 +260,7 @@ export function createMemoryRagStore(): RagStore & {
     allChatSessions: () => [...chatSessions.entries()].map(([id, userId]) => ({ id, userId })),
     allEvalResults: () => [...evalResults.values()],
     allFeedback: () => [...feedback.values()],
+    allAdminAccess: adminMethods.allAdminAccess,
     cosineSearch: (track, query, limit) =>
       Effect.runPromise(store.similaritySearch(track, query, { limit })),
   };

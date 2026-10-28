@@ -13,6 +13,10 @@ export function registerDocRoutes(api: Hono<ApiEnv>): void {
       documentation: {
         info: { title: "KajianQ API", version: "1.0.0" },
       },
+      // The admin surface is not part of the public document (ADR-0064): its paths
+      // are excluded rather than described, so the published contract claims no
+      // admin route and a generated client cannot reach one.
+      exclude: [/^\/admin\//],
     }),
   );
   api.get("/docs", (c) =>

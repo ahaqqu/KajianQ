@@ -4,6 +4,7 @@
  * as `packages/infra/src/rag-store-postgres-parts.ts`).
  */
 
+export { memoryAdminMethods, type MemoryAdminAccessRecord } from "./memory-rag-store-admin";
 export { memoryEvalMethods } from "./memory-rag-store-eval";
 export { memoryFeedbackMethods } from "./memory-rag-store-feedback";
 export { memoryAuthMethods } from "./memory-rag-store-auth";

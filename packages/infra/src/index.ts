@@ -75,3 +75,14 @@ export {
   type SimilarChild,
 } from "./rag-store";
 export { type RagStoreCorpus } from "./rag-store-corpus-seam";
+export {
+  ADMIN_ACCESS_LOG_RETENTION_DAYS,
+  type AdminAccessEntry,
+  type AdminAccessRoute,
+  type AdminAccessSummary,
+  type AdminTraceFilter,
+  type AdminTracePage,
+  type AdminTraceRecord,
+  type AdminTraceRow,
+  type RagStoreAdmin,
+} from "./rag-store-admin-seam";

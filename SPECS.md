@@ -110,9 +110,21 @@ The chat serving chains are selected by a **named provider profile** (ADR-0059):
 
 ### 3.6 Admin (v1 scope)
 
-Routes inside the PWA behind a single env-configured admin credential:
+Routes behind one env-configured admin credential, in a session of their own and
+outside the public API description. A deployment with no credential configured serves
+none of them, and every path on the surface answers a miss identically — the same
+refusal whether the credential is wrong, the session is absent, or the surface is off.
+The surface is read-only, and its reads of chat content are recorded in an
+append-only access log of when, which route and a summary of the filters' dimensions —
+never the question, the answer or the search text — written before the read is
+served, so a read that cannot be recorded is refused rather than served unrecorded,
+and reclaimed by a retention window.
 
-1. **Trace browser** — every message's full trace (tokens, cost, raw JSON beyond the user view).
+1. **Trace browser** — search every message by its question or answer text, date,
+   routed intent, model, refusal, relaxed filter, and per-answer latency or cost
+   floors, over server-side pagination with a stable link per answer; each answer
+   opens the same derived frame the chat panel renders for it, its totals summed over
+   every provider call it made, and the stored trace as a JSON download.
 2. **Feedback queue** — accept or reject; accepted items become Golden Set cases.
 3. **Harness results viewer** — benchmark and eval runs, trends, model comparisons (the harness itself is CLI). Prompt and model configuration stay in files, reviewed via PRs — no UI editing in v1.
 
@@ -258,6 +270,7 @@ Success factors and per-phase metrics live in `docs/SUCCESS_FACTORS_AND_METRICS.
 | `adr/0061` | The caller's verbatim question is always searched as its own sub-query beside the router model's paraphrases: a paraphrase is an additive angle that never displaces the caller's words, so the model's vocabulary cannot silently narrow what the corpus is searched for                                                                                                                                                                                                                                                                                      |
 | `adr/0062` | The caller's own query is a priority retrieval angle: its leading dense hits are guaranteed into the context whatever their fusion rank, labelled with their own provenance so the rerank keeps their position, bounded by one small fixed number, and recorded as their own typed event — a paraphrase vote cannot outvote the words the user actually wrote                                                                                                                                                                                                  |
 | `adr/0063` | Keeping a conversation in the browser is opt-in: the chat asks once, keeps nothing until the reader agrees, gates every chat key behind one storage seam, and lets the choice be changed from the history drawer                                                                                                                                                                                                                                                                                                                                               |
+| `adr/0064` | The operator's trace browser is credential-gated and read-only: its own session and cookie, off until configuration supplies a credential, the same refusal on every miss, and every read recorded in an append-only log of the filters' dimensions — never the question, the answer or the search text — written before the read is served, with a retention window the nightly cleanup enforces                                                                                                                                                              |
 
 ## 9. v2 Plan — Sanadset: Isnad data & per-chain grades (targeted for v2.0)
 

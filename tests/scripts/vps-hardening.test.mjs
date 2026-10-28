@@ -14,6 +14,8 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 import { describe, expect, it } from "vite-plus/test";
+import { createApi } from "../../apps/api/src/app";
+import { ADMIN_LOGIN_PATH } from "../../apps/api/src/lib/admin-auth";
 import {
   BACKUP_KEEP_DAILY,
   LABEL_RE,
@@ -1343,6 +1345,95 @@ describe("provisioning config as code stays true to the ADR", () => {
     expect(conf).toMatch(/proxy_set_header CF-Connecting-IP\s+\$remote_addr/);
   });
 
+  /** The first path segment of every route the mounted API registers, wildcards excluded. */
+  const apiNamespaces = (api) => {
+    const namespaces = new Set();
+    for (const { path } of api.routes) {
+      if (typeof path !== "string") continue;
+      const first = path.split("/")[1];
+      if (first !== undefined && first !== "" && first !== "*") namespaces.add(`/${first}`);
+    }
+    return namespaces;
+  };
+
+  it("an API top-level path cannot ship without its proxy location", () => {
+    // A new top-level API namespace is a DEPLOY change, not only a code change: nginx proxies
+    // only paths it has a location for, and every other path falls into `location /` and
+    // answers index.html with a 200 (a closed surface then looks absent, and the client's JSON
+    // parse fails instead of the API answering). The namespace set is DERIVED from the mounted
+    // app's route table — the registration sites themselves, constants included — so adding
+    // /foo/ to the API reddens here until the config carries `location /foo/`.
+    const namespaces = apiNamespaces(createApi());
+    expect([...namespaces].sort()).toEqual(["/admin", "/docs", "/openapi.json", "/v1"]);
+
+    const conf = directives("provision/vps/nginx/kajianq.conf");
+    const blocks = new Map();
+    for (const match of conf.matchAll(/^[ \t]*location\s+(=\s*)?(\/[^\s{]*)\s*\{/gm)) {
+      const key = match[2].replace(/\/+$/, "") || "/";
+      blocks.set(key, match.index ?? 0);
+    }
+    for (const namespace of namespaces) {
+      const at = blocks.get(namespace);
+      expect(at, `${namespace} needs its own proxy location in kajianq.conf`).toBeTypeOf("number");
+      // A flat block (no nested braces in this file): from its `location` line to the first `}`.
+      const block = conf.slice(at, conf.indexOf("}", at));
+      expect(block, namespace).toMatch(/proxy_pass\s+__KAJIANQ_API_UPSTREAM__/);
+      expect(block, namespace).toMatch(/proxy_set_header\s+Host\s+\$host/);
+      expect(block, namespace).toMatch(/proxy_set_header\s+CF-Connecting-IP\s+\$remote_addr/);
+      // The API is a plain-HTTP listener: the proxy is the only statement of the public scheme.
+      expect(block, namespace).toMatch(/proxy_set_header\s+X-Forwarded-Proto\s+\$scheme/);
+    }
+    // …and the fallback is the SPA, never an API namespace: that is what makes the
+    // "unknown /admin path is a JSON 404" claim hold on the box rather than only in Hono.
+    const fallback = conf.slice(blocks.get("/") ?? 0);
+    expect(fallback).toMatch(/try_files\s+\$uri\s+\$uri\/\s+\/index\.html/);
+  });
+
+  it("a top-level API path registered through a constant is derived, not scraped from literals", () => {
+    // Mutation check for the derivation above. `admin-session.ts` registers its routes at
+    // `ADMIN_LOGIN_PATH` (lib/admin-auth.ts), so that module holds no quoted `/admin`
+    // literal: a scan of routes/*.ts would leave the namespace set unchanged while the
+    // route exists. A fake app whose route is registered at a constant must still be caught.
+    const OPERATOR_PATH = "/operator/v1/traces";
+    // A route table shaped like Hono's: the derivation reads registration sites, so it is the
+    // constant's value that must surface, never a scan of this test's own literals.
+    const fake = { routes: [{ method: "GET", path: OPERATOR_PATH, handler: () => {} }] };
+    expect([...apiNamespaces(fake)]).toEqual(["/operator"]);
+    // …and the real app's route table carries the constant-registered admin route, so the
+    // expected set above is not an accident of the other admin modules spelling their paths.
+    expect(createApi().routes.map((route) => route.path)).toContain(ADMIN_LOGIN_PATH);
+  });
+
+  it("the admin namespace is uncacheable at the proxy, refusals included", () => {
+    const conf = directives("provision/vps/nginx/kajianq.conf");
+    const at = conf.indexOf("location /admin/");
+    expect(at).toBeGreaterThan(-1);
+    const block = conf.slice(at, conf.indexOf("}", at));
+    // The API sets `no-store` on the reads it decorates; its 400/404/422/503 refusals and
+    // nginx's own error pages carry no `Cache-Control`, so the proxy's `always` is what
+    // makes the namespace uncacheable end to end rather than only on the happy path.
+    expect(block).toMatch(/add_header\s+Cache-Control\s+"no-store"\s+always;/);
+  });
+
+  it("the setup doc carries the post-deploy probe for the proxy's top-level API paths", () => {
+    // The location set above is only true of a box that re-applied the config: a deploy of an
+    // API change alone does not reload nginx. The probe is what distinguishes "the proxy is
+    // wired" from "the SPA fallback answered 200", so it must stay in the runbook.
+    const setup = read("docs/VPS-SETUP.md");
+    expect(setup).toMatch(/Verify the admin surface reached the API/);
+    expect(setup).toContain("/admin/v1/session");
+    expect(setup).toMatch(/content_type/);
+    // The probe must say which answer means "not wired", or an operator reads a 200 as success.
+    expect(setup).toMatch(/SPA fallback/);
+    // The un-wired box answers the `/admin/` root with the SPA shell (200); the wired one
+    // reaches the API, whose trimTrailingSlash answers 301. Expecting 200 would bless the
+    // failure this section exists to catch.
+    const rootProbe = setup
+      .split("\n")
+      .find((line) => line.includes("/admin/") && line.includes("http_code"));
+    expect(rootProbe).toContain("301");
+  });
+
   it("HTTP only redirects and logs nothing, so the IP-bearing log is confined to the TLS server block", () => {
     const conf = directives("provision/vps/nginx/kajianq.conf");
     const plain = conf.slice(conf.indexOf("listen 80"));
@@ -2352,17 +2443,31 @@ describe("provisioning config as code stays true to the ADR", () => {
   });
 
   it("the api.env example carries every key the serving composition root reads, as placeholders", () => {
-    // The example must list exactly the PASSTHROUGH_KEYS set in apps/api/src/lib/server.ts (the
-    // two sets drift only together), set KAJIANQ_WEB_ROOT to the deployed path (the default 503s
-    // every SPA route while health stays green), and hold placeholders only — the loopback
-    // 127.0.0.1 is exempt as the Postgres listener's own address.
+    // The example must list exactly the keys apps/api/src/lib/server.ts copies onto the request
+    // bindings — PASSTHROUGH_KEYS and the separately-bound ADMIN_KEYS (the two sets drift only
+    // together) — set KAJIANQ_WEB_ROOT to the deployed path (the default 503s every SPA route
+    // while health stays green), and hold placeholders only — the loopback 127.0.0.1 is exempt
+    // as the Postgres listener's own address.
     const example = read("provision/vps/api.env.example");
     const server = readFileSync(resolve(process.cwd(), "apps/api/src/lib/server.ts"), "utf8");
-    const keys = [...server.matchAll(/^\s*"([A-Z_0-9]+)",?$/gm)].map((m) => m[1]);
+    /** The string keys of one `const NAME = [ … ] as const;` block. The admin key list is a
+     * one-element array on a single line, which the old line-anchored scrape never matched —
+     * so ADMIN_PASSWORD was asserted nowhere and a fresh box had no documented way to enable
+     * the surface. */
+    const keysOf = (name) => {
+      const block = new RegExp(`const ${name} = \\[([\\s\\S]*?)\\] as const;`).exec(server)?.[1];
+      expect(block, `${name} must be declared in server.ts`).toBeDefined();
+      return [...block.matchAll(/"([A-Z_0-9]+)"/g)].map((match) => match[1]);
+    };
+    const keys = [...keysOf("PASSTHROUGH_KEYS"), ...keysOf("ADMIN_KEYS")];
     expect(keys.length).toBeGreaterThanOrEqual(8);
+    expect(keys).toContain("ADMIN_PASSWORD");
     for (const key of keys) {
       expect(example, key).toMatch(new RegExp(`^${key}=`, "m"));
     }
+    // The recorded posture ships the surface OFF: an empty assignment is the documented
+    // "disabled" value, and a placeholder credential would ship an enabled surface instead.
+    expect(example).toMatch(/^ADMIN_PASSWORD=\s*$/m);
     // The template must ship the recorded `staging` label so a re-arm reddens here rather than
     // on a rebuilt box (ADR-0044 decision 2). Asserted on the parsed value — systemd strips
     // whitespace and takes the last assignment — and on there being one assignment.
