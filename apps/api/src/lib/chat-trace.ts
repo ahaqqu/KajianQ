@@ -3,6 +3,7 @@ import {
   type ChatTraceFrame,
   type ChunkRef,
   type Trace,
+  type TraceEvent,
 } from "@app/contracts";
 import type { DocChildById, RagStore } from "@app/infra";
 import type { StoreBridge } from "@app/kajianq-domain";
@@ -116,6 +117,13 @@ function toTechnicalChunk(
   };
 }
 
+/** The reviewer pre-gate's own decision record, narrowed for its detail shape. */
+type ReviewerDecision = Extract<TraceEvent, { kind: "decision" }>;
+
+function isReviewerDecision(event: TraceEvent): event is ReviewerDecision {
+  return event.kind === "decision" && event.stage === "reviewer";
+}
+
 /**
  * Pure core: derive the two-layer Trace frame from a persisted trace and the
  * display rows of the trace's chunks. A PURE refusal's trace carries no
@@ -179,9 +187,7 @@ export function deriveTraceFrame(input: {
   // unprojected rather than shown against a fabricated threshold. Absent when the
   // run never reached the pre-gate (a refusal, a validator failure, an unwired
   // decider) — absence is never "cleared".
-  const reviewerEvent = trace.events.findLast(
-    (event) => event.kind === "decision" && event.stage === "reviewer",
-  );
+  const reviewerEvent = trace.events.findLast(isReviewerDecision);
   const reviewerThreshold = reviewerEvent?.detail.threshold;
   return {
     messageId,
