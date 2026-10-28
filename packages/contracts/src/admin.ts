@@ -36,8 +36,16 @@ export const AdminLoginRequestSchema = v.object({
 
 export type AdminLoginRequest = v.InferOutput<typeof AdminLoginRequestSchema>;
 
-/** `authenticated` is state, never a capability claim: the cookie is the credential. */
-export const AdminSessionSchema = v.object({ authenticated: v.boolean() });
+/**
+ * The session probe's answer. `authenticated` is state, never a capability claim:
+ * the httpOnly cookie is the credential. `csrfToken` is the value the login POST
+ * must echo in its `X-CSRF-Token` header — delivered in the body because the
+ * cookie itself is httpOnly, which is what keeps a cross-site page from reading it.
+ */
+export const AdminSessionSchema = v.object({
+  authenticated: v.boolean(),
+  csrfToken: v.pipe(v.string(), v.minLength(1)),
+});
 
 export type AdminSession = v.InferOutput<typeof AdminSessionSchema>;
 

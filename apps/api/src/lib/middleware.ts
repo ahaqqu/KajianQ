@@ -14,9 +14,21 @@ import type { Hono } from "hono";
 export type MiddlewareOpts = {
   limiter?: RateLimiter;
   limit?: number;
+  /** The login POST's budget, per IP per minute (ADR-0064). Default 5. */
+  adminLoginLimit?: number;
+  /** The admin read surface's budget, per IP per minute (ADR-0064). Default 60. */
+  adminLimit?: number;
   /** Verifier key for bypass tokens; tests inject a generated keypair's key. */
   bypassPublicKeyB64?: string;
 };
+
+/** The login POST's default budget: tight enough that guessing a credential is
+ * hopeless, loose enough that a mistyped password does not lock the operator out. */
+export const ADMIN_LOGIN_LIMIT = 5;
+
+/** The admin reads' default budget: a browsing operator pages through traces far
+ * below this, while a scripted harvest is throttled. */
+export const ADMIN_READ_LIMIT = 60;
 
 /** Installs the cross-cutting middleware every route shares. */
 export function applyMiddleware(api: Hono<ApiEnv>, opts?: MiddlewareOpts): void {
@@ -59,6 +71,27 @@ export function applyMiddleware(api: Hono<ApiEnv>, opts?: MiddlewareOpts): void 
     if (!(await allowRequest(`ip:${fnv1aHex(ip)}`, limiter, opts?.limit))) {
       return c.json({ error: "rate_limited" }, 429);
     }
+    await next();
+  });
+  // The admin surface has its own budget (ADR-0064), in namespaces of its own: the
+  // login POST — the only unauthenticated write on the API — gets a tight one, and
+  // the reads get the browsing one. It is NOT metered by the public `/v1` meter,
+  // whose budget protects the chat's spend; sharing that namespace would let either
+  // surface exhaust the other. The client IP is digested before it names a counter,
+  // exactly as on the public path, so no raw address is held here either.
+  api.use("/admin/*", async (c, next) => {
+    const login = c.req.method === "POST" && c.req.path === "/admin/v1/session";
+    const limit = login
+      ? (opts?.adminLoginLimit ?? ADMIN_LOGIN_LIMIT)
+      : (opts?.adminLimit ?? ADMIN_READ_LIMIT);
+    const ip = c.req.header("CF-Connecting-IP") ?? "local";
+    const limiter = opts?.limiter ?? resolveRateLimiter();
+    const allowed = await allowRequest(
+      `${login ? "admin-login" : "admin-read"}:${fnv1aHex(ip)}`,
+      limiter,
+      limit,
+    );
+    if (!allowed) return c.json({ error: "rate_limited" }, 429);
     await next();
   });
 }

@@ -27,6 +27,9 @@ export type ScheduledEnv = Record<string, string | undefined>;
 export type ScheduledResult = {
   /** Rows removed, or null when the store was not configured / the call failed. */
   deleted: number | null;
+  /** Admin access records past the retention window that were removed, or null on a
+   * failure — the log's own window, applied by the store (ADR-0064). */
+  adminLogDeleted: number | null;
   ok: boolean;
 };
 
@@ -55,7 +58,7 @@ export async function cleanupExpiredSessions(
       // No database binding in this environment (local dev, an environment without
       // a configured store): the feature is disabled, not broken.
       logger.warn("scheduled.cleanup_skipped", { missing: err.missing ?? "unknown" });
-      return { deleted: null, ok: false };
+      return { deleted: null, adminLogDeleted: null, ok: false };
     }
     throw err;
   }
@@ -69,16 +72,25 @@ export async function cleanupExpiredSessions(
       // A store that resolves to a non-number is a contract violation worth
       // seeing, not a count to report as "0 cleaned".
       logger.error("scheduled.cleanup_unexpected_result", { value: String(deleted) });
-      return { deleted: null, ok: false };
+      return { deleted: null, adminLogDeleted: null, ok: false };
     }
     logger.info("scheduled.sessions_cleaned", { deleted });
-    return { deleted, ok: true };
+    // The admin access log's retention window, applied by the store's own guard: an
+    // append-only table whose published retention is only true if something deletes
+    // by it. A failure here is logged and reported, never thrown.
+    const adminLogDeleted = await runStore(store.purgeAdminAccessLog());
+    if (typeof adminLogDeleted !== "number") {
+      logger.error("scheduled.admin_log_unexpected_result", { value: String(adminLogDeleted) });
+      return { deleted, adminLogDeleted: null, ok: false };
+    }
+    logger.info("scheduled.admin_log_purged", { deleted: adminLogDeleted });
+    return { deleted, adminLogDeleted, ok: true };
   } catch (err) {
     // A transient store fault must not fail the cron run: log and let the next
     // tick retry (the rows are still there, still harmless).
     logger.error("scheduled.cleanup_failed", {
       error: err instanceof Error ? err.message : String(err),
     });
-    return { deleted: null, ok: false };
+    return { deleted: null, adminLogDeleted: null, ok: false };
   }
 }

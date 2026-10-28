@@ -61,6 +61,15 @@ function chatEnvFrom(env: Record<string, string | undefined>): Record<string, st
   return present(env, PASSTHROUGH_KEYS);
 }
 
+/** The admin surface's own keys, kept OUT of the chat env view above: the admin
+ * credential is not a chat binding, and the provider wiring must never see it. An
+ * absent credential keeps the admin surface disabled, never a boot failure. */
+const ADMIN_KEYS = ["ADMIN_PASSWORD"] as const;
+
+function adminEnvFrom(env: Record<string, string | undefined>): Record<string, string> {
+  return present(env, ADMIN_KEYS);
+}
+
 /** Build the bindings from that one filtered view; `KAJIANQ_WEB_ROOT` is read
  * from the raw env, since it configures the asset handler and is not a chat key. */
 function bindingsFrom(
@@ -70,6 +79,7 @@ function bindingsFrom(
   return {
     ASSETS: createDiskAssetFetcher(env.KAJIANQ_WEB_ROOT ?? "./apps/web/dist"),
     ...chatEnv,
+    ...adminEnvFrom(env),
   };
 }
 
@@ -141,6 +151,13 @@ export function serveApi(opts: ServeOptions): { stop: () => Promise<void> } {
   // Runs outside the request path's `wiringOr503`: a config fault fails the boot
   // before the socket binds, never a silent per-request default.
   reportProviderPosture(providers, logger);
+  // The admin surface's posture, names only. A box that meant to have a Trace
+  // browser and lost its credential otherwise looks identical from outside — every
+  // admin route answers the same 401 — so the one place the difference is visible is
+  // here, at boot.
+  logger.info("admin.posture", {
+    surface: adminEnvFrom(env).ADMIN_PASSWORD === undefined ? "disabled" : "enabled",
+  });
   logger.info("server.listening", { hostname, port });
 
   const stop = async (): Promise<void> => {

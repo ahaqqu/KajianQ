@@ -1,9 +1,13 @@
 import type { Effect } from "effect";
-import type { RagStoreAdmin } from "./rag-store-admin-seam";
-import type { RagStoreCorpus, StoreError } from "./rag-store-corpus-seam";
-import type { RagStoreEvalLedger, RagStoreEvalRunWrite } from "./rag-store-eval-seam";
-import type { RagStoreFeedback } from "./rag-store-feedback-seam";
-import type { RagStoreTrace } from "./rag-store-trace-seam";
+import type {
+  RagStoreAdmin,
+  RagStoreCorpus,
+  RagStoreEvalLedger,
+  RagStoreEvalRunWrite,
+  RagStoreFeedback,
+  RagStoreTrace,
+  StoreError,
+} from "./rag-store-seams";
 
 /**
  * RagStore — the single persistence seam: every method returns

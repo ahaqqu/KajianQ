@@ -23,35 +23,62 @@ vi.mock("pg", () => ({
   },
 }));
 
-/** A store stand-in exposing only the method under test. */
-function storeWith(cleanup: () => unknown): RagStore {
-  return { cleanupExpiredSessions: cleanup } as unknown as RagStore;
+/** A store stand-in exposing only the methods under test. */
+function storeWith(cleanup: () => unknown, purge: () => unknown = () => 0): RagStore {
+  return {
+    cleanupExpiredSessions: cleanup,
+    purgeAdminAccessLog: purge,
+  } as unknown as RagStore;
 }
 
 describe("cleanupExpiredSessions", () => {
   it("skips (not fails) when the database binding is absent", async () => {
     const result = await cleanupExpiredSessions({});
-    expect(result).toEqual({ deleted: null, ok: false });
+    expect(result).toEqual({ deleted: null, adminLogDeleted: null, ok: false });
   });
 
   it("calls the store's cleanup and reports the reclaimed count", async () => {
     let called = 0;
-    const store = storeWith(() => {
-      called += 1;
-      return { __effect: true };
-    });
+    const store = storeWith(
+      () => {
+        called += 1;
+        return { __effect: "sessions" };
+      },
+      () => ({ __effect: "admin-log" }) as unknown as number,
+    );
     const result = await cleanupExpiredSessions(
       { DATABASE_URL: "postgres://x" },
       {
         createStore: () => store,
-        runStore: async (effect) => {
-          expect(effect).toEqual({ __effect: true });
-          return 3;
-        },
+        runStore: async (effect) =>
+          (effect as { __effect: string }).__effect === "sessions" ? 3 : 0,
       },
     );
     expect(called).toBe(1);
-    expect(result).toEqual({ deleted: 3, ok: true });
+    expect(result).toEqual({ deleted: 3, adminLogDeleted: 0, ok: true });
+  });
+
+  it("purges the admin access log by its own window in the same nightly run", async () => {
+    let purged = 0;
+    const result = await cleanupExpiredSessions(
+      { DATABASE_URL: "postgres://x" },
+      {
+        createStore: () =>
+          storeWith(
+            () => ({ __effect: "sessions" }),
+            () => {
+              purged += 1;
+              return { __effect: "admin-log" } as unknown as number;
+            },
+          ),
+        runStore: async (effect) => {
+          if ((effect as { __effect: string }).__effect === "admin-log") return 7;
+          return 1;
+        },
+      },
+    );
+    expect(purged).toBe(1);
+    expect(result).toEqual({ deleted: 1, adminLogDeleted: 7, ok: true });
   });
 
   it("reports a non-numeric store result as a failure, never as '0 cleaned'", async () => {
@@ -59,7 +86,7 @@ describe("cleanupExpiredSessions", () => {
       { DATABASE_URL: "postgres://x" },
       { createStore: () => storeWith(() => ({})), runStore: async () => undefined },
     );
-    expect(result).toEqual({ deleted: null, ok: false });
+    expect(result).toEqual({ deleted: null, adminLogDeleted: null, ok: false });
   });
 
   it("swallows a store fault (logged, not thrown) so the cron run survives", async () => {
@@ -72,7 +99,7 @@ describe("cleanupExpiredSessions", () => {
         },
       },
     );
-    expect(result).toEqual({ deleted: null, ok: false });
+    expect(result).toEqual({ deleted: null, adminLogDeleted: null, ok: false });
   });
 
   it("rethrows a non-config store-construction failure (a real bug, not a disabled feature)", async () => {
@@ -97,6 +124,6 @@ describe("cleanupExpiredSessions", () => {
         },
       },
     );
-    expect(result).toEqual({ deleted: null, ok: false });
+    expect(result).toEqual({ deleted: null, adminLogDeleted: null, ok: false });
   });
 });

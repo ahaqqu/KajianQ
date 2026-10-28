@@ -34,10 +34,22 @@ import { constraintError, parseTrace } from "./rag-store-shared";
  * back as a string, and a total that arrives as text is a total someone will
  * eventually sort lexicographically.
  */
+/**
+ * The answer's own clock: the trace records when the answer happened, and the row's
+ * insert time is an implementation detail (a backfill or a replay would order by the
+ * latter and hide the answer in the wrong day). Every read and every date bound uses
+ * this one expression, so the filter and the column it compares can never disagree —
+ * and a malformed trace degrades to the row time rather than failing the whole list.
+ */
+const CREATED_AT_MS = `CASE
+      WHEN t.trace->>'createdAt' ~ '^[0-9]+$' THEN (t.trace->>'createdAt')::double precision
+      ELSE extract(epoch FROM t.created_at) * 1000
+    END`;
+
 const ROW_COLUMNS = `
     t.id AS trace_id,
     t.message_id,
-    (extract(epoch FROM t.created_at) * 1000)::double precision AS created_at_ms,
+    ${CREATED_AT_MS} AS created_at_ms,
     COALESCE(uq.content, '') AS question,
     m.content AS answer,
     (
@@ -158,10 +170,10 @@ function whereOf(filter: AdminTraceFilter): { text: string; params: unknown[] } 
     );
   }
   if (filter.from !== undefined) {
-    parts.push(`t.created_at >= to_timestamp(${bind(filter.from)} / 1000.0)`);
+    parts.push(`${CREATED_AT_MS} >= ${bind(filter.from)}`);
   }
   if (filter.to !== undefined) {
-    parts.push(`t.created_at <= to_timestamp(${bind(filter.to)} / 1000.0)`);
+    parts.push(`${CREATED_AT_MS} <= ${bind(filter.to)}`);
   }
   if (filter.intent !== undefined) {
     parts.push(`EXISTS (
@@ -225,7 +237,7 @@ export function postgresAdminMethods(
       const where = whereOf(filter);
       const rowsParams = [...where.params, page.limit, page.offset];
       const rowsText = `SELECT${ROW_COLUMNS} ${ROW_FROM}${where.text}
-        ORDER BY t.created_at DESC, t.id DESC
+        ORDER BY created_at_ms DESC, t.id DESC
         LIMIT $${where.params.length + 1} OFFSET $${where.params.length + 2}`;
       const countText = `SELECT COUNT(*)::double precision AS total ${ROW_FROM}${where.text}`;
       return Effect.flatMap(
