@@ -88,7 +88,11 @@ export function applyMiddleware(api: Hono<ApiEnv>, opts?: MiddlewareOpts): void 
   // counter, exactly as on the public path, so no raw address is held here either.
   // Every answer from this namespace, refusals included, is `no-store`: a 400/404/422/
   // 503 is a per-request verdict, and a cached one would outlive the condition it
-  // reported.
+  // reported. The header is prepared before the handler for the 429 early return,
+  // then set on the final response because the catch-all's JSON 404 is a raw
+  // `Response` that Hono does not merge the prepared header into. The one answer that
+  // stays unannotated is `trimTrailingSlash`'s 301, which runs before this middleware:
+  // it has no body and points at the same target, so there is nothing to cache.
   api.use(`${ADMIN_API_PREFIX}/*`, async (c, next) => {
     c.header("Cache-Control", "no-store");
     const login = c.req.method === "POST" && c.req.path === ADMIN_LOGIN_PATH;
@@ -104,5 +108,6 @@ export function applyMiddleware(api: Hono<ApiEnv>, opts?: MiddlewareOpts): void 
     );
     if (!allowed) return c.json({ error: "rate_limited" }, 429);
     await next();
+    c.res.headers.set("Cache-Control", "no-store");
   });
 }

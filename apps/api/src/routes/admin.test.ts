@@ -12,7 +12,7 @@ import {
 import { traceTotals, type AdminTraceCall, type Trace } from "@app/contracts";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { createApi } from "../app";
-import { ADMIN_API_PREFIX, ADMIN_COOKIE_PATH, ADMIN_LOGIN_PATH } from "../lib/admin-auth";
+import { ADMIN_API_PREFIX, ADMIN_COOKIE_PATH, ADMIN_LOGIN_PATH } from "../lib/admin-paths";
 import type { AssetFetcher } from "@app/hardening";
 
 /**
@@ -434,11 +434,14 @@ describe("admin auth: nothing is readable without the credential", () => {
     expect((await post("http://chat.example.org")).status).toBe(401);
   });
 
-  it("accepts a proxied https Origin only when the edge says it terminated TLS", async () => {
+  it("refuses a proxied https Origin unless ALLOWED_ORIGINS names it, whatever the client forwards", async () => {
     await seededStore();
     const instance = api();
-    // No ALLOWED_ORIGINS: the request's own host is the fallback, and the scheme mismatch
-    // is accepted only on the proxy's statement — never on the client's.
+    // ALLOWED_ORIGINS is the only source that can vouch for the browser's origin. The
+    // API is a plain-HTTP listener behind the TLS proxy, so the request URL cannot: with
+    // no configured origin every Origin-carrying login fails closed, and a client-supplied
+    // X-Forwarded-Proto is a hop's scheme claim, not the caller's origin, so it must not
+    // rescue a single one of these.
     const env = adminEnv();
     const post = (origin: string, headers: Record<string, string> = {}) =>
       loginAttempt(
@@ -450,14 +453,40 @@ describe("admin auth: nothing is readable without the credential", () => {
         },
         "http://chat.example.org/v1/admin/session",
       );
-    expect((await post("http://chat.example.org")).status).toBe(200);
-    expect((await post("https://chat.example.org", { "x-forwarded-proto": "https" })).status).toBe(
-      200,
-    );
-    // The scheme alone is not enough: an untrusted client cannot claim it.
+    expect((await post("http://chat.example.org")).status).toBe(401);
     expect((await post("https://chat.example.org")).status).toBe(401);
-    // The host check runs first, so a spoofed scheme cannot widen the origin to another host.
+    expect((await post("https://chat.example.org", { "x-forwarded-proto": "https" })).status).toBe(
+      401,
+    );
     expect((await post("https://evil.example", { "x-forwarded-proto": "https" })).status).toBe(401);
+    // Configuring the public origin is what accepts that browser origin.
+    const configured = await loginAttempt(
+      api(),
+      { ...adminEnv(), ALLOWED_ORIGINS: "https://chat.example.org" },
+      { origin: "https://chat.example.org" },
+      "http://chat.example.org/v1/admin/session",
+    );
+    expect(configured.status).toBe(200);
+  });
+
+  it("logs an origin refusal without the refused origin or the request host", async () => {
+    await seededStore();
+    const lines: string[] = [];
+    const spy = vi.spyOn(console, "log").mockImplementation((line: unknown) => {
+      lines.push(String(line));
+    });
+    try {
+      const res = await loginAttempt(api(), adminEnv(), { origin: "https://evil.example" });
+      expect(res.status).toBe(401);
+      const refused = lines.filter((line) => line.includes("admin.login_origin_refused"));
+      expect(refused).toHaveLength(1);
+      // The operator can tell this refusal from a wrong password; a caller cannot
+      // write a chosen origin or the host into the log, and the response is unchanged.
+      expect(refused[0]).not.toContain("evil.example");
+      expect(refused[0]).not.toContain("localhost");
+    } finally {
+      spy.mockRestore();
+    }
   });
 
   it("answers a malformed login body the same way whether or not a credential is configured", async () => {
@@ -648,19 +677,6 @@ describe("admin auth: nothing is readable without the credential", () => {
     expect((await mixedBudget.request("/v1/admin/session", {}, env)).status).toBe(200);
   });
 
-  it("registers every admin route under the one admin prefix", () => {
-    const adminPaths = createApi()
-      .routes.map((route) => route.path)
-      .filter((path) => path.includes("admin"));
-    expect(adminPaths.length).toBeGreaterThan(0);
-    for (const path of adminPaths) {
-      // The proxy carries `/v1`, so an admin route outside that prefix is a deploy
-      // change (a new nginx location installed with sudo), not a code-only change.
-      expect(path.startsWith(`${ADMIN_API_PREFIX}/`), path).toBe(true);
-    }
-    expect(ADMIN_LOGIN_PATH).toBe(`${ADMIN_API_PREFIX}/session`);
-  });
-
   it("keeps every admin path off the public OpenAPI document", async () => {
     await seededStore();
     const res = await api().request("/openapi.json", {}, adminEnv());
@@ -672,11 +688,22 @@ describe("admin auth: nothing is readable without the credential", () => {
     expect(body).not.toContain(ADMIN_API_PREFIX);
   });
 
-  it("answers an unknown admin path with a JSON 404, never the SPA", async () => {
+  it("answers every unknown admin path with an uncacheable JSON 404, never the SPA", async () => {
     await seededStore();
-    const res = await api().request("/v1/admin/nope", {}, adminEnv());
-    expect(res.status).toBe(404);
-    expect(await res.json()).toEqual({ error: "not_found" });
+    const probes: [string, RequestInit | undefined][] = [
+      // The bare namespace, a path under it, and a method no admin route serves all
+      // fall to the catch-all, which answers a raw Response: the post-`next` header
+      // is what makes these uncacheable, not Hono's prepared one.
+      ["/v1/admin", undefined],
+      ["/v1/admin/nope", undefined],
+      ["/v1/admin/traces", { method: "POST", body: "{}" }],
+    ];
+    for (const [path, init] of probes) {
+      const res = await api().request(path, init, adminEnv());
+      expect(res.status, path).toBe(404);
+      expect(await res.json(), path).toEqual({ error: "not_found" });
+      expect(res.headers.get("cache-control"), path).toBe("no-store");
+    }
   });
 });
 

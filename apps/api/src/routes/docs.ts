@@ -1,6 +1,6 @@
 import { openAPIRouteHandler } from "hono-openapi";
 import type { Hono } from "hono";
-import { ADMIN_API_PREFIX } from "../lib/admin-auth";
+import { ADMIN_API_PATH_PATTERN } from "../lib/admin-paths";
 import type { ApiEnv } from "../lib/guard";
 
 /**
@@ -16,8 +16,9 @@ export function registerDocRoutes(api: Hono<ApiEnv>): void {
       },
       // The admin surface is not part of the public document (ADR-0064): its
       // namespace is excluded rather than described, so the published contract
-      // claims no admin route and a generated client cannot reach one.
-      exclude: [new RegExp(`^${ADMIN_API_PREFIX}/`)],
+      // claims no admin route and a generated client cannot reach one. The
+      // pattern is the namespace owner's own boundary, bare prefix included.
+      exclude: [ADMIN_API_PATH_PATTERN],
     }),
   );
   api.get("/docs", (c) =>

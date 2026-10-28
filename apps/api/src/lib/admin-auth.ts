@@ -2,6 +2,7 @@ import { constantTimeEqual, hmacSha256, sha256, toHex, type Bytes } from "@app/h
 import type { Context } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { allowedOrigins, type ApiEnv, type AppBindings } from "../env";
+import { ADMIN_COOKIE_PATH } from "./admin-paths";
 
 /**
  * The admin credential and session (ADR-0064) — a surface separate from the
@@ -28,26 +29,6 @@ import { allowedOrigins, type ApiEnv, type AppBindings } from "../env";
  * characters. It identifies a credential version in the access log without storing
  * the credential, a hash of it, or anything an offline guess could confirm.
  */
-
-/**
- * The admin surface's API prefix. It sits under the public API namespace so the proxy
- * that already serves `/v1` carries the admin read surface too; a top-level namespace
- * would be a deployment change (a new proxy location) rather than a code change.
- */
-export const ADMIN_API_PREFIX = "/v1/admin";
-
-/** The session and CSRF cookies' path: the admin API prefix, never the whole API. */
-export const ADMIN_COOKIE_PATH = ADMIN_API_PREFIX;
-
-/** The login route's own path. The admin middleware keys its tighter budget off this one
- * spelling, so a route move cannot leave credential guessing on the browsing budget. */
-export const ADMIN_LOGIN_PATH = `${ADMIN_API_PREFIX}/session`;
-
-/** True for the admin namespace itself and every path under it, and for nothing that
- * merely shares the prefix's characters (`/v1/administer` is a public path). */
-export function isAdminApiPath(path: string): boolean {
-  return path === ADMIN_API_PREFIX || path.startsWith(`${ADMIN_API_PREFIX}/`);
-}
 
 /** The session cookie. Never readable from script, never sent cross-site. */
 export const ADMIN_COOKIE = "kajianq_admin";
@@ -212,33 +193,18 @@ export async function csrfMatches(c: Context<ApiEnv>): Promise<boolean> {
  * True when the request carries no cross-site Origin. An absent Origin is a
  * same-origin fetch from a client that omits it; anything else must match.
  *
- * Behind the TLS-terminating nginx the API sees `http://<host>` while the browser
- * sends `https://<host>`, so the request URL's scheme is not the public origin. The
- * configured public origin (`ALLOWED_ORIGINS`) is therefore the first source of
- * truth when it is set — the same rule `resolveCorsOrigin` applies to every other
- * browser call. Only when no origin is configured does this fall back to the
- * request's own host, and then a scheme mismatch is accepted only when the edge
- * says it terminated TLS (`X-Forwarded-Proto`). The host check runs before that
- * header is read, so a spoofed scheme cannot widen the origin to another host.
+ * The configured public origin (`ALLOWED_ORIGINS`) is the only source that can vouch
+ * for the browser's origin — the same rule `resolveCorsOrigin` applies to every other
+ * browser call. Behind the TLS-terminating nginx the API is a plain-HTTP listener, so
+ * it sees `http://<host>` while the browser sends `https://<host>`; the request URL
+ * describes that hop, not the browser, so it is not a fallback and an unset allowlist
+ * refuses every Origin-carrying login. A forwarded `X-Forwarded-Proto` is a proxy's
+ * claim about the scheme, not the caller's origin, and is never read here.
  */
 export function sameOrigin(c: Context<ApiEnv>): boolean {
   const origin = c.req.header("origin");
   if (origin === undefined) return true;
-  const configured = allowedOrigins(c.env.ALLOWED_ORIGINS);
-  if (configured.length > 0) return configured.includes(origin);
-  try {
-    const request = new URL(c.req.url);
-    const candidate = new URL(origin);
-    if (candidate.host !== request.host) return false;
-    if (candidate.protocol === request.protocol) return true;
-    return (
-      request.protocol === "http:" &&
-      candidate.protocol === "https:" &&
-      c.req.header("x-forwarded-proto") === "https"
-    );
-  } catch {
-    return false;
-  }
+  return allowedOrigins(c.env.ALLOWED_ORIGINS).includes(origin);
 }
 
 export type AdminIdentity = { actor: string };

@@ -26,7 +26,7 @@ import { newRouter } from "../lib/guard";
  * content) before serving, through the one plan they share.
  */
 export const adminTraceRoutes = newRouter()
-  .get("/v1/admin/traces/:id", async (c): Promise<Response> => {
+  .get("/traces/:id", async (c): Promise<Response> => {
     const context = await withAdminRead(c, "traces.detail", () => traceReadPlan(c.req.param("id")));
     if (context instanceof Response) return context;
     const mirror = await readModelConfigMirror({
@@ -70,7 +70,7 @@ export const adminTraceRoutes = newRouter()
     c.header("Cache-Control", "no-store");
     return c.json(lookup.detail);
   })
-  .get("/v1/admin/traces/:id/raw", async (c): Promise<Response> => {
+  .get("/traces/:id/raw", async (c): Promise<Response> => {
     const context = await withAdminRead(c, "traces.raw", () => traceReadPlan(c.req.param("id")));
     if (context instanceof Response) return context;
     const record = await context.store.runStore(

@@ -719,6 +719,14 @@ no `apply.sh` run and no sudo. A new top-level API namespace would still need it
 own nginx location, which is why the hardening suite derives that set from the
 route table.
 
+Login additionally requires `ALLOWED_ORIGINS` to name this host's public https
+origin: the API is a plain-HTTP listener behind the TLS proxy, so an unset or
+stale allowlist refuses the login at the origin check even with the correct
+password. The probe above never exercises that check — a login that answers the
+uniform 401 with the right password is a wrong password only when
+`ALLOWED_ORIGINS` is correct; otherwise the API log carries
+`admin.login_origin_refused`, which names the route and never the origin or host.
+
 ### Verify retention once traffic exists
 
 A retention policy is a claim about files that only exist after the site has

@@ -15,7 +15,7 @@ import { dirname, join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 import { describe, expect, it } from "vite-plus/test";
 import { createApi } from "../../apps/api/src/app";
-import { ADMIN_API_PREFIX, ADMIN_LOGIN_PATH } from "../../apps/api/src/lib/admin-auth";
+import { ADMIN_API_PREFIX, ADMIN_LOGIN_PATH } from "../../apps/api/src/lib/admin-paths";
 import {
   BACKUP_KEEP_DAILY,
   LABEL_RE,
@@ -1405,16 +1405,14 @@ describe("provisioning config as code stays true to the ADR", () => {
     expect(ADMIN_LOGIN_PATH.startsWith(`${ADMIN_API_PREFIX}/`)).toBe(true);
   });
 
-  it("the proxy template carries no admin location: the admin API rides the existing /v1 prefix", () => {
-    // The box's installed config predates the admin surface. A template that adds an
-    // `/admin/` location fails the deploy's drift preflight and needs a root nginx
-    // reload, while the already-proxied `/v1` carries the admin API unchanged. The
-    // namespace's `no-store` promise lives at the API layer now, asserted on admin
-    // refusals in apps/api/src/routes/admin.test.ts.
+  it("the admin API rides the template's existing /v1 location, and no route claims the legacy /admin namespace", () => {
+    // Every admin route is registered under `/v1` (asserted above), so the template's
+    // existing `/v1/` location is the admin API's transport and needs no move of its own.
+    // The installed config also carries an `/admin/` location from the earlier surface;
+    // no registered route answers there, so it is not a second API namespace.
     const conf = read("provision/vps/nginx/kajianq.conf");
-    expect(conf).not.toMatch(/location\s+\/admin(?:\s|\/|\{)/);
-    expect(conf).not.toContain("/admin/");
     expect(conf).toMatch(/location \/v1\/ \{/);
+    expect(createApi().routes.every((route) => !route.path.startsWith("/admin/"))).toBe(true);
   });
 
   it("the setup doc probes the admin API through the already-proxied /v1 prefix", () => {
@@ -1428,6 +1426,14 @@ describe("provisioning config as code stays true to the ADR", () => {
     expect(setup).toMatch(/application\/json/);
     expect(setup).toMatch(/text\/html/);
     expect(setup).not.toMatch(/location \/admin\//);
+    // The probe is a GET and never reaches the login's origin check, so the section
+    // must name the allowlist dependency and the log line that diagnoses it; otherwise
+    // a box with ADMIN_PASSWORD set and ALLOWED_ORIGINS stale looks healthy while
+    // login is impossible.
+    const adminStart = setup.indexOf("### Verify the admin surface");
+    const adminSection = setup.slice(adminStart, setup.indexOf("### Verify retention", adminStart));
+    expect(adminSection).toMatch(/ALLOWED_ORIGINS/);
+    expect(adminSection).toContain("admin.login_origin_refused");
   });
 
   it("HTTP only redirects and logs nothing, so the IP-bearing log is confined to the TLS server block", () => {

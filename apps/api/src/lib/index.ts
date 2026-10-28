@@ -3,7 +3,7 @@ export {
   ADMIN_COOKIE_PATH,
   ADMIN_LOGIN_PATH,
   isAdminApiPath,
-} from "./admin-auth";
+} from "./admin-paths";
 export { createRequestContext } from "./context";
 export { corsGuard } from "./cors";
 export { authGuard } from "./auth";
