@@ -36,14 +36,21 @@ export const ADMIN_ACCESS_LOG_RETENTION_DAYS = 90;
  * vocabularies, dates, bounds) and the page — never the text searched for. A
  * detail or raw read names the trace it read, which is the "what" for those
  * routes; the trace id is an opaque identifier, never content.
+ *
+ * The free-text filters are recorded as presence booleans, never values: `q` is
+ * typed against chat content, and `intent`/`model` are bounded strings, not closed
+ * vocabularies, so an operator could paste a question there. Every field is a
+ * boolean, a bounded number, or an opaque id.
  */
 export type AdminAccessSummary = {
   /** True when a free-text filter was applied. The text itself is never recorded. */
   textSearch: boolean;
   from?: number;
   to?: number;
-  intent?: string;
-  model?: string;
+  /** True when an intent filter was applied. The operator's string is not recorded. */
+  intentFiltered?: boolean;
+  /** True when a model filter was applied. The operator's string is not recorded. */
+  modelFiltered?: boolean;
   refused?: boolean;
   filterRelaxed?: boolean;
   minLatencyMs?: number;
@@ -109,6 +116,13 @@ export type AdminTraceRecord = {
   row: AdminTraceRow;
 };
 
+/** The stored trace verbatim, before any contract parse: the raw download reads
+ * this shape so a row the current contract cannot parse is still downloadable. */
+export type AdminTraceRawRecord = {
+  trace: unknown;
+  row: AdminTraceRow;
+};
+
 export interface RagStoreAdmin {
   /**
    * Append one access record. The store offers no update or delete path: the
@@ -128,8 +142,13 @@ export interface RagStoreAdmin {
     page: { limit: number; offset: number },
   ): Effect.Effect<AdminTracePage, StoreError>;
 
-  /** One trace by its row id, with the transcript's question and answer. */
+  /** One trace by its row id, with the transcript's question and answer. A stored
+   * trace the current contract cannot parse is a `constraint` StoreError. */
   getAdminTrace(traceId: string): Effect.Effect<AdminTraceRecord | null, StoreError>;
+
+  /** The same row with the trace unparsed. The raw download exists to inspect a
+   * persisted shape the current contract rejects, so it must never parse it. */
+  getAdminTraceRaw(traceId: string): Effect.Effect<AdminTraceRawRecord | null, StoreError>;
 
   /**
    * Delete access records past the retention window and return the count removed.

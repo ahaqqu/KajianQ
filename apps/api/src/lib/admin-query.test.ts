@@ -98,21 +98,63 @@ describe("adminFilterOf", () => {
 describe("accessSummaryOf: the log never carries the search text", () => {
   it("records that a text filter ran, and not what it was", () => {
     const parsed = parseAdminQuery(
-      query({ q: "ayat kursi rahasia", intent: "ruling", page: "2", pageSize: "5" }),
+      query({
+        q: "ayat kursi rahasia",
+        intent: "ruling",
+        model: "generator-stub",
+        page: "2",
+        pageSize: "5",
+      }),
     );
     expect(parsed.ok).toBe(true);
     if (!parsed.ok) return;
     const summary = accessSummaryOf(parsed.query);
     expect(summary).toEqual({
       textSearch: true,
-      intent: "ruling",
+      intentFiltered: true,
+      modelFiltered: true,
       page: 2,
       pageSize: 5,
     });
+    // `intent` and `model` are bounded strings, not closed vocabularies: an operator can
+    // type a question fragment into either one, so neither value may reach the log.
     expect(JSON.stringify(summary)).not.toContain("rahasia");
+    expect(JSON.stringify(summary)).not.toContain("ruling");
+    expect(JSON.stringify(summary)).not.toContain("generator-stub");
     // The summary type has no field the text could travel in.
     expect(Object.keys(summary)).not.toContain("q");
     expect(Object.keys(summary)).not.toContain("text");
+  });
+
+  it("writes only booleans and bounded numbers, whatever the operator typed", () => {
+    // The information-schema test proves the COLUMN set; this is the value-level half: a
+    // dimension whose value is an operator string would carry content even though no
+    // column could hold it.
+    const parsed = parseAdminQuery(
+      query({
+        q: "some question fragment",
+        from: "100",
+        to: "200",
+        intent: "a ruling question fragment",
+        model: "a model field someone pasted into",
+        refused: "true",
+        filterRelaxed: "false",
+        minLatencyMs: "10",
+        minCostMicroUsd: "20",
+        page: "3",
+        pageSize: "10",
+      }),
+    );
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    const summary = accessSummaryOf(parsed.query);
+    for (const [key, value] of Object.entries(summary)) {
+      expect(["boolean", "number"], key).toContain(typeof value);
+    }
+    const serialized = JSON.stringify(summary);
+    for (const fragment of ["some question fragment", "a ruling question fragment", "pasted"]) {
+      expect(serialized).not.toContain(fragment);
+    }
   });
 
   it("says false when no text filter ran", () => {

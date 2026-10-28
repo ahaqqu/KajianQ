@@ -123,7 +123,11 @@ export function memoryAdminMethods(
   state: MemoryAdminState,
 ): Pick<
   RagStore,
-  "recordAdminAccess" | "listAdminTraces" | "getAdminTrace" | "purgeAdminAccessLog"
+  | "recordAdminAccess"
+  | "listAdminTraces"
+  | "getAdminTrace"
+  | "getAdminTraceRaw"
+  | "purgeAdminAccessLog"
 > & { allAdminAccess: () => readonly MemoryAdminAccessRecord[] } {
   const log: MemoryAdminAccessRecord[] = [];
   return {
@@ -152,6 +156,16 @@ export function memoryAdminMethods(
         const row = rowOf(state, traceId);
         if (raw === undefined || row === null) return null;
         return { trace: raw as Trace, row };
+      });
+    },
+    getAdminTraceRaw(traceId) {
+      // The double's rows are already `unknown`-typed: the raw read hands the stored
+      // value back exactly as the Postgres adapter does, with no contract parse.
+      return Effect.sync(() => {
+        const raw = state.traceRows.get(traceId);
+        const row = rowOf(state, traceId);
+        if (raw === undefined || row === null) return null;
+        return { trace: raw, row };
       });
     },
     purgeAdminAccessLog() {

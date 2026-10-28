@@ -1,6 +1,7 @@
 import { runStoreEffect } from "@app/kajianq-domain";
 import { createMemoryRagStore } from "@app/kajianq-domain/test-utils/memory-rag-store";
 import { createMemoryRateLimiter } from "@app/rate";
+import { StoreError } from "@app/infra";
 import { traceTotals, type Trace } from "@app/contracts";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { createApi } from "../app";
@@ -26,6 +27,9 @@ const PASSWORD = "correct horse battery staple";
 
 let currentStore: ReturnType<typeof createMemoryRagStore> | null = null;
 let storeReadCount = 0;
+/** The Effect bridge the mocked wiring hands the routes. One test swaps it for the identity
+ * to answer a store read the in-memory double cannot express as an Effect. */
+let currentRunStore: typeof runStoreEffect = runStoreEffect;
 
 vi.mock("../lib/chat-wiring", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../lib/chat-wiring")>();
@@ -33,7 +37,7 @@ vi.mock("../lib/chat-wiring", async (importOriginal) => {
     ...actual,
     buildStoreWiring: () => {
       if (currentStore === null) throw new Error("admin test: no store bound");
-      return { fullStore: currentStore, runStore: runStoreEffect };
+      return { fullStore: currentStore, runStore: currentRunStore };
     },
   };
 });
@@ -73,8 +77,12 @@ function cookieValue(response: Response, name: string): string {
 }
 
 /** The bootstrap: a CSRF token plus the cookie that must accompany it. */
-async function csrf(instance: ReturnType<typeof api>, env: Record<string, unknown>) {
-  const response = await instance.request("/admin/v1/session", {}, env);
+async function csrf(
+  instance: ReturnType<typeof api>,
+  env: Record<string, unknown>,
+  url = "/admin/v1/session",
+) {
+  const response = await instance.request(url, {}, env);
   const body = (await response.json()) as { csrfToken: string; authenticated: boolean };
   return {
     token: body.csrfToken,
@@ -112,6 +120,32 @@ async function login(
     session: { cookie: cookieValue(response, "kajianq_admin"), csrfToken: body.csrfToken },
     response,
   };
+}
+
+/** A login POST with the caller's own headers, at the caller's own URL: the Origin and
+ * scheme cases need to say where the browser thinks it is, not where the proxy sits. */
+async function loginAttempt(
+  instance: ReturnType<typeof api>,
+  env: Record<string, unknown>,
+  headers: Record<string, string> = {},
+  url = "/admin/v1/session",
+  password = PASSWORD,
+): Promise<Response> {
+  const boot = await csrf(instance, env, url);
+  return instance.request(
+    url,
+    {
+      method: "POST",
+      headers: {
+        cookie: boot.cookie,
+        "x-csrf-token": boot.token,
+        "content-type": "application/json",
+        ...headers,
+      },
+      body: JSON.stringify({ password }),
+    },
+    env,
+  );
 }
 
 const CHUNK_TEXT = "اللَّهُ لَا إِلَٰهَ إِلَّا هُوَ";
@@ -340,6 +374,84 @@ describe("admin auth: nothing is readable without the credential", () => {
     expect(res.headers.getSetCookie()).toHaveLength(0);
   });
 
+  it("checks Origin against the configured public origin, not the proxy-facing URL", async () => {
+    await seededStore();
+    const instance = api();
+    // The browser is on https://chat.example.org while the API sees the reverse proxy's
+    // plain-HTTP request URL: the configured public origin is the source of truth.
+    const env = { ...adminEnv(), ALLOWED_ORIGINS: "https://chat.example.org" };
+    const post = (origin: string) =>
+      loginAttempt(
+        instance,
+        env,
+        {
+          origin,
+        },
+        "http://chat.example.org/admin/v1/session",
+      );
+    expect((await post("https://chat.example.org")).status).toBe(200);
+    // A different host is refused…
+    expect((await post("https://evil.example")).status).toBe(401);
+    // …and the allowlist is exact: the proxy-facing scheme is not a public origin.
+    expect((await post("http://chat.example.org")).status).toBe(401);
+  });
+
+  it("accepts a proxied https Origin only when the edge says it terminated TLS", async () => {
+    await seededStore();
+    const instance = api();
+    // No ALLOWED_ORIGINS: the request's own host is the fallback, and the scheme mismatch
+    // is accepted only on the proxy's statement — never on the client's.
+    const env = adminEnv();
+    const post = (origin: string, headers: Record<string, string> = {}) =>
+      loginAttempt(
+        instance,
+        env,
+        {
+          origin,
+          ...headers,
+        },
+        "http://chat.example.org/admin/v1/session",
+      );
+    expect((await post("http://chat.example.org")).status).toBe(200);
+    expect((await post("https://chat.example.org", { "x-forwarded-proto": "https" })).status).toBe(
+      200,
+    );
+    // The scheme alone is not enough: an untrusted client cannot claim it.
+    expect((await post("https://chat.example.org")).status).toBe(401);
+    // The host check runs first, so a spoofed scheme cannot widen the origin to another host.
+    expect((await post("https://evil.example", { "x-forwarded-proto": "https" })).status).toBe(401);
+  });
+
+  it("answers a malformed login body the same way whether or not a credential is configured", async () => {
+    await seededStore();
+    // Two requests suffice to tell the states apart if the body verdict depends on the
+    // credential: the bootstrap hands out the CSRF pair, and the malformed body is then
+    // either a 400 (configured) or a 401 (not). Both must be the same miss.
+    const probe = async (env: Record<string, unknown>) => {
+      const instance = api();
+      const boot = await csrf(instance, env);
+      const attempt = (body: unknown) =>
+        instance.request(
+          "/admin/v1/session",
+          {
+            method: "POST",
+            headers: { cookie: boot.cookie, "x-csrf-token": boot.token },
+            body: JSON.stringify(body),
+          },
+          env,
+        );
+      return [await attempt({ nope: 1 }), await attempt({ password: "x".repeat(513) })];
+    };
+    const configured = await probe(adminEnv());
+    const unconfigured = await probe({ ASSETS: mockAssets() });
+    for (const response of [...configured, ...unconfigured]) {
+      expect(response.status).toBe(401);
+      expect(await response.json()).toEqual({ error: "unauthorized" });
+      // …and a refused login never hands out a session.
+      expect(response.headers.getSetCookie()).toHaveLength(0);
+    }
+  });
+
   it("answers the same 401 for a wrong credential", async () => {
     await seededStore();
     const instance = api();
@@ -405,6 +517,52 @@ describe("admin auth: nothing is readable without the credential", () => {
     const limited = await attempt();
     expect(limited.status).toBe(429);
     expect(await limited.json()).toEqual({ error: "rate_limited" });
+  });
+
+  it("limits reads on the browsing budget, apart from the login's", async () => {
+    await seededStore();
+    const instance = api({ adminLimit: 3 });
+    const env = adminEnv();
+    // The bootstrap and the login spend the READ budget's first slot and the LOGIN
+    // budget's first slot respectively: the two meters are separate namespaces.
+    const boot = await csrf(instance, env);
+    const signedIn = await instance.request(
+      "/admin/v1/session",
+      {
+        method: "POST",
+        headers: {
+          cookie: boot.cookie,
+          "x-csrf-token": boot.token,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ password: PASSWORD }),
+      },
+      env,
+    );
+    expect(signedIn.status).toBe(200);
+    const headers = { cookie: cookieValue(signedIn, "kajianq_admin") };
+    for (const expected of [200, 200]) {
+      expect((await instance.request("/admin/v1/traces", { headers }, env)).status).toBe(expected);
+    }
+    const limited = await instance.request("/admin/v1/traces", { headers }, env);
+    expect(limited.status).toBe(429);
+    expect(await limited.json()).toEqual({ error: "rate_limited" });
+    // The read budget is exhausted, yet a credential attempt still reaches the credential
+    // check — the login has its own, tighter namespace and was not the meter that ran out.
+    const attempt = await instance.request(
+      "/admin/v1/session",
+      {
+        method: "POST",
+        headers: {
+          cookie: boot.cookie,
+          "x-csrf-token": boot.token,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ password: "wrong" }),
+      },
+      env,
+    );
+    expect(attempt.status).toBe(401);
   });
 
   it("keeps every admin path off the public OpenAPI document", async () => {
@@ -550,7 +708,9 @@ describe("admin access log: append-only evidence that never carries content", ()
     const entry = log[0]!;
     expect(entry.route).toBe("traces.list");
     expect(entry.summary.textSearch).toBe(true);
-    expect(entry.summary.intent).toBe("ruling");
+    // The intent filter is recorded as presence: `intent` is a bounded operator string, not a
+    // closed vocabulary, so its value is free text exactly like the search text.
+    expect(entry.summary.intentFiltered).toBe(true);
     expect(entry.summary.page).toBe(2);
     expect(entry.summary.pageSize).toBe(5);
     expect(entry.actor).toMatch(/^[0-9a-f]{16}$/);
@@ -560,7 +720,13 @@ describe("admin access log: append-only evidence that never carries content", ()
     const serialized = JSON.stringify(log);
     expect(serialized).not.toContain(secret);
     expect(serialized).not.toContain("Apa itu");
+    expect(serialized).not.toContain("ruling");
     expect(JSON.stringify(entry.summary)).not.toContain("q=");
+    // Every value in the record is a boolean or a bounded number: no field can carry a
+    // string, so no future edit can smuggle free text through one.
+    for (const [key, value] of Object.entries(entry.summary)) {
+      expect(["boolean", "number"], key).toContain(typeof value);
+    }
   });
 
   it("records a detail read by its opaque row id, and the raw read separately", async () => {
@@ -649,6 +815,45 @@ describe("admin detail: the chat panel's derivation, every provider call", () =>
       "generator:generate",
     ]);
     expect(detail.totals.costMicroUsd).toBe(60);
+  });
+
+  it("serves a stored shape the contract rejects as a raw download, and names it on detail", async () => {
+    const store = await seededStore();
+    const row = (await runStoreEffect(store.listAdminTraces({}, { limit: 1, offset: 0 }))).rows[0]!;
+    // The adapter maps an unparseable stored trace to a `constraint` StoreError on the
+    // structured read; the raw read hands the stored value back untouched. Both halves are
+    // what the operator's escape hatch means, so neither may answer a generic 500.
+    currentStore = Object.assign(store, {
+      // The adapter raises this typed failure when the stored JSONB does not parse; the
+      // double raises it directly, which is the branch the route has to answer.
+      getAdminTrace: () => {
+        throw new StoreError({ kind: "constraint", cause: new Error("does not parse") });
+      },
+      // The raw read's value, handed over unparsed; the identity bridge below resolves it.
+      getAdminTraceRaw: () => ({ trace: { nope: true }, row }),
+    });
+    currentRunStore = (async (effect: unknown) => effect) as typeof runStoreEffect;
+    try {
+      const instance = api();
+      const { session } = await login(instance, adminEnv());
+      const headers = { cookie: session!.cookie };
+      const detail = await instance.request(
+        `/admin/v1/traces/${row.traceId}`,
+        { headers },
+        adminEnv(),
+      );
+      expect(detail.status).toBe(422);
+      expect(await detail.json()).toEqual({ error: "trace_unparseable" });
+      const raw = await instance.request(
+        `/admin/v1/traces/${row.traceId}/raw`,
+        { headers },
+        adminEnv(),
+      );
+      expect(raw.status).toBe(200);
+      expect(await raw.json()).toEqual({ nope: true });
+    } finally {
+      currentRunStore = runStoreEffect;
+    }
   });
 
   it("serves the persisted trace verbatim as a download", async () => {

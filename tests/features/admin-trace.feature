@@ -1,4 +1,5 @@
 # language: en
+@local
 Feature: Admin trace browser
 
   The operator's failure-search surface. It stays closed — the same 401 for every
@@ -24,6 +25,9 @@ Feature: Admin trace browser
     And I see every provider call, the embedding included
     And the Trace panel shows the answer's sources
     And the stored trace downloads as JSON
+
+  Scenario: Every admin read answers the same 401 without a session
+    Then every admin read answers the same 401, with and without a forged cookie
 
   Scenario: A filter narrows the list to the answers it matches
     When I open the admin surface

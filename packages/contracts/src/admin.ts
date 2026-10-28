@@ -28,7 +28,8 @@ export type AdminError = v.InferOutput<typeof AdminErrorSchema>;
 /**
  * The one credential the admin surface accepts (env-configured, ADR-0064). The
  * length ceiling is the boundary's own bound on a body the server will hash, not
- * a hint about the credential: an over-long body is a 400 `invalid_request`.
+ * a hint about the credential: an over-long body is the same uniform 401 as a
+ * wrong password, so the contract miss cannot reveal a credential's presence.
  */
 export const AdminLoginRequestSchema = v.object({
   password: v.pipe(v.string(), v.minLength(1), v.maxLength(512)),
@@ -90,16 +91,9 @@ export type AdminTraceList = v.InferOutput<typeof AdminTraceListSchema>;
  * event stream.
  */
 export const AdminTraceDetailSchema = v.object({
-  traceId: nonEmpty(),
-  messageId: nonEmpty(),
-  createdAt: v.pipe(v.number(), v.integer(), v.minValue(0)),
-  question: v.string(),
-  answer: v.string(),
-  intent: v.optional(nonEmpty()),
-  models: v.array(nonEmpty()),
-  refused: v.boolean(),
-  filterRelaxed: v.boolean(),
-  totals: TraceTotalsSchema,
+  // The detail's message half IS the list item: one declaration, so a fact added
+  // to one payload cannot be missing from the other.
+  ...AdminTraceListItemSchema.entries,
   calls: v.array(TraceProviderCallSchema),
   frame: ChatTraceFrameSchema,
 });

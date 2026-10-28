@@ -1,5 +1,6 @@
 import { createBdd } from "playwright-bdd";
 import { expect, type Page } from "@playwright/test";
+import { E2E_ADMIN_PASSWORD } from "../support/admin-fixture";
 
 /**
  * Admin Trace browser BDD.
@@ -9,12 +10,14 @@ import { expect, type Page } from "@playwright/test";
  * only stubs the trace data, which needs a database the e2e server does not have. So
  * the "closed until signed in" scenarios prove the deployed guard, not a fixture.
  *
- * The scenarios are skipped on an external `E2E_BASE_URL`: the surface is enabled per
- * deployment by its credential, and a staging run may legitimately have none.
+ * This feature is tagged `@local` and filtered out of an external `E2E_BASE_URL` run by
+ * `playwright.config.ts`: it drives an embedded host that the config boots with the
+ * fixture credential below, so against an external host it would fail on a credential
+ * and fixture rows that host does not have.
  */
 const { Given, When, Then } = createBdd();
 
-const PASSWORD = process.env.ADMIN_PASSWORD ?? "bdd-admin-password";
+const PASSWORD = E2E_ADMIN_PASSWORD;
 
 const RULING_TRACE = "11111111-1111-4111-8111-111111111111";
 const RULING_MESSAGE = "22222222-2222-4222-8222-222222222222";
@@ -139,7 +142,6 @@ async function stubTraceData(page: Page): Promise<void> {
 }
 
 Given("the admin trace data is stubbed", async ({ page }) => {
-  if (process.env.E2E_BASE_URL) return;
   await stubTraceData(page);
 });
 
@@ -210,6 +212,31 @@ Then("the stored trace downloads as JSON", async ({ page }) => {
   expect(parsed.id).toBe(RULING_TRACE);
   expect(parsed.events.length).toBeGreaterThan(0);
 });
+
+Then(
+  "every admin read answers the same 401, with and without a forged cookie",
+  async ({ request }) => {
+    // The API client fixture holds no session cookie: the only thing that would let these
+    // reads through is the guard, so removing it reddens here (the route then answers 503
+    // from the unconfigured store wiring instead of the uniform 401).
+    const reads = [
+      "/admin/v1/traces",
+      `/admin/v1/traces/${RULING_TRACE}`,
+      `/admin/v1/traces/${RULING_TRACE}/raw`,
+    ];
+    for (const path of reads) {
+      const refused = await request.get(path);
+      expect(refused.status(), path).toBe(401);
+      expect(await refused.json(), path).toEqual({ error: "unauthorized" });
+    }
+    // A forged session cookie is the same miss as no cookie at all.
+    const forged = await request.get("/admin/v1/traces", {
+      headers: { cookie: "kajianq_admin=v1.bogus.bogus" },
+    });
+    expect(forged.status()).toBe(401);
+    expect(await forged.json()).toEqual({ error: "unauthorized" });
+  },
+);
 
 When("I search the traces for {string}", async ({ page }, text: string) => {
   await page.getByTestId("admin-filter-q").fill(text);

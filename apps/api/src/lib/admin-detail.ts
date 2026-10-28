@@ -1,11 +1,15 @@
 import {
+  AdminTraceListSchema,
   ChatTraceFrameSchema,
   traceProviderCalls,
   type AdminTraceDetail,
+  type AdminTraceList,
+  type AdminTraceListItem,
+  type AdminTraceQuery,
   type ChatTraceFrame,
   type Trace,
 } from "@app/contracts";
-import type { AdminTraceRow } from "@app/infra";
+import { StoreError, type AdminTraceRow } from "@app/infra";
 import type { StoreWiring } from "./chat-wiring";
 import * as v from "valibot";
 import {
@@ -16,6 +20,42 @@ import {
   type CitationChunkSource,
   type Warn,
 } from "./chat-trace";
+
+/**
+ * The message half of an admin payload — the one projection of an `AdminTraceRow` onto
+ * the wire item, used by the list AND the detail. The contract declares the detail as
+ * this shape plus its trace-derived halves, so a fact added to the row reaches both
+ * payloads or neither.
+ */
+export function adminTraceItemOf(row: AdminTraceRow): AdminTraceListItem {
+  return {
+    traceId: row.traceId,
+    messageId: row.messageId,
+    createdAt: row.createdAt,
+    question: row.question,
+    answer: row.answer,
+    ...(row.intent !== null ? { intent: row.intent } : {}),
+    models: [...row.models],
+    refused: row.refused,
+    filterRelaxed: row.filterRelaxed,
+    totals: row.totals,
+  };
+}
+
+/** The list payload: one page of items, its page window, the store's total. Parsed against
+ * the contract before it ships, and built from the same item projection the detail uses. */
+export function adminTraceListOf(input: {
+  rows: readonly AdminTraceRow[];
+  query: AdminTraceQuery;
+  total: number;
+}): AdminTraceList {
+  return v.parse(AdminTraceListSchema, {
+    items: input.rows.map(adminTraceItemOf),
+    page: input.query.page,
+    pageSize: input.query.pageSize,
+    total: input.total,
+  });
+}
 
 /**
  * The admin detail payload (ADR-0064): a message's own fields, its per-message
@@ -51,37 +91,44 @@ export async function adminTraceDetail(input: {
     deriveTraceFrame({ trace, messageId: row.messageId, chunksById }),
   );
   return {
-    traceId: row.traceId,
-    messageId: row.messageId,
-    createdAt: row.createdAt,
-    question: row.question,
-    answer: row.answer,
-    ...(row.intent !== null ? { intent: row.intent } : {}),
-    models: [...row.models],
-    refused: row.refused,
-    filterRelaxed: row.filterRelaxed,
-    totals: row.totals,
+    ...adminTraceItemOf(row),
     calls: traceProviderCalls(trace),
     frame,
   };
 }
 
+/** One trace lookup's outcome. `unparseable` is the stored shape this contract cannot
+ * read: the raw download serves it, the structured detail names the condition. */
+export type AdminTraceLookup =
+  | { kind: "found"; detail: AdminTraceDetail; trace: Trace }
+  | { kind: "missing" }
+  | { kind: "unparseable" };
+
 /**
- * Resolve one trace and build its detail payload. `null` is "no such row" — the
- * route answers a 404, indistinguishably for an unknown id and a malformed one.
+ * Resolve one trace and build its detail payload. `missing` is "no such row" — the route
+ * answers a 404, indistinguishably for an unknown id and a malformed one — and
+ * `unparseable` is the adapter's `constraint` failure, which the route answers with a
+ * status that means it rather than a generic 500. The raw route reads the same row
+ * unparsed, so the escape hatch keeps working on exactly these rows.
  */
 export async function adminTracePayload(input: {
   store: StoreWiring;
   traceId: string;
   warn: Warn;
-}): Promise<{ detail: AdminTraceDetail; trace: Trace } | null> {
-  const record = await input.store.runStore(input.store.fullStore.getAdminTrace(input.traceId));
-  if (record === null) return null;
+}): Promise<AdminTraceLookup> {
+  let record;
+  try {
+    record = await input.store.runStore(input.store.fullStore.getAdminTrace(input.traceId));
+  } catch (err) {
+    if (err instanceof StoreError && err.kind === "constraint") return { kind: "unparseable" };
+    throw err;
+  }
+  if (record === null) return { kind: "missing" };
   const detail = await adminTraceDetail({
     row: record.row,
     trace: record.trace,
     fetchChunks: chunkFetcher(input.store.fullStore, input.store.runStore),
     warn: input.warn,
   });
-  return { detail, trace: record.trace };
+  return { kind: "found", detail, trace: record.trace };
 }

@@ -12,32 +12,43 @@ import type { ApiEnv } from "../env";
  *  1. **authenticate first** — an unauthenticated request must not learn whether
  *     the store is configured, nor whether its query was valid, so the 503 wiring
  *     posture and the 400 validation answer are both behind the credential check;
- *  2. **resolve what will be logged** — the caller's own summarizer runs here, so a
+ *  2. **resolve what will be logged** — the caller's own resolver runs here, so the
+ *     read's 400/404 verdict and its summary are both computed behind the guard and a
  *     read cannot be served with a summary computed somewhere else;
  *  3. **log before serving** — a read that cannot be recorded is not served. The
  *     access log is the accountability evidence for reading chat content, so a
  *     failed write fails closed with a 503 that carries no content.
  */
-export type AdminReadContext = {
+export type AdminReadContext<T> = {
   actor: string;
   store: StoreWiring;
+  /** What the resolver computed from the request — the parsed query, the validated row
+   * id — so the route reads on with the value that was narrowed behind the guard and
+   * never re-derives it. */
+  read: T;
   /** The request's structured logger, for the read's own degradation warnings. */
   warn: (msg: string, fields?: Record<string, string | number | boolean | null>) => void;
 };
 
-/** What a read's summarizer returns: the record's summary, or its own refusal. */
-export type AdminReadSummary = { summary: AdminAccessSummary } | { response: Response };
+/** What a read's resolver returns: its summary plus the value the route reads on with, or
+ * the refusal it answers instead (a 400 for a malformed query, a 404 for an id the column
+ * cannot hold). One union, so the route narrows once and no branch is unreachable — and the
+ * refusal is a status and an error, never a Response, so a resolver cannot answer the request
+ * before the log record is written. */
+export type AdminReadPlan<T> =
+  | { summary: AdminAccessSummary; read: T }
+  | { refuse: { status: 400 | 404; error: string } };
 
-export async function withAdminRead(
+export async function withAdminRead<T>(
   c: Context<ApiEnv>,
   route: AdminAccessRoute,
-  resolve: () => AdminReadSummary,
-): Promise<AdminReadContext | Response> {
+  resolve: () => AdminReadPlan<T>,
+): Promise<AdminReadContext<T> | Response> {
   const identity = await adminGuard(c, c.env);
   if (identity instanceof Response) return identity;
 
   const resolved = resolve();
-  if ("response" in resolved) return resolved.response;
+  if ("refuse" in resolved) return c.json({ error: resolved.refuse.error }, resolved.refuse.status);
 
   const logger = createLogger({
     service: "api",
@@ -68,6 +79,7 @@ export async function withAdminRead(
   return {
     actor: identity.actor,
     store: wiring.wiring,
+    read: resolved.read,
     warn: (msg, fields) => logger.warn(msg, fields),
   };
 }

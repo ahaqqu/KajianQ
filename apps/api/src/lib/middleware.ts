@@ -1,4 +1,5 @@
 import {
+  ADMIN_LOGIN_PATH,
   allowRequest,
   corsGuard,
   createRequestContext,
@@ -74,13 +75,13 @@ export function applyMiddleware(api: Hono<ApiEnv>, opts?: MiddlewareOpts): void 
     await next();
   });
   // The admin surface has its own budget (ADR-0064), in namespaces of its own: the
-  // login POST — the only unauthenticated write on the API — gets a tight one, and
-  // the reads get the browsing one. It is NOT metered by the public `/v1` meter,
+  // login POST — the admin surface's only unauthenticated write — gets a tight one,
+  // and the reads get the browsing one. It is NOT metered by the public `/v1` meter,
   // whose budget protects the chat's spend; sharing that namespace would let either
   // surface exhaust the other. The client IP is digested before it names a counter,
   // exactly as on the public path, so no raw address is held here either.
   api.use("/admin/*", async (c, next) => {
-    const login = c.req.method === "POST" && c.req.path === "/admin/v1/session";
+    const login = c.req.method === "POST" && c.req.path === ADMIN_LOGIN_PATH;
     const limit = login
       ? (opts?.adminLoginLimit ?? ADMIN_LOGIN_LIMIT)
       : (opts?.adminLimit ?? ADMIN_READ_LIMIT);

@@ -23,9 +23,12 @@ import type { RagStore } from "./rag-store";
  *     `information_schema`, which is what makes "never question/answer text" a
  *     property of the schema rather than a promise about the writer.
  *
- * The suite cannot clean up after itself in the log — deleting a fresh row is the
- * thing it forbids — so its access records stay behind by design: they hold no
- * content, and the retention purge is what removes them.
+ * REQUIRES A DISPOSABLE DATABASE. The suite cannot clean up after itself in the log —
+ * deleting a fresh row is the thing the table forbids — so its records stay behind,
+ * and its backdated fixture is deleted by the purge. Run against a shared or staging
+ * database it would inject fake accountability evidence that no one can remove for 90
+ * days, so `beforeAll` refuses a database that already holds a record this suite did
+ * not write (any actor not prefixed `ct-`) instead of doing that silently.
  */
 
 const URL = process.env.DATABASE_URL;
@@ -151,6 +154,21 @@ run("RagStore admin contract (real Postgres)", () => {
   beforeAll(async () => {
     if (!URL) return;
     sql = postgresSqlRunner(postgresPool(URL));
+    // The preflight that keeps a shared box out of the accountability log's history: this
+    // suite's runs are the only rows it may find. A database holding a record written by
+    // anyone else is not disposable, and the append-only rule means this run cannot undo
+    // what it would add.
+    const foreign = (await sql.query(
+      `SELECT 1 FROM admin_access_log WHERE actor NOT LIKE 'ct-%' LIMIT 1`,
+    )) as unknown[];
+    if (foreign.length > 0) {
+      throw new Error(
+        "rag-store-postgres-admin: DATABASE_URL must name a DISPOSABLE database — it already " +
+          "holds admin_access_log rows this suite did not write (an actor not prefixed `ct-`). " +
+          "The log is append-only, so a run here would add fake evidence that cannot be removed " +
+          "for 90 days. Point DATABASE_URL at a throwaway database (bun run db:up:all) to run it.",
+      );
+    }
     store = createPostgresRagStore(sql);
   });
 
@@ -249,6 +267,15 @@ run("RagStore admin contract (real Postgres)", () => {
     expect(second.rows[0]?.traceId).not.toBe(before.rows[0]?.traceId);
   });
 
+  it("counts every matching row even when the page itself is empty", async () => {
+    if (!URL) return;
+    // The window rides the rows, so an offset past the end has no value to read it from —
+    // that one case falls back to a count rather than reporting a total of zero.
+    const page = await Effect.runPromise(store.listAdminTraces({}, { limit: 5, offset: 100_000 }));
+    expect(page.rows).toEqual([]);
+    expect(page.total).toBeGreaterThan(0);
+  });
+
   it("returns one trace by its row id, with the transcript's question", async () => {
     if (!URL) return;
     const fixture = await seedAnswer({
@@ -262,6 +289,30 @@ run("RagStore admin contract (real Postgres)", () => {
     expect(record?.trace.events).toHaveLength(fixture.trace.events.length);
     expect(record?.row.totals).toEqual(traceTotals(record!.trace));
     expect(await Effect.runPromise(store.getAdminTrace(crypto.randomUUID()))).toBeNull();
+  });
+
+  it("serves a stored trace this contract cannot parse through the raw read", async () => {
+    if (!URL) return;
+    const fixture = await seedAnswer({
+      question: "unparseable question",
+      answer: "unparseable answer",
+      trace: twoCallTrace(),
+    });
+    // An out-of-band shape (an older row, or a contract tightening) is exactly what the raw
+    // download exists for: the structured read fails typed, the raw read still serves it.
+    await sql!.query(
+      `UPDATE answer_traces SET trace = '{"nope": true}'::jsonb WHERE id = $1::uuid`,
+      [fixture.traceId],
+    );
+    const detail = await Effect.runPromiseExit(store.getAdminTrace(fixture.traceId));
+    expect(Exit.isFailure(detail)).toBe(true);
+    if (Exit.isFailure(detail)) {
+      expect(String(detail.cause)).toContain("StoreError");
+    }
+    const raw = await Effect.runPromise(store.getAdminTraceRaw(fixture.traceId));
+    expect(raw?.trace).toEqual({ nope: true });
+    expect(raw?.row.question).toBe("unparseable question");
+    expect(await Effect.runPromise(store.getAdminTraceRaw(crypto.randomUUID()))).toBeNull();
   });
 
   it("has no column a question, an answer or a search text could be written into", async () => {

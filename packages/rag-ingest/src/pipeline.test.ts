@@ -139,6 +139,9 @@ function fakeStore() {
     getAdminTrace() {
       return Effect.succeed(null);
     },
+    getAdminTraceRaw() {
+      return Effect.succeed(null);
+    },
     purgeAdminAccessLog() {
       return Effect.succeed(0);
     },

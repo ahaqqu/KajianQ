@@ -1,5 +1,6 @@
 import { createLogger } from "@app/infra";
 import type { RagStore } from "@app/infra";
+import type { StoreBridge } from "@app/kajianq-domain";
 import { createRagStoreFromEnv, ChatConfigError } from "./chat-wiring";
 
 /**
@@ -24,6 +25,10 @@ import { createRagStoreFromEnv, ChatConfigError } from "./chat-wiring";
 
 export type ScheduledEnv = Record<string, string | undefined>;
 
+/** One retention call's Effect, as the seam spells it — the store owns the type, so this
+ * module never names the effect runtime. */
+type RetentionCall = ReturnType<RagStore["cleanupExpiredSessions"]>;
+
 export type ScheduledResult = {
   /** Rows removed, or null when the store was not configured / the call failed. */
   deleted: number | null;
@@ -37,7 +42,7 @@ export type ScheduledDeps = {
   /** Resolve the store from env; defaults to the real `RagStore` wiring. */
   createStore?: (env: ScheduledEnv) => RagStore;
   /** Bridge one store Effect to a promise; defaults to the domain's runner. */
-  runStore?: (effect: unknown) => Promise<unknown>;
+  runStore?: StoreBridge;
 };
 
 /**
@@ -62,35 +67,53 @@ export async function cleanupExpiredSessions(
     }
     throw err;
   }
-  try {
-    // The store's Effect signature bridges here through the domain's runner
-    // (the API's single effect bridge point, ADR-0027 decision 3). Imported
-    // lazily so the entrypoint's cold-start path does not pull the domain in.
-    const runStore = deps.runStore ?? (await import("@app/kajianq-domain")).runStoreEffect;
-    const deleted = await runStore(store.cleanupExpiredSessions());
-    if (typeof deleted !== "number") {
-      // A store that resolves to a non-number is a contract violation worth
-      // seeing, not a count to report as "0 cleaned".
-      logger.error("scheduled.cleanup_unexpected_result", { value: String(deleted) });
-      return { deleted: null, adminLogDeleted: null, ok: false };
+  // The store's Effect signature bridges here through the domain's runner (the API's
+  // single effect bridge point, ADR-0027 decision 3). Imported lazily so the
+  // entrypoint's cold-start path does not pull the domain in.
+  const runStore = deps.runStore ?? (await import("@app/kajianq-domain")).runStoreEffect;
+
+  /**
+   * One retention step, with its OWN error boundary: the two windows are independent
+   * obligations, and a persistent fault in the session cleanup must not silently stop
+   * enforcing the access log's published 90 days. A failed or non-numeric step is
+   * logged and reported as null (a store that resolves to a non-number is a contract
+   * violation worth seeing, not a count to report as "0 removed"), never thrown.
+   */
+  const step = async (
+    effect: RetentionCall,
+    names: { failed: string; unexpected: string; done: string },
+  ): Promise<number | null> => {
+    try {
+      const removed = await runStore(effect);
+      if (typeof removed !== "number") {
+        logger.error(names.unexpected, { value: String(removed) });
+        return null;
+      }
+      logger.info(names.done, { deleted: removed });
+      return removed;
+    } catch (err) {
+      // A transient store fault must not fail the cron run, and must not stop the
+      // other retention step: log and let the next tick retry (the rows are still
+      // there, still harmless).
+      logger.error(names.failed, {
+        error: err instanceof Error ? err.message : String(err),
+      });
+      return null;
     }
-    logger.info("scheduled.sessions_cleaned", { deleted });
-    // The admin access log's retention window, applied by the store's own guard: an
-    // append-only table whose published retention is only true if something deletes
-    // by it. A failure here is logged and reported, never thrown.
-    const adminLogDeleted = await runStore(store.purgeAdminAccessLog());
-    if (typeof adminLogDeleted !== "number") {
-      logger.error("scheduled.admin_log_unexpected_result", { value: String(adminLogDeleted) });
-      return { deleted, adminLogDeleted: null, ok: false };
-    }
-    logger.info("scheduled.admin_log_purged", { deleted: adminLogDeleted });
-    return { deleted, adminLogDeleted, ok: true };
-  } catch (err) {
-    // A transient store fault must not fail the cron run: log and let the next
-    // tick retry (the rows are still there, still harmless).
-    logger.error("scheduled.cleanup_failed", {
-      error: err instanceof Error ? err.message : String(err),
-    });
-    return { deleted: null, adminLogDeleted: null, ok: false };
-  }
+  };
+
+  const deleted = await step(store.cleanupExpiredSessions(), {
+    failed: "scheduled.cleanup_failed",
+    unexpected: "scheduled.cleanup_unexpected_result",
+    done: "scheduled.sessions_cleaned",
+  });
+  // The admin access log's retention window, applied by the store's own guard: an
+  // append-only table whose published retention is only true if something deletes by
+  // it. It runs whatever the session cleanup answered.
+  const adminLogDeleted = await step(store.purgeAdminAccessLog(), {
+    failed: "scheduled.admin_log_failed",
+    unexpected: "scheduled.admin_log_unexpected_result",
+    done: "scheduled.admin_log_purged",
+  });
+  return { deleted, adminLogDeleted, ok: deleted !== null && adminLogDeleted !== null };
 }

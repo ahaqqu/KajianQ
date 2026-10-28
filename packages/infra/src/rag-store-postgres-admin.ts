@@ -1,14 +1,21 @@
-import type { Trace } from "@app/contracts";
 import { Effect } from "effect";
 import {
   ADMIN_ACCESS_LOG_RETENTION_DAYS,
   type AdminAccessEntry,
   type AdminTraceFilter,
   type AdminTracePage,
+  type AdminTraceRawRecord,
   type AdminTraceRecord,
-  type AdminTraceRow,
   type RagStoreAdmin,
 } from "./rag-store-admin-seam";
+import {
+  CREATED_AT_MS,
+  num,
+  ROW_COLUMNS,
+  ROW_FROM,
+  toRow,
+  type Row,
+} from "./rag-store-postgres-admin-row";
 import { sqlEffect, type SqlRunner } from "./rag-store-postgres-errors";
 import { constraintError, parseTrace } from "./rag-store-shared";
 
@@ -25,133 +32,6 @@ import { constraintError, parseTrace } from "./rag-store-shared";
  * either — the JSONB reads below only project the trace-derived FACTS the browser
  * searches on (intent, models, refusal, relaxation) and the per-message totals.
  */
-
-/**
- * The row projection and its fixed joins. `tot` is the per-message aggregate the
- * list filters and displays; it sums **every** event's cost record, so the
- * embedding call is included exactly as it is in the contract's `traceTotals`.
- * The sums are cast to `double precision` because node-postgres hands an `int8`
- * back as a string, and a total that arrives as text is a total someone will
- * eventually sort lexicographically.
- */
-/**
- * The answer's own clock: the trace records when the answer happened, and the row's
- * insert time is an implementation detail (a backfill or a replay would order by the
- * latter and hide the answer in the wrong day). Every read and every date bound uses
- * this one expression, so the filter and the column it compares can never disagree —
- * and a malformed trace degrades to the row time rather than failing the whole list.
- */
-const CREATED_AT_MS = `CASE
-      WHEN t.trace->>'createdAt' ~ '^[0-9]+$' THEN (t.trace->>'createdAt')::double precision
-      ELSE extract(epoch FROM t.created_at) * 1000
-    END`;
-
-const ROW_COLUMNS = `
-    t.id AS trace_id,
-    t.message_id,
-    ${CREATED_AT_MS} AS created_at_ms,
-    COALESCE(uq.content, '') AS question,
-    m.content AS answer,
-    (
-      SELECT ie->'detail'->>'intent'
-      FROM jsonb_array_elements(t.trace->'events') WITH ORDINALITY AS ev(ie, ord)
-      WHERE ie->>'kind' = 'intent'
-      ORDER BY ev.ord
-      LIMIT 1
-    ) AS intent,
-    (
-      SELECT COALESCE(jsonb_agg(mid ORDER BY first_ord), '[]'::jsonb)
-      FROM (
-        SELECT ev.e->'cost'->>'modelId' AS mid, MIN(ev.ord) AS first_ord
-        FROM jsonb_array_elements(t.trace->'events') WITH ORDINALITY AS ev(e, ord)
-        WHERE ev.e->'cost' IS NOT NULL
-        GROUP BY 1
-      ) models_in_order
-    ) AS models,
-    EXISTS (
-      SELECT 1 FROM jsonb_array_elements(t.trace->'events') AS ev(e)
-      WHERE e->>'kind' = 'refusal'
-    ) AS refused,
-    EXISTS (
-      SELECT 1 FROM jsonb_array_elements(t.trace->'events') AS ev(e)
-      WHERE e->>'kind' = 'filter_relaxed'
-        AND COALESCE(e->'detail'->>'adopted', 'true') <> 'false'
-    ) AS filter_relaxed,
-    COALESCE(tot.tokens_in, 0) AS tokens_in,
-    COALESCE(tot.tokens_out, 0) AS tokens_out,
-    COALESCE(tot.latency_ms, 0) AS latency_ms,
-    COALESCE(tot.cost_micro_usd, 0) AS cost_micro_usd,
-    COALESCE(tot.estimated, false) AS estimated`;
-
-/** The fixed joins every row read shares — content from the transcript, facts and
- * totals from the trace. `uq` is the question row, `tot` the per-message aggregate. */
-const ROW_FROM = `
-  FROM answer_traces t
-  JOIN chat_messages m ON m.id::text = t.message_id
-  LEFT JOIN LATERAL (
-    SELECT q.content
-    FROM chat_messages q
-    WHERE q.session_id = m.session_id
-      AND q.role = 'user'
-      AND q.created_at <= m.created_at
-    ORDER BY q.created_at DESC, q.id DESC
-    LIMIT 1
-  ) uq ON true
-  LEFT JOIN LATERAL (
-    SELECT
-      SUM((e->'cost'->>'tokensIn')::double precision) AS tokens_in,
-      SUM((e->'cost'->>'tokensOut')::double precision) AS tokens_out,
-      SUM((e->'cost'->>'latencyMs')::double precision) AS latency_ms,
-      SUM((e->'cost'->>'costMicroUsd')::double precision) AS cost_micro_usd,
-      bool_or((e->'cost'->>'estimated')::boolean) AS estimated
-    FROM jsonb_array_elements(t.trace->'events') AS ev(e)
-    WHERE e->'cost' IS NOT NULL
-  ) tot ON true
-  WHERE m.role = 'assistant'`;
-
-type Row = {
-  trace_id: string;
-  message_id: string;
-  created_at_ms: number | string;
-  question: string | null;
-  answer: string | null;
-  intent: string | null;
-  models: unknown;
-  refused: boolean | null;
-  filter_relaxed: boolean | null;
-  tokens_in: number | string | null;
-  tokens_out: number | string | null;
-  latency_ms: number | string | null;
-  cost_micro_usd: number | string | null;
-  estimated: boolean | null;
-};
-
-const num = (value: number | string | null): number => (value === null ? 0 : Number(value));
-
-function modelsOf(value: unknown): string[] {
-  return Array.isArray(value) ? value.filter((v): v is string => typeof v === "string") : [];
-}
-
-function toRow(row: Row): AdminTraceRow {
-  return {
-    traceId: row.trace_id,
-    messageId: row.message_id,
-    createdAt: Math.round(num(row.created_at_ms)),
-    question: row.question ?? "",
-    answer: row.answer ?? "",
-    intent: row.intent,
-    models: modelsOf(row.models),
-    refused: row.refused === true,
-    filterRelaxed: row.filter_relaxed === true,
-    totals: {
-      tokensIn: Math.round(num(row.tokens_in)),
-      tokensOut: Math.round(num(row.tokens_out)),
-      latencyMs: num(row.latency_ms),
-      costMicroUsd: Math.round(num(row.cost_micro_usd)),
-      estimated: row.estimated === true,
-    },
-  };
-}
 
 /** The filter as `$n`-placeholder predicates plus the parameters they bind. */
 function whereOf(filter: AdminTraceFilter): { text: string; params: unknown[] } {
@@ -215,7 +95,11 @@ export function postgresAdminMethods(
   sql: SqlRunner,
 ): Pick<
   RagStoreAdmin,
-  "recordAdminAccess" | "listAdminTraces" | "getAdminTrace" | "purgeAdminAccessLog"
+  | "recordAdminAccess"
+  | "listAdminTraces"
+  | "getAdminTrace"
+  | "getAdminTraceRaw"
+  | "purgeAdminAccessLog"
 > {
   return {
     recordAdminAccess(entry: AdminAccessEntry) {
@@ -235,24 +119,41 @@ export function postgresAdminMethods(
 
     listAdminTraces(filter, page) {
       const where = whereOf(filter);
-      const rowsParams = [...where.params, page.limit, page.offset];
-      const rowsText = `SELECT${ROW_COLUMNS} ${ROW_FROM}${where.text}
+      // One statement: the window is computed over every matching row BEFORE the
+      // LIMIT, so the page and the total it was drawn from cannot disagree — a row
+      // inserted between two statements used to yield a "Next" that led nowhere.
+      const rowsText = `SELECT${ROW_COLUMNS}, (COUNT(*) OVER ())::double precision AS total ${ROW_FROM}${where.text}
         ORDER BY created_at_ms DESC, t.id DESC
         LIMIT $${where.params.length + 1} OFFSET $${where.params.length + 2}`;
+      // An empty page carries no window value (there is no row to read it from), so
+      // only that case pays a second round trip.
       const countText = `SELECT COUNT(*)::double precision AS total ${ROW_FROM}${where.text}`;
       return Effect.flatMap(
-        sqlEffect(sql, () => sql.query(rowsText, rowsParams) as Promise<Row[]>),
-        (rows) =>
-          Effect.map(
+        sqlEffect(
+          sql,
+          () =>
+            sql.query(rowsText, [...where.params, page.limit, page.offset]) as Promise<
+              (Row & { total: number | string })[]
+            >,
+        ),
+        (rows) => {
+          if (rows.length > 0) {
+            return Effect.succeed<AdminTracePage>({
+              rows: rows.map(toRow),
+              total: Math.round(num(rows[0]?.total ?? 0)),
+            });
+          }
+          return Effect.map(
             sqlEffect(
               sql,
               () => sql.query(countText, where.params) as Promise<{ total: number | string }[]>,
             ),
             (counted): AdminTracePage => ({
-              rows: rows.map(toRow),
+              rows: [],
               total: Math.round(num(counted[0]?.total ?? 0)),
             }),
-          ),
+          );
+        },
       );
     },
 
@@ -270,11 +171,29 @@ export function postgresAdminMethods(
           if (!row) return Effect.succeed<AdminTraceRecord | null>(null);
           return Effect.map(
             Effect.try({
-              try: () => parseTrace(row.trace) as Trace,
+              try: () => parseTrace(row.trace),
               catch: constraintError,
             }),
             (trace): AdminTraceRecord => ({ trace, row: toRow(row) }),
           );
+        },
+      );
+    },
+
+    getAdminTraceRaw(traceId) {
+      // No `parseTrace`: the raw download exists to inspect a persisted shape the
+      // current contract rejects, so parsing here would fail on exactly those rows.
+      return Effect.map(
+        sqlEffect(
+          sql,
+          () =>
+            sql.query(`SELECT${ROW_COLUMNS}, t.trace ${ROW_FROM} AND t.id = $1::uuid LIMIT 1`, [
+              traceId,
+            ]) as Promise<(Row & { trace?: unknown })[]>,
+        ),
+        (rows): AdminTraceRawRecord | null => {
+          const [row] = rows;
+          return row ? { trace: row.trace, row: toRow(row) } : null;
         },
       );
     },
