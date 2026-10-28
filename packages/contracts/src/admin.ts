@@ -198,8 +198,8 @@ export const AdminTraceQuerySchema = v.object({
   q: v.optional(filterText(ADMIN_QUERY_TEXT_MAX)),
   from: epochsMs(),
   to: epochsMs(),
-  // The two free-text filters carry the same no-control-character rule as `q`: they
-  // reach the store as bound text too, so a NUL would fail the read the same way.
+  // The two free-text filters carry the same NUL-only guard as `q`: they reach the
+  // store as bound text too, so a NUL would fail the read the same way.
   intent: v.optional(filterText(64)),
   model: v.optional(filterText(200)),
   refused: v.optional(v.picklist(["true", "false"])),

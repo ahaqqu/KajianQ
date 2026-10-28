@@ -17,7 +17,7 @@ import {
  * token is unforgeable without the credential and dies when the credential rotates
  * (the signing key is derived from it); an expired token is a miss; every token names
  * one random session so a sign-out can end exactly that session, and a signed token
- * that omits it — the shape every pre-change deployment issued — is refused; and the
+ * that omits it — the pre-change mint's `{ exp, nonce }` shape — is refused; and the
  * actor fingerprint identifies a credential version without storing the credential or
  * anything an offline guess could confirm.
  *
@@ -94,12 +94,14 @@ describe("session tokens", () => {
   });
 
   it("refuses a validly signed legacy token that names no session", async () => {
-    // The property the session model exists for: a token in the shape every pre-change
-    // deployment issued — a signed `{ exp }` with no session id — must be a miss, because
-    // nothing could ever revoke it. The signature is real: the positive control below is
-    // the SAME recipe signing a payload that does name a session, and it verifies. So the
-    // only difference between the accepted token and the refused one is the session id,
-    // and deleting that requirement reddens this test rather than passing elsewhere.
+    // The property the session model exists for: a validly signed payload with no session
+    // id must be a miss, because nothing could ever revoke it. Every pre-change mint
+    // issued that shape as `{ exp, nonce }`; the signer below drops the nonce — which the
+    // verifier never reads — and carries `{ exp }` alone. The signature is real: the
+    // positive control below is the SAME recipe signing a payload that does name a
+    // session, and it verifies. So the only difference between the accepted token and the
+    // refused one is the session id, and deleting that requirement reddens this test
+    // rather than passing elsewhere.
     const exp = 1_000 + ADMIN_SESSION_TTL_MS;
     const jti = "A".repeat(22);
     const acceptedPayload = base64url({ exp, jti });

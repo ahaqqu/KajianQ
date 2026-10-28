@@ -28,10 +28,12 @@
 # ships an `apps/api` migration is ordered MIGRATE, THEN RESTART — `bun run
 # db:up:api` before this script (docs/VPS-OPERATIONS.md §2.3). Apply-first is
 # safe because the migrations are additive, so the previous build ignores the
-# new table; the new build fails closed with 503 on the admin routes until it
-# exists. The smoke below cannot see that state (health, the anonymous mint and
-# the chat page never touch the admin surface), so do not read a green deploy as
-# "the schema is current".
+# new table. Until that table exists the new build answers the session probe as
+# signed out (200 `{authenticated:false}`) and accepts a login — neither reads the
+# denylist — while every admin read and a logout carrying a live token fail
+# closed with 503. The smoke below cannot see that state (health, the anonymous
+# mint and the chat page never touch the admin surface), so do not read a green
+# deploy as "the schema is current".
 #
 # Usage:
 #   provision/vps/deploy/deploy.sh --env /etc/kajianq/deploy.env

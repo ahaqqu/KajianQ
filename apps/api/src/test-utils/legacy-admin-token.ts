@@ -1,14 +1,18 @@
 import { hmacSha256, sha256, toHex } from "@app/hardening";
 
 /**
- * A signer for the ONE token shape this session model must refuse and a real deployment
- * has actually issued: a payload carrying `{ exp }` and no session id, signed with the
- * same credential-derived key the current code uses.
+ * A signer for a token shape this session model must refuse and a real deployment has
+ * actually issued: a payload carrying `exp` and no session id, signed with the same
+ * credential-derived key the current code uses. The pre-change mint carried `{ exp,
+ * nonce }`; this signer drops the nonce — which `verifySessionClaims` never reads — so
+ * `{ exp }` alone is the shortest payload that reproduces the difference the refusal
+ * keys on: the absent `jti`.
  *
  * It exists so the refusal is observable rather than vacuous. Signing a payload that also
  * names a `jti` with `tokenSignature` is accepted by `verifySessionClaims`, so a token
  * built here differs from an accepted one by the missing session id alone — the
- * signature, the version and the expiry are all valid.
+ * signature, the version and the expiry are all valid, and the verifier reads no other
+ * field.
  *
  * `KEY_LABEL` pins the key derivation `admin-auth.ts` performs; a change there reddens the
  * control assertion in `admin-auth.test.ts` instead of silently turning this signer into a

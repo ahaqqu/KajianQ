@@ -8,15 +8,18 @@
 -- forged token, and every other session id stays untouched.
 --
 -- The rows carry no credential, no user and no content — only a random id and the
--- revoked token's own `exp` — so the table cannot become an identity store. Its
--- retention is the token's lifetime: after `expires_at`, the signature's expiry check
--- refuses the token with or without the row, and the nightly cleanup deletes the row.
+-- revoked token's own `exp` — so the table cannot become an identity store. A row is
+-- reclaimed by the first nightly cleanup after the token it ends has expired: the
+-- token's lifetime plus at most one cleanup interval, so it outlives its token by
+-- design. The signature's expiry check refuses that token with or without the row, so
+-- the row proves nothing after `expires_at`.
 
 BEGIN;
 
 CREATE TABLE admin_session_revocations (
   jti        text PRIMARY KEY CHECK (jti <> ''),
-  -- The revoked token's `exp`, so the row outlives exactly the token it ends.
+  -- The revoked token's `exp`: the purge deletes the row at the first cleanup after it,
+  -- so the row outlives its token by at most one cleanup interval.
   expires_at timestamptz NOT NULL,
   revoked_at timestamptz NOT NULL DEFAULT now()
 );
