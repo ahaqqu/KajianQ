@@ -124,7 +124,9 @@ and reclaimed by a retention window.
    routed intent, model, refusal, relaxed filter, and per-answer latency or cost
    floors, over server-side pagination with a stable link per answer; each answer
    opens the same derived frame the chat panel renders for it, its totals summed over
-   every provider call it made, and the stored trace as a JSON download.
+   every provider call it made, each call's model identity and configured-price
+   consistency, and the stored trace as a JSON download. The recorded cost stays the
+   figure shown; the registry explains it and never replaces it.
 2. **Feedback queue** — accept or reject; accepted items become Golden Set cases.
 3. **Harness results viewer** — benchmark and eval runs, trends, model comparisons (the harness itself is CLI). Prompt and model configuration stay in files, reviewed via PRs — no UI editing in v1.
 

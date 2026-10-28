@@ -5,6 +5,7 @@ import { modelConfigDrift } from "./providers/model-config-mirror";
 import { createPostgresRagStore } from "./rag-store-postgres";
 import { disposePostgresPools, postgresPool, postgresSqlRunner } from "./rag-store-postgres-driver";
 import type { SqlRunner } from "./rag-store-postgres-errors";
+import type { ModelConfigRecord } from "./rag-store-model-config-seam";
 import type { RagStore } from "./rag-store";
 
 /**
@@ -44,7 +45,7 @@ const entry = (modelId: string, role = "generator", priceIn = 500) => ({
   },
 });
 
-async function rowsOf(): Promise<readonly { role: string; provider: string; modelId: string }[]> {
+async function rowsOf(): Promise<readonly ModelConfigRecord[]> {
   return Effect.runPromise(store.listModelConfigs());
 }
 
@@ -88,6 +89,15 @@ run("RagStore model-config mirror contract (real Postgres)", () => {
        FROM model_configs`,
     )) as { total: number; keys: number }[];
     expect(counted[0]).toEqual({ total: 2, keys: 2 });
+    // The JSONB round-trip is not the derived payload byte-for-byte: object key order
+    // and numeric typing come back the driver's way. The drift check must read that as
+    // the SAME config, or every booted deployment would refuse its own mirror.
+    expect(modelConfigDrift(entries, rows)).toEqual({
+      missing: [],
+      unexpected: [],
+      changed: [],
+      inactive: [],
+    });
   });
 
   it("updates a changed entry in place and keeps the other rows", async () => {
