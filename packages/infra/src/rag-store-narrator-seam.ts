@@ -99,8 +99,8 @@ export interface RagStoreNarrators {
    * name — that ambiguity is what the domain's resolution settles, so the read
    * returns all of them and never picks one.
    *
-   * `limit <= 0` returns no rows without issuing a query; an empty `name` matches
-   * nothing (no stored row has an empty name).
+   * `limit <= 0` returns no rows without issuing a query; a blank `name` matches
+   * nothing (it is not a spelling any stored row carries).
    */
   findNarratorsByName(
     name: string,
@@ -110,7 +110,8 @@ export interface RagStoreNarrators {
   /**
    * The narrator rows for the given ids, in the caller's order and deduplicated,
    * with the ids that have no row reported separately. A malformed id fails as a
-   * `constraint` StoreError rather than being skipped.
+   * `constraint` StoreError rather than being skipped; a blank id is ignored (it
+   * addresses nothing) and is the one input that is not reported back.
    */
   getNarratorsByIds(ids: readonly string[]): Effect.Effect<NarratorIdsLookup, StoreError>;
 

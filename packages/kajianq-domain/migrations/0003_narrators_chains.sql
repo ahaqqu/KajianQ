@@ -117,8 +117,11 @@ CREATE TABLE narrator_chains (
   CONSTRAINT narrator_chains_grade_vocabulary
     CHECK (grade IS NULL OR grade IN ('mutawatir', 'sahih', 'hasan', 'dhaif')),
   -- A grade without its grader is the flattened per-matn problem ADR-0012
-  -- rejects, and a grader without a grade states nothing.
-  CONSTRAINT narrator_chains_grade_attribution CHECK ((grade IS NULL) = (grader IS NULL))
+  -- rejects, a grader without a grade states nothing, and a blank grader is an
+  -- unattributed grade wearing a string.
+  CONSTRAINT narrator_chains_grade_attribution CHECK (
+    (grade IS NULL) = (grader IS NULL) AND (grader IS NULL OR btrim(grader) <> '')
+  )
 );
 
 -- The chain -> child join, ordered by insertion: the composite lets the read

@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { disposePostgresPools, postgresPool } from "@app/infra";
+import { GRADES } from "./filters";
 
 /**
  * The narrator/chain migration against real Postgres, up and down.
@@ -34,6 +35,14 @@ const CHILD_ID = "00000000-0000-4000-8000-0000000000c1";
 const NARRATOR_A = "00000000-0000-4000-8000-0000000000a1";
 const NARRATOR_B = "00000000-0000-4000-8000-0000000000b1";
 
+/**
+ * One pooled connection, typed from a direct call expression: the pool's `connect`
+ * overloads make `ReturnType<typeof pool.connect>` resolve to the callback form.
+ */
+async function connectProbe(connectionString: string) {
+  return postgresPool(connectionString).connect();
+}
+
 const upSql = () => readFileSync(UP_FILE, "utf8");
 const downSql = () => readFileSync(DOWN_FILE, "utf8");
 
@@ -41,7 +50,7 @@ const downSql = () => readFileSync(DOWN_FILE, "utf8");
 type ColumnShape = { dataType: string; nullable: boolean };
 
 run("narrators + narrator_chains migration (real Postgres, throwaway schema)", () => {
-  let client: Awaited<ReturnType<ReturnType<typeof postgresPool>["connect"]>> | null = null;
+  let client: Awaited<ReturnType<typeof connectProbe>> | null = null;
 
   /** Run one statement on the probe session (search_path already set). */
   const query = async (text: string, params: unknown[] = []) => client!.query(text, params);
@@ -86,7 +95,7 @@ run("narrators + narrator_chains migration (real Postgres, throwaway schema)", (
 
   beforeAll(async () => {
     if (!URL) return;
-    client = await postgresPool(URL).connect();
+    client = await connectProbe(URL);
     // The probe session resolves every unqualified name through its own schema, so
     // the migration's `doc_children` reference hits the stub below, never the shared
     // table.
@@ -234,6 +243,24 @@ run("narrators + narrator_chains migration (real Postgres, throwaway schema)", (
     ]);
   });
 
+  it("admits exactly the domain pack's Grade vocabulary", async () => {
+    // The domain pack's GRADES is the one list retrieval filters by; this CHECK is
+    // its database twin. A fifth grade added to one without the other fails here.
+    for (const grade of GRADES) {
+      await query(
+        `INSERT INTO narrator_chains (child_id, collection, narrator_ids, grade, grader, source_ref)
+         VALUES ($1, 'bukhari', ARRAY[$2::uuid], $3, 'grader-a', 'grade-probe')`,
+        [CHILD_ID, NARRATOR_A, grade],
+      );
+    }
+    const stored = await query(
+      `SELECT grade FROM narrator_chains WHERE source_ref = 'grade-probe'`,
+    );
+    expect(stored.rows.map((row: { grade: string }) => row.grade).sort()).toEqual(
+      [...GRADES].sort(),
+    );
+  });
+
   it("rejects every stored shape a citation could misread", async () => {
     const chain = (narratorIds: string, grade: string | null, grader: string | null) =>
       query(
@@ -265,6 +292,8 @@ run("narrators + narrator_chains migration (real Postgres, throwaway schema)", (
     // a grader without a grade states nothing.
     await expect(chain("ARRAY[$4::uuid]", "sahih", null)).rejects.toThrow(/check constraint/);
     await expect(chain("ARRAY[$4::uuid]", null, "al-bukhari")).rejects.toThrow(/check constraint/);
+    // A blank grader is an unattributed grade wearing a string.
+    await expect(chain("ARRAY[$4::uuid]", "sahih", " ")).rejects.toThrow(/check constraint/);
     await expect(
       query(
         `INSERT INTO narrator_chains (child_id, collection, narrator_ids, grade, grader)
