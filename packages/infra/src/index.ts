@@ -79,6 +79,13 @@ export {
 } from "./rag-store";
 export { type RagStoreCorpus } from "./rag-store-corpus-seam";
 export {
+  type ChainPage,
+  type NarratorChainRecord,
+  type NarratorIdsLookup,
+  type NarratorRecord,
+  type RagStoreNarrators,
+} from "./rag-store-narrator-seam";
+export {
   type ModelConfigEntry,
   type ModelConfigRecord,
   type RagStoreModelConfig,

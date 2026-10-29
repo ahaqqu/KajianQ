@@ -160,6 +160,20 @@ function fakeStore() {
     listModelConfigs() {
       return Effect.succeed([]);
     },
+    // The graph reads are not part of ingestion's surface either: this fake only
+    // has to satisfy the seam, and the memory store covers what they answer.
+    findNarratorsByName() {
+      return Effect.succeed([]);
+    },
+    getNarratorsByIds() {
+      return Effect.succeed({ narrators: [], missingIds: [] });
+    },
+    listChainsForChild() {
+      return Effect.succeed([]);
+    },
+    listChainsByCollection() {
+      return Effect.succeed({ rows: [], nextAfterId: null });
+    },
   };
   return {
     store,

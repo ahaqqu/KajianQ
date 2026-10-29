@@ -287,7 +287,6 @@ export {
   type ScopeExpansion,
   type ScopeStore,
 } from "./chat-scope-expansion";
-
 // -- Citation-label lookup (ADR-0058) ---------------------------------------
 export {
   CITATION_LOOKUP_ORIGIN,
@@ -297,3 +296,4 @@ export {
   type LabelLookupBridge,
   type LabelLookupStore,
 } from "./chat-label-lookup";
+export { asIsnad, asNarrator, type Isnad, type Narrator } from "./narrator";

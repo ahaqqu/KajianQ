@@ -6,6 +6,7 @@ import type {
   RagStoreEvalRunWrite,
   RagStoreFeedback,
   RagStoreModelConfig,
+  RagStoreNarrators,
   RagStoreTrace,
   StoreError,
 } from "./rag-store-seams";
@@ -171,7 +172,8 @@ export interface RagStore
     RagStoreEvalLedger,
     RagStoreFeedback,
     RagStoreAdmin,
-    RagStoreModelConfig {
+    RagStoreModelConfig,
+    RagStoreNarrators {
   // -- Chat (v1 conversational surface) ------------------------------------
 
   createChatSession(input: {
