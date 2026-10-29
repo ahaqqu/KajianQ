@@ -96,8 +96,9 @@ What it does, in order:
    `secrets.STAGING_DATABASE_URL` on the workflow path — §1.4). It fails closed: a
    missing `DATABASE_URL`, a DSN naming any other host, a port an existing
    listener already holds, a tunnel that does not come up, or a status command
-   that exits non-zero — or prints a report the check does not recognise — all
-   refuse the deploy, because an unverified schema is not a green deploy. The
+   that exits non-zero — or prints a report the check does not recognise, or a
+   report that leaves one of the three migration sets out — all refuse the
+   deploy, because an unverified schema is not a green deploy. The
    check is read-only and also runs under `--dry-run`. `--skip-migration-check`
    is the one explicit way past it, and CI never passes it. This is what enforces
    the migrate-then-restart order in §2.3 instead of only documenting it.
@@ -763,9 +764,10 @@ From the box (loopback, so no tunnel):
 **Ordering a deploy that ships a migration: migrate first, then restart — and
 the deploy now enforces the order.** A deploy restarts the API and never applies
 a migration (§1). Its first preflight (`migration-check.sh`, §1.1 step 1) reads
-the ledger (`db:status:all:json`) through a short-lived tunnel and refuses while
-anything is pending, printing the pending files and the exact `db:up:*` command
-for the migration set they belong to. The pair is therefore:
+the ledger (`db:status:all:json`) through a short-lived tunnel, requires a report
+for each of the three sets, and refuses while anything is pending, printing the
+pending files and the exact `db:up:*` command for the migration set they belong
+to. The pair is therefore:
 
 ```bash
 ( export DATABASE_URL="postgres://kajianq:$(sudo cat /etc/kajianq/db-password)@127.0.0.1:5432/kajianq"

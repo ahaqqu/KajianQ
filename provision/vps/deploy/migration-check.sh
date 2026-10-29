@@ -7,8 +7,10 @@
 # shared schema_migrations ledger through `bun run db:status:all:json` — the
 # engine, domain and product migration sets share one database and one ledger —
 # and refuses when any migration is pending. The machine report is a contract
-# with `db-migrate.mjs status --json`: a report this script does not recognise
-# refuses the deploy rather than reading as an empty pending list.
+# with `db-migrate.mjs status --json`: one `{"applied":[…],"pending":[…]}` object
+# per set. A report this script does not recognise, one whose files belong to no
+# single set, or one that leaves a set unreported refuses the deploy rather
+# than reading as an empty pending list.
 #
 # The refusal is the point. A deploy never applies a migration (docs/
 # VPS-OPERATIONS.md §2.3): applying is an operator action, and a release that
@@ -200,12 +202,40 @@ if [ -n "${KAJIANQ_DB_TUNNEL_TARGET:-}" ]; then
 fi
 
 # --- the ledger -------------------------------------------------------------
+# The three migration sets that share the ledger, in the order
+# `db:status:all:json` reads them. A report names files from exactly one set, so
+# the preflight can prove all three reported: a chain that silently stopped
+# after one set would otherwise read as a clean ledger.
+MIGRATION_SET_DIRS=(
+    "packages/infra/migrations"
+    "packages/kajianq-domain/migrations"
+    "apps/api/migrations"
+)
+MIGRATION_SET_NAMES=("engine" "domain" "product")
+MIGRATION_SET_COMMANDS=("bun run db:up" "bun run db:up:domain" "bun run db:up:api")
+
+# The index of the one migration set that owns a migration file name; prints
+# nothing when no set owns it or when more than one does (a corrupted checkout).
+migration_set_of() {
+    local name="$1" index=0 hits=0 found=""
+    while [ "${index}" -lt "${#MIGRATION_SET_DIRS[@]}" ]; do
+        if [ -f "${REPO_DIR}/${MIGRATION_SET_DIRS[${index}]}/${name}" ]; then
+            hits=$((hits + 1))
+            found="${index}"
+        fi
+        index=$((index + 1))
+    done
+    if [ "${hits}" -eq 1 ]; then
+        printf '%s\n' "${found}"
+    fi
+}
+
 # `status --json` prints one `{"applied":[…],"pending":[…]}` object per
 # migration set (the keys in that order, one line each). Lines that are not that
-# object — bun's command banners — are skipped; a report with no object, or one
-# whose `pending` is not a list of plain JSON strings, refuses. Reading an
-# unrecognised report as "nothing pending" is the silent failure this gate
-# exists to close.
+# object — bun's command banners — are skipped; a report with no object, a list
+# that is not plain JSON strings, a file that belongs to no single set, or a set
+# left unreported refuses. Reading a narrowed or unrecognised report as "nothing
+# pending" is the silent failure this gate exists to close.
 status_rc=0
 status_output="$(cd "${REPO_DIR}" && bun run db:status:all:json 2>&1)" || status_rc=$?
 if [ "${status_rc}" -ne 0 ]; then
@@ -223,9 +253,10 @@ if [ "${status_rc}" -ne 0 ]; then
 fi
 
 report_re='^\{"applied":\[(.*)\],"pending":\[(.*)\]\}$'
-pending_list_re='^"[^"\\]+"(,"[^"\\]+")*$'
+list_re='^"[^"\\]+"(,"[^"\\]+")*$'
 pending=()
 reports=0
+seen_sets=()
 while IFS= read -r line; do
     case "${line}" in
         "{"*"}") ;;
@@ -237,22 +268,70 @@ while IFS= read -r line; do
             "the migration status is not the expected machine report (one JSON object with applied and pending arrays per set) — refusing to read an unrecognised report as a clean ledger" \
             "${SKIP_HINT}"
     fi
+    applied_json="${BASH_REMATCH[1]}"
     pending_json="${BASH_REMATCH[2]}"
-    if [ -z "${pending_json}" ]; then
-        continue
-    fi
-    if ! [[ "${pending_json}" =~ ${pending_list_re} ]]; then
+    report_set=""
+    report_names=0
+    for list_name in applied pending; do
+        if [ "${list_name}" = "applied" ]; then
+            list_json="${applied_json}"
+        else
+            list_json="${pending_json}"
+        fi
+        if [ -z "${list_json}" ]; then
+            continue
+        fi
+        if ! [[ "${list_json}" =~ ${list_re} ]]; then
+            refuse \
+                "the migration status's ${list_name} list is not a list of plain JSON strings — refusing to read it as a clean ledger" \
+                "${SKIP_HINT}"
+        fi
+        while IFS= read -r name; do
+            report_names=$((report_names + 1))
+            name_set="$(migration_set_of "${name}")"
+            if [ -z "${name_set}" ]; then
+                refuse \
+                    "the migration status names '${name}', which no migration set owns — refusing to read an unrecognised report as a clean ledger" \
+                    "${SKIP_HINT}"
+            fi
+            if [ -z "${report_set}" ]; then
+                report_set="${name_set}"
+            elif [ "${report_set}" != "${name_set}" ]; then
+                refuse \
+                    "the migration status mixes files from different migration sets — refusing to read an unrecognised report as a clean ledger" \
+                    "${SKIP_HINT}"
+            fi
+            if [ "${list_name}" = "pending" ]; then
+                pending+=("${name}")
+            fi
+        done < <(printf '%s\n' "${list_json//\",\"/$'\n'}" | tr -d '"')
+    done
+    if [ "${report_names}" -eq 0 ]; then
         refuse \
-            "the migration status's pending list is not a list of plain JSON strings — refusing to read it as a clean ledger" \
+            "the migration status reported an object with no migration names — refusing to read an unidentifiable report as a clean ledger" \
             "${SKIP_HINT}"
     fi
-    while IFS= read -r name; do
-        pending+=("${name}")
-    done < <(printf '%s\n' "${pending_json//\",\"/$'\n'}" | tr -d '"')
+    seen_sets[${report_set}]=1
 done <<<"${status_output}"
 if [ "${reports}" -eq 0 ]; then
     refuse \
         "bun run db:status:all:json printed no machine-readable report — refusing to read an unreadable ledger as clean" \
+        "${SKIP_HINT}"
+fi
+missing_sets=()
+seen_count=0
+set_index=0
+while [ "${set_index}" -lt "${#MIGRATION_SET_NAMES[@]}" ]; do
+    if [ -n "${seen_sets[${set_index}]:-}" ]; then
+        seen_count=$((seen_count + 1))
+    else
+        missing_sets+=("${MIGRATION_SET_NAMES[${set_index}]}")
+    fi
+    set_index=$((set_index + 1))
+done
+if [ "${#missing_sets[@]}" -gt 0 ]; then
+    refuse \
+        "bun run db:status:all:json reported ${seen_count} of ${#MIGRATION_SET_NAMES[@]} migration sets — missing: ${missing_sets[*]} — refusing to read a partial ledger as clean" \
         "${SKIP_HINT}"
 fi
 
@@ -262,25 +341,13 @@ if [ "${#pending[@]}" -eq 0 ]; then
 fi
 
 # The exact `db:up:*` command for a pending migration, from the migration set
-# its file belongs to. Names are unique across sets; a name found in no set or
-# in more than one (a corrupted checkout) falls back to the command covering all
-# three, which is always safe.
+# its file belongs to. A name found in no set or in more than one (a corrupted
+# checkout) falls back to the command covering all three, which is always safe.
 migration_up_command() {
-    local name="$1" hits=0 command=""
-    if [ -f "${REPO_DIR}/packages/infra/migrations/${name}" ]; then
-        hits=$((hits + 1))
-        command="bun run db:up"
-    fi
-    if [ -f "${REPO_DIR}/packages/kajianq-domain/migrations/${name}" ]; then
-        hits=$((hits + 1))
-        command="bun run db:up:domain"
-    fi
-    if [ -f "${REPO_DIR}/apps/api/migrations/${name}" ]; then
-        hits=$((hits + 1))
-        command="bun run db:up:api"
-    fi
-    if [ "${hits}" -eq 1 ]; then
-        printf '%s\n' "${command}"
+    local set
+    set="$(migration_set_of "$1")"
+    if [ -n "${set}" ]; then
+        printf '%s\n' "${MIGRATION_SET_COMMANDS[${set}]}"
     else
         printf '%s\n' "bun run db:up:all"
     fi
