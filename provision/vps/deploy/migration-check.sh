@@ -15,9 +15,9 @@
 # touch the admin surface that fails closed with a 503 — so without this gate a
 # green deploy would hide a half-migrated box until someone used the feature.
 #
-# The database listens on loopback only on the box (ADR-0044 decision 5), so the
-# check opens its own short-lived ssh tunnel and closes it on exit — the same
-# shape the Staging smoke uses. DATABASE_URL must therefore name a loopback host
+# The database listens on loopback only on the box (docs/VPS-OPERATIONS.md
+# §2.8), so the check opens its own short-lived ssh tunnel and closes it on exit
+# — the same shape the Staging smoke uses. DATABASE_URL must therefore name a loopback host
 # and an explicit port: the tunnel binds that local port and forwards it to the
 # box's 127.0.0.1:5432, and a URL naming any other host would make the check
 # read a database the deploy does not touch. Passwords stay in the environment;
@@ -147,6 +147,9 @@ if [ -n "${KAJIANQ_DB_TUNNEL_TARGET:-}" ]; then
         if ! kill -0 "${TUNNEL_PID}" 2>/dev/null; then
             break
         fi
+        # A bare TCP connect is the readiness signal; the server logs and drops
+        # the incomplete startup packet, which is why this probes once per loop
+        # rather than retrying a full client handshake.
         if (echo >"/dev/tcp/127.0.0.1/${port}") 2>/dev/null; then
             tunnel_ready=1
             break

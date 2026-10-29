@@ -45,7 +45,7 @@
 #
 # Usage:
 #   provision/vps/deploy/deploy.sh --env /etc/kajianq/deploy.env
-#   provision/vps/deploy/deploy.sh --env-file <path> [--dry-run] [--no-smoke] [--skip-migration-check]
+#   provision/vps/deploy/deploy.sh --env <path> [--dry-run] [--no-smoke] [--skip-migration-check]
 #
 # Wherever the box is named, it comes from an env file that is NOT in the
 # repository (the repo is public — no real hostname may enter its history):

@@ -1125,7 +1125,7 @@ describe("deploy.sh wiring", () => {
   it("ships the checker over ssh and passes the manifest on argv, changing no installed state", () => {
     const script = read("provision/vps/deploy/deploy.sh");
     const start = script.indexOf('log "preflight: provisioned artifacts match the checkout"');
-    const end = script.indexOf("# --- 0b. preflight");
+    const end = script.indexOf("# --- 0c. preflight");
     expect(start).toBeGreaterThan(-1);
     expect(end).toBeGreaterThan(start);
     const block = script.slice(start, end);
