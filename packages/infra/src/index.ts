@@ -79,6 +79,7 @@ export {
 } from "./rag-store";
 export { type RagStoreCorpus } from "./rag-store-corpus-seam";
 export {
+  canonicalNarratorId,
   type ChainPage,
   type NarratorChainRecord,
   type NarratorIdsLookup,

@@ -103,6 +103,16 @@ run("narrators + narrator_chains migration (real Postgres, throwaway schema)", (
     return JSON.stringify(rows[0]);
   };
 
+  /** The constraint that refused a write, or undefined when it was accepted. */
+  const refusedBy = async (write: Promise<unknown>): Promise<string | undefined> => {
+    try {
+      await write;
+      return undefined;
+    } catch (error) {
+      return (error as { constraint?: string }).constraint;
+    }
+  };
+
   beforeAll(async () => {
     if (!URL) return;
     client = await connectProbe(URL);
@@ -167,6 +177,7 @@ run("narrators + narrator_chains migration (real Postgres, throwaway schema)", (
     });
     expect(await columnsOf("narrator_chains")).toEqual({
       id: { dataType: "uuid", nullable: false },
+      seq: { dataType: "bigint", nullable: false },
       child_id: { dataType: "uuid", nullable: false },
       collection: { dataType: "text", nullable: false },
       narrator_ids: { dataType: "ARRAY", nullable: false },
@@ -262,14 +273,24 @@ run("narrators + narrator_chains migration (real Postgres, throwaway schema)", (
   });
 
   it("admits exactly the domain pack's Grade vocabulary", async () => {
-    // The domain pack's GRADES is the one list retrieval filters by; this CHECK is
-    // its database twin. A fifth grade added to one without the other fails here.
-    for (const grade of GRADES) {
-      await query(
-        `INSERT INTO narrator_chains (child_id, collection, narrator_ids, grade, grader, source_ref)
-         VALUES ($1, 'bukhari', ARRAY[$2::uuid], $3, 'grader-a', 'grade-probe')`,
-        [CHILD_ID, NARRATOR_A, grade],
+    // Both directions, not just GRADES ⊆ CHECK: every candidate's acceptance must
+    // equal its membership in GRADES, so a fifth value added to either side alone
+    // fails here.
+    const candidates = [...GRADES, "shadh", "sahih2", "SAHIH", "sahih ", ""];
+    for (const grade of candidates) {
+      const refused = await refusedBy(
+        query(
+          `INSERT INTO narrator_chains (child_id, collection, narrator_ids, grade, grader, source_ref)
+           VALUES ($1, 'bukhari', ARRAY[$2::uuid], $3, 'grader-a', 'grade-probe')`,
+          [CHILD_ID, NARRATOR_A, grade],
+        ),
       );
+      if ((GRADES as readonly string[]).includes(grade)) {
+        expect(refused).toBeUndefined();
+      } else {
+        // Match the guard by name: a neighbouring CHECK must not satisfy the case.
+        expect(refused).toBe("narrator_chains_grade_vocabulary");
+      }
     }
     const stored = await query(
       `SELECT grade FROM narrator_chains WHERE source_ref = 'grade-probe'`,
@@ -277,6 +298,21 @@ run("narrators + narrator_chains migration (real Postgres, throwaway schema)", (
     expect(stored.rows.map((row: { grade: string }) => row.grade).sort()).toEqual(
       [...GRADES].sort(),
     );
+
+    // Direct parity: the CHECK's own admitted list and GRADES are one vocabulary.
+    const definition = await query(
+      `SELECT pg_get_constraintdef(c.oid) AS definition
+       FROM pg_constraint c
+       JOIN pg_class t ON t.oid = c.conrelid
+       JOIN pg_namespace n ON n.oid = t.relnamespace
+       WHERE n.nspname = $1 AND t.relname = 'narrator_chains'
+         AND c.conname = 'narrator_chains_grade_vocabulary'`,
+      [SCHEMA],
+    );
+    const admitted = [...String(definition.rows[0]?.definition).matchAll(/'([^']*)'::text/g)].map(
+      (match) => match[1],
+    );
+    expect(admitted.sort()).toEqual([...GRADES].sort());
   });
 
   it("rejects every stored shape a citation could misread", async () => {
@@ -369,7 +405,7 @@ run("narrators + narrator_chains migration (real Postgres, throwaway schema)", (
 
       await query(`SET enable_bitmapscan = off`);
       const childChains = await planOf(
-        `SELECT id FROM narrator_chains WHERE child_id = $1 ORDER BY created_at, id LIMIT 10`,
+        `SELECT id FROM narrator_chains WHERE child_id = $1 ORDER BY seq LIMIT 10`,
         [CHILD_ID],
       );
       expect(childChains).toContain("narrator_chains_child_id_idx");

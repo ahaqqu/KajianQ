@@ -5,9 +5,16 @@ import type { Effect } from "effect";
  * Narrator/graph half of the `RagStore` seam: the read surface over the
  * narrator catalogue and the ordered narrator chains attached to a child chunk.
  *
- * The names here are **role names**, not the product's domain vocabulary: the
- * engine stores and returns rows it never interprets, and the domain pack binds
+ * The names here are **role names plus the domain columns the pack's rows carry**:
+ * the engine stores and returns rows it never interprets, and the domain pack binds
  * these records to its own types (the chain record becomes the pack's chain type).
+ * `kunya`, `laqab`, `tabaqa` and `reliabilityByCritic` are pass-through columns the
+ * pack's own catalogue carries; the engine neither names them as concepts nor acts
+ * on them, and a second product can store a different vocabulary behind the same
+ * records. ADR-0019 leaves vocabulary outside the boundary wordlist to review
+ * rather than mechanical enforcement; these pass-through columns are that
+ * remainder, and the engine adds no behaviour on top of them.
+ *
  * Two consequences are visible in the types rather than trusted to a caller:
  *
  * - **Order is data.** A chain's `narratorIds` is stored and returned exactly as
@@ -32,11 +39,13 @@ export type NarratorRecord = {
   canonicalNameAr: string;
   /** Every other spelling recorded for this narrator; the name read matches these too. */
   nameVariants: readonly string[];
+  /** The teknonymic name element; stored and returned verbatim, never interpreted here. */
   kunya: string | null;
+  /** The descriptive honorific; stored and returned verbatim, never interpreted here. */
   laqab: string | null;
   /** Hijri death year; null when unknown. */
   deathYear: number | null;
-  /** The generation label as the source states it; never coerced to a level. */
+  /** The generation label as the source states it; stored verbatim and never coerced to a level. */
   tabaqa: string | null;
   /**
    * Critic key → that critic's assessment of this narrator. Opaque to the engine:
@@ -69,9 +78,22 @@ export type NarratorChainRecord = {
 };
 
 /**
+ * The canonical spelling of a narrator id: trimmed, braces stripped, lowercased.
+ * Postgres accepts every one of those spellings of a uuid and returns the canonical
+ * lowercase form, so a read maps rows and caller ids under this form while
+ * `missingIds` keeps the caller's own spelling. A value that is not a uuid is not
+ * repaired here; the query rejects it as a `constraint` StoreError.
+ */
+export function canonicalNarratorId(id: string): string {
+  return id.trim().replace(/^\{/, "").replace(/\}$/, "").trim().toLowerCase();
+}
+
+/**
  * The answer to a by-id narrator lookup. `narrators` holds the rows that exist, in
  * the caller's order; `missingIds` names the requested ids with no row, also in the
- * caller's order. Both lists are deduplicated by id.
+ * caller's order. Both lists are deduplicated by canonical id, so spellings of one
+ * uuid (case, braces, surrounding whitespace) are one id; `missingIds` carries the
+ * caller's first spelling of an id that has no row.
  *
  * The second field exists because a chain's narrator ids are not foreign keys: a
  * caller resolving a chain must be able to tell "this narrator is unknown to the
@@ -108,19 +130,23 @@ export interface RagStoreNarrators {
   ): Effect.Effect<readonly NarratorRecord[], StoreError>;
 
   /**
-   * The narrator rows for the given ids, in the caller's order and deduplicated,
-   * with the ids that have no row reported separately. A malformed id fails as a
-   * `constraint` StoreError rather than being skipped; a blank id is ignored (it
-   * addresses nothing) and is the one input that is not reported back.
+   * The narrator rows for the given ids, in the caller's order and deduplicated by
+   * canonical id, with the ids that have no row reported separately. Case, braces
+   * and surrounding whitespace are spelling, not identity: every spelling of one
+   * uuid addresses the same narrator. A malformed id fails as a `constraint`
+   * StoreError rather than being skipped; a blank id is ignored (it addresses
+   * nothing) and is the one input that is not reported back.
    */
   getNarratorsByIds(ids: readonly string[]): Effect.Effect<NarratorIdsLookup, StoreError>;
 
   /**
-   * The chains attached to one child chunk, at most `limit` rows, ordered by
-   * insertion (`created_at`, then `id`) — a neutral order, never a grade ranking,
-   * because multiple chains are presented to a reader neutrally. An unknown child
-   * id returns an empty list (a child-less chain cannot exist: the schema's foreign
-   * key cascades). `limit <= 0` returns no rows without issuing a query.
+   * The chains attached to one child chunk, at most `limit` rows, ordered by the
+   * store-assigned insertion sequence — a neutral order, never a grade ranking,
+   * because multiple chains are presented to a reader neutrally. `created_at` is
+   * the transaction timestamp and the random `id` is not insertion order, so
+   * neither decides this read. An unknown child id returns an empty list (a
+   * child-less chain cannot exist: the schema's foreign key cascades). `limit <= 0`
+   * returns no rows without issuing a query.
    */
   listChainsForChild(
     childId: string,

@@ -7,6 +7,7 @@ import {
   NarratorShapeError,
   parseNarratorReliability,
   type CriticAssessment,
+  type Isnad,
 } from "./narrator";
 
 /**
@@ -30,13 +31,16 @@ const narratorRow = (overrides: Partial<NarratorRecord> = {}): NarratorRecord =>
   ...overrides,
 });
 
-const chainRow = (grade: string | null) => ({
+const chainRow = (
+  grade: string | null,
+  grader: string | null = grade === null ? null : "grader-a",
+) => ({
   id: "22222222-2222-4222-8222-222222222222",
   childId: "33333333-3333-4333-8333-333333333333",
   collection: "bukhari",
   narratorIds: ["44444444-4444-4444-8444-444444444444"],
   grade,
-  grader: grade === null ? null : "grader-a",
+  grader,
   sourceRef: null,
 });
 
@@ -105,6 +109,25 @@ describe("the isnad grade the pack accepts", () => {
     for (const grade of ["sahih ", "Sahih", "sahih hasan", ""]) {
       expect(() => asIsnad(chainRow(grade))).toThrow(NarratorShapeError);
     }
+  });
+
+  it("refuses a grade and grader that do not travel together", () => {
+    // The schema's narrator_chains_grade_attribution CHECK is mirrored here: an
+    // unattributed grade, a grader without a grade and a blank grader all refuse.
+    for (const [grade, grader] of [
+      ["sahih", null],
+      [null, "grader-a"],
+      ["sahih", "   "],
+    ] as const) {
+      expect(() => asIsnad(chainRow(grade, grader))).toThrow(NarratorShapeError);
+    }
+  });
+
+  it("cannot express an unattributed grade in its type", () => {
+    const base = chainRow(null);
+    // @ts-expect-error — an Isnad pairs a Grade with a non-blank grader.
+    const invalid: Isnad = { ...base, grade: "sahih", grader: null };
+    expect(invalid).toBeDefined();
   });
 
   it("keeps the ordered narrator sequence untouched", () => {

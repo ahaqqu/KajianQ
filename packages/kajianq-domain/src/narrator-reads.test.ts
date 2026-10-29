@@ -112,13 +112,12 @@ function narratorFixture(): NarratorRecord[] {
   ];
 }
 
-/** The seam record of a seeded chain: the insertion time is the double's, not the seam's. */
-function seamChain({ createdAt: _createdAt, ...chain }: SeededChain) {
+/** The seam record of a seeded chain: the insertion sequence is the double's, not the seam's. */
+function seamChain({ seq: _seq, ...chain }: SeededChain) {
   return chain;
 }
 
 function chainFixture(): SeededChain[] {
-  const at = (second: number) => Date.parse(`2020-01-01T00:00:0${second}Z`);
   return [
     // A duplicated narrator, not in id order: the sequence is the chain.
     {
@@ -129,7 +128,7 @@ function chainFixture(): SeededChain[] {
       grade: "sahih",
       grader: "al-bukhari",
       sourceRef: "source:1",
-      createdAt: at(1),
+      seq: 1,
     },
     // No stored verdict: no grade, no grader, no source.
     {
@@ -140,7 +139,7 @@ function chainFixture(): SeededChain[] {
       grade: null,
       grader: null,
       sourceRef: null,
-      createdAt: at(2),
+      seq: 2,
     },
     {
       id: chainIds[2]!,
@@ -150,7 +149,7 @@ function chainFixture(): SeededChain[] {
       grade: "hasan",
       grader: "al-tirmidhi",
       sourceRef: "source:3",
-      createdAt: at(3),
+      seq: 3,
     },
     {
       // An id the catalogue does not hold: the schema cannot make an array
@@ -162,7 +161,7 @@ function chainFixture(): SeededChain[] {
       grade: null,
       grader: null,
       sourceRef: "source:4",
-      createdAt: at(4),
+      seq: 4,
     },
   ];
 }
@@ -190,7 +189,7 @@ run("narrator and chain reads (real Postgres adapter, memory equal)", () => {
     );
     childIds = await Effect.runPromise(
       postgres.insertDocChildren(
-        [0, 1].map((ordinal) => ({
+        [0, 1, 2].map((ordinal) => ({
           parentId,
           textRaw: `raw-${PREFIX}-${ordinal}`,
           textAr: `ar-${PREFIX}-${ordinal}`,
@@ -215,16 +214,21 @@ run("narrator and chain reads (real Postgres adapter, memory equal)", () => {
                 ${JSON.stringify(row.metadata)}::jsonb)
       `;
     }
-    for (const chain of chainFixture()) {
-      memory.seedChain(chain);
-      await sql!`
-        INSERT INTO narrator_chains (id, child_id, collection, narrator_ids, grade, grader,
-                                     source_ref, created_at)
-        VALUES (${chain.id}, ${chain.childId}, ${chain.collection},
-                ${[...chain.narratorIds]}::uuid[], ${chain.grade}, ${chain.grader},
-                ${chain.sourceRef}, ${new Date(chain.createdAt).toISOString()}::timestamptz)
-      `;
-    }
+    const chains = chainFixture();
+    for (const chain of chains) memory.seedChain(chain);
+    // One transaction for the whole fixture: every chain shares `created_at`, so
+    // only the store-assigned insertion sequence can order them.
+    await sql!.transaction(
+      chains.map(
+        (chain) => sql!`
+          INSERT INTO narrator_chains (id, child_id, collection, narrator_ids, grade, grader,
+                                       source_ref)
+          VALUES (${chain.id}, ${chain.childId}, ${chain.collection},
+                  ${[...chain.narratorIds]}::uuid[], ${chain.grade}, ${chain.grader},
+                  ${chain.sourceRef})
+        `,
+      ),
+    );
   });
 
   afterAll(async () => {
@@ -283,7 +287,34 @@ run("narrator and chain reads (real Postgres adapter, memory equal)", () => {
     expect((await runFail(postgres.getNarratorsByIds(["not-a-uuid"]))).kind).toBe("constraint");
   });
 
-  it("returns a child's chains in neutral insertion order, sequence verbatim", async () => {
+  it("treats every spelling of one narrator id as the same id", async () => {
+    const lookup = await both((store) =>
+      store.getNarratorsByIds([
+        NARRATOR_ONE.toUpperCase(),
+        `{${NARRATOR_ONE}}`,
+        NARRATOR_ONE,
+        ` {${NARRATOR_ONE.toUpperCase()}} `,
+      ]),
+    );
+    // Case, braces, padding and duplicates are one id, resolved once.
+    expect(lookup.narrators.map((row) => row.id)).toEqual([NARRATOR_ONE]);
+    expect(lookup.missingIds).toEqual([]);
+
+    // A missing id is deduplicated on its canonical form and reported in the
+    // caller's first spelling; the report order follows first occurrence.
+    const missing = await both((store) =>
+      store.getNarratorsByIds([
+        `{${NARRATOR_UNKNOWN.toUpperCase()}}`,
+        NARRATOR_UNKNOWN.toUpperCase(),
+        NARRATOR_UNKNOWN,
+        NARRATOR_ONE.toUpperCase(),
+      ]),
+    );
+    expect(missing.narrators.map((row) => row.id)).toEqual([NARRATOR_ONE]);
+    expect(missing.missingIds).toEqual([`{${NARRATOR_UNKNOWN.toUpperCase()}}`]);
+  });
+
+  it("returns a child's chains in store-assigned insertion order, sequence verbatim", async () => {
     const chains = await both((store) => store.listChainsForChild(childIds[0]!, { limit: 10 }));
     expect(chains.map((chain) => chain.id)).toEqual([chainIds[0], chainIds[1], chainIds[3]]);
     // Order and duplicates are the chain; a sorted or deduplicated read is a false
@@ -305,6 +336,45 @@ run("narrator and chain reads (real Postgres adapter, memory equal)", () => {
     expect(await both((store) => store.listChainsForChild(CHILD_MISSING, { limit: 10 }))).toEqual(
       [],
     );
+  });
+
+  it("reads three chains written in one transaction in insertion order, not id order", async () => {
+    // Ids assigned in reverse insertion order: only a store-assigned sequence can
+    // report the order the writer supplied.
+    const ids = [crypto.randomUUID(), crypto.randomUUID(), crypto.randomUUID()].sort().reverse();
+    const childId = childIds[2]!;
+    const createdAt = "2020-01-02T00:00:00Z";
+    ids.forEach((id, index) => {
+      memory.seedChain({
+        id,
+        childId,
+        collection: "same-transaction",
+        narratorIds: [NARRATOR_ONE],
+        grade: null,
+        grader: null,
+        sourceRef: null,
+        seq: index + 1,
+      });
+    });
+    await sql!.transaction(
+      ids.map(
+        (id) => sql!`
+          INSERT INTO narrator_chains (id, child_id, collection, narrator_ids, grade, grader,
+                                       source_ref, created_at)
+          VALUES (${id}, ${childId}, 'same-transaction', ${[NARRATOR_ONE]}::uuid[], NULL, NULL,
+                  NULL, ${createdAt}::timestamptz)
+        `,
+      ),
+    );
+    const timestamps = await sql!`
+      SELECT count(DISTINCT created_at)::int AS n
+      FROM narrator_chains
+      WHERE child_id = ${childId}
+    `;
+    // One timestamp for the batch: `created_at` cannot order these rows.
+    expect(timestamps).toEqual([{ n: 1 }]);
+    const chains = await both((store) => store.listChainsForChild(childId, { limit: 10 }));
+    expect(chains.map((chain) => chain.id)).toEqual(ids);
   });
 
   it("pages a collection by the id cursor without skipping or repeating a row", async () => {

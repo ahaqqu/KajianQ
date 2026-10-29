@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 import { Effect } from "effect";
+import { NarratorShapeError } from "../narrator";
 import { createMemoryRagStore } from "./memory-rag-store";
 
 /**
@@ -39,7 +40,7 @@ function storeWithFixture() {
     grade: "rank-a",
     grader: "grader-a",
     sourceRef: "source:1",
-    createdAt: 2,
+    seq: 2,
   });
   store.seedChain({
     id: "c-1",
@@ -49,7 +50,7 @@ function storeWithFixture() {
     grade: null,
     grader: null,
     sourceRef: null,
-    createdAt: 1,
+    seq: 1,
   });
   store.seedChain({
     id: "c-3",
@@ -59,7 +60,7 @@ function storeWithFixture() {
     grade: null,
     grader: null,
     sourceRef: null,
-    createdAt: 3,
+    seq: 3,
   });
   return store;
 }
@@ -96,9 +97,65 @@ describe("the memory double's narrator reads", () => {
       missingIds: [],
     });
   });
+
+  it("canonicalises id spelling before lookup and dedupe", async () => {
+    const store = storeWithFixture();
+    const lookup = await Effect.runPromise(
+      store.getNarratorsByIds(["N-C", "{n-a}", "n-c", "N-MISSING"]),
+    );
+    // Case, braces and duplicates are one id; the caller's first spelling of a
+    // missing id is what the report carries.
+    expect(lookup.narrators.map((row) => row.id)).toEqual(["n-c", "n-a"]);
+    expect(lookup.missingIds).toEqual(["N-MISSING"]);
+  });
 });
 
 describe("the memory double's chain reads", () => {
+  it("refuses to seed a grade/grader pairing the database would reject", () => {
+    const store = createMemoryRagStore();
+    const chain = {
+      id: "c-1",
+      childId: "child-1",
+      collection: "collection-a",
+      narratorIds: ["n-a"],
+      grade: "sahih" as string | null,
+      grader: "grader-a" as string | null,
+      sourceRef: null,
+      seq: 1,
+    };
+    for (const [grade, grader] of [
+      ["sahih", null],
+      [null, "grader-a"],
+      ["sahih", "   "],
+    ] as const) {
+      expect(() => store.seedChain({ ...chain, grade, grader })).toThrow(NarratorShapeError);
+    }
+    expect(() => store.seedChain({ ...chain, grade: null, grader: null })).not.toThrow();
+    expect(() => store.seedChain({ ...chain, grade: "sahih", grader: "al-bukhari" })).not.toThrow();
+  });
+
+  it("orders by the seeded insertion sequence even when ids run the other way", async () => {
+    const store = createMemoryRagStore();
+    for (const [id, seq] of [
+      ["c-z", 1],
+      ["c-m", 2],
+      ["c-a", 3],
+    ] as const) {
+      store.seedChain({
+        id,
+        childId: "child-1",
+        collection: "collection-a",
+        narratorIds: ["n-a"],
+        grade: null,
+        grader: null,
+        sourceRef: null,
+        seq,
+      });
+    }
+    const chains = await Effect.runPromise(store.listChainsForChild("child-1", { limit: 10 }));
+    expect(chains.map((chain) => chain.id)).toEqual(["c-z", "c-m", "c-a"]);
+  });
+
   it("orders a child's chains by insertion and keeps the sequence verbatim", async () => {
     const store = storeWithFixture();
     const chains = await Effect.runPromise(store.listChainsForChild("child-1", { limit: 10 }));

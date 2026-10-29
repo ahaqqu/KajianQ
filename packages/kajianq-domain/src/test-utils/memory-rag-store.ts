@@ -57,7 +57,7 @@ export function createMemoryRagStore(): RagStore & {
   allModelConfigs: () => readonly ModelConfigRecord[];
   /** Seed one narrator row (the seam has no ingestion writes yet). */
   seedNarrator: (narrator: NarratorRecord) => void;
-  /** Seed one chain row; `createdAt` is its insertion time in the neutral order. */
+  /** Seed one chain row; `seq` is its store-assigned insertion order in the neutral read. */
   seedChain: (chain: SeededChain) => void;
   cosineSearch: (
     track: "primary" | "fallback",

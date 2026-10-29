@@ -39,6 +39,12 @@
 -- narrator by-id read omits unknown ids, so a consumer can detect an unresolved
 -- reference instead of silently losing it. Ingestion writes narrators before
 -- chains.
+--
+-- Insertion order is carried by `narrator_chains.seq`, an identity column: values
+-- are allocated in the order the inserts run, which is the order one ingestion
+-- transaction supplies a child's chains. `created_at` is the transaction
+-- timestamp (one value for the whole batch) and `id` is random, so neither can
+-- provide that order; the child read orders by `seq` through its composite index.
 
 BEGIN;
 
@@ -87,6 +93,10 @@ CREATE INDEX narrators_name_variants_gin ON narrators USING gin (name_variants);
 
 CREATE TABLE narrator_chains (
   id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  -- The store-assigned insertion order. `created_at` is the transaction timestamp
+  -- and `id` is random, so neither can order the chains one ingestion transaction
+  -- writes for a child; identity values are allocated in the order the inserts run.
+  seq           bigint GENERATED ALWAYS AS IDENTITY,
   -- The hadith child this chain transmits. The cascade is the ownership rule: a
   -- child's removal removes its transmission evidence, never the narrator
   -- catalogue (narrators are shared across chains and outlive any one child).
@@ -124,10 +134,10 @@ CREATE TABLE narrator_chains (
   )
 );
 
--- The chain -> child join, ordered by insertion: the composite lets the read
--- filter and order in one index scan, and keeps multiple chains presented
--- neutrally (insertion order, never a grade ranking).
-CREATE INDEX narrator_chains_child_id_idx ON narrator_chains (child_id, created_at, id);
+-- The chain -> child join, ordered by the store-assigned insertion sequence: the
+-- composite lets the read filter and order in one index scan, and keeps multiple
+-- chains presented neutrally (insertion order, never a grade ranking).
+CREATE INDEX narrator_chains_child_id_idx ON narrator_chains (child_id, seq);
 -- The keyset page over one collection, ordered by the opaque id cursor.
 CREATE INDEX narrator_chains_collection_idx ON narrator_chains (collection, id);
 

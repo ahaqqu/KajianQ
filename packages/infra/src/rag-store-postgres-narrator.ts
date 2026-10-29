@@ -1,9 +1,10 @@
 import { Effect } from "effect";
 import type { RagStore } from "./rag-store";
-import type {
-  NarratorChainRecord,
-  NarratorIdsLookup,
-  NarratorRecord,
+import {
+  canonicalNarratorId,
+  type NarratorChainRecord,
+  type NarratorIdsLookup,
+  type NarratorRecord,
 } from "./rag-store-narrator-seam";
 import { sqlEffect, type SqlRunner } from "./rag-store-postgres-errors";
 
@@ -102,7 +103,16 @@ export function postgresNarratorMethods(
     },
 
     getNarratorsByIds(ids) {
-      const unique = [...new Set(ids)].filter((id) => id.trim() !== "");
+      // Canonicalise once, before dedupe, SQL and lookup: Postgres accepts braces
+      // and any case for a uuid and returns the lowercase form, so the map cannot
+      // be keyed by the caller's spelling. The first spelling of each canonical id
+      // is kept for a missing report; a blank id addresses nothing.
+      const requested = new Map<string, string>();
+      for (const raw of ids) {
+        const canonical = canonicalNarratorId(raw);
+        if (canonical !== "" && !requested.has(canonical)) requested.set(canonical, raw);
+      }
+      const unique = [...requested.keys()];
       if (unique.length === 0) {
         return Effect.succeed({ narrators: [] as NarratorRecord[], missingIds: [] as string[] });
       }
@@ -122,12 +132,14 @@ export function postgresNarratorMethods(
             ` as Promise<NarratorRow[]>,
         ),
         (rows): NarratorIdsLookup => {
-          const byId = new Map(rows.map((row) => [row.id, rowToNarrator(row)]));
+          const byId = new Map(
+            rows.map((row) => [canonicalNarratorId(row.id), rowToNarrator(row)]),
+          );
           const narrators: NarratorRecord[] = [];
           const missingIds: string[] = [];
-          for (const id of unique) {
-            const narrator = byId.get(id);
-            if (narrator === undefined) missingIds.push(id);
+          for (const [canonical, original] of requested) {
+            const narrator = byId.get(canonical);
+            if (narrator === undefined) missingIds.push(original);
             else narrators.push(narrator);
           }
           return { narrators, missingIds };
@@ -137,8 +149,10 @@ export function postgresNarratorMethods(
 
     listChainsForChild(childId, opts) {
       if (opts.limit <= 0) return Effect.succeed([] as NarratorChainRecord[]);
-      // Insertion order, never a grade ranking: several chains are presented to a
-      // reader neutrally, so the store must not imply an authority order.
+      // Store-assigned insertion order, never a grade ranking: several chains are
+      // presented to a reader neutrally, so the store must not imply an authority
+      // order. `created_at` is the transaction timestamp and `id` is random, so
+      // neither can carry insertion order.
       return Effect.map(
         sqlEffect(
           sql,
@@ -147,7 +161,7 @@ export function postgresNarratorMethods(
               SELECT id, child_id, collection, narrator_ids, grade, grader, source_ref
               FROM narrator_chains
               WHERE child_id = ${childId}
-              ORDER BY created_at, id
+              ORDER BY seq
               LIMIT ${opts.limit}
             ` as Promise<ChainRow[]>,
         ),

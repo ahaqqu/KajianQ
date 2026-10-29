@@ -1,5 +1,11 @@
 import { Effect } from "effect";
-import type { NarratorChainRecord, NarratorRecord, RagStore } from "@app/infra";
+import {
+  canonicalNarratorId,
+  type NarratorChainRecord,
+  type NarratorRecord,
+  type RagStore,
+} from "@app/infra";
+import { assertGradeAttribution } from "../narrator";
 
 /**
  * Narrator/graph half of the in-memory RagStore, split from
@@ -9,13 +15,15 @@ import type { NarratorChainRecord, NarratorRecord, RagStore } from "@app/infra";
  * The double exists so unit tests can exercise the seam without a server, so it
  * must answer exactly what the adapter's SQL answers. Its ordering rules mirror
  * the adapter's comments: rows by `id` (the collation-free order both
- * implementations can guarantee), chains for a child by `(createdAt, id)`, a
- * collection page by the `id` cursor. Nothing is normalised or deduplicated
- * except the by-id lookup's own input, which the adapter also deduplicates.
+ * implementations can guarantee), chains for a child by the seeded insertion
+ * sequence, a collection page by the `id` cursor. Id spelling is the only thing
+ * canonicalised (a seeded narrator and a lookup's ids both use the adapter's
+ * canonical form), and a seeded chain must carry the grade/grader pairing the
+ * database's CHECK enforces.
  */
 
-/** One seeded chain: the seam record plus the insertion time the neutral order reads. */
-export type SeededChain = NarratorChainRecord & { readonly createdAt: number };
+/** One seeded chain: the seam record plus the store-assigned insertion sequence. */
+export type SeededChain = NarratorChainRecord & { readonly seq: number };
 
 /** The maps the memory store owns (shared with the rest of the store's state). */
 export type MemoryNarratorState = {
@@ -43,9 +51,16 @@ function compareIds(left: string, right: string): number {
 export function memoryNarratorMethods(state: MemoryNarratorState): MemoryNarratorMethods {
   return {
     seedNarrator(narrator) {
-      state.narrators.set(narrator.id, narrator);
+      // Postgres canonicalises a uuid's spelling on write; the double stores the
+      // canonical form so a seeded row answers the same lookup the adapter does.
+      const id = canonicalNarratorId(narrator.id);
+      state.narrators.set(id, { ...narrator, id });
     },
     seedChain(chain) {
+      // The memory double is the only DB-less write path a test sees; refusing a
+      // row the database would reject is what keeps that gate from being greener
+      // than the real store.
+      assertGradeAttribution(chain.grade, chain.grader);
       state.chains.set(chain.id, chain);
     },
     allNarrators: () => [...state.narrators.values()],
@@ -64,12 +79,16 @@ export function memoryNarratorMethods(state: MemoryNarratorState): MemoryNarrato
     },
 
     getNarratorsByIds(ids) {
-      const unique = [...new Set(ids)].filter((id) => id.trim() !== "");
+      const requested = new Map<string, string>();
+      for (const raw of ids) {
+        const canonical = canonicalNarratorId(raw);
+        if (canonical !== "" && !requested.has(canonical)) requested.set(canonical, raw);
+      }
       const narrators: NarratorRecord[] = [];
       const missingIds: string[] = [];
-      for (const id of unique) {
-        const narrator = state.narrators.get(id);
-        if (narrator === undefined) missingIds.push(id);
+      for (const [canonical, original] of requested) {
+        const narrator = state.narrators.get(canonical);
+        if (narrator === undefined) missingIds.push(original);
         else narrators.push(narrator);
       }
       return Effect.succeed({ narrators, missingIds });
@@ -80,9 +99,9 @@ export function memoryNarratorMethods(state: MemoryNarratorState): MemoryNarrato
       return Effect.sync(() =>
         [...state.chains.values()]
           .filter((chain) => chain.childId === childId)
-          .sort((left, right) => left.createdAt - right.createdAt || compareIds(left.id, right.id))
+          .sort((left, right) => left.seq - right.seq || compareIds(left.id, right.id))
           .slice(0, opts.limit)
-          .map(stripInsertionTime),
+          .map(stripInsertionSequence),
       );
     },
 
@@ -97,14 +116,14 @@ export function memoryNarratorMethods(state: MemoryNarratorState): MemoryNarrato
         .sort((left, right) => compareIds(left.id, right.id))
         .slice(0, opts.limit);
       return Effect.succeed({
-        rows: rows.map(stripInsertionTime),
+        rows: rows.map(stripInsertionSequence),
         nextAfterId: rows.length === opts.limit ? (rows.at(-1)?.id ?? null) : null,
       });
     },
   };
 }
 
-/** Drop the double's own insertion time: the seam record does not carry it. */
-function stripInsertionTime({ createdAt: _createdAt, ...chain }: SeededChain): NarratorChainRecord {
+/** Drop the double's own insertion sequence: the seam record does not carry it. */
+function stripInsertionSequence({ seq: _seq, ...chain }: SeededChain): NarratorChainRecord {
   return chain;
 }

@@ -44,10 +44,18 @@ export type Narrator = Omit<NarratorRecord, "reliabilityByCritic"> & {
   readonly reliabilityByCritic: NarratorReliability;
 };
 
-/** The per-chain row (CONTEXT.md "Isnad"), with its grade narrowed to the domain vocabulary. */
-export type Isnad = Omit<NarratorChainRecord, "grade"> & {
-  readonly grade: Grade | null;
-};
+/**
+ * The per-chain row (CONTEXT.md "Isnad"), with its grade narrowed to the domain
+ * vocabulary and paired with the grader the schema requires. The union is the
+ * type-level half of the database's `narrator_chains_grade_attribution` CHECK:
+ * an ungraded chain has no grader either, and a graded chain carries a non-blank
+ * grader, so no consumer can render an unattributed grade.
+ */
+export type Isnad = Omit<NarratorChainRecord, "grade" | "grader"> &
+  (
+    | { readonly grade: null; readonly grader: null }
+    | { readonly grade: Grade; readonly grader: string }
+  );
 
 /** A stored graph row the domain cannot read under its own contract. */
 export class NarratorShapeError extends Error {
@@ -108,15 +116,40 @@ export function asNarrator(record: NarratorRecord): Narrator {
 }
 
 /**
+ * The schema's `narrator_chains_grade_attribution` rule as a function: a grade and
+ * a non-blank grader are present or absent together. Exported so the memory double
+ * seeds only rows the database would accept — a DB-less test must not be handed a
+ * shape the real store would refuse.
+ */
+export function assertGradeAttribution(grade: string | null, grader: string | null): void {
+  if ((grade === null) !== (grader === null)) {
+    throw new NarratorShapeError(
+      grade === null
+        ? "isnad carries a grader without a grade"
+        : `isnad grade '${grade}' carries no grader`,
+    );
+  }
+  if (grader !== null && grader.trim() === "") {
+    throw new NarratorShapeError("isnad grader is blank");
+  }
+}
+
+/**
  * Read one chain row into the domain shape. A grade outside CONTEXT.md's four is
  * refused: the schema's CHECK constraint admits only the four, so seeing another
  * value means the row did not come through this product's write path — and a null
- * would silently drop the classification a citation is about to render.
+ * would silently drop the classification a citation is about to render. The
+ * grade/grader pairing is refused on the same footing, mirroring the schema, so an
+ * unattributed grade cannot narrow into a citation-ready Isnad.
  */
 export function asIsnad(record: NarratorChainRecord): Isnad {
-  const grade = record.grade;
+  const { grade, grader } = record;
   if (grade !== null && !(GRADES as readonly string[]).includes(grade)) {
     throw new NarratorShapeError(`isnad grade '${grade}' is outside the Grade vocabulary`);
   }
-  return { ...record, grade: grade as Grade | null };
+  assertGradeAttribution(grade, grader);
+  if (grade === null) {
+    return { ...record, grade: null, grader: null };
+  }
+  return { ...record, grade: grade as Grade, grader: grader as string };
 }
