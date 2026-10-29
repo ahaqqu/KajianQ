@@ -16,20 +16,23 @@ import { fileURLToPath } from "node:url";
  *
  * The walker parses every form a module can use to load another one: `import x from`
  * (static named/default/star, re-export), `import "x"` (bare side effect),
- * `import("x")` and `require("x")`. Two rules keep it from passing on a graph it did not
+ * `import("x")` and `require("x")`. Three rules keep it from passing on a graph it did not
  * really see:
  *
  * - an unresolved relative or `@app/…` specifier **throws** — a broken edge is a broken
- *   graph, not an external dependency, and the previous "not part of the graph" skip is
- *   exactly how a plain `.js` helper smuggling `@app/infra` stayed invisible;
- * - a non-literal dynamic import (`import(somePath)`) throws for the same reason: the
- *   walker cannot prove what it loads.
+ *   graph, not an external dependency;
+ * - a non-literal `import(…)` or `require(…)` throws for the same reason: the walker
+ *   cannot prove what it loads;
+ * - a `createRequire` call throws: it builds a loader whose specifier no static walk can
+ *   follow.
  *
  * A trap is built in: the walker asserts it found the study's own modules, so a resolver
  * that silently found nothing cannot pass the suite by being empty. The fixture suite
  * pins the negative space — a bare `@app/infra` import, a relative `.js` hop into
- * `@app/infra`, and an unresolved relative specifier each have a fixture whose walk must
- * see the violation or fail.
+ * `@app/infra`, a literal `require` and a literal dynamic `import` of `@app/infra`, an
+ * unresolved relative specifier, a computed `import`, a computed `require` and a
+ * `createRequire` loader each have a fixture whose walk must see the violation or fail,
+ * beside a clean control that must stay green.
  */
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
@@ -69,8 +72,17 @@ const SPECIFIER_PATTERNS = [
   /\brequire\s*\(\s*["']([^"']+)["']/gu, // CommonJS require
 ];
 
-/** `import(` with no string literal on the next non-space character: unresolvable by design. */
-const NON_LITERAL_DYNAMIC_IMPORT = /\bimport\s*\(\s*(?!["']|\/\*)/gu;
+/** Loaders whose specifier the walker cannot see: each one is a hard walk failure. */
+const OPAQUE_LOADERS = [
+  {
+    pattern: /\b(?:import|require)\s*\(\s*(?!["'])/gu,
+    reason: "a dynamic import or require with a computed specifier is opaque",
+  },
+  {
+    pattern: /\bcreateRequire\b/gu,
+    reason: "createRequire builds a module loader the walker cannot follow",
+  },
+] as const;
 
 function isFile(path: string): boolean {
   return existsSync(path) && statSync(path).isFile();
@@ -192,9 +204,11 @@ function walkImportGraph(entry: string): ImportGraph {
         queue.push(target.file);
       }
     }
-    for (const match of source.matchAll(NON_LITERAL_DYNAMIC_IMPORT)) {
-      const line = source.slice(0, match.index).split("\n").length;
-      problems.push(`${current}:${line}: a dynamic import with a computed specifier is opaque`);
+    for (const { pattern, reason } of OPAQUE_LOADERS) {
+      for (const match of source.matchAll(pattern)) {
+        const line = source.slice(0, match.index).split("\n").length;
+        problems.push(`${current}:${line}: ${reason}`);
+      }
     }
   }
   if (problems.length > 0)
@@ -263,6 +277,18 @@ describe("the walker's negative space", () => {
     expect(graph.packages.has("@app/infra")).toBe(true);
   });
 
+  it("sees a literal require as an edge", () => {
+    const graph = walkImportGraph(join(FIXTURES, "require-app-infra.mjs"));
+    expect(graph.files).toHaveLength(1);
+    expect(graph.packages.has("@app/infra")).toBe(true);
+  });
+
+  it("sees a literal dynamic import as an edge", () => {
+    const graph = walkImportGraph(join(FIXTURES, "dynamic-app-infra.mjs"));
+    expect(graph.files).toHaveLength(1);
+    expect(graph.packages.has("@app/infra")).toBe(true);
+  });
+
   it("treats an unresolved relative specifier as a broken graph, not a skip", () => {
     expect(() => walkImportGraph(join(FIXTURES, "unresolved-entry.mjs"))).toThrow(
       /cannot resolve "\.\/missing-helper\.js"/u,
@@ -272,6 +298,18 @@ describe("the walker's negative space", () => {
   it("throws on a dynamic import whose specifier is computed", () => {
     expect(() => walkImportGraph(join(FIXTURES, "computed-entry.mjs"))).toThrow(
       /computed specifier/u,
+    );
+  });
+
+  it("throws on a require whose specifier is computed", () => {
+    expect(() => walkImportGraph(join(FIXTURES, "computed-require.mjs"))).toThrow(
+      /require with a computed specifier is opaque/u,
+    );
+  });
+
+  it("throws on a require function built with createRequire", () => {
+    expect(() => walkImportGraph(join(FIXTURES, "create-require.mjs"))).toThrow(
+      /createRequire builds a module loader the walker cannot follow/u,
     );
   });
 

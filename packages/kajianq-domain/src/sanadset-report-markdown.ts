@@ -170,18 +170,18 @@ export function renderReportMarkdown(document: StudyReportDocument): string {
   );
   lines.push("## Model band", "");
   lines.push(
-    `- Matn rows inside the band ${band}: ${count(facts.band.matnRows)} — one adjudication each`,
-  );
-  lines.push(
-    "- Matn rows quarantined as an ambiguous best match inside the band (two groups within the margin): " +
-      `${count(facts.band.ambiguousQuarantined)} — never sent to a model, so never a call`,
+    `- Matn rows inside the band ${band}: ${count(facts.band.matnRows + facts.band.ambiguousQuarantined)} — ` +
+      `${count(facts.band.matnRows)} needing one adjudication each + ` +
+      `${count(facts.band.ambiguousQuarantined)} quarantined as an ambiguous best match ` +
+      "(two groups within the margin), so never a call",
   );
   lines.push(
     `- Narrator candidate pairs needing identity adjudication: ${count(facts.band.narratorPairs)} over ${count(facts.band.narratorNames)} names`,
   );
   lines.push(
-    `- Calls the work needs: sample ${count(facts.band.sampleCalls)} + band ${count(facts.band.matnRows)} = ` +
-      `${count(facts.band.callsNeeded)}; the ceiling allows ${count(facts.band.callsBudgeted)} of ${count(facts.band.ceiling)}`,
+    `- Calls the work needs: sample ${count(facts.band.sampleCalls)} + band rows needing adjudication ` +
+      `${count(facts.band.matnRows)} = ${count(facts.band.callsNeeded)}; ` +
+      `the ceiling allows ${count(facts.band.callsBudgeted)} of ${count(facts.band.ceiling)}`,
     "",
   );
   lines.push("## Model arm", "");

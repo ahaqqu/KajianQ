@@ -250,4 +250,22 @@ describe("renderReportMarkdown", () => {
     expect(markdown).toContain("pre-registered before any model output");
     expect(markdown).toContain("sanadset.csv");
   });
+
+  it("labels the band population, its adjudicated subset, and the calls each spends", () => {
+    const document = assembleReportDocument({
+      facts: facts(),
+      costRecords: [],
+      quarantined: 1,
+    });
+    const markdown = renderReportMarkdown(document);
+    // The interval holds both the adjudicated rows and the ambiguity quarantine, and only
+    // the adjudicated rows spend a call.
+    expect(markdown).toContain(
+      "- Matn rows inside the band [0.60, 0.90): 3 — 1 needing one adjudication each + " +
+        "2 quarantined as an ambiguous best match",
+    );
+    expect(markdown).toContain(
+      "- Calls the work needs: sample 300 + band rows needing adjudication 1 = 301",
+    );
+  });
 });

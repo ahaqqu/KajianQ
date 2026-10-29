@@ -26,8 +26,7 @@ import {
 export const SAMPLE_SEED_SALT = "sanadset-s1-blind-sample-v1";
 /** Pairs per kind and per stratum; a short stratum is reported, never fabricated. */
 export const SAMPLE_PER_STRATUM = 50;
-export const SAMPLE_PAIRS_TARGET = 300;
-/** The owner scores this many of the 300, blind (the labelling-limitation instrument). */
+/** The owner scores this many pairs blind (the labelling-limitation instrument). */
 export const OWNER_SPOT_CHECK_SIZE = 50;
 
 export type SampleTargets = Readonly<Record<PairStratum, number>>;

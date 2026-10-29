@@ -97,7 +97,12 @@ export type StudyFacts = {
     readonly candidateCapHits: number;
   };
   readonly band: {
-    /** Rows inside `[matnBandLower, matnBandUpper)`: one adjudication each. */
+    /**
+     * The band rows that need one model adjudication each: the interval population
+     * minus `ambiguousQuarantined`, which is also inside `[matnBandLower, matnBandUpper)`
+     * but is quarantined before a call is made. The interval population is
+     * `matnRows + ambiguousQuarantined`.
+     */
     readonly matnRows: number;
     readonly matnBandLower: number;
     readonly matnBandUpper: number;

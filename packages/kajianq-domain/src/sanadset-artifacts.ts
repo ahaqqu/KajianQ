@@ -4,9 +4,10 @@
  * Three properties live here because they are properties of writing evidence:
  *
  * - **Outside the checkout.** The artifacts carry corpus text (matn excerpts, quarantined
- *   rows), so the writer refuses any directory that resolves inside this repository. The
- *   default is the per-user cache; the refusal is what makes "a checkout cannot carry a
- *   corpus artifact" an invariant rather than a default.
+ *   rows), so the writer refuses any directory that resolves inside a working tree of
+ *   this repository, the main checkout and its linked worktrees alike. The default is the
+ *   per-user cache; the refusal is what makes "a checkout cannot carry a corpus artifact"
+ *   an invariant rather than a default.
  * - **Run-scoped.** Every file lands under `<outDir>/<runId>/`, and a directory that
  *   already carries a scored label sheet is refused rather than overwritten: the owner's
  *   labels are the only human evidence the blind sample exists to produce, and a rerun
@@ -15,6 +16,7 @@
  *   supplies, so no library module reads `process.env` or the home directory on its own.
  */
 
+import { execFileSync } from "node:child_process";
 import {
   existsSync,
   mkdirSync,
@@ -34,8 +36,39 @@ export const DEFAULT_ARTIFACT_DIR = join(".cache", "kajianq", "sanadset-pilot");
 export const DEFAULT_CSV_DIR = join(".cache", "kajianq", "sanadset");
 export const DEFAULT_CSV_NAME = "sanadset.csv";
 
-/** The checkout this module ships in; nothing it writes may land inside it. */
-const REPOSITORY_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
+const MODULE_DIR = dirname(fileURLToPath(import.meta.url));
+
+/** The checkout this module ships in, used when git cannot name the repository. */
+const SHIPPED_CHECKOUT_ROOT = resolve(MODULE_DIR, "../../..");
+
+/**
+ * Every working tree of the repository containing `fromDir`: the main checkout and each
+ * linked worktree. A write judged from a linked worktree has to see the main checkout
+ * (and the reverse), which one module-relative path cannot.
+ *
+ * Falls back to the checkout this module ships in when git is absent or `fromDir` is not
+ * a working tree; the guard then covers that tree alone.
+ */
+export function repositoryRoots(fromDir: string): string[] {
+  try {
+    const listed = execFileSync("git", ["worktree", "list", "--porcelain"], {
+      cwd: fromDir,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+    const roots = listed
+      .split("\n")
+      .filter((line) => line.startsWith("worktree "))
+      .map((line) => resolve(line.slice("worktree ".length)));
+    if (roots.length > 0) return [...new Set(roots)];
+  } catch {
+    // Not a working tree, or git is not installed: the module-relative root is the floor.
+  }
+  return [SHIPPED_CHECKOUT_ROOT];
+}
+
+/** The working trees the writer refuses, resolved once from where the module ships. */
+const GUARDED_ROOTS = repositoryRoots(MODULE_DIR).map((root) => realpathNearest(root));
 
 export const REPORT_JSON = "report.json";
 export const REPORT_MARKDOWN = "report.md";
@@ -97,14 +130,24 @@ function isInside(child: string, parent: string): boolean {
   return child === parent || child.startsWith(`${parent}${sep}`);
 }
 
+/** Which working tree the guard judges a write from; defaults to this module's checkout. */
+export type RepositoryGuard = {
+  readonly from?: string;
+};
+
 /**
- * Refuse a directory that resolves inside this repository. Symlinks are resolved first:
- * a link in `/tmp` that points into the checkout is inside the checkout.
+ * Refuse a directory that resolves inside a working tree of this repository — the main
+ * checkout or any linked worktree. Symlinks are resolved first: a link in `/tmp` that
+ * points into a checkout is inside the checkout.
  */
-export function assertOutsideRepository(dir: string): void {
+export function assertOutsideRepository(dir: string, guard: RepositoryGuard = {}): void {
   const resolved = realpathNearest(dir);
-  const repository = realpathNearest(REPOSITORY_ROOT);
-  if (isInside(resolved, repository)) {
+  const repository = (
+    guard.from === undefined
+      ? GUARDED_ROOTS
+      : repositoryRoots(guard.from).map((root) => realpathNearest(root))
+  ).find((root) => isInside(resolved, root));
+  if (repository !== undefined) {
     throw new StudyArtifactDirError(
       `artifact directory ${dir} resolves inside the repository (${repository}); ` +
         "the study writes corpus text, so it writes only outside the checkout",

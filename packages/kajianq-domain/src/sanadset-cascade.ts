@@ -9,11 +9,12 @@
  * Thresholds (pre-registered): >= 0.90 joins automatically, [0.60, 0.90) is the
  * model band, < 0.60 does not match. The band is half-open on both ends: a row whose
  * top score reaches the auto threshold joins without a model call, so
- * `counts.bandAdjudicated` counts exactly the rows inside the interval the report
- * names. Two groups within 0.02 of the top score are quarantined as an ambiguous best
- * match before the model is asked — an arbitrary tie-break is exactly the force-merge
- * this study exists to avoid — and that quarantine is counted separately
- * (`counts.ambiguousQuarantined`) because it never spends a call.
+ * `counts.bandAdjudicated` counts the band rows that need an adjudication, not the whole
+ * interval the report names. Two groups within 0.02 of the top score are quarantined as
+ * an ambiguous best match before the model is asked — an arbitrary tie-break is exactly
+ * the force-merge this study exists to avoid — and that quarantine is counted separately
+ * (`counts.ambiguousQuarantined`) because it never spends a call; those rows are inside
+ * the band too, so the interval population is `bandAdjudicated + ambiguousQuarantined`.
  */
 
 import { ModelCallCeilingError, type CallBudget } from "./sanadset-budget";

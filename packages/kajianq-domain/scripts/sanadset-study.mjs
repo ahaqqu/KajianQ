@@ -210,7 +210,7 @@ log("info", "study complete", {
   matchRateInSlice: Number(facts.matn.matchRate.value.toFixed(4)),
   distinctMatns: facts.matn.distinctMatns,
   chainsPerChild: Number(facts.matn.chainsPerChild.toFixed(4)),
-  matnBandRows: facts.band.matnRows,
+  matnBandAdjudicated: facts.band.matnRows,
   narratorBandPairs: facts.band.narratorPairs,
   callsNeeded: facts.band.callsNeeded,
   callsBudgeted: facts.band.callsBudgeted,

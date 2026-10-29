@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vite-plus/test";
+import { execFileSync } from "node:child_process";
 import {
   existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  realpathSync,
   symlinkSync,
   writeFileSync,
 } from "node:fs";
@@ -15,6 +17,7 @@ import {
   assertOutsideRepository,
   LABELS_CSV,
   defaultCsvPath,
+  repositoryRoots,
   resolveOutDir,
   SPOT_CHECK_CSV,
   StudyArtifactDirError,
@@ -24,8 +27,10 @@ import {
 /**
  * Test intent, named before the assertions:
  * - trap: the artifact writer must never write into the checkout. The refusal is asserted
- *   through the real path AND through a symlink, because the review's failure mode was a
- *   default that held only while nobody pointed `--out` at the repository;
+ *   through the real path AND through a symlink, because a default that holds only while
+ *   nobody points `--out` at the repository is not an invariant;
+ * - trap: every working tree of the repository is a checkout. The guard is asked from a
+ *   linked worktree and must still refuse the main checkout, and the reverse;
  * - trap: a scored label sheet is evidence. A rerun into the same directory must stop
  *   before writing, not overwrite the sheet the owner spent paid attention on;
  * - trap: the default paths come from the injected environment, so a test can resolve
@@ -50,6 +55,31 @@ describe("the artifact directory", () => {
     const link = join(outside, "sneaky");
     symlinkSync(join(REPO, "packages"), link);
     expect(() => assertOutsideRepository(link)).toThrow(/resolves inside the repository/u);
+  });
+
+  it("refuses the main checkout from a linked worktree, and the linked tree from the main one", () => {
+    const root = mkdtempSync(join(tmpdir(), "sanadset-worktrees-"));
+    const git = (...args: string[]) =>
+      execFileSync("git", args, {
+        cwd: root,
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "ignore"],
+      });
+    git("init", "-q");
+    writeFileSync(join(root, "README.md"), "fixture\n", "utf8");
+    git("add", "README.md");
+    git("-c", "user.name=test", "-c", "user.email=test@example.com", "commit", "-qm", "init");
+    const linked = join(root, "linked");
+    git("worktree", "add", "-q", "--detach", linked);
+
+    const roots = repositoryRoots(linked).map((path) => realpathSync(path));
+    expect(roots).toContain(realpathSync(root));
+    expect(() => assertOutsideRepository(join(root, "artifacts"), { from: linked })).toThrow(
+      /resolves inside the repository/u,
+    );
+    expect(() => assertOutsideRepository(join(linked, "artifacts"), { from: root })).toThrow(
+      /resolves inside the repository/u,
+    );
   });
 
   it("accepts a directory outside the checkout, existing or not", () => {
