@@ -1,5 +1,6 @@
 import {
   chmodSync,
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readdirSync,
@@ -10,6 +11,7 @@ import {
   utimesSync,
   writeFileSync,
 } from "node:fs";
+import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -40,6 +42,7 @@ import {
   verifyRestore,
 } from "../../provision/vps/backup/lib.mjs";
 import { ensureRecordDir } from "../../provision/vps/backup/provenance.mjs";
+import { statusLines } from "../../packages/infra/scripts/db-migrate.mjs";
 
 /**
  * VPS privacy-hardening policy (the Art. 30 record §6; ADR-0043 decision 4
@@ -250,6 +253,179 @@ exec ${JSON.stringify(realCat)} "$@"
       ),
     cleanup: () => rmSync(dir, { recursive: true, force: true }),
   };
+}
+
+/**
+ * The deploy's migration preflight, run as the file deploy.sh runs. `ssh` and `bun`
+ * are stubs on PATH: the tunnel stub binds the loopback port the DSN names,
+ * records its argv, and records that the check closed it; the status stub prints
+ * a fixture `db:status:all:json` report and exits with a fixture status. No test
+ * reaches a real host or database, and the port is the OS's, so parallel workers
+ * cannot collide.
+ *
+ * The ssh stub redirects its own stdout/stderr and never inherits the test's
+ * pipes: a regression that leaves the tunnel running must redden the closure
+ * assertions, not deadlock `spawnSync` on a pipe the surviving ssh still holds.
+ */
+function migrationFixture() {
+  const dir = mkdtempSync(join(tmpdir(), "kajianq-migration-"));
+  const statusFile = join(dir, "status.txt");
+  const ready = join(dir, "tunnel-ready");
+  const cleaned = join(dir, "tunnel-cleaned");
+  const statusRan = join(dir, "status-ran");
+  const sshArgv = join(dir, "ssh-argv");
+  const sshPid = join(dir, "ssh-pid");
+  const sshLog = join(dir, "ssh.log");
+  const killCount = join(dir, "kill-count");
+  writeFileSync(statusFile, "");
+  writeFileSync(
+    join(dir, "ssh.mjs"),
+    `import { createServer } from "node:net";
+import { writeFileSync } from "node:fs";
+if (process.env.STUB_SSH_MODE === "fail") process.exit(1);
+writeFileSync(process.env.STUB_SSH_PID, String(process.pid));
+writeFileSync(process.env.STUB_SSH_ARGV, process.argv.slice(2).join(" "));
+const args = process.argv.slice(2);
+const forward = args[args.indexOf("-L") + 1];
+const local = Number(forward.split(":")[1]);
+const server = createServer(() => {});
+server.listen(local, "127.0.0.1", () => writeFileSync(process.env.STUB_SSH_READY, "ready"));
+const bye = () => {
+  writeFileSync(process.env.STUB_SSH_CLEANED, "cleaned");
+  server.close(() => process.exit(0));
+};
+process.on("SIGTERM", bye);
+process.on("SIGINT", bye);
+`,
+  );
+  writeFileSync(
+    join(dir, "ssh"),
+    `#!/bin/sh\nexec ${JSON.stringify(process.execPath)} ${JSON.stringify(join(dir, "ssh.mjs"))} "$@" >"$STUB_SSH_LOG" 2>&1\n`,
+    { mode: 0o755 },
+  );
+  writeFileSync(
+    join(dir, "bun"),
+    `#!/bin/sh\ntouch "$STUB_STATUS_RAN"\ncat "$STUB_STATUS_FILE"\nexit "\${STUB_STATUS_EXIT:-0}"\n`,
+    { mode: 0o755 },
+  );
+  // BASH_ENV sourced by the check: the first `kill -0` holds the readiness loop
+  // until the ssh stub is listening, so the readiness probe succeeds on that
+  // attempt; every later `kill -0` reports the tunnel dead. That puts the death
+  // between the probe and the ledger read without racing the stub's startup.
+  writeFileSync(
+    join(dir, "kill-after-ready.sh"),
+    `kill() {
+  if [ "\${1:-}" != "-0" ]; then
+    builtin kill "$@"
+    return
+  fi
+  count=0
+  if [ -f ${JSON.stringify(killCount)} ]; then
+    count=$(cat ${JSON.stringify(killCount)})
+  fi
+  count=$((count + 1))
+  printf '%s' "$count" >${JSON.stringify(killCount)}
+  if [ "$count" -eq 1 ]; then
+    tries=0
+    while [ ! -e "\${STUB_SSH_READY}" ] && [ "$tries" -lt 100 ]; do
+      sleep 0.02
+      tries=$((tries + 1))
+    done
+    builtin kill -0 "\${2:-}"
+    return
+  fi
+  return 1
+}
+`,
+  );
+  const env = (extra = {}) => ({
+    ...process.env,
+    PATH: `${dir}:${process.env.PATH}`,
+    STUB_STATUS_FILE: statusFile,
+    STUB_STATUS_RAN: statusRan,
+    STUB_SSH_READY: ready,
+    STUB_SSH_CLEANED: cleaned,
+    STUB_SSH_ARGV: sshArgv,
+    STUB_SSH_PID: sshPid,
+    STUB_SSH_LOG: sshLog,
+    ...extra,
+  });
+  return {
+    dir,
+    cleaned,
+    ready,
+    statusRan,
+    sshArgv,
+    killAfterReady: join(dir, "kill-after-ready.sh"),
+    env,
+    writeStatus: (lines) => writeFileSync(statusFile, `${lines.join("\n")}\n`),
+    run: (args = [], extra = {}) =>
+      spawnSync(
+        "/bin/bash",
+        [resolve(process.cwd(), "provision/vps/deploy/migration-check.sh"), ...args],
+        { encoding: "utf8", env: env(extra), timeout: 15_000, killSignal: "SIGKILL" },
+      ),
+    cleanup: () => {
+      // A stub the script under mutation left running is this fixture's child:
+      // kill it, or it holds the port past the test.
+      try {
+        process.kill(Number(readFileSync(sshPid, "utf8")), "SIGKILL");
+      } catch {
+        // No stub ran, or it is already gone.
+      }
+      rmSync(dir, { recursive: true, force: true });
+    },
+  };
+}
+
+/** A port nothing listens on, chosen by the OS, for the fixture's loopback DSN. */
+function freePort() {
+  return new Promise((resolvePort, reject) => {
+    const server = createServer();
+    server.on("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      const { port } = server.address();
+      server.close(() => resolvePort(port));
+    });
+  });
+}
+
+/** The real migration names per set, in the order each set's `status` lists them. */
+const MIGRATION_SETS = [
+  ["0001_init.sql", "0002_eval_results_question_id_text.sql", "0003_feedback_dedup.sql"],
+  ["0001_concept_graph.sql", "0002_aligned_pairs.sql"],
+  ["0001_product.sql", "0002_admin_access_log.sql", "0003_admin_session_revocations.sql"],
+];
+
+/**
+ * A `db:status:all:json` report over the real migration names, composed by the
+ * producer's own formatter: a hand-written copy of the producer's format would
+ * let parser and producer drift apart while every case here stayed green.
+ */
+function migrationStatus({ pending = [] } = {}) {
+  const known = MIGRATION_SETS.flat();
+  for (const name of pending) {
+    if (!known.includes(name)) throw new Error(`fixture: unknown migration ${name}`);
+  }
+  return MIGRATION_SETS.flatMap((names) => {
+    const applied = new Set(names.filter((name) => !pending.includes(name)));
+    return statusLines(names, applied, { json: true });
+  });
+}
+
+/** The 0600 env file deploy.sh sources: the box's values, and optionally the DSN. */
+function deployEnv({
+  port,
+  databaseUrl = `postgres://kajianq:secret@127.0.0.1:${port}/kajianq`,
+} = {}) {
+  const lines = [
+    "KAJIANQ_DEPLOY_HOST=example.test",
+    "KAJIANQ_DEPLOY_USER=kajianq-deploy",
+    "KAJIANQ_DEPLOY_ROOT=/srv/kajianq",
+    "KAJIANQ_PUBLIC_URL=https://example.test",
+  ];
+  if (databaseUrl) lines.push(`DATABASE_URL=${databaseUrl}`);
+  return `${lines.join("\n")}\n`;
 }
 
 /**
@@ -2499,6 +2675,497 @@ describe("provisioning config as code stays true to the ADR", () => {
     expect(script).toMatch(/node_modules/);
     expect(read("package.json")).toMatch(/"docs:links":/);
     expect(read(".github/workflows/ci.yml")).toMatch(/bun run docs:links/);
+  });
+});
+
+describe("the deploy's migration preflight", () => {
+  const read = (rel) => readFileSync(resolve(process.cwd(), rel), "utf8");
+  const deployScript = "provision/vps/deploy/deploy.sh";
+
+  it("refuses a pending migration, naming it and the exact db:up command", async () => {
+    // The failure this exists for is silent: the new build answers 503 on the admin
+    // routes and the smoke never touches them, so a green deploy would hide it.
+    const fixture = migrationFixture();
+    try {
+      const port = await freePort();
+      fixture.writeStatus(migrationStatus({ pending: ["0003_admin_session_revocations.sql"] }));
+      const result = fixture.run([], {
+        DATABASE_URL: `postgres://kajianq:secret@127.0.0.1:${port}/kajianq`,
+        KAJIANQ_DB_TUNNEL_TARGET: "kajianq-deploy@example.test",
+      });
+      expect(result.status).toBe(1);
+      expect(result.stderr).toMatch(/pending migrations: 0003_admin_session_revocations\.sql/);
+      // The exact command for the set the file belongs to — not the other two sets.
+      expect(result.stderr.split("\n").filter((line) => line.includes("bun run db:up"))).toEqual([
+        "deploy:   bun run db:up:api",
+      ]);
+      // The one short-lived tunnel is closed on the refusal path too.
+      expect(existsSync(fixture.cleaned)).toBe(true);
+    } finally {
+      fixture.cleanup();
+    }
+  });
+
+  it("proceeds when the ledger is clean and closes its tunnel", async () => {
+    const fixture = migrationFixture();
+    try {
+      const port = await freePort();
+      fixture.writeStatus(migrationStatus());
+      const result = fixture.run([], {
+        DATABASE_URL: `postgres://kajianq:secret@127.0.0.1:${port}/kajianq`,
+        KAJIANQ_DB_TUNNEL_TARGET: "kajianq-deploy@example.test",
+      });
+      expect(result.status).toBe(0);
+      expect(result.stdout).toMatch(/no pending migrations/);
+      expect(existsSync(fixture.cleaned)).toBe(true);
+    } finally {
+      fixture.cleanup();
+    }
+  });
+
+  it("refuses a port a foreign listener already holds instead of reading its ledger", async () => {
+    // The readiness probe cannot tell this script's forward from any other
+    // listener: with a foreign server on the port and an ssh whose forward fails
+    // to bind, the probe succeeds against the foreign server and a clean-looking
+    // report would be read as "no pending migrations" while this deploy's tunnel
+    // never came up. The port must therefore be free before ssh is spawned; the
+    // status command must never run.
+    const fixture = migrationFixture();
+    const port = await freePort();
+    const foreign = createServer(() => {});
+    await new Promise((resolveListen) => foreign.listen(port, "127.0.0.1", resolveListen));
+    try {
+      // A clean ledger is the false green this test exists to rule out.
+      fixture.writeStatus(migrationStatus());
+      for (const mode of [undefined, "fail"]) {
+        const result = fixture.run([], {
+          DATABASE_URL: `postgres://kajianq:secret@127.0.0.1:${port}/kajianq`,
+          KAJIANQ_DB_TUNNEL_TARGET: "kajianq-deploy@example.test",
+          ...(mode ? { STUB_SSH_MODE: mode } : {}),
+        });
+        expect(result.status, `mode ${mode}`).toBe(1);
+        expect(result.stdout, `mode ${mode}`).not.toMatch(/no pending migrations/);
+        expect(result.stderr, `mode ${mode}`).toMatch(/already bound/);
+        // The refusal precedes the spawn and the ledger read: neither stub ran.
+        expect(existsSync(fixture.sshArgv), `mode ${mode}`).toBe(false);
+        expect(existsSync(fixture.statusRan), `mode ${mode}`).toBe(false);
+      }
+    } finally {
+      await new Promise((resolveClose) => foreign.close(resolveClose));
+      fixture.cleanup();
+    }
+  });
+
+  it("refuses a status report it cannot read instead of reading it as clean", () => {
+    // A producer-side format change must red this gate, not silently turn "the
+    // pending lines are gone" into "no pending migrations" and exit 0. The
+    // shapes below cover the human listing, an object without pending, a
+    // non-string pending list, and no report at all.
+    const fixture = migrationFixture();
+    try {
+      const dsn = "postgres://kajianq:secret@127.0.0.1:25432/kajianq";
+      for (const [shape, report] of [
+        [
+          "the pre-JSON text format",
+          ["applied   0001_init.sql", "pending   0003_feedback_dedup.sql"],
+        ],
+        ["an object without pending", ['{"applied":["0001_init.sql"]}']],
+        ["a non-string pending list", ['{"applied":[],"pending":[3]}']],
+        ["no report at all", []],
+      ]) {
+        fixture.writeStatus(report);
+        const result = fixture.run([], { DATABASE_URL: dsn, KAJIANQ_DB_TUNNEL_TARGET: "" });
+        expect(result.status, shape).toBe(1);
+        expect(result.stdout, shape).not.toMatch(/no pending migrations/);
+        expect(result.stderr, shape).toMatch(/refusing to read/);
+      }
+    } finally {
+      fixture.cleanup();
+    }
+  });
+
+  it("refuses a ledger report that covers only some of the migration sets", () => {
+    // A chain that stopped after one set still prints a clean report: that is a
+    // narrowed ledger, not a clean one. The report below is the engine set with
+    // every migration applied, i.e. exactly what a one-set chain would print.
+    const fixture = migrationFixture();
+    try {
+      const [engine] = MIGRATION_SETS;
+      fixture.writeStatus(statusLines(engine, new Set(engine), { json: true }));
+      const result = fixture.run([], {
+        DATABASE_URL: "postgres://kajianq:secret@127.0.0.1:25432/kajianq",
+        KAJIANQ_DB_TUNNEL_TARGET: "",
+      });
+      expect(result.status).toBe(1);
+      expect(result.stdout).not.toMatch(/no pending migrations/);
+      expect(result.stderr).toMatch(/reported 1 of 3 migration sets/);
+      expect(result.stderr).toMatch(/missing: domain product/);
+    } finally {
+      fixture.cleanup();
+    }
+  });
+
+  it("names every pending migration and each set's command when two sets are behind", async () => {
+    const fixture = migrationFixture();
+    try {
+      const port = await freePort();
+      fixture.writeStatus(
+        migrationStatus({
+          pending: ["0002_eval_results_question_id_text.sql", "0003_admin_session_revocations.sql"],
+        }),
+      );
+      const result = fixture.run([], {
+        DATABASE_URL: `postgres://kajianq:secret@127.0.0.1:${port}/kajianq`,
+        KAJIANQ_DB_TUNNEL_TARGET: "kajianq-deploy@example.test",
+      });
+      expect(result.status).toBe(1);
+      expect(result.stderr).toMatch(
+        /pending migrations: 0002_eval_results_question_id_text\.sql 0003_admin_session_revocations\.sql/,
+      );
+      expect(result.stderr.split("\n").filter((line) => line.includes("bun run db:up"))).toEqual([
+        "deploy:   bun run db:up",
+        "deploy:   bun run db:up:api",
+      ]);
+    } finally {
+      fixture.cleanup();
+    }
+  });
+
+  it("fails closed when DATABASE_URL is missing, naming it and the one explicit escape", () => {
+    const fixture = migrationFixture();
+    try {
+      const result = fixture.run([], { DATABASE_URL: "" });
+      expect(result.status).toBe(1);
+      expect(result.stderr).toMatch(/DATABASE_URL is not set/);
+      expect(result.stderr).toMatch(/--skip-migration-check/);
+      // The refusal is the first thing: no tunnel and no status command ran.
+      expect(existsSync(fixture.cleaned)).toBe(false);
+    } finally {
+      fixture.cleanup();
+    }
+  });
+
+  it("fails closed when the status command cannot run", async () => {
+    // A partial ledger read is not a clean one: db:status:all:json stops at the
+    // first failing set, and the deploy must not read that as "nothing pending".
+    const fixture = migrationFixture();
+    try {
+      const port = await freePort();
+      fixture.writeStatus(migrationStatus({ pending: ["0003_admin_session_revocations.sql"] }));
+      const result = fixture.run([], {
+        DATABASE_URL: `postgres://kajianq:secret@127.0.0.1:${port}/kajianq`,
+        KAJIANQ_DB_TUNNEL_TARGET: "kajianq-deploy@example.test",
+        STUB_STATUS_EXIT: "1",
+      });
+      expect(result.status).toBe(1);
+      expect(result.stderr).toMatch(/bun run db:status:all:json exited 1/);
+      expect(result.stderr).toMatch(/--skip-migration-check/);
+      // The tunnel is up before the failing read, and closed after the refusal.
+      expect(existsSync(fixture.ready)).toBe(true);
+      expect(existsSync(fixture.cleaned)).toBe(true);
+    } finally {
+      fixture.cleanup();
+    }
+  });
+
+  it("fails closed when the tunnel does not come up", async () => {
+    const fixture = migrationFixture();
+    try {
+      const port = await freePort();
+      fixture.writeStatus(migrationStatus());
+      const result = fixture.run([], {
+        DATABASE_URL: `postgres://kajianq:secret@127.0.0.1:${port}/kajianq`,
+        KAJIANQ_DB_TUNNEL_TARGET: "kajianq-deploy@example.test",
+        STUB_SSH_MODE: "fail",
+      });
+      expect(result.status).toBe(1);
+      expect(result.stderr).toMatch(/could not open the database tunnel/);
+    } finally {
+      fixture.cleanup();
+    }
+  });
+
+  it("refuses a tunnel that dies between the readiness probe and the ledger read", async () => {
+    // The readiness probe proves the forward answered once; ssh can still exit
+    // before the ledger is read, and reading through the now-free port would
+    // reach whatever listener took it. The BASH_ENV shim holds the first
+    // `kill -0` until the stub is listening (so the probe succeeds), then
+    // reports the tunnel dead on the re-check.
+    const fixture = migrationFixture();
+    try {
+      const port = await freePort();
+      fixture.writeStatus(migrationStatus());
+      const result = fixture.run([], {
+        DATABASE_URL: `postgres://kajianq:secret@127.0.0.1:${port}/kajianq`,
+        KAJIANQ_DB_TUNNEL_TARGET: "kajianq-deploy@example.test",
+        BASH_ENV: fixture.killAfterReady,
+      });
+      expect(result.status).toBe(1);
+      expect(result.stderr).toMatch(/exited before the ledger was read/);
+      expect(result.stdout).not.toMatch(/no pending migrations/);
+      // The probe saw a live tunnel, the status command never ran, and the
+      // refusal closed the tunnel.
+      expect(existsSync(fixture.ready)).toBe(true);
+      expect(existsSync(fixture.statusRan)).toBe(false);
+      expect(existsSync(fixture.cleaned)).toBe(true);
+    } finally {
+      fixture.cleanup();
+    }
+  });
+
+  it("keeps the DSN and its password off both streams on every refusal path", async () => {
+    // The DSN must never reach argv or either stream: the check reads the
+    // password from the environment, and a refusal that echoed the URL would
+    // write it to the deploy log. The canary is in the password, so one leak on
+    // any refusal path reddens here; the ssh argv assertion pins the forward to
+    // the tunnel's port. The cases below drive every refusal the script has.
+    const canary = "CANARY-CREDENTIAL";
+    const fixture = migrationFixture();
+    try {
+      const port = await freePort();
+      const dsn = `postgres://kajianq:${canary}@127.0.0.1:${port}/kajianq`;
+      const target = "kajianq-deploy@example.test";
+      const run = (path, extra = {}, args = []) => {
+        const result = fixture.run(args, {
+          DATABASE_URL: dsn,
+          KAJIANQ_DB_TUNNEL_TARGET: target,
+          ...extra,
+        });
+        expect(result.status, path).toBe(1);
+        expect(result.stdout, path).not.toContain(canary);
+        expect(result.stderr, path).not.toContain(canary);
+      };
+
+      // A pending migration.
+      fixture.writeStatus(migrationStatus({ pending: ["0003_admin_session_revocations.sql"] }));
+      run("pending migration");
+      // An unknown argument, refused before the DSN is parsed.
+      run("unknown argument", {}, ["--bogus"]);
+      // The status command fails.
+      run("status failure", { STUB_STATUS_EXIT: "1" });
+      // The tunnel never comes up.
+      run("tunnel failure", { STUB_SSH_MODE: "fail" });
+      // The tunnel dies after the readiness probe.
+      rmSync(fixture.ready, { force: true });
+      run("tunnel died before the ledger read", { BASH_ENV: fixture.killAfterReady });
+      // DSN shapes refused before ssh is spawned.
+      run("non-postgres URL", {
+        DATABASE_URL: `mysql://kajianq:${canary}@127.0.0.1:${port}/kajianq`,
+      });
+      run("non-loopback host", {
+        DATABASE_URL: `postgres://kajianq:${canary}@db.example.test:${port}/kajianq`,
+      });
+      run("DSN without a port", {
+        DATABASE_URL: `postgres://kajianq:${canary}@127.0.0.1/kajianq`,
+      });
+      run("non-numeric port", {
+        DATABASE_URL: `postgres://kajianq:${canary}@127.0.0.1:not-a-port/kajianq`,
+      });
+      run("missing DSN", { DATABASE_URL: "" });
+      // A port a foreign listener already holds.
+      const occupied = await freePort();
+      const foreign = createServer(() => {});
+      await new Promise((resolveListen) => foreign.listen(occupied, "127.0.0.1", resolveListen));
+      try {
+        run("port already bound", {
+          DATABASE_URL: `postgres://kajianq:${canary}@127.0.0.1:${occupied}/kajianq`,
+        });
+      } finally {
+        await new Promise((resolveClose) => foreign.close(resolveClose));
+      }
+      // Reports the parser refuses.
+      fixture.writeStatus(['{"applied":["0001_init.sql"]}']);
+      run("unrecognised report", { KAJIANQ_DB_TUNNEL_TARGET: "" });
+      fixture.writeStatus(['{"applied":[],"pending":[3]}']);
+      run("non-string pending list", { KAJIANQ_DB_TUNNEL_TARGET: "" });
+      fixture.writeStatus(['{"applied":["0001_unknown.sql"],"pending":[]}']);
+      run("report naming no set", { KAJIANQ_DB_TUNNEL_TARGET: "" });
+      fixture.writeStatus(['{"applied":["0001_init.sql"],"pending":["0001_product.sql"]}']);
+      run("report mixing sets", { KAJIANQ_DB_TUNNEL_TARGET: "" });
+      fixture.writeStatus(['{"applied":[],"pending":[]}']);
+      run("report with no migration names", { KAJIANQ_DB_TUNNEL_TARGET: "" });
+      const [engine] = MIGRATION_SETS;
+      fixture.writeStatus(statusLines(engine, new Set(engine), { json: true }));
+      run("report missing migration sets", { KAJIANQ_DB_TUNNEL_TARGET: "" });
+      fixture.writeStatus([]);
+      run("no report", { KAJIANQ_DB_TUNNEL_TARGET: "" });
+      // The forward ssh is handed carries the tunnel's port only.
+      const argv = readFileSync(fixture.sshArgv, "utf8");
+      expect(argv).toContain(`-L 127.0.0.1:${port}:127.0.0.1:5432 ${target}`);
+      expect(argv).not.toContain(canary);
+      expect(argv).not.toMatch(/postgres/);
+    } finally {
+      fixture.cleanup();
+    }
+  });
+
+  it("refuses a DSN that names a host other than loopback", () => {
+    // The tunnel is what carries the check; a DSN naming another host would make
+    // the preflight read a database the deploy does not touch, so it must refuse.
+    const fixture = migrationFixture();
+    try {
+      const result = fixture.run([], {
+        DATABASE_URL: "postgres://kajianq:secret@db.example.test:15433/kajianq",
+      });
+      expect(result.status).toBe(1);
+      expect(result.stderr).toMatch(/must name a loopback host/);
+      const noPort = fixture.run([], {
+        DATABASE_URL: "postgres://kajianq:secret@127.0.0.1/kajianq",
+      });
+      expect(noPort.status).toBe(1);
+      expect(noPort.stderr).toMatch(/names no port/);
+    } finally {
+      fixture.cleanup();
+    }
+  });
+
+  it("honours --skip-migration-check only as the exact flag, never an environment variable", () => {
+    const fixture = migrationFixture();
+    try {
+      const skipped = fixture.run(["--skip-migration-check"], { DATABASE_URL: "" });
+      expect(skipped.status).toBe(0);
+      expect(skipped.stderr).toMatch(/WARNING: --skip-migration-check/);
+      // An ambient variable with the flag's name must not be a second escape hatch.
+      const ambient = fixture.run([], { DATABASE_URL: "", KAJIANQ_SKIP_MIGRATION_CHECK: "1" });
+      expect(ambient.status).toBe(1);
+      expect(ambient.stderr).toMatch(/DATABASE_URL is not set/);
+      // A near miss must not silently skip either.
+      const typo = fixture.run(["--skip"], { DATABASE_URL: "" });
+      expect(typo.status).toBe(1);
+      expect(typo.stderr).toMatch(/unknown argument/);
+    } finally {
+      fixture.cleanup();
+    }
+  });
+
+  it("runs the preflight before the build, ship and restart lines in the deploy path", () => {
+    const script = read(deployScript);
+    const preflight = script.indexOf("migration-check.sh");
+    expect(preflight).toBeGreaterThan(-1);
+    for (const mutation of [
+      "bun run build:web",
+      "rsync -az",
+      "sudo ${SYSTEMCTL} restart",
+      "sudo ${SYSTEMCTL} start kajianq-cron.service",
+    ]) {
+      const at = script.indexOf(mutation);
+      expect(at, `deploy.sh must still contain: ${mutation}`).toBeGreaterThan(-1);
+      expect(preflight, `the migration preflight must precede ${mutation}`).toBeLessThan(at);
+    }
+  });
+
+  it("composes db:status:all:json from exactly the three migration sets", () => {
+    // The preflight requires one report per set, so the producer chain must read
+    // all three: dropping a set would leave the deploy reading a narrowed
+    // ledger. The engine set is the CLI's default directory; the other two pass
+    // their directory explicitly.
+    const scripts = JSON.parse(read("package.json")).scripts;
+    expect(scripts["db:status:all:json"]).toBe(
+      "bun run db:status:json && bun run db:status:domain:json && bun run db:status:api:json",
+    );
+    const setDirs = ["db:status:json", "db:status:domain:json", "db:status:api:json"].map(
+      (name) => /--dir (\S+)$/.exec(scripts[name])?.[1] ?? "packages/infra/migrations",
+    );
+    expect(setDirs).toEqual([
+      "packages/infra/migrations",
+      "packages/kajianq-domain/migrations",
+      "apps/api/migrations",
+    ]);
+    // Both sides of the report contract carry the same set list.
+    const preflight = read("provision/vps/deploy/migration-check.sh");
+    for (const dir of setDirs) {
+      expect(preflight).toContain(`"${dir}"`);
+    }
+  });
+
+  it("stops the real deploy path before it plans a build when a migration is pending", async () => {
+    // deploy.sh --dry-run still runs this read-only preflight, so the assertion is
+    // that the refusal precedes the first `would:` line: a real run cannot reach
+    // the build, the ship or the restart, and a dry run does not describe one.
+    const fixture = migrationFixture();
+    const envDir = mkdtempSync(join(tmpdir(), "kajianq-deploy-env-"));
+    try {
+      const port = await freePort();
+      fixture.writeStatus(migrationStatus({ pending: ["0003_admin_session_revocations.sql"] }));
+      const envFile = join(envDir, "deploy.env");
+      writeFileSync(envFile, deployEnv({ port }));
+      chmodSync(envFile, 0o600);
+      const deploy = spawnSync(
+        "/bin/bash",
+        [resolve(process.cwd(), deployScript), "--env", envFile, "--dry-run", "--no-smoke"],
+        // The tunnel stub runs inside this call: without a bound timeout and a
+        // kill signal, a regression that leaks it would hang the suite.
+        { encoding: "utf8", env: fixture.env({}), timeout: 15_000, killSignal: "SIGKILL" },
+      );
+      expect(deploy.status).toBe(1);
+      expect(deploy.stderr).toMatch(/pending migrations:/);
+      expect(deploy.stdout).not.toMatch(/would:/);
+    } finally {
+      rmSync(envDir, { recursive: true, force: true });
+      fixture.cleanup();
+    }
+  });
+
+  it("lets the operator through only when deploy.sh is given --skip-migration-check", () => {
+    const fixture = migrationFixture();
+    const envDir = mkdtempSync(join(tmpdir(), "kajianq-deploy-env-"));
+    try {
+      const envFile = join(envDir, "deploy.env");
+      writeFileSync(envFile, deployEnv({ databaseUrl: null }));
+      chmodSync(envFile, 0o600);
+      const args = [
+        resolve(process.cwd(), deployScript),
+        "--env",
+        envFile,
+        "--dry-run",
+        "--no-smoke",
+      ];
+      const refused = spawnSync("/bin/bash", args, {
+        encoding: "utf8",
+        env: fixture.env({}),
+        timeout: 15_000,
+        killSignal: "SIGKILL",
+      });
+      expect(refused.status).toBe(1);
+      expect(refused.stderr).toMatch(/DATABASE_URL is not set/);
+      expect(refused.stdout).not.toMatch(/would:/);
+
+      const skipped = spawnSync("/bin/bash", [...args, "--skip-migration-check"], {
+        encoding: "utf8",
+        env: fixture.env({}),
+        timeout: 15_000,
+        killSignal: "SIGKILL",
+      });
+      expect(skipped.status).toBe(0);
+      expect(skipped.stdout).toMatch(/would:/);
+      expect(skipped.stderr).toMatch(/WARNING: --skip-migration-check/);
+    } finally {
+      rmSync(envDir, { recursive: true, force: true });
+      fixture.cleanup();
+    }
+  });
+
+  it("carries the DSN into the deploy job and never lets a workflow skip this preflight", () => {
+    const workflowDir = resolve(process.cwd(), ".github/workflows");
+    for (const name of readdirSync(workflowDir).filter((file) => /\.ya?ml$/.test(file))) {
+      expect(
+        readFileSync(join(workflowDir, name), "utf8"),
+        `${name} must not skip the migration preflight`,
+      ).not.toContain("--skip-migration-check");
+    }
+    const deploy = read(".github/workflows/deploy-vps.yml");
+    // A reusable workflow sees only the secrets it declares; the dispatch path
+    // reads the repository-level value directly.
+    expect(deploy).toMatch(/STAGING_DATABASE_URL:\n\s+required: false/);
+    // Both the named guard and the deploy step carry the value.
+    expect(
+      (deploy.match(/DATABASE_URL: \$\{\{ secrets\.STAGING_DATABASE_URL \}\}/g) ?? []).length,
+    ).toBe(2);
+    expect(deploy).toMatch(/secrets\.STAGING_DATABASE_URL is unset/);
+    // Staging maps the name into the reusable job, as it already does for the key.
+    expect(read(".github/workflows/staging.yml")).toMatch(
+      /STAGING_DATABASE_URL: \$\{\{ secrets\.STAGING_DATABASE_URL \}\}/,
+    );
   });
 });
 

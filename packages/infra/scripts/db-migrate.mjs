@@ -15,6 +15,12 @@
  *   bun run db:up:domain                          # domain (kajianq-domain)
  *   bun run db:up:api                              # product (apps/api)
  *
+ * `status --json` prints each set's applied/pending split as one line of JSON
+ * (`{"applied":[…],"pending":[…]}`) instead of the human listing. The deploy
+ * preflight (provision/vps/deploy/migration-check.sh) reads that machine
+ * report, so its shape is a contract with the parser there; the `--json` flag
+ * is valid only for `status`.
+ *
  * Conventions:
  *   - Migration files live in a migrations dir as NNNN_name.sql, with a
  *     required NNNN_name.down.sql companion for rollback.
@@ -48,8 +54,8 @@ function fail(msg) {
   process.exit(1);
 }
 
-function parseArgs(argv) {
-  const args = { command: argv[2] ?? "status", step: null, dir: null };
+export function parseArgs(argv) {
+  const args = { command: argv[2] ?? "status", step: null, dir: null, json: false };
   for (let i = 3; i < argv.length; i += 1) {
     if (argv[i] === "--step") {
       args.step = Number.parseInt(argv[i + 1] ?? "", 10);
@@ -57,6 +63,8 @@ function parseArgs(argv) {
     } else if (argv[i] === "--dir") {
       args.dir = argv[i + 1] ?? fail("--dir requires a path argument");
       i += 1;
+    } else if (argv[i] === "--json") {
+      args.json = true;
     } else {
       fail(`unknown argument: ${argv[i]}`);
     }
@@ -151,16 +159,37 @@ async function down(client, step) {
   }
 }
 
-async function status(client) {
+/**
+ * The applied/pending split of one migration set, as data. `pending` is what
+ * the deploy preflight refuses on; `applied` is the rest of the set.
+ */
+export function statusReport(files, applied) {
+  return {
+    applied: files.filter((f) => applied.has(f)),
+    pending: files.filter((f) => !applied.has(f)),
+  };
+}
+
+/**
+ * The lines `status` prints. The JSON form is a contract, not a display:
+ * `provision/vps/deploy/migration-check.sh` parses one object per set, so the
+ * key names, their order and the one-line shape are pinned by
+ * `tests/scripts/db-migrate.test.mjs`.
+ */
+export function statusLines(files, applied, { json = false } = {}) {
+  if (json) return [JSON.stringify(statusReport(files, applied))];
+  return files.map((f) => `${applied.has(f) ? "applied  " : "pending  "} ${f}`);
+}
+
+export async function status(client, { json = false } = {}) {
   const all = await listMigrations();
   const applied = await appliedNames(client);
-  for (const f of all) {
-    console.log(`${applied.has(f) ? "applied  " : "pending  "} ${f}`);
-  }
+  for (const line of statusLines(all, applied, { json })) console.log(line);
 }
 
 async function main() {
-  const { command, step, dir } = parseArgs(process.argv);
+  const { command, step, dir, json } = parseArgs(process.argv);
+  if (json && command !== "status") fail(`--json is only valid with status, not ${command}`);
   if (dir) MIGRATIONS_DIR = resolve(process.cwd(), dir);
   const url = process.env.DATABASE_URL;
   if (!url) fail("DATABASE_URL is not set");
@@ -170,7 +199,7 @@ async function main() {
   try {
     if (command === "up") await up(client, step);
     else if (command === "down") await down(client, step);
-    else if (command === "status") await status(client);
+    else if (command === "status") await status(client, { json });
     else fail(`unknown command: ${command} (expected up|down|status)`);
   } finally {
     client.release();
@@ -178,7 +207,11 @@ async function main() {
   }
 }
 
-main().catch((err) => {
-  console.error(`db-migrate: ${err instanceof Error ? err.message : String(err)}`);
-  process.exit(1);
-});
+// Only the entry point opens a pool: the tests import `statusLines` and
+// `status` from here, and importing the module must not run a migration read.
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  main().catch((err) => {
+    console.error(`db-migrate: ${err instanceof Error ? err.message : String(err)}`);
+    process.exit(1);
+  });
+}

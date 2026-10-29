@@ -1,7 +1,8 @@
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { stripTxnMarkers } from "../../packages/infra/scripts/migration-sql.mjs";
+import { parseArgs, status, statusLines } from "../../packages/infra/scripts/db-migrate.mjs";
 
 /**
  * Regression tests for the migration runner's transaction-marker stripping.
@@ -92,5 +93,58 @@ END $$;
     expect(out).toMatch(/^\s*BEGIN\s*$/m);
     expect(out).toContain("ADD CONSTRAINT lemma_evidence_ayah_pair_fk");
     expect(out).toContain("END $$;");
+  });
+});
+
+describe("db-migrate status — the machine report the deploy preflight parses", () => {
+  // The preflight (provision/vps/deploy/migration-check.sh) reads this report
+  // instead of the human listing, so its shape is a contract between two
+  // processes. These rows are the producer side of it: a changed key, order or
+  // line shape must redden here (and at the parser) rather than make the gate
+  // find no pending migrations and go green.
+
+  it("prints one JSON object with the applied/pending split", () => {
+    const lines = statusLines(
+      ["0001_init.sql", "0003_feedback_dedup.sql"],
+      new Set(["0001_init.sql"]),
+      { json: true },
+    );
+    expect(lines).toEqual(['{"applied":["0001_init.sql"],"pending":["0003_feedback_dedup.sql"]}']);
+    expect(JSON.parse(lines[0])).toEqual({
+      applied: ["0001_init.sql"],
+      pending: ["0003_feedback_dedup.sql"],
+    });
+  });
+
+  it("keeps the human listing the operator commands print", () => {
+    expect(
+      statusLines(["0001_init.sql", "0003_feedback_dedup.sql"], new Set(["0001_init.sql"])),
+    ).toEqual(["applied   0001_init.sql", "pending   0003_feedback_dedup.sql"]);
+  });
+
+  it("accepts --json for status only", () => {
+    expect(parseArgs(["bun", "db-migrate.mjs", "status", "--json"]).json).toBe(true);
+    expect(parseArgs(["bun", "db-migrate.mjs", "status"]).json).toBe(false);
+  });
+
+  it("threads --json into the report the CLI prints", async () => {
+    // The flag must reach the formatter: a status() that ignores it would print
+    // the human listing, which the preflight refuses.
+    const logged = [];
+    const log = vi.spyOn(console, "log").mockImplementation((line) => logged.push(line));
+    try {
+      const client = {
+        query: async (sql) =>
+          sql.includes("SELECT name FROM schema_migrations")
+            ? { rows: [{ name: "0001_init.sql" }] }
+            : { rows: [] },
+      };
+      await status(client, { json: true });
+    } finally {
+      log.mockRestore();
+    }
+    expect(logged).toHaveLength(1);
+    expect(JSON.parse(logged[0]).applied).toContain("0001_init.sql");
+    expect(JSON.parse(logged[0]).pending.length).toBeGreaterThan(0);
   });
 });

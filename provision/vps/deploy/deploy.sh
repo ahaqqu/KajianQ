@@ -8,36 +8,44 @@
 # and the deploy path lives here with the workflow that calls it. A single
 # decision, recorded in ADR-0044 decision 3.
 #
-# Two preflights that change no installed state run before anything is built or
-# shipped, because a red after the ship would leave the new tree live, the API
+# Three preflights that change no installed state run before anything is built
+# or shipped, because a red after the ship would leave the new tree live, the API
 # restarted and the smoke and doctor skipped — an unverified deployment already
 # serving:
 #
-#   1. the provisioned files on the box match this checkout. Provisioning is an
+#   1. the database is current. `bun run db:status:all:json` reads the shared
+#      schema_migrations ledger (engine, domain and product sets), and any
+#      pending migration refuses the deploy before the build, naming the files
+#      and the exact `db:up:*` command. Migrations are an operator action, and
+#      the smoke cannot see a stale schema, so a deploy that did not check it
+#      could report healthy on a box where every admin route already 503s.
+#   2. the provisioned files on the box match this checkout. Provisioning is an
 #      operator action (apply.sh, as root), so a merged change to a unit, script
 #      or config is inert until it is applied; this gate refuses to call such a
 #      box healthy and names the file to apply. It also checks the nginx
 #      sites-enabled link, which decides which block the box actually serves.
-#   2. the backup job's durable record proves it ran as installed.
+#   3. the backup job's durable record proves it ran as installed.
 #
-# Neither changes installed state (the drift check writes one short-lived temp
-# file under /tmp to compare a rendered config), so a red costs an ssh round
-# trip and nothing else.
+# None changes installed state (the drift check writes one short-lived temp file
+# under /tmp to compare a rendered config), so a red costs an ssh round trip and
+# nothing else. The migration check is read-only and also runs under --dry-run:
+# a dry run that skipped it would describe a deploy the real path refuses.
 #
-# A deploy runs no migrations: they are an operator action, and a release that
-# ships an `apps/api` migration is ordered MIGRATE, THEN RESTART — `bun run
-# db:up:api` before this script (docs/VPS-OPERATIONS.md §2.3). Apply-first is
-# safe because the migrations are additive, so the previous build ignores the
-# new table. Until that table exists the new build answers the session probe as
-# signed out (200 `{authenticated:false}`) and accepts a login — neither reads the
-# denylist — while every admin read and a logout carrying a live token fail
-# closed with 503. The smoke below cannot see that state (health, the anonymous
-# mint and the chat page never touch the admin surface), so do not read a green
-# deploy as "the schema is current".
+# A deploy never applies a migration. It refuses while one is pending, so the
+# operator order MIGRATE, THEN RESTART (docs/VPS-OPERATIONS.md §2.3) is enforced
+# rather than merely documented: a release that ships an `apps/api` migration
+# requires `bun run db:up:api` (or the set the message names) before this script
+# runs. Apply-first is safe because the migrations are additive, so the previous
+# build ignores the new table. Until that table exists the new build answers the
+# session probe as signed out (200 `{authenticated:false}`) and accepts a login —
+# neither reads the denylist — while every admin read and a logout carrying a
+# live token fail closed with 503. The smoke below cannot see that state (health,
+# the anonymous mint and the chat page never touch the admin surface), which is
+# exactly why the preflight has to.
 #
 # Usage:
 #   provision/vps/deploy/deploy.sh --env /etc/kajianq/deploy.env
-#   provision/vps/deploy/deploy.sh --env-file <path> [--dry-run] [--no-smoke]
+#   provision/vps/deploy/deploy.sh --env <path> [--dry-run] [--no-smoke] [--skip-migration-check]
 #
 # Wherever the box is named, it comes from an env file that is NOT in the
 # repository (the repo is public — no real hostname may enter its history):
@@ -52,6 +60,15 @@
 #                         silent /srv/kajianq would let a deploy replace a tree
 #                         nothing reads while reporting success
 #   KAJIANQ_PUBLIC_URL    the public base URL the smoke test hits
+#
+# and from the environment (the same env file on the operator path,
+# secrets.STAGING_DATABASE_URL on the workflow path):
+#
+#   DATABASE_URL          the deployment database through the tunnel port the
+#                         migration preflight opens and closes (docs/
+#                         VPS-OPERATIONS.md §2.3). It never reaches argv and is
+#                         never printed; an empty one refuses the deploy unless
+#                         --skip-migration-check is passed explicitly.
 #
 # The deploy identity is a dedicated unprivileged account, not a human admin
 # login (#181): its authorization is two systemctl commands plus two read-only
@@ -86,6 +103,7 @@ REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 ENV_FILE="/etc/kajianq/deploy.env"
 DRY_RUN=0
 RUN_SMOKE=1
+SKIP_MIGRATION_CHECK=0
 
 log() { printf '%s\n' "deploy: $*"; }
 
@@ -109,6 +127,13 @@ while [ $# -gt 0 ]; do
             ;;
         --no-smoke)
             RUN_SMOKE=0
+            shift
+            ;;
+        --skip-migration-check)
+            # The only way past the migration preflight, and deliberately a
+            # command-line flag: a skipped check is visible in the invocation
+            # that ran, never an environment variable CI could inherit.
+            SKIP_MIGRATION_CHECK=1
             shift
             ;;
         *)
@@ -157,7 +182,30 @@ SSH_OPTS=(-o BatchMode=yes -o StrictHostKeyChecking=accept-new)
 STAGE="$(mktemp -d "${TMPDIR:-/tmp}/kajianq-deploy-XXXXXX")"
 trap 'rm -rf "${STAGE}"' EXIT
 
-# --- 0. preflight: the box runs the provisioning this checkout describes -----
+# --- 0. preflight: the shared migration ledger is current --------------------
+# The deploy ships code, never schema: migrations are an operator action (§2.3),
+# so a database behind this checkout must stop the deploy HERE — before the
+# build, the ship and the restart. The check reads the shared ledger through
+# `bun run db:status:all:json` (engine, domain and product sets share one
+# schema_migrations table), opens and closes its own ssh tunnel because the
+# database is loopback-only on the box, and refuses on pending migrations, a
+# missing DATABASE_URL, or a status command that cannot run. It is read-only, so
+# a red costs a round trip and leaves the box untouched; being read-only is also
+# why it runs under --dry-run (see the header).
+#
+# The check is a separate file so the tests execute the file that runs: the
+# tunnel lifecycle (including the exit trap), the parsing, and every refusal
+# live in provision/vps/deploy/migration-check.sh.
+log "preflight: the migration ledger (bun run db:status:all:json)"
+if [ "${SKIP_MIGRATION_CHECK}" -eq 1 ]; then
+    DATABASE_URL="${DATABASE_URL:-}" KAJIANQ_DB_TUNNEL_TARGET="${SSH_TARGET}" \
+        bash "${REPO_DIR}/provision/vps/deploy/migration-check.sh" --skip-migration-check
+else
+    DATABASE_URL="${DATABASE_URL:-}" KAJIANQ_DB_TUNNEL_TARGET="${SSH_TARGET}" \
+        bash "${REPO_DIR}/provision/vps/deploy/migration-check.sh"
+fi
+
+# --- 0b. preflight: the box runs the provisioning this checkout describes -----
 # Provisioning is an operator action — only apply.sh, run as root on the box,
 # places a unit, script or config — so a merged change under provision/vps/ can
 # sit inert while a deploy reports healthy. This gate closes that: it compares
@@ -186,7 +234,7 @@ else
         <"${REPO_DIR}/provision/vps/deploy/provision-drift.sh"
 fi
 
-# --- 0b. preflight: the backup unit's provenance ----------------------------
+# --- 0c. preflight: the backup unit's provenance ----------------------------
 # The assertion is "kajianq-backup.service has a completed backup recorded since
 # its current definition was installed": the job's durable provenance record says
 # the last completed run exited 0 AND completed after that install. Its logic, and

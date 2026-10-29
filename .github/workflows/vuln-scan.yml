@@ -24,11 +24,16 @@ jobs:
           bun-version: 1.4.0
       - run: bun install --frozen-lockfile
       - name: OSV-Scanner
+        # `--config` carries the one accepted advisory, scoped by id and expiring:
+        # osv-scanner.toml holds the reachability argument (dev-only deepmerge under
+        # the PWA build toolchain) and the date after which the scanner reports it
+        # again. This step stays blocking for everything else, so a new advisory
+        # cannot ride the ignore: only that id is filtered, and only until then.
         run: |
           curl -sSfL https://github.com/google/osv-scanner/releases/download/v2.0.1/osv-scanner_linux_amd64 \
             -o /tmp/osv-scanner
           chmod +x /tmp/osv-scanner
-          /tmp/osv-scanner scan --lockfile=bun.lock
+          /tmp/osv-scanner scan --lockfile=bun.lock --config=osv-scanner.toml
       - name: Surface Dependabot alerts
         if: failure()
         env:

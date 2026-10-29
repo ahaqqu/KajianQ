@@ -37,6 +37,15 @@ on:
     secrets:
       VPS_DEPLOY_SSH_KEY:
         required: false
+      # The deployment database, through the tunnel port, for the migration
+      # preflight. It is a repository-level secret (docs/VPS-OPERATIONS.md §1.4),
+      # so the direct `workflow_dispatch` path reads it without a mapping; a
+      # `workflow_call` caller must map it by name because a reusable workflow
+      # sees only the secrets it declares. An unmapped name resolves to an empty
+      # string, which the "Require the deploy access" step below refuses by name
+      # rather than letting the preflight fail for want of the same value.
+      STAGING_DATABASE_URL:
+        required: false
 
 permissions:
   contents: read
@@ -70,8 +79,10 @@ jobs:
       # deploy key resolves at that same scope: a `uses:` caller cannot declare
       # an environment, so it maps the secret by name, and the environment this
       # job sets supplies the value. The private key is written to a file the
-      # runner removes when the job ends. Which scope owns each value is
-      # docs/VPS-OPERATIONS.md §1.4.
+      # runner removes when the job ends. DATABASE_URL is the migration
+      # preflight's input; an absent one would refuse the deploy in the script,
+      # and naming it here makes the red actionable at the job page instead.
+      # Which scope owns each value is docs/VPS-OPERATIONS.md §1.4.
       - name: Require the deploy access
         run: |
           test -n "$KAJIANQ_DEPLOY_HOST" || { echo "::error::KAJIANQ_DEPLOY_HOST (vars.VPS_HOST) is unset — the VPS is not reachable without it"; exit 1; }
@@ -79,12 +90,14 @@ jobs:
           test -n "$KAJIANQ_DEPLOY_ROOT" || { echo "::error::KAJIANQ_DEPLOY_ROOT (vars.VPS_ROOT) is unset — the deploy has no tree to ship to"; exit 1; }
           test -n "$KAJIANQ_PUBLIC_URL" || { echo "::error::KAJIANQ_PUBLIC_URL (vars.VPS_PUBLIC_URL) is unset — the smoke has no URL"; exit 1; }
           test -n "$SSH_KEY" || { echo "::error::secrets.VPS_DEPLOY_SSH_KEY is unset — the runner has no key to reach the box"; exit 1; }
+          test -n "$DATABASE_URL" || { echo "::error::secrets.STAGING_DATABASE_URL is unset — the migration preflight cannot read the ledger and the deploy would refuse"; exit 1; }
         env:
           KAJIANQ_DEPLOY_HOST: ${{ vars.VPS_HOST }}
           KAJIANQ_DEPLOY_USER: ${{ vars.VPS_USER }}
           KAJIANQ_DEPLOY_ROOT: ${{ vars.VPS_ROOT }}
           KAJIANQ_PUBLIC_URL: ${{ vars.VPS_PUBLIC_URL }}
           SSH_KEY: ${{ secrets.VPS_DEPLOY_SSH_KEY }}
+          DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
       - name: Write the SSH key
         run: |
           install -d -m 0700 ~/.ssh
@@ -104,6 +117,9 @@ jobs:
       - name: Deploy (preflight → build → ship → restart → smoke → doctor)
         # The env file is written 0600 (the script refuses looser permissions —
         # a sourced file with group/other bits is a local privilege issue).
+        # DATABASE_URL stays in this step's environment rather than the file: it
+        # is the migration preflight's input, it never reaches argv, and the
+        # script prints neither it nor its password.
         run: |
           set -euo pipefail
           install -m 0600 /dev/null /tmp/deploy.env
@@ -119,3 +135,4 @@ jobs:
           KAJIANQ_DEPLOY_USER: ${{ vars.VPS_USER }}
           KAJIANQ_DEPLOY_ROOT: ${{ vars.VPS_ROOT }}
           KAJIANQ_PUBLIC_URL: ${{ vars.VPS_PUBLIC_URL }}
+          DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
