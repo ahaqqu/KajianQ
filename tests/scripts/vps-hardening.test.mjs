@@ -2978,6 +2978,15 @@ describe("the deploy's migration preflight", () => {
       run("unrecognised report", { KAJIANQ_DB_TUNNEL_TARGET: "" });
       fixture.writeStatus(['{"applied":[],"pending":[3]}']);
       run("non-string pending list", { KAJIANQ_DB_TUNNEL_TARGET: "" });
+      fixture.writeStatus(['{"applied":["0001_unknown.sql"],"pending":[]}']);
+      run("report naming no set", { KAJIANQ_DB_TUNNEL_TARGET: "" });
+      fixture.writeStatus(['{"applied":["0001_init.sql"],"pending":["0001_product.sql"]}']);
+      run("report mixing sets", { KAJIANQ_DB_TUNNEL_TARGET: "" });
+      fixture.writeStatus(['{"applied":[],"pending":[]}']);
+      run("report with no migration names", { KAJIANQ_DB_TUNNEL_TARGET: "" });
+      const [engine] = MIGRATION_SETS;
+      fixture.writeStatus(statusLines(engine, new Set(engine), { json: true }));
+      run("report missing migration sets", { KAJIANQ_DB_TUNNEL_TARGET: "" });
       fixture.writeStatus([]);
       run("no report", { KAJIANQ_DB_TUNNEL_TARGET: "" });
       // The forward ssh is handed carries the tunnel's port only.
