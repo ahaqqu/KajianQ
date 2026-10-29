@@ -85,7 +85,8 @@ provision/vps/deploy/deploy.sh --env /etc/kajianq/deploy.env
 What it does, in order:
 
 1. **Preflight — the database is current.** `migration-check.sh` reads the shared
-   `schema_migrations` ledger through `bun run db:status:all` — the engine,
+   `schema_migrations` ledger through `bun run db:status:all:json` (the machine
+   report `db-migrate status --json` prints per set) — the engine,
    domain and product migration sets share one ledger — and refuses the deploy
    before the build when any migration is pending, printing the files and the
    exact `db:up:*` command for the set each belongs to. The database listens on
@@ -93,12 +94,13 @@ What it does, in order:
    `127.0.0.1:5432` on the box and closes it on exit; `DATABASE_URL` must name a
    loopback host and the tunnel port (the deploy env file on the operator path,
    `secrets.STAGING_DATABASE_URL` on the workflow path — §1.4). It fails closed: a
-   missing `DATABASE_URL`, a DSN naming any other host, a tunnel that does not
-   come up, or a status command that exits non-zero all refuse the deploy,
-   because an unverified schema is not a green deploy. The check is read-only
-   and also runs under `--dry-run`. `--skip-migration-check` is the one explicit
-   way past it, and CI never passes it. This is what enforces the
-   migrate-then-restart order in §2.3 instead of only documenting it.
+   missing `DATABASE_URL`, a DSN naming any other host, a port an existing
+   listener already holds, a tunnel that does not come up, or a status command
+   that exits non-zero — or prints a report the check does not recognise — all
+   refuse the deploy, because an unverified schema is not a green deploy. The
+   check is read-only and also runs under `--dry-run`. `--skip-migration-check`
+   is the one explicit way past it, and CI never passes it. This is what enforces
+   the migrate-then-restart order in §2.3 instead of only documenting it.
 2. **Preflight — the provisioned files on the box match this checkout.**
    Provisioning is an operator action: only `provision/vps/apply.sh`, run as
    root on the box, places a unit, script or config. `provision-drift.sh` (piped
@@ -499,8 +501,7 @@ Three distinct identities, deliberately:
 
 `rsync --chmod=D755,F644` normalizes what lands: directories 0755, files 0644.
 The API bundle is not written by the service account, so a deploy cannot leave a
-stale file the process still holds — the restart in step 3 is what swaps the
-code.
+stale file the process still holds — the restart is what swaps the code.
 
 ### 1.6 The public hostname (and how to change it)
 
@@ -762,9 +763,9 @@ From the box (loopback, so no tunnel):
 **Ordering a deploy that ships a migration: migrate first, then restart — and
 the deploy now enforces the order.** A deploy restarts the API and never applies
 a migration (§1). Its first preflight (`migration-check.sh`, §1.1 step 1) reads
-`db:status:all` through a short-lived tunnel and refuses while anything is
-pending, printing the pending files and the exact `db:up:*` command for the
-migration set they belong to. The pair is therefore:
+the ledger (`db:status:all:json`) through a short-lived tunnel and refuses while
+anything is pending, printing the pending files and the exact `db:up:*` command
+for the migration set they belong to. The pair is therefore:
 
 ```bash
 ( export DATABASE_URL="postgres://kajianq:$(sudo cat /etc/kajianq/db-password)@127.0.0.1:5432/kajianq"

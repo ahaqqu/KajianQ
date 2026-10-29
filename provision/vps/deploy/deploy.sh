@@ -13,7 +13,7 @@
 # restarted and the smoke and doctor skipped — an unverified deployment already
 # serving:
 #
-#   1. the database is current. `bun run db:status:all` reads the shared
+#   1. the database is current. `bun run db:status:all:json` reads the shared
 #      schema_migrations ledger (engine, domain and product sets), and any
 #      pending migration refuses the deploy before the build, naming the files
 #      and the exact `db:up:*` command. Migrations are an operator action, and
@@ -186,7 +186,7 @@ trap 'rm -rf "${STAGE}"' EXIT
 # The deploy ships code, never schema: migrations are an operator action (§2.3),
 # so a database behind this checkout must stop the deploy HERE — before the
 # build, the ship and the restart. The check reads the shared ledger through
-# `bun run db:status:all` (engine, domain and product sets share one
+# `bun run db:status:all:json` (engine, domain and product sets share one
 # schema_migrations table), opens and closes its own ssh tunnel because the
 # database is loopback-only on the box, and refuses on pending migrations, a
 # missing DATABASE_URL, or a status command that cannot run. It is read-only, so
@@ -196,7 +196,7 @@ trap 'rm -rf "${STAGE}"' EXIT
 # The check is a separate file so the tests execute the file that runs: the
 # tunnel lifecycle (including the exit trap), the parsing, and every refusal
 # live in provision/vps/deploy/migration-check.sh.
-log "preflight: the migration ledger has no pending entries"
+log "preflight: the migration ledger (bun run db:status:all:json)"
 if [ "${SKIP_MIGRATION_CHECK}" -eq 1 ]; then
     DATABASE_URL="${DATABASE_URL:-}" KAJIANQ_DB_TUNNEL_TARGET="${SSH_TARGET}" \
         bash "${REPO_DIR}/provision/vps/deploy/migration-check.sh" --skip-migration-check

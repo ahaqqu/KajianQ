@@ -4,9 +4,11 @@
 #
 # Run by deploy.sh on the deploying machine before it builds, ships or restarts
 # anything (the first preflight, docs/VPS-OPERATIONS.md §1.1). It reads the
-# shared schema_migrations ledger through `bun run db:status:all` — the engine,
-# domain and product migration sets share one database and one ledger — and
-# refuses when any migration is pending.
+# shared schema_migrations ledger through `bun run db:status:all:json` — the
+# engine, domain and product migration sets share one database and one ledger —
+# and refuses when any migration is pending. The machine report is a contract
+# with `db-migrate.mjs status --json`: a report this script does not recognise
+# refuses the deploy rather than reading as an empty pending list.
 #
 # The refusal is the point. A deploy never applies a migration (docs/
 # VPS-OPERATIONS.md §2.3): applying is an operator action, and a release that
@@ -134,7 +136,30 @@ cleanup() {
 }
 trap cleanup EXIT
 
+# True when anything already listens on the tunnel's local port. `ss` is the
+# direct question on a Linux deploy host; the fallback's bare connect is the
+# same readiness signal the loop below uses.
+port_is_taken() {
+    if command -v ss >/dev/null 2>&1; then
+        [ -n "$(ss -ltnH "sport = :$1" 2>/dev/null)" ]
+    else
+        (echo >"/dev/tcp/127.0.0.1/$1") 2>/dev/null
+    fi
+}
+
 if [ -n "${KAJIANQ_DB_TUNNEL_TARGET:-}" ]; then
+    # The readiness probe proves that *something* answers on the port, not that
+    # this script's forward is what answers. A leftover forward from a run
+    # killed with SIGKILL, or an operator's tunnel to another database, would
+    # satisfy the probe and let the check report another ledger as clean. So the
+    # port must be free before ssh is spawned: once it is, the only listener the
+    # probe can reach is the forward below.
+    if port_is_taken "${port}"; then
+        refuse \
+            "127.0.0.1:${port} is already bound — refusing to read a ledger through a tunnel this deploy does not own" \
+            "close whatever holds the port (an operator tunnel, or a leftover forward from a killed run), then deploy again" \
+            "${SKIP_HINT}"
+    fi
     ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new \
         -o ExitOnForwardFailure=yes -o ConnectTimeout=10 \
         -N -L "127.0.0.1:${port}:127.0.0.1:5432" "${KAJIANQ_DB_TUNNEL_TARGET}" &
@@ -162,14 +187,30 @@ if [ -n "${KAJIANQ_DB_TUNNEL_TARGET:-}" ]; then
             "check: ssh ${KAJIANQ_DB_TUNNEL_TARGET} true" \
             "${SKIP_HINT}"
     fi
+    # The probe can win the race against a bind that failed once ssh had already
+    # connected, and ssh can die after the probe succeeded. Either way the port
+    # may answer while this script no longer owns the forward, so the child is
+    # re-checked right before the ledger is read.
+    if ! kill -0 "${TUNNEL_PID}" 2>/dev/null; then
+        refuse \
+            "the database tunnel to ${KAJIANQ_DB_TUNNEL_TARGET} exited before the ledger was read — 127.0.0.1:${port} is not held by this deploy" \
+            "check: ssh ${KAJIANQ_DB_TUNNEL_TARGET} true" \
+            "${SKIP_HINT}"
+    fi
 fi
 
 # --- the ledger -------------------------------------------------------------
+# `status --json` prints one `{"applied":[…],"pending":[…]}` object per
+# migration set (the keys in that order, one line each). Lines that are not that
+# object — bun's command banners — are skipped; a report with no object, or one
+# whose `pending` is not a list of plain JSON strings, refuses. Reading an
+# unrecognised report as "nothing pending" is the silent failure this gate
+# exists to close.
 status_rc=0
-status_output="$(cd "${REPO_DIR}" && bun run db:status:all 2>&1)" || status_rc=$?
+status_output="$(cd "${REPO_DIR}" && bun run db:status:all:json 2>&1)" || status_rc=$?
 if [ "${status_rc}" -ne 0 ]; then
     printf 'deploy: %s\n' \
-        "the migration status could not be read — bun run db:status:all exited ${status_rc}" >&2
+        "the migration status could not be read — bun run db:status:all:json exited ${status_rc}" >&2
     if [ -n "${status_output}" ]; then
         while IFS= read -r line; do
             printf 'deploy:   %s\n' "${line}" >&2
@@ -181,12 +222,39 @@ if [ "${status_rc}" -ne 0 ]; then
         "${SKIP_HINT}"
 fi
 
+report_re='^\{"applied":\[(.*)\],"pending":\[(.*)\]\}$'
+pending_list_re='^"[^"\\]+"(,"[^"\\]+")*$'
 pending=()
+reports=0
 while IFS= read -r line; do
-    if [[ "${line}" =~ ^pending[[:space:]]+([^[:space:]]+)$ ]]; then
-        pending+=("${BASH_REMATCH[1]}")
+    case "${line}" in
+        "{"*"}") ;;
+        *) continue ;;
+    esac
+    reports=$((reports + 1))
+    if ! [[ "${line}" =~ ${report_re} ]]; then
+        refuse \
+            "the migration status is not the expected machine report (one JSON object with applied and pending arrays per set) — refusing to read an unrecognised report as a clean ledger" \
+            "${SKIP_HINT}"
     fi
+    pending_json="${BASH_REMATCH[2]}"
+    if [ -z "${pending_json}" ]; then
+        continue
+    fi
+    if ! [[ "${pending_json}" =~ ${pending_list_re} ]]; then
+        refuse \
+            "the migration status's pending list is not a list of plain JSON strings — refusing to read it as a clean ledger" \
+            "${SKIP_HINT}"
+    fi
+    while IFS= read -r name; do
+        pending+=("${name}")
+    done < <(printf '%s\n' "${pending_json//\",\"/$'\n'}" | tr -d '"')
 done <<<"${status_output}"
+if [ "${reports}" -eq 0 ]; then
+    refuse \
+        "bun run db:status:all:json printed no machine-readable report — refusing to read an unreadable ledger as clean" \
+        "${SKIP_HINT}"
+fi
 
 if [ "${#pending[@]}" -eq 0 ]; then
     printf '%s\n' "deploy: no pending migrations on the shared ledger"
