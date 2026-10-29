@@ -1,0 +1,28 @@
+# OSV-Scanner configuration — the ONE accepted advisory, scoped and expiring.
+#
+# `.github/workflows/vuln-scan.yml` passes this file with `--config`; the scan
+# stays blocking for every other advisory. A second entry needs the same two
+# things: an advisory-id scope (never a package- or ecosystem-wide suppression)
+# and a reachability argument, plus an `ignoreUntil` date. The scanner reports
+# an entry whose date has passed again, so an acceptance cannot outlive its
+# review.
+#
+# Revisit this entry when a fixed deepmerge release lands: the advisory's
+# affected range ends at 4.3.1 and no fixed version is published, so the only
+# alternative today is replacing the PWA build toolchain's transitive
+# dependency. Delete the entry in the PR that ships that fix; the scan reds by
+# itself if the entry is left past its expiry.
+[[IgnoredVulns]]
+id = "GHSA-gcqx-w48m-w2h4"
+ignoreUntil = 2026-12-31
+reason = """
+Prototype poisoning in deepmerge's mergeObject() is reachable only through the
+PWA build toolchain: vite-plugin-pwa -> workbox-build ->
+@rollup/plugin-node-resolve -> deepmerge, all build-time dependencies of
+`bun run build:web`. deepmerge is not in the emitted web bundle nor in any Bun
+bundle the deploy ships (apps/api/src/boot.ts, cleanup.ts, backup.mjs), so no
+runtime path exists; the only caller merges module-resolution metadata for
+first-party build inputs, so no untrusted input reaches mergeObject(). The PWA
+build is deterministic from this repository's own lockfile, not from request
+data.
+"""
