@@ -134,6 +134,26 @@ describe("selectBlindSample", () => {
     ).toBe(true);
   });
 
+  it("never draws a pair whose two sides are the same string", () => {
+    const pool = candidates(60);
+    pool.set("matn_exact", [
+      {
+        kind: "matn",
+        stratum: "matn_exact",
+        a: "same text",
+        b: "same text",
+        ref: { rowA: 0, rowB: 1, score: 1 },
+      },
+      ...(pool.get("matn_exact") ?? []),
+    ]);
+    const selection = selectBlindSample({ candidates: pool, seed: 7 });
+    expect(selection.pairs.every((entry) => entry.a !== entry.b)).toBe(true);
+    // The identical pair is not merely skipped: it never counts as an eligible candidate.
+    expect(selection.composition.find((entry) => entry.stratum === "matn_exact")?.candidates).toBe(
+      60,
+    );
+  });
+
   it("never selects the same pair twice", () => {
     const selection = selectBlindSample({ candidates: candidates(60), seed: 9 });
     const seen = new Set(selection.pairs.map((entry) => `${entry.a}\u0000${entry.b}`));

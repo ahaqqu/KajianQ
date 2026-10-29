@@ -154,7 +154,7 @@ and reclaimed by a retention window.
 | Terjemahan ID              | Kemenag via Tanzil                                       | **Verify terms**; attribute                                 |
 | Tafsir (planned)           | Tanzil / Quran.com (Ibnu Katsir, Jalalayn, Tabari)       | Attribute; prefer public-domain editions                    |
 | Hadith (v1)                | fawazahmed0/hadith-api (ADR-0026)                        | Unlicense (public domain); attribute + sunnah.com upstream  |
-| Hadith with sanad (v2)     | Sanadset 650K (Mendeley Data, DOI 10.17632/5xth87zwb5.5) | CC BY 4.0; attribute the authors                            |
+| Hadith with isnad (v2)     | Sanadset 650K (Mendeley Data, DOI 10.17632/5xth87zwb5.5) | CC BY 4.0; attribute the authors                            |
 | Hadith API                 | Sunnah.com                                               | Key request no longer blocks v1 (ADR-0026); enrichment only |
 | Kitab                      | Shamela `.bok` / OpenITI TEI                             | Classical texts public domain; attribute Shamela/OpenITI    |
 

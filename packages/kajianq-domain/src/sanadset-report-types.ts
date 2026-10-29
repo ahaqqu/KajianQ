@@ -8,6 +8,7 @@
 
 import type { CostRecord, IngestionReport } from "@app/contracts";
 import type { ArmEstimate, ArmStatus } from "./sanadset-arm";
+import type { CascadeBookScope, CrossBookJoins } from "./sanadset-cascade-types";
 import type { NarratorStats } from "./sanadset-narrator";
 import type { PrepareStats } from "./sanadset-prepare";
 
@@ -55,6 +56,8 @@ export type StudyFacts = {
   readonly schemaVersion: 1;
   readonly runId: string;
   readonly command: string;
+  /** The run-scoped directory every artifact of this run was written to. */
+  readonly artifactsDir: string;
   readonly source: {
     readonly fileName: string;
     readonly bytes: number;
@@ -74,19 +77,39 @@ export type StudyFacts = {
   readonly narrator: NarratorStats;
   readonly matn: {
     readonly preparedRows: number;
-    readonly groups: number;
-    readonly distinctMatns: number;
+    /** Book-scoped matn children after the cascade: what an isnad attaches to in S2. */
+    readonly children: number;
+    /** Distinct normalized matn strings, before any coalescing: the raw population. */
+    readonly distinctMatnTexts: number;
+    readonly bookScope: CascadeBookScope;
+    readonly crossBook: CrossBookJoins;
+    /** Prepared rows the cascade did not quarantine: the attachment population. */
+    readonly attachableRows: number;
+    /** Every row that declares an isnad, quarantine included. */
+    readonly isnadBearingRows: number;
+    /** `attachableRows / children` — the sizing input the corpus plan quotes. */
     readonly chainsPerChild: number;
+    /** `isnadBearingRows / children` — mixes two populations; reported, never quoted. */
+    readonly chainsPerChildAllBearing: number;
     readonly matchRate: MatchRate;
     readonly byBook: Readonly<Record<string, MatchRate>>;
     readonly byKind: Readonly<Record<string, number>>;
     readonly candidateCapHits: number;
   };
   readonly band: {
+    /** Rows inside `[matnBandLower, matnBandUpper)`: one adjudication each. */
     readonly matnRows: number;
+    readonly matnBandLower: number;
+    readonly matnBandUpper: number;
+    /** Rows the ambiguity rule quarantined inside the band: no call is spent on them. */
+    readonly ambiguousQuarantined: number;
     readonly narratorPairs: number;
     readonly narratorNames: number;
+    /** Pre-registered sample pairs: one call each. */
+    readonly sampleCalls: number;
+    /** `sampleCalls + matnRows`, uncapped. */
     readonly callsNeeded: number;
+    /** `min(ceiling, callsNeeded)`. */
     readonly callsBudgeted: number;
     readonly ceiling: number;
   };

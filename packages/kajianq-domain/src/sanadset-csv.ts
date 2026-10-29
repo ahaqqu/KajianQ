@@ -92,6 +92,12 @@ export function createCsvParser(): CsvParser {
   };
 }
 
+/** Parse a whole CSV document already in memory; the streaming reader below is for the archive. */
+export function parseCsvText(text: string): string[][] {
+  const parser = createCsvParser();
+  return [...parser.push(text), ...parser.end()];
+}
+
 /**
  * Parse the `Sanad` column, a Python list literal such as `['name', 'name']`.
  * Returns null on any shape the literal parser does not recognise; the caller

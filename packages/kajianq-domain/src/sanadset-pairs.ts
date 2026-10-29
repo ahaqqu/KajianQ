@@ -49,6 +49,11 @@ export const MATN_STRATA = [
  * the model-band floor and has no upper bound below raw equality, so the stratum also
  * holds the pairs the cascade merged without asking anyone: auditing the auto threshold
  * is the point, and a sample that only held the band could not do it.
+ *
+ * `exact` carries the same meaning on the folded side: a pair is exact when the two rows'
+ * normalized matns (and therefore their trigram sets) are identical while the raw strings
+ * are not. A byte-identical pair is not a question — the answer is visible in the pair
+ * itself — so it is never a candidate.
  */
 export const MATN_EXACT_SCORE = 1;
 export const MATN_NEAR_DUPLICATE_MIN = 0.6;
@@ -78,6 +83,17 @@ export type StudyPair = {
 };
 
 export type PairCandidates = Map<PairStratum, StudyPair[]>;
+
+/** Merge the matn and narrator pools into one, keeping every stratum's candidates. */
+export function mergePairCandidates(
+  matn: PairCandidates,
+  narrator: PairCandidates,
+): PairCandidates {
+  const merged: PairCandidates = new Map(matn);
+  for (const [stratum, pairs] of narrator)
+    merged.set(stratum, [...(merged.get(stratum) ?? []), ...pairs]);
+  return merged;
+}
 
 function push(pool: PairCandidates, stratum: PairStratum, pair: StudyPair): boolean {
   const bucket = pool.get(stratum);
@@ -184,17 +200,29 @@ export function buildNarratorPairCandidates(catalogue: NarratorCatalogue): PairC
  * Matn candidates over the prepared slice: the exact duplicates, the band, and the
  * near-misses below it. Every candidate is scored against earlier rows only, so the
  * pass is deterministic and a pair appears once.
+ *
+ * The population is the cascade's: book-scoped. A Bukhari matn and a Muslim matn are never
+ * the same child, so a cross-book pair is a question the cascade never asks and the sample
+ * does not spend a call on it.
  */
 export function buildMatnPairCandidates(rows: readonly PreparedRow[]): PairCandidates {
   const pool: PairCandidates = new Map();
   const seen = new Set<string>();
-  const firstByRaw = new Map<string, PreparedRow>();
+  const firstByFolded = new Map<string, PreparedRow>();
   const byRowIndex = new Map<number, PreparedRow>();
-  const index: LshIndex<{ readonly rowIndex: number }> = new Map();
+  const indexes = new Map<string, LshIndex<{ readonly rowIndex: number }>>();
+  const indexFor = (book: string): LshIndex<{ readonly rowIndex: number }> => {
+    const existing = indexes.get(book);
+    if (existing !== undefined) return existing;
+    const created: LshIndex<{ readonly rowIndex: number }> = new Map();
+    indexes.set(book, created);
+    return created;
+  };
 
   for (const row of rows) {
-    const first = firstByRaw.get(row.rawMatn);
-    if (first !== undefined) {
+    const foldedKey = `${row.book}\u0000${row.normalizedMatn}`;
+    const first = firstByFolded.get(foldedKey);
+    if (first !== undefined && first.rawMatn !== row.rawMatn) {
       const key = pairKey(first.rawMatn, row.rawMatn);
       if (!seen.has(key)) {
         seen.add(key);
@@ -206,16 +234,19 @@ export function buildMatnPairCandidates(rows: readonly PreparedRow[]): PairCandi
           ref: { rowA: first.rowIndex, rowB: row.rowIndex, score: MATN_EXACT_SCORE },
         });
       }
-    } else {
-      firstByRaw.set(row.rawMatn, row);
+    } else if (first === undefined) {
+      firstByFolded.set(foldedKey, row);
     }
 
-    const found = searchLshIndex(index, row.bandKeys);
+    const found = searchLshIndex(indexFor(row.book), row.bandKeys);
     for (const member of found.values) {
       const other = byRowIndex.get(member.rowIndex);
       if (other === undefined) continue;
       const key = pairKey(other.rawMatn, row.rawMatn);
       if (seen.has(key)) continue;
+      // The same string on both sides is not a question: it would be a free correct answer
+      // in the macro-F1 this sample exists to measure, so it is never a candidate.
+      if (other.rawMatn === row.rawMatn) continue;
       const score = jaccard(row.trigrams, other.trigrams);
       const stratum =
         score >= MATN_NEAR_DUPLICATE_MIN
@@ -234,7 +265,7 @@ export function buildMatnPairCandidates(rows: readonly PreparedRow[]): PairCandi
       });
     }
 
-    addToLshIndex(index, row.bandKeys, { rowIndex: row.rowIndex });
+    addToLshIndex(indexFor(row.book), row.bandKeys, { rowIndex: row.rowIndex });
     byRowIndex.set(row.rowIndex, row);
   }
 

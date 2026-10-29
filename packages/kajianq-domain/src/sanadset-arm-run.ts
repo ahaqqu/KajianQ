@@ -44,9 +44,14 @@ const NO_TOTALS: ArmTotals = {
 };
 
 /**
- * The calls a run would make: one per pre-registered pair plus one per ambiguous matn
- * pair, capped by the same ceiling the run enforces. The cap is applied to the request
- * count, so the projection can never claim more calls than the run may issue.
+ * The calls a run would make: one per pre-registered pair plus one per matn row inside
+ * `[bandThreshold, autoThreshold)`, capped by the same ceiling the run enforces. The cap
+ * is applied to the request count, so the projection can never claim more calls than the
+ * run may issue.
+ *
+ * The band population is the cascade's, not a re-derivation: a row the ambiguity rule
+ * quarantined never reaches the arm, so it is not a call, and the sum of the sample and
+ * this list is exactly the plan the report reconciles.
  */
 export function estimateStudyCalls(input: {
   readonly pairs: readonly SamplePair[];
@@ -65,6 +70,7 @@ export function estimateStudyCalls(input: {
     if (best === null || decision.score === null) continue;
     if (decision.score < S1_MODEL_BAND_THRESHOLD || decision.score >= S1_AUTO_MATCH_THRESHOLD)
       continue;
+    if (decision.rule === "ambiguous_best_match") continue;
     calls.push(
       estimateMatnCall({
         a: input.rawMatnByIndex.get(best.rowIndex) ?? "",

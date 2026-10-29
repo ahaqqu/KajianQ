@@ -63,11 +63,6 @@ export function foldNarratorName(raw: string): string {
   return stripHonorifics(foldBase(raw));
 }
 
-/** Fold arbitrary Arabic text without stripping honorifics from the interior. */
-export function foldArabicText(raw: string): string {
-  return stripHonorifics(foldBase(raw));
-}
-
 /**
  * The leading transmission phrase most matn columns carry before the actual text
  * ("، عن النبي ﷺ ، قال :"). Stripping it is safe only when content remains, which

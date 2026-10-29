@@ -41,7 +41,15 @@ describe("the hard ceiling", () => {
   });
 
   it("refuses to build a budget with a nonsense ceiling", () => {
-    expect(() => createCallBudget(0)).toThrow(/positive integer/u);
+    expect(() => createCallBudget(-1)).toThrow(/non-negative integer/u);
+    expect(() => createCallBudget(1.5)).toThrow(/non-negative integer/u);
+  });
+
+  it("treats an empty budget as a real ceiling that refuses every call", () => {
+    const budget = createCallBudget(0);
+    expect(budget.remaining()).toBe(0);
+    expect(() => budget.take()).toThrow(ModelCallCeilingError);
+    expect(budget.calls).toBe(0);
   });
 });
 

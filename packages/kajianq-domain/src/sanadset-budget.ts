@@ -28,9 +28,14 @@ export type CallBudget = {
   remaining(): number;
 };
 
+/**
+ * A budget over `ceiling` calls. Zero is a real ceiling: a run whose sample has already
+ * spent the whole ceiling hands the cascade an empty budget, which refuses every call
+ * rather than starting a second, independent count.
+ */
 export function createCallBudget(ceiling: number): CallBudget {
-  if (!Number.isInteger(ceiling) || ceiling < 1) {
-    throw new Error(`call budget needs a positive integer ceiling, got ${ceiling}`);
+  if (!Number.isInteger(ceiling) || ceiling < 0) {
+    throw new Error(`call budget needs a non-negative integer ceiling, got ${ceiling}`);
   }
   let calls = 0;
   return {

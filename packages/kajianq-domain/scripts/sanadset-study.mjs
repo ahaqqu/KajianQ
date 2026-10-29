@@ -16,14 +16,20 @@
  *   --price-in/--price-out  USD per million tokens, for a model with no price on file
  *
  * The credential comes from `DASHSCOPE_API_KEY` / `OLLAMA_API_KEY`, or from the
- * machine-local key file the provider profile names. A missing credential is not an
- * error: the run proceeds without the model arm and reports the band it would have
- * adjudicated. The key is never printed.
+ * machine-local key file the profile names. A missing credential is not an error: the run
+ * proceeds without the model arm and reports the band it would have adjudicated. The key
+ * is never printed.
+ *
+ * This script is the composition root: the provider profiles (endpoints, model ids,
+ * prices), the environment and the home directory are read here and injected into the
+ * package, which carries no vendor data and reads no environment of its own.
  *
  * Output is structured JSON lines on stdout. The shared logger adapter lives inside the
  * store package, and importing it here would pull a database client into a tool whose
  * defining property is that it constructs none.
  */
+import { homedir } from "node:os";
+import { ARM_PROFILES } from "./sanadset-arm-profiles.mjs";
 import * as study from "@app/kajianq-domain/sanadset";
 
 const USAGE = `study:sanadset — Sanadset S1 reconciliation study (no store writes)
@@ -114,11 +120,14 @@ if (parsed.errors.length > 0) {
   fail(`${parsed.errors.join("; ")}\n\n${USAGE}`);
 }
 
+const environment = { env: process.env, homeDir: homedir() };
+
 let config;
 try {
   const provider = parsed.values.get("provider") ?? "dashscope";
-  if (provider !== "dashscope" && provider !== "ollama")
-    throw new Error(`--provider must be dashscope or ollama, got "${provider}"`);
+  const configured = Object.keys(ARM_PROFILES).sort();
+  if (!configured.includes(provider))
+    throw new Error(`--provider must be one of ${configured.join(", ")}, got "${provider}"`);
   const armRequest = { provider };
   const model = parsed.values.get("model");
   if (model !== undefined) armRequest.model = model;
@@ -128,13 +137,16 @@ try {
   if (priceOut !== undefined) armRequest.priceOutUsdPerMTok = priceOut;
   const limit = integerFlag(parsed.values, "limit", { min: 1 });
   const seed = integerFlag(parsed.values, "seed", { min: 0 });
+  const outDir = parsed.values.get("out") ?? study.resolveOutDir(environment);
+  // Refuse a checkout target before the archive is read: the study writes corpus text.
+  study.assertOutsideRepository(outDir);
   config = {
     noModel: parsed.booleans.has("no-model"),
-    arm: study.resolveArm(armRequest),
+    arm: study.resolveArm(armRequest, { profiles: ARM_PROFILES, homeDir: homedir() }),
     ceiling: study.resolveCallCeiling(integerFlag(parsed.values, "max-calls", { min: 1 })),
-    csvPath: parsed.values.get("csv") ?? study.defaultCsvPath(),
+    csvPath: parsed.values.get("csv") ?? study.defaultCsvPath(environment),
     sha256: parsed.values.get("sha256") ?? study.S1_SOURCE_SHA256,
-    outDir: parsed.values.get("out") ?? study.resolveOutDir(),
+    outDir,
     ...(limit === undefined ? {} : { limit }),
     ...(seed === undefined ? {} : { seed }),
   };
@@ -142,7 +154,7 @@ try {
   fail(error instanceof Error ? error.message : String(error));
 }
 
-const lookup = study.loadApiKey(config.arm);
+const lookup = study.loadApiKey(config.arm, process.env);
 const status = study.describeArm(config.arm, lookup);
 log("info", "arm resolved", {
   provider: status.provider,
@@ -189,11 +201,12 @@ try {
 const facts = run.document.study;
 log("info", "study complete", {
   runId: run.runId,
+  artifactsDir: run.artifactsDir,
   written: run.written,
   sliceRows: facts.slice.rows,
   preparedRows: facts.slice.prepared,
   quarantined: facts.quarantine.total,
-  resolutionRate: Number(facts.narrator.resolutionRate.toFixed(4)),
+  nonSingletonMentionRate: Number(facts.narrator.nonSingletonMentionRate.toFixed(4)),
   matchRateInSlice: Number(facts.matn.matchRate.value.toFixed(4)),
   distinctMatns: facts.matn.distinctMatns,
   chainsPerChild: Number(facts.matn.chainsPerChild.toFixed(4)),

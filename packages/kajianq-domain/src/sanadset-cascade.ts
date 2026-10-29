@@ -7,9 +7,13 @@
  * is never retracted and the outcome is a function of the input order alone.
  *
  * Thresholds (pre-registered): >= 0.90 joins automatically, [0.60, 0.90) is the
- * model band, < 0.60 does not match. Two groups within 0.02 of the top score are
- * quarantined as an ambiguous best match before the model is asked — an arbitrary
- * tie-break is exactly the force-merge this study exists to avoid.
+ * model band, < 0.60 does not match. The band is half-open on both ends: a row whose
+ * top score reaches the auto threshold joins without a model call, so
+ * `counts.bandAdjudicated` counts exactly the rows inside the interval the report
+ * names. Two groups within 0.02 of the top score are quarantined as an ambiguous best
+ * match before the model is asked — an arbitrary tie-break is exactly the force-merge
+ * this study exists to avoid — and that quarantine is counted separately
+ * (`counts.ambiguousQuarantined`) because it never spends a call.
  */
 
 import { ModelCallCeilingError, type CallBudget } from "./sanadset-budget";
@@ -20,40 +24,23 @@ import {
   S1_AUTO_MATCH_THRESHOLD,
   S1_MODEL_BAND_THRESHOLD,
   type BestCandidate,
+  type CascadeBookScope,
   type CascadeOptions,
+  emptyMatnCounts,
   type CascadeResult,
-  type MatnCounts,
   type MatnDecisionKind,
   type MatnVerdict,
   type ScoredPair,
 } from "./sanadset-cascade-types";
 import { jaccard } from "./sanadset-text";
-import type { PreparedRow, QuarantinedRow } from "./sanadset-prepare";
-
-function emptyCounts(): MatnCounts {
-  return {
-    exact: 0,
-    folded: 0,
-    trigram: 0,
-    modelSame: 0,
-    modelDifferent: 0,
-    bandUnresolved: 0,
-    noMatch: 0,
-    quarantined: 0,
-    joinedExisting: 0,
-    newGroups: 0,
-    coalescedRows: 0,
-    bandRows: 0,
-    scoredRows: 0,
-    candidateCapHits: 0,
-  };
-}
+import type { PreparedRow, QuarantinedRow, QuarantineRule } from "./sanadset-prepare";
 
 /** Run the cascade over prepared rows and return every decision it made. */
 export async function runMatnCascade(options: CascadeOptions): Promise<CascadeResult> {
   const autoThreshold = options.autoThreshold ?? S1_AUTO_MATCH_THRESHOLD;
   const bandThreshold = options.bandThreshold ?? S1_MODEL_BAND_THRESHOLD;
   const ambiguityMargin = options.ambiguityMargin ?? S1_AMBIGUITY_MARGIN;
+  const bookScope: CascadeBookScope = options.bookScope ?? "book";
   assertThresholds(autoThreshold, bandThreshold, ambiguityMargin);
   const adjudicator = options.adjudicate;
   const callBudget: CallBudget | undefined = options.budget;
@@ -68,10 +55,10 @@ export async function runMatnCascade(options: CascadeOptions): Promise<CascadeRe
     rowsByIndex.set(row.rowIndex, row);
   }
 
-  const book = createGroupBook();
+  const book = createGroupBook(bookScope);
   const decisions: CascadeResult["decisions"] = [];
   const quarantined: QuarantinedRow[] = [];
-  const counts = emptyCounts();
+  const counts = emptyMatnCounts();
   const model = { calls: 0, ceilingReached: false };
   const onGroupScore = options.onGroupScore;
 
@@ -82,6 +69,7 @@ export async function runMatnCascade(options: CascadeOptions): Promise<CascadeRe
     matchedRowIndex: number | null,
     score: number | null,
     bestCandidate: BestCandidate | null,
+    rule: QuarantineRule | null = null,
   ): void => {
     decisions.push({
       rowIndex: row.rowIndex,
@@ -90,10 +78,17 @@ export async function runMatnCascade(options: CascadeOptions): Promise<CascadeRe
       matchedRowIndex,
       score,
       bestCandidate,
+      rule,
     });
   };
 
-  const quarantine = (row: PreparedRow, rule: QuarantinedRow["rule"], note: string): void => {
+  const quarantine = (
+    row: PreparedRow,
+    rule: QuarantineRule,
+    note: string,
+    score: number | null,
+    bestCandidate: BestCandidate | null,
+  ): void => {
     quarantined.push({
       rowIndex: row.rowIndex,
       book: row.book,
@@ -102,6 +97,7 @@ export async function runMatnCascade(options: CascadeOptions): Promise<CascadeRe
       detail: note,
       sanadLength: null,
     });
+    decide(row, "quarantined", null, null, score, bestCandidate, rule);
     counts.quarantined += 1;
   };
 
@@ -145,7 +141,11 @@ export async function runMatnCascade(options: CascadeOptions): Promise<CascadeRe
     return ranked;
   };
 
-  /** Ask the model inside the band; a spent budget or an unparseable verdict never merges. */
+  /**
+   * Ask the model inside the band; a spent budget or an unparseable verdict never merges.
+   * `model.calls` counts adjudications that took a budget slot, so a budget refusal that
+   * never reached the client cannot read as a call.
+   */
   const adjudicateBand = async (
     row: PreparedRow,
     top: BestCandidate,
@@ -154,11 +154,13 @@ export async function runMatnCascade(options: CascadeOptions): Promise<CascadeRe
     if (model.ceilingReached) return "ceiling";
     try {
       callBudget?.take();
-      return await adjudicator({
+      const verdict = await adjudicator({
         a: rowsByIndex.get(top.rowIndex)?.rawMatn ?? row.rawMatn,
         b: row.rawMatn,
         score: top.score,
       });
+      model.calls += 1;
+      return verdict;
     } catch (error) {
       if (!(error instanceof ModelCallCeilingError)) throw error;
       model.ceilingReached = true;
@@ -167,7 +169,7 @@ export async function runMatnCascade(options: CascadeOptions): Promise<CascadeRe
   };
 
   for (const row of options.rows) {
-    const exactGroupId = book.groupIdForExactMatn(row.rawMatn);
+    const exactGroupId = book.groupIdForExactMatn(row.book, row.rawMatn);
     if (exactGroupId !== undefined) {
       book.join(row, exactGroupId);
       decide(
@@ -182,7 +184,7 @@ export async function runMatnCascade(options: CascadeOptions): Promise<CascadeRe
       counts.joinedExisting += 1;
       continue;
     }
-    const foldedGroupId = book.groupIdForFoldedMatn(row.normalizedMatn);
+    const foldedGroupId = book.groupIdForFoldedMatn(row.book, row.normalizedMatn);
     if (foldedGroupId !== undefined) {
       book.join(row, foldedGroupId);
       decide(
@@ -209,15 +211,17 @@ export async function runMatnCascade(options: CascadeOptions): Promise<CascadeRe
       top !== null &&
       second !== null &&
       top.score >= bandThreshold &&
+      top.score < autoThreshold &&
       top.score - second.score <= ambiguityMargin
     ) {
       quarantine(
         row,
         "ambiguous_best_match",
         `two groups within ${ambiguityMargin} of the top score (${top.score.toFixed(3)} vs ${second.score.toFixed(3)})`,
+        top.score,
+        top,
       );
-      decide(row, "quarantined", null, null, top.score, top);
-      counts.bandRows += 1;
+      counts.ambiguousQuarantined += 1;
       continue;
     }
 
@@ -230,7 +234,7 @@ export async function runMatnCascade(options: CascadeOptions): Promise<CascadeRe
     }
 
     if (top !== null && top.score >= bandThreshold) {
-      counts.bandRows += 1;
+      counts.bandAdjudicated += 1;
       const verdict = await adjudicateBand(row, top);
       if (verdict === "ceiling") {
         decide(row, "band-unresolved", book.start(row), null, top.score, top);
@@ -242,8 +246,9 @@ export async function runMatnCascade(options: CascadeOptions): Promise<CascadeRe
           row,
           "model_uncertain",
           "the model returned an uncertain or unparseable verdict after one retry",
+          top.score,
+          top,
         );
-        decide(row, "quarantined", null, null, top.score, top);
         continue;
       }
       if (verdict === "same") {
@@ -264,12 +269,13 @@ export async function runMatnCascade(options: CascadeOptions): Promise<CascadeRe
 
   counts.newGroups = book.groups.length;
   counts.coalescedRows = options.rows.length - quarantined.length - book.groups.length;
-  model.calls = callBudget?.calls ?? 0;
   return {
     decisions,
     groups: book.snapshot(),
     quarantined,
     counts,
+    thresholds: { band: bandThreshold, auto: autoThreshold, ambiguityMargin },
+    bookScope,
     model: {
       calls: model.calls,
       ceilingReached: model.ceilingReached,

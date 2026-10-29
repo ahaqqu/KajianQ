@@ -1,12 +1,17 @@
 /**
  * The narrator catalogue the study measures: one cluster per folded name, the
- * blocking groups those clusters fall into, and the resolution arithmetic the
- * report quotes.
+ * blocking groups those clusters fall into, and the coverage arithmetic the report
+ * quotes.
  *
- * The deterministic pass resolves a mention only when the fold merges it with
- * another mention. A singleton is not "resolved" by having an id of its own — it is
- * the residue the model would have to place, and counting it as resolved is the
- * silent inflation this module exists to prevent.
+ * What the deterministic pass measures is **coverage, not identity**: a mention counts
+ * as covered when its folded name occurs more than once, which says the fold could
+ * place it against something, not that two spellings are the same person. A singleton
+ * is not covered by having an id of its own — it is the residue the model would have to
+ * place, and counting it as covered is the silent inflation this module exists to
+ * prevent. The identity evidence is reported next to the rate (`foldedVariants`,
+ * `bandNames`, `candidatePairs`): spellings the fold merged, names sharing a blocking
+ * key, and the pairs a model would have to adjudicate. A high coverage rate with low
+ * identity evidence means the fold is doing the work, not that disambiguation happened.
  */
 
 import { narratorBlockingKey } from "./sanadset-blocking";
@@ -28,8 +33,10 @@ export type NarratorStats = {
   readonly foldedVariants: number;
   readonly singletonClusters: number;
   readonly singletonMentions: number;
-  readonly resolvedMentions: number;
-  readonly resolutionRate: number;
+  /** Mentions whose folded name occurs more than once: covered, not identified. */
+  readonly nonSingletonMentions: number;
+  /** `nonSingletonMentions / mentions` — a coalescing share, never an identity rate. */
+  readonly nonSingletonMentionRate: number;
   readonly blockingKeys: number;
   readonly multiNameBlockingKeys: number;
   /** Distinct folded names sharing a blocking key with another name: the band's candidates. */
@@ -104,7 +111,7 @@ export function buildNarratorCatalogue(mentions: Iterable<NarratorMention>): Nar
     blockingGroups.set(key, [...names].sort());
   }
 
-  const resolvedMentions = totalMentions - singletonMentions;
+  const nonSingletonMentions = totalMentions - singletonMentions;
   return {
     clusters,
     blockingGroups,
@@ -115,8 +122,8 @@ export function buildNarratorCatalogue(mentions: Iterable<NarratorMention>): Nar
       foldedVariants: rawNames.size - clusters.size,
       singletonClusters,
       singletonMentions,
-      resolvedMentions,
-      resolutionRate: totalMentions === 0 ? 0 : resolvedMentions / totalMentions,
+      nonSingletonMentions,
+      nonSingletonMentionRate: totalMentions === 0 ? 0 : nonSingletonMentions / totalMentions,
       blockingKeys: byBlockingKey.size,
       multiNameBlockingKeys,
       bandNames,
@@ -124,6 +131,19 @@ export function buildNarratorCatalogue(mentions: Iterable<NarratorMention>): Nar
       largestBlockingGroup,
     },
   };
+}
+
+/** Collect every chain mention a prepared slice carries, in row and chain order. */
+export function collectNarratorMentions(
+  rows: readonly { readonly chain: readonly string[]; readonly rawChain: readonly string[] }[],
+): NarratorMention[] {
+  const mentions: NarratorMention[] = [];
+  for (const row of rows) {
+    for (let index = 0; index < row.chain.length; index += 1) {
+      mentions.push({ raw: row.rawChain[index] ?? "", folded: row.chain[index] as string });
+    }
+  }
+  return mentions;
 }
 
 /** The most frequent raw surface for a folded name; null when the name is unknown. */

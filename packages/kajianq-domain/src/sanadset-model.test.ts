@@ -12,6 +12,7 @@ import {
 } from "./sanadset-arm";
 import { createArmClient, parseVerdict, type FetchInit, type FetchLike } from "./sanadset-model";
 import { ModelCallCeilingError } from "./sanadset-budget";
+import { TEST_ARM_CONFIG } from "./test-utils/sanadset-arm";
 
 /**
  * Test intent, named before the assertions:
@@ -62,38 +63,52 @@ function verdictBody(
 }
 
 function testArm(overrides: Partial<ArmDefinition> = {}): ArmDefinition {
-  return { ...resolveArm({ provider: "dashscope" }), apiKeyEnv: "TEST_KEY_ENV", ...overrides };
+  return {
+    ...resolveArm({ provider: "dashscope" }, TEST_ARM_CONFIG),
+    apiKeyEnv: "TEST_KEY_ENV",
+    ...overrides,
+  };
 }
 
 describe("resolveArm", () => {
-  it("defaults to the DashScope pilot model and its list price", () => {
-    const arm = resolveArm({ provider: "dashscope" });
-    expect(arm.model).toBe("qwen3.7-flash");
-    expect(arm.baseUrl).toBe("https://dashscope-intl.aliyuncs.com/compatible-mode/v1");
-    expect(arm.apiKeyEnv).toBe("DASHSCOPE_API_KEY");
+  it("takes the endpoint, model, credential name and price from the injected profiles", () => {
+    const arm = resolveArm({ provider: "dashscope" }, TEST_ARM_CONFIG);
+    expect(arm.model).toBe("qwen-test");
+    expect(arm.baseUrl).toBe("https://dashscope.test/v1");
+    expect(arm.apiKeyEnv).toBe("TEST_KEY_ENV");
     expect(arm.price).toEqual({ inputUsdPerMTok: 0.03, outputUsdPerMTok: 0.13 });
+    expect(arm.keyFile).toBe("/test-home/.config/kajianq/dashscope-key");
   });
 
-  it("defaults to the Ollama-owned model and its list price", () => {
-    const arm = resolveArm({ provider: "ollama" });
-    expect(arm.model).toBe("gemma4:31b");
-    expect(arm.baseUrl).toBe("https://ollama.com/v1");
-    expect(arm.apiKeyEnv).toBe("OLLAMA_API_KEY");
+  it("resolves a second configured provider the same way", () => {
+    const arm = resolveArm({ provider: "ollama" }, TEST_ARM_CONFIG);
+    expect(arm.model).toBe("gemma-test");
+    expect(arm.baseUrl).toBe("https://ollama.test/v1");
+    expect(arm.apiKeyEnv).toBe("TEST_OLLAMA_KEY");
   });
 
-  it("refuses a model with no price on file rather than inventing one", () => {
-    expect(() => resolveArm({ provider: "dashscope", model: "made-up-1" })).toThrow(
-      /no price on file/u,
+  it("refuses a provider the configuration does not list, naming the ones it does", () => {
+    expect(() => resolveArm({ provider: "made-up" }, TEST_ARM_CONFIG)).toThrow(
+      /unknown provider "made-up".*dashscope, ollama/u,
     );
   });
 
+  it("refuses a model with no price on file rather than inventing one", () => {
+    expect(() =>
+      resolveArm({ provider: "dashscope", model: "made-up-1" }, TEST_ARM_CONFIG),
+    ).toThrow(/no price on file/u);
+  });
+
   it("accepts an explicit price override for such a model", () => {
-    const arm = resolveArm({
-      provider: "dashscope",
-      model: "made-up-1",
-      priceInUsdPerMTok: 1,
-      priceOutUsdPerMTok: 2,
-    });
+    const arm = resolveArm(
+      {
+        provider: "dashscope",
+        model: "made-up-1",
+        priceInUsdPerMTok: 1,
+        priceOutUsdPerMTok: 2,
+      },
+      TEST_ARM_CONFIG,
+    );
     expect(arm.price).toEqual({ inputUsdPerMTok: 1, outputUsdPerMTok: 2 });
   });
 });
@@ -167,7 +182,7 @@ describe("the provider request shape", () => {
   it("posts a bounded, zero-temperature chat completion with a bearer header", async () => {
     const stub = stubFetch([{ body: verdictBody("same") }]);
     const client = createArmClient({
-      arm: resolveArm({ provider: "dashscope" }),
+      arm: resolveArm({ provider: "dashscope" }, TEST_ARM_CONFIG),
       apiKey: SENTINEL,
       ceiling: 10,
       fetch: stub.fetch,
@@ -175,14 +190,12 @@ describe("the provider request shape", () => {
     expect(await client.adjudicateMatn({ a: "نص أ", b: "نص ب", score: 0.75 })).toBe("same");
 
     const request = stub.seen[0];
-    expect(request?.url).toBe(
-      "https://dashscope-intl.aliyuncs.com/compatible-mode/v1/chat/completions",
-    );
+    expect(request?.url).toBe("https://dashscope.test/v1/chat/completions");
     expect(request?.init.method).toBe("POST");
     expect(request?.init.headers["content-type"]).toBe("application/json");
     expect(request?.init.headers["authorization"]).toBe(`Bearer ${SENTINEL}`);
     const body = JSON.parse(request?.init.body ?? "{}");
-    expect(body.model).toBe("qwen3.7-flash");
+    expect(body.model).toBe("qwen-test");
     expect(body.temperature).toBe(0);
     expect(body.stream).toBe(false);
     expect(body.max_tokens).toBe(64);
@@ -194,20 +207,20 @@ describe("the provider request shape", () => {
   it("uses the Ollama endpoint for the Ollama profile", async () => {
     const stub = stubFetch([{ body: verdictBody("different") }]);
     const client = createArmClient({
-      arm: resolveArm({ provider: "ollama" }),
+      arm: resolveArm({ provider: "ollama" }, TEST_ARM_CONFIG),
       apiKey: "k",
       ceiling: 10,
       fetch: stub.fetch,
     });
     await client.adjudicateMatn({ a: "a", b: "b", score: 0.7 });
-    expect(stub.seen[0]?.url).toBe("https://ollama.com/v1/chat/completions");
-    expect(JSON.parse(stub.seen[0]?.init.body ?? "{}").model).toBe("gemma4:31b");
+    expect(stub.seen[0]?.url).toBe("https://ollama.test/v1/chat/completions");
+    expect(JSON.parse(stub.seen[0]?.init.body ?? "{}").model).toBe("gemma-test");
   });
 
   it("keeps the sample prompt blind: no lexical score hint", async () => {
     const stub = stubFetch([{ body: verdictBody("same") }]);
     const client = createArmClient({
-      arm: resolveArm({ provider: "dashscope" }),
+      arm: resolveArm({ provider: "dashscope" }, TEST_ARM_CONFIG),
       apiKey: "k",
       ceiling: 10,
       fetch: stub.fetch,
@@ -223,7 +236,7 @@ describe("metering", () => {
   it("meters tokens from the response usage block", async () => {
     const stub = stubFetch([{ body: verdictBody("same") }]);
     const client = createArmClient({
-      arm: resolveArm({ provider: "dashscope" }),
+      arm: resolveArm({ provider: "dashscope" }, TEST_ARM_CONFIG),
       apiKey: SENTINEL,
       ceiling: 10,
       fetch: stub.fetch,
@@ -245,7 +258,7 @@ describe("metering", () => {
   it("marks a response without usage as an estimate", async () => {
     const stub = stubFetch([{ body: verdictBody("same", null) }]);
     const client = createArmClient({
-      arm: resolveArm({ provider: "dashscope" }),
+      arm: resolveArm({ provider: "dashscope" }, TEST_ARM_CONFIG),
       apiKey: "k",
       ceiling: 10,
       fetch: stub.fetch,
@@ -260,7 +273,7 @@ describe("metering", () => {
   it("sums both attempts when a reply had to be retried", async () => {
     const stub = stubFetch([{ body: "not json" }, { body: verdictBody("same") }]);
     const client = createArmClient({
-      arm: resolveArm({ provider: "dashscope" }),
+      arm: resolveArm({ provider: "dashscope" }, TEST_ARM_CONFIG),
       apiKey: "k",
       ceiling: 10,
       fetch: stub.fetch,
@@ -278,7 +291,7 @@ describe("metering", () => {
   it("reports an unparseable reply as uncertain after exactly one retry", async () => {
     const stub = stubFetch([{ body: "not json" }]);
     const client = createArmClient({
-      arm: resolveArm({ provider: "dashscope" }),
+      arm: resolveArm({ provider: "dashscope" }, TEST_ARM_CONFIG),
       apiKey: "k",
       ceiling: 10,
       fetch: stub.fetch,
@@ -293,7 +306,7 @@ describe("the request ceiling", () => {
   it("refuses to issue request ceiling + 1", async () => {
     const stub = stubFetch([{ body: verdictBody("same") }]);
     const client = createArmClient({
-      arm: resolveArm({ provider: "dashscope" }),
+      arm: resolveArm({ provider: "dashscope" }, TEST_ARM_CONFIG),
       apiKey: "k",
       ceiling: 2,
       fetch: stub.fetch,
@@ -309,7 +322,7 @@ describe("the request ceiling", () => {
   it("surfaces a provider error instead of degrading it to a verdict", async () => {
     const stub = stubFetch([{ ok: false, status: 429, body: "rate limited" }]);
     const client = createArmClient({
-      arm: resolveArm({ provider: "dashscope" }),
+      arm: resolveArm({ provider: "dashscope" }, TEST_ARM_CONFIG),
       apiKey: "k",
       ceiling: 10,
       fetch: stub.fetch,

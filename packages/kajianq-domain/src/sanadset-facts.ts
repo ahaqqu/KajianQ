@@ -3,14 +3,18 @@
  *
  * The arithmetic here is the report's only source of numbers: rates are derived from
  * counted rows, never re-derived by a reader, and every rate carries the denominator it
- * was computed over.
+ * was computed over. Two populations that were mixed are kept apart here — the children
+ * an isnad could attach to (book-scoped, quarantine-excluded) and every row that declares
+ * an isnad — because a ratio computed across both describes neither.
  */
 
 import {
+  countByRule,
   evaluateGates,
   SLICE_BOOKS,
   type ArmFacts,
   type CascadeResult,
+  type CrossBookJoins,
   type MatchRate,
   type NarratorCatalogue,
   type PrepareStats,
@@ -26,6 +30,7 @@ const JOINED_KINDS = new Set(["exact", "folded", "trigram", "model-same"]);
 export type FactsInput = {
   readonly runId: string;
   readonly command: string;
+  readonly artifactsDir: string;
   readonly source: {
     readonly fileName: string;
     readonly bytes: number;
@@ -34,9 +39,11 @@ export type FactsInput = {
   };
   readonly stats: PrepareStats;
   readonly prepared: readonly PreparedRow[];
-  /** Rows that declare a chain: slice rows minus the `No SANAD` rows. */
-  readonly chainBearing: number;
+  /** Rows that declare an isnad: slice rows minus the `No SANAD` rows. */
+  readonly isnadBearing: number;
   readonly cascade: CascadeResult;
+  /** The same cascade run against an unscoped book: what the book scope prevents. */
+  readonly crossBook: CrossBookJoins;
   readonly catalogue: NarratorCatalogue;
   readonly sample: {
     readonly seed: number;
@@ -49,7 +56,7 @@ export type FactsInput = {
   readonly quarantined: readonly QuarantinedRow[];
   readonly arm: ArmFacts;
   readonly ceiling: number;
-  /** Calls the arm would issue for this run: the pre-registered sample plus the band. */
+  /** Calls the run plans: the pre-registered sample plus one per band row, uncapped. */
   readonly callsNeeded: number;
   readonly capMicroUsd: number;
   readonly limits: readonly string[];
@@ -92,17 +99,17 @@ export function buildStudyFacts(input: FactsInput): StudyFacts {
     "no-match": counts.noMatch,
     quarantined: counts.quarantined,
   };
-  const groups = input.cascade.groups.length;
-  const quarantineByRule: Record<string, number> = {};
-  for (const row of input.quarantined)
-    quarantineByRule[row.rule] = (quarantineByRule[row.rule] ?? 0) + 1;
-  const bandRows = counts.bandRows;
-  const callsNeeded = input.callsNeeded;
+  const children = input.cascade.groups.length;
+  const distinctMatnTexts = new Set(input.prepared.map((row) => row.normalizedMatn)).size;
+  const quarantineByRule = countByRule(input.quarantined);
+  // Rows an isnad could still attach to: prepared and not held back by the cascade.
+  const attachableRows = input.prepared.length - input.cascade.quarantined.length;
 
   return {
     schemaVersion: 1,
     runId: input.runId,
     command: input.command,
+    artifactsDir: input.artifactsDir,
     source: input.source,
     slice: {
       books: [...SLICE_BOOKS],
@@ -117,9 +124,17 @@ export function buildStudyFacts(input: FactsInput): StudyFacts {
     narrator: input.catalogue.stats,
     matn: {
       preparedRows: input.prepared.length,
-      groups,
-      distinctMatns: groups,
-      chainsPerChild: groups === 0 ? 0 : input.chainBearing / groups,
+      children,
+      distinctMatnTexts,
+      bookScope: input.cascade.bookScope,
+      crossBook: input.crossBook,
+      attachableRows,
+      isnadBearingRows: input.isnadBearing,
+      // The sizing input: rows an isnad can attach to, over the children it can attach to.
+      chainsPerChild: children === 0 ? 0 : attachableRows / children,
+      // The same quotient over every isnad-bearing row, quarantine included: reported and
+      // labelled, never quoted as the sizing input.
+      chainsPerChildAllBearing: children === 0 ? 0 : input.isnadBearing / children,
       matchRate: rate("slice-internal", counts.joinedExisting, input.prepared.length),
       byBook: Object.fromEntries(
         SLICE_BOOKS.map((book) => [
@@ -131,19 +146,23 @@ export function buildStudyFacts(input: FactsInput): StudyFacts {
       candidateCapHits: counts.candidateCapHits,
     },
     band: {
-      matnRows: bandRows,
+      matnRows: counts.bandAdjudicated,
+      matnBandLower: input.cascade.thresholds.band,
+      matnBandUpper: input.cascade.thresholds.auto,
+      ambiguousQuarantined: counts.ambiguousQuarantined,
       narratorPairs: input.catalogue.stats.candidatePairs,
       narratorNames: input.catalogue.stats.bandNames,
-      callsNeeded,
-      callsBudgeted: Math.min(input.ceiling, callsNeeded),
+      sampleCalls: input.sample.selected,
+      callsNeeded: input.callsNeeded,
+      callsBudgeted: Math.min(input.ceiling, input.callsNeeded),
       ceiling: input.ceiling,
     },
     quarantine: { total: input.quarantined.length, byRule: quarantineByRule },
     modelArm: input.arm,
     sample: input.sample,
     gates: evaluateGates({
-      narratorRate: input.catalogue.stats.resolutionRate,
-      quarantineShare: input.chainBearing === 0 ? 0 : input.quarantined.length / input.chainBearing,
+      narratorCoverage: input.catalogue.stats.nonSingletonMentionRate,
+      quarantineShare: input.isnadBearing === 0 ? 0 : input.quarantined.length / input.isnadBearing,
       spendMicroUsd: input.arm.spendMicroUsd,
       capMicroUsd: input.capMicroUsd,
       armRan: input.arm.ran,

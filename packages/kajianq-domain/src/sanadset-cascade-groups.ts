@@ -3,13 +3,19 @@
  * matn, the exact and folded lookup maps that short-circuit the first two stages,
  * and the MinHash index that proposes trigram candidates.
  *
+ * Two books exist and both are named by the caller. The study's book is **per book**:
+ * a Bukhari matn and a Muslim matn are never the same child, whatever their texts share,
+ * because a child is something an isnad attaches to inside one work. The `global` scope
+ * reproduces the unscoped book and exists so the study can measure what the scope
+ * prevents — it is a diagnostic, not a second definition of the cascade.
+ *
  * Groups never merge with each other. A row joins at most one group and a group is
  * never split, so a decision has no retraction path and a replay of the same input
  * order reproduces the same book.
  */
 
 import { addToLshIndex, searchLshIndex, type LshIndex } from "./sanadset-blocking";
-import type { MatnGroup } from "./sanadset-cascade-types";
+import type { CascadeBookScope, MatnGroup } from "./sanadset-cascade-types";
 import type { PreparedRow } from "./sanadset-prepare";
 
 export type MutableGroup = { groupId: number; representativeRowIndex: number; memberCount: number };
@@ -18,35 +24,58 @@ export type IndexedMember = { readonly rowIndex: number; readonly groupId: numbe
 export type LshSearch = { readonly values: IndexedMember[]; readonly truncated: boolean };
 
 export type GroupBook = {
+  readonly scope: CascadeBookScope;
   readonly groups: MutableGroup[];
   readonly exact: Map<string, number>;
   readonly folded: Map<string, number>;
   groupOf(groupId: number): MutableGroup;
-  groupIdForExactMatn(rawMatn: string): number | undefined;
-  groupIdForFoldedMatn(normalizedMatn: string): number | undefined;
+  groupIdForExactMatn(book: string, rawMatn: string): number | undefined;
+  groupIdForFoldedMatn(book: string, normalizedMatn: string): number | undefined;
   start(row: PreparedRow): number;
   join(row: PreparedRow, groupId: number): void;
   search(row: PreparedRow): LshSearch;
   snapshot(): MatnGroup[];
 };
 
-export function createGroupBook(): GroupBook {
+/** The map key of a matn under a scope: the book is part of the identity only when scoped. */
+function keyOf(scope: CascadeBookScope, book: string, text: string): string {
+  return scope === "book" ? `${book}\u0000${text}` : text;
+}
+
+export function createGroupBook(scope: CascadeBookScope = "book"): GroupBook {
   const groups: MutableGroup[] = [];
   const exact = new Map<string, number>();
   const folded = new Map<string, number>();
-  const index: LshIndex<IndexedMember> = new Map();
+  // One index per book: under `book` scope a cross-book candidate can never be proposed
+  // (nor truncate a search), and under `global` scope every row shares one index.
+  const indexes = new Map<string, LshIndex<IndexedMember>>();
+
+  const indexFor = (scopeKey: string): LshIndex<IndexedMember> => {
+    const existing = indexes.get(scopeKey);
+    if (existing !== undefined) return existing;
+    const created: LshIndex<IndexedMember> = new Map();
+    indexes.set(scopeKey, created);
+    return created;
+  };
+  const scopeKey = (book: string): string => (scope === "book" ? book : "");
 
   const remember = (row: PreparedRow, groupId: number): void => {
-    if (!exact.has(row.rawMatn)) exact.set(row.rawMatn, groupId);
-    if (!folded.has(row.normalizedMatn)) folded.set(row.normalizedMatn, groupId);
+    const exactKey = keyOf(scope, row.book, row.rawMatn);
+    if (!exact.has(exactKey)) exact.set(exactKey, groupId);
+    const foldedKey = keyOf(scope, row.book, row.normalizedMatn);
+    if (!folded.has(foldedKey)) folded.set(foldedKey, groupId);
   };
 
   const insert = (row: PreparedRow, groupId: number): void => {
-    addToLshIndex(index, row.bandKeys, { rowIndex: row.rowIndex, groupId });
+    addToLshIndex(indexFor(scopeKey(row.book)), row.bandKeys, {
+      rowIndex: row.rowIndex,
+      groupId,
+    });
     remember(row, groupId);
   };
 
   return {
+    scope,
     groups,
     exact,
     folded,
@@ -55,11 +84,11 @@ export function createGroupBook(): GroupBook {
       if (group === undefined) throw new Error(`matn cascade: unknown group ${groupId}`);
       return group;
     },
-    groupIdForExactMatn(rawMatn: string): number | undefined {
-      return exact.get(rawMatn);
+    groupIdForExactMatn(book: string, rawMatn: string): number | undefined {
+      return exact.get(keyOf(scope, book, rawMatn));
     },
-    groupIdForFoldedMatn(normalizedMatn: string): number | undefined {
-      return folded.get(normalizedMatn);
+    groupIdForFoldedMatn(book: string, normalizedMatn: string): number | undefined {
+      return folded.get(keyOf(scope, book, normalizedMatn));
     },
     start(row: PreparedRow): number {
       const groupId = groups.length;
@@ -73,7 +102,7 @@ export function createGroupBook(): GroupBook {
       insert(row, groupId);
     },
     search(row: PreparedRow): LshSearch {
-      return searchLshIndex(index, row.bandKeys);
+      return searchLshIndex(indexFor(scopeKey(row.book)), row.bandKeys);
     },
     snapshot(): MatnGroup[] {
       return groups.map((group) => ({

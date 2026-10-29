@@ -9,5 +9,4 @@
 export * from "./sanadset-core";
 export * from "./sanadset-facts";
 export * from "./sanadset-stream";
-export * from "./sanadset-artifacts";
 export * from "./sanadset-study";

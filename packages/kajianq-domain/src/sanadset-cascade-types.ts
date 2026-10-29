@@ -2,13 +2,15 @@
  * Thresholds, vocabulary and result shapes of the matn reconciliation cascade.
  *
  * The two thresholds are pre-registered, not tuned: a pair at or above the auto
- * threshold joins without asking anyone, a pair inside the band must be adjudicated,
- * and below the band there is no match. A band that cannot be adjudicated stays
- * unresolved — it never collapses into either neighbour.
+ * threshold joins without asking anyone, a pair inside `[band, auto)` must be
+ * adjudicated, and below the band there is no match. The band is a half-open interval
+ * with both ends explicit — a row at or above the auto threshold never enters it, and a
+ * band that cannot be adjudicated stays unresolved rather than collapsing into either
+ * neighbour.
  */
 
 import type { CallBudget } from "./sanadset-budget";
-import type { PreparedRow, QuarantinedRow } from "./sanadset-prepare";
+import type { PreparedRow, QuarantinedRow, QuarantineRule } from "./sanadset-prepare";
 
 /** Pre-registered auto-match threshold: at or above this, the pair joins. */
 export const S1_AUTO_MATCH_THRESHOLD = 0.9;
@@ -56,6 +58,8 @@ export type MatnDecision = {
   readonly matchedRowIndex: number | null;
   readonly score: number | null;
   readonly bestCandidate: BestCandidate | null;
+  /** The quarantine rule for a `quarantined` decision, else null: a reader never guesses why. */
+  readonly rule: QuarantineRule | null;
 };
 
 export type MatnGroup = {
@@ -76,18 +80,51 @@ export type MatnCounts = {
   joinedExisting: number;
   newGroups: number;
   coalescedRows: number;
-  bandRows: number;
+  /** Rows inside `[band, auto)` that reached (or would have reached) the adjudicator. */
+  bandAdjudicated: number;
+  /** Rows inside `[band, auto)` held back by the ambiguity rule: no model call is spent. */
+  ambiguousQuarantined: number;
   scoredRows: number;
   candidateCapHits: number;
 };
 
 export type CascadeModelStatus = "not-run" | "run" | "ceiling-reached";
 
+/** The book scope of the group book: per book (the study's rule) or global (a diagnostic). */
+export type CascadeBookScope = "book" | "global";
+
+export type CascadeThresholds = {
+  readonly band: number;
+  readonly auto: number;
+  readonly ambiguityMargin: number;
+};
+
+/**
+ * The book scope's effect, measured on this run's data rather than asserted: the same
+ * cascade is replayed against an unscoped book, and the joins it would have made across
+ * books are counted. Only deterministic joins are counted — a `model-same` verdict on a
+ * keyed run is a band decision, not a lexical one, so the count is a floor.
+ */
+export type CrossBookJoins = {
+  /** Cross-book joins in the run's own book. Zero under `book` scope, asserted as a fact. */
+  readonly joinsInThisRun: number;
+  readonly unscopedTotal: number;
+  readonly unscopedExact: number;
+  readonly unscopedFolded: number;
+  readonly unscopedTrigram: number;
+  /** Children the scoped book produced: what an isnad attaches to in S2. */
+  readonly scopedChildren: number;
+  /** Children an unscoped book would have produced. */
+  readonly unscopedChildren: number;
+};
+
 export type CascadeResult = {
   readonly decisions: MatnDecision[];
   readonly groups: MatnGroup[];
   readonly quarantined: QuarantinedRow[];
   readonly counts: MatnCounts;
+  readonly thresholds: CascadeThresholds;
+  readonly bookScope: CascadeBookScope;
   readonly model: {
     readonly calls: number;
     readonly ceilingReached: boolean;
@@ -102,6 +139,12 @@ export type CascadeOptions = {
   readonly autoThreshold?: number;
   readonly bandThreshold?: number;
   readonly ambiguityMargin?: number;
+  /**
+   * `book` (the default) groups matns per book: two books' texts are never the same
+   * child. `global` reproduces an unscoped book and exists so the study can measure what
+   * the scope prevents, without a second definition of the cascade.
+   */
+  readonly bookScope?: CascadeBookScope;
   readonly onGroupScore?: (pair: ScoredPair) => void;
 };
 
@@ -114,4 +157,25 @@ export function assertThresholds(auto: number, band: number, margin: number): vo
   }
   if (!(margin >= 0))
     throw new Error(`matn cascade: ambiguity margin must be non-negative, got ${margin}`);
+}
+
+/** A zeroed count block; the cascade mutates one as it decides. */
+export function emptyMatnCounts(): MatnCounts {
+  return {
+    exact: 0,
+    folded: 0,
+    trigram: 0,
+    modelSame: 0,
+    modelDifferent: 0,
+    bandUnresolved: 0,
+    noMatch: 0,
+    quarantined: 0,
+    joinedExisting: 0,
+    newGroups: 0,
+    coalescedRows: 0,
+    bandAdjudicated: 0,
+    ambiguousQuarantined: 0,
+    scoredRows: 0,
+    candidateCapHits: 0,
+  };
 }

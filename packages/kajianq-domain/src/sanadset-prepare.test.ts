@@ -2,7 +2,6 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   createPrepareAccumulator,
   isSliceBook,
-  prepareSanadsetRows,
   SLICE_BOOKS,
   type SanadsetSourceRow,
 } from "./sanadset-prepare";
@@ -17,6 +16,13 @@ import {
  * - trap: a chain whose names fold to nothing must be quarantined rather than silently
  *   shortened, or a chain would look resolved when it lost narrators.
  */
+
+/** The batch form the streaming reader owns: classify an already-materialised slice. */
+function prepareSanadsetRows(rows: readonly SanadsetSourceRow[]) {
+  const accumulator = createPrepareAccumulator();
+  for (const row of rows) accumulator.push(row);
+  return accumulator.finish();
+}
 
 const BUKHARI = SLICE_BOOKS[0];
 const MUSLIM = SLICE_BOOKS[1];

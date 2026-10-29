@@ -1,17 +1,41 @@
 /**
  * Where the study's artifacts go and how they land.
  *
- * The directory is a cache, never the repository and never object storage: the study
- * is re-runnable and its output is evidence, so it is written where an operator can read
- * it and a checkout can never carry a corpus artifact by accident.
+ * Three properties live here because they are properties of writing evidence:
+ *
+ * - **Outside the checkout.** The artifacts carry corpus text (matn excerpts, quarantined
+ *   rows), so the writer refuses any directory that resolves inside this repository. The
+ *   default is the per-user cache; the refusal is what makes "a checkout cannot carry a
+ *   corpus artifact" an invariant rather than a default.
+ * - **Run-scoped.** Every file lands under `<outDir>/<runId>/`, and a directory that
+ *   already carries a scored label sheet is refused rather than overwritten: the owner's
+ *   labels are the only human evidence the blind sample exists to produce, and a rerun
+ *   must never destroy them.
+ * - **Injected environment.** The default paths come from an environment the caller
+ *   supplies, so no library module reads `process.env` or the home directory on its own.
  */
 
-import { mkdirSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
-import { join } from "node:path";
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  realpathSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
+import { basename, dirname, join, resolve, sep } from "node:path";
+import { fileURLToPath } from "node:url";
+import { parseCsvText } from "./sanadset-csv";
 
-/** The default artifact directory, under the per-user cache. */
+/** The default artifact directory, relative to the home directory. */
 export const DEFAULT_ARTIFACT_DIR = join(".cache", "kajianq", "sanadset-pilot");
+
+/** The default archive path, relative to the home directory. */
+export const DEFAULT_CSV_DIR = join(".cache", "kajianq", "sanadset");
+export const DEFAULT_CSV_NAME = "sanadset.csv";
+
+/** The checkout this module ships in; nothing it writes may land inside it. */
+const REPOSITORY_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 
 export const REPORT_JSON = "report.json";
 export const REPORT_MARKDOWN = "report.md";
@@ -21,24 +45,100 @@ export const LABELS_CSV = "labels-template.csv";
 export const SPOT_CHECK_CSV = "owner-spotcheck-50.csv";
 export const PREDICTIONS_JSON = "sample-predictions.json";
 
-/** The default archive path; `SANADSET_CSV` overrides it. */
-export function defaultCsvPath(env: NodeJS.ProcessEnv = process.env): string {
-  const override = env["SANADSET_CSV"];
-  if (override !== undefined && override.trim().length > 0) return override.trim();
-  return join(homedir(), ".cache", "kajianq", "sanadset", "sanadset.csv");
+/** The environment the study's default paths are resolved from. */
+export type StudyEnvironment = {
+  readonly env: Readonly<Record<string, string | undefined>>;
+  readonly homeDir: string;
+};
+
+/** A directory the study refuses to write into, with the reason a reader needs. */
+export class StudyArtifactDirError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "StudyArtifactDirError";
+  }
 }
 
-/** Resolve the artifact directory: an explicit override, else the per-user cache. */
-export function resolveOutDir(env: NodeJS.ProcessEnv = process.env): string {
-  const override = env["SANADSET_STUDY_DIR"];
+/** The archive path: `SANADSET_CSV`, else the per-user cache. */
+export function defaultCsvPath(environment: StudyEnvironment): string {
+  const override = environment.env["SANADSET_CSV"];
   if (override !== undefined && override.trim().length > 0) return override.trim();
-  return join(homedir(), DEFAULT_ARTIFACT_DIR);
+  return join(environment.homeDir, DEFAULT_CSV_DIR, DEFAULT_CSV_NAME);
+}
+
+/** Resolve the artifact directory: `SANADSET_STUDY_DIR`, else the per-user cache. */
+export function resolveOutDir(environment: StudyEnvironment): string {
+  const override = environment.env["SANADSET_STUDY_DIR"];
+  const dir =
+    override !== undefined && override.trim().length > 0
+      ? override.trim()
+      : join(environment.homeDir, DEFAULT_ARTIFACT_DIR);
+  assertOutsideRepository(dir);
+  return dir;
+}
+
+/** Resolve `path` through the nearest existing ancestor, so a missing tail cannot hide a symlink. */
+function realpathNearest(path: string): string {
+  const tail: string[] = [];
+  let current = resolve(path);
+  for (;;) {
+    try {
+      return join(realpathSync(current), ...[...tail].reverse());
+    } catch {
+      const parent = dirname(current);
+      if (parent === current) return resolve(path);
+      tail.push(basename(current));
+      current = parent;
+    }
+  }
+}
+
+function isInside(child: string, parent: string): boolean {
+  return child === parent || child.startsWith(`${parent}${sep}`);
+}
+
+/**
+ * Refuse a directory that resolves inside this repository. Symlinks are resolved first:
+ * a link in `/tmp` that points into the checkout is inside the checkout.
+ */
+export function assertOutsideRepository(dir: string): void {
+  const resolved = realpathNearest(dir);
+  const repository = realpathNearest(REPOSITORY_ROOT);
+  if (isInside(resolved, repository)) {
+    throw new StudyArtifactDirError(
+      `artifact directory ${dir} resolves inside the repository (${repository}); ` +
+        "the study writes corpus text, so it writes only outside the checkout",
+    );
+  }
+}
+
+/**
+ * Refuse to run into a directory whose label sheets already carry scores. The owner's
+ * labels are evidence: a rerun writes to a fresh directory instead of replacing them.
+ */
+export function assertArtifactDirWritable(dir: string): void {
+  for (const name of [LABELS_CSV, SPOT_CHECK_CSV] as const) {
+    const path = join(dir, name);
+    if (!existsSync(path) || !statSync(path).isFile()) continue;
+    const rows = parseCsvText(readFileSync(path, "utf8"));
+    const scored = rows.slice(1).some((row) => (row[4] ?? "").trim().length > 0);
+    if (scored) {
+      throw new StudyArtifactDirError(
+        `refusing to overwrite ${path}: it already carries scored labels. ` +
+          "The labels are the study's evidence — pass a fresh --out directory (or unset SANADSET_STUDY_DIR).",
+      );
+    }
+  }
 }
 
 export type ArtifactFile = { readonly name: string; readonly content: string };
 
-/** Write every artifact into `dir` (created if absent) and return the paths in write order. */
+/**
+ * Write every artifact into `dir` (created if absent) and return the paths in write order.
+ * The repository refusal is repeated here because this is the function that writes.
+ */
 export function writeArtifactFiles(dir: string, files: readonly ArtifactFile[]): string[] {
+  assertOutsideRepository(dir);
   mkdirSync(dir, { recursive: true });
   const written: string[] = [];
   for (const file of files) {

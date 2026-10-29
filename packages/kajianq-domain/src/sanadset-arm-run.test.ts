@@ -7,6 +7,7 @@ import {
 } from "./sanadset-arm-run";
 import type { ArmStatus, MatnDecision, SamplePair } from "./sanadset-core";
 import { resolveArm } from "./sanadset-arm";
+import { TEST_ARM_CONFIG } from "./test-utils/sanadset-arm";
 
 /**
  * Test intent, named before the assertions:
@@ -22,7 +23,7 @@ import { resolveArm } from "./sanadset-arm";
 const STATUS: ArmStatus = {
   provider: "dashscope",
   baseUrl: "https://example.invalid/v1",
-  model: "qwen3.7-flash",
+  model: "qwen-test",
   keyPresent: false,
   keySource: "absent",
   keyDetail: "absent in this test",
@@ -50,6 +51,7 @@ function decision(score: number, hasCandidate = true): MatnDecision {
     matchedRowIndex: null,
     score,
     bestCandidate: hasCandidate ? { rowIndex: 2, groupId: 1, score } : null,
+    rule: null,
   };
 }
 
@@ -125,7 +127,7 @@ describe("summariseArm", () => {
   it("carries the client's own totals into the facts", async () => {
     const { createArmClient } = await import("./sanadset-model");
     const client = createArmClient({
-      arm: resolveArm({ provider: "dashscope" }),
+      arm: resolveArm({ provider: "dashscope" }, TEST_ARM_CONFIG),
       apiKey: "test-key",
       ceiling: 5,
       now: () => 1_000,

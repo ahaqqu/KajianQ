@@ -36,7 +36,7 @@ function passOrFail(passed: boolean): "pass" | "fail" {
  * `not-measured` with the reason, never `pass` against a substitute number.
  */
 export function evaluateGates(input: {
-  readonly narratorRate: number;
+  readonly narratorCoverage: number;
   readonly quarantineShare: number;
   readonly spendMicroUsd: number;
   readonly capMicroUsd: number;
@@ -44,16 +44,19 @@ export function evaluateGates(input: {
 }): StudyGate[] {
   return [
     {
-      id: "narrator-resolution",
-      requirement: "Narrator mentions resolved by the deterministic pass",
+      id: "narrator-coverage",
+      requirement:
+        "Narrator mentions whose folded name occurs more than once (coverage, not identity)",
       threshold: ">= 0.95",
-      measured: input.narratorRate.toFixed(4),
-      status: passOrFail(input.narratorRate >= 0.95),
-      reason: "Measured on the slice census; the model arm raises this rate, never lowers it.",
+      measured: input.narratorCoverage.toFixed(4),
+      status: passOrFail(input.narratorCoverage >= 0.95),
+      reason:
+        "The fold is what places a mention in this count; identity evidence (folded variants, " +
+        "blocking-key names, candidate pairs) sits beside the rate and is not the same claim.",
     },
     {
       id: "quarantine-share",
-      requirement: "Share of chain-bearing rows quarantined",
+      requirement: "Share of isnad-bearing rows quarantined",
       threshold: "< 5%",
       measured: `${(input.quarantineShare * 100).toFixed(2)}%`,
       status: passOrFail(input.quarantineShare < 0.05),
@@ -99,6 +102,7 @@ export function evaluateGates(input: {
   ];
 }
 
+/** Count quarantined rows by rule; the report's per-rule table is this function's output. */
 export function countByRule(rows: readonly { readonly rule: string }[]): Record<string, number> {
   const counts: Record<string, number> = {};
   for (const row of rows) counts[row.rule] = (counts[row.rule] ?? 0) + 1;

@@ -267,10 +267,3 @@ export function createPrepareAccumulator(): PrepareAccumulator {
     },
   };
 }
-
-/** Batch form over an already-materialised slice. */
-export function prepareSanadsetRows(rows: readonly SanadsetSourceRow[]): PrepareResult {
-  const accumulator = createPrepareAccumulator();
-  for (const row of rows) accumulator.push(row);
-  return accumulator.finish();
-}

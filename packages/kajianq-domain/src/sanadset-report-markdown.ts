@@ -3,6 +3,11 @@
  * any: every number here exists in `report.json`, and every limitation the JSON carries
  * is repeated, because the markdown is the artifact an owner actually reads before
  * deciding on the full run.
+ *
+ * Vocabulary is `CONTEXT.md`'s: a hadith's ordered narrators are an **isnad**, never a
+ * "sanad" or a bare "chain", and the per-book matn groups are **children**. The dataset
+ * name `Sanadset` and the source's own `<SANAD>` markup keep their spelling — they are
+ * proper names, not the domain term.
  */
 
 import type { StudyFacts, StudyReportDocument } from "./sanadset-report-types";
@@ -25,6 +30,11 @@ function count(value: number): string {
 
 function usd(microUsd: number): string {
   return USD.format(microUsd / 1_000_000);
+}
+
+/** A band bound rendered the way the threshold is registered (`0.60`, not `0.6`). */
+function bound(value: number): string {
+  return value.toFixed(2);
 }
 
 function gateRows(facts: StudyFacts): string[] {
@@ -71,6 +81,7 @@ export function renderReportMarkdown(document: StudyReportDocument): string {
   const facts = document.study;
   const arm = facts.modelArm;
   const lines: string[] = [];
+  const band = `[${bound(facts.band.matnBandLower)}, ${bound(facts.band.matnBandUpper)})`;
 
   lines.push(`# Sanadset S1 — no-store-writes reconciliation study (${facts.runId})`, "");
   lines.push(
@@ -78,6 +89,8 @@ export function renderReportMarkdown(document: StudyReportDocument): string {
       "database client, writes no store row, takes no snapshot and uploads nothing to object storage.",
     "",
   );
+  lines.push("## Artifacts", "");
+  lines.push(`- Directory: \`${facts.artifactsDir}\` (run-scoped; outside the checkout)`, "");
   lines.push("## Command", "", "```", facts.command, "```", "");
   lines.push("## Source", "");
   lines.push(`- File: \`${facts.source.fileName}\` (${count(facts.source.bytes)} bytes)`);
@@ -88,18 +101,18 @@ export function renderReportMarkdown(document: StudyReportDocument): string {
     `- Books: ${facts.slice.books.map((book) => `\`${book}\``).join(", ")} (exact match, not substring)`,
   );
   lines.push(`- Rows in slice: ${count(facts.slice.rows)}`);
-  lines.push(`- No-sanad rows (skipped, not quarantined): ${count(facts.slice.noSanad)}`);
-  lines.push(`- Quarantined: ${count(facts.slice.quarantined)}`);
+  lines.push(`- Rows with no isnad (skipped, not quarantined): ${count(facts.slice.noSanad)}`);
+  lines.push(`- Quarantined by the row checks: ${count(facts.slice.quarantined)}`);
   lines.push(`- Prepared for the cascade: ${count(facts.slice.prepared)}`);
   lines.push(
-    `- Chains whose folded names repeat: ${count(facts.slice.repeatedNameChains)} — the archive concatenates parallel ` +
-      "isnads into one `Sanad` list, so a repeated name is a shape of the source, not a self-loop; these rows are kept.",
+    `- Isnad lists whose folded names repeat: ${count(facts.slice.repeatedNameChains)} — the archive concatenates parallel ` +
+      "isnads into one `<SANAD>` list, so a repeated name is a shape of the source, not a self-loop; these rows are kept.",
   );
   lines.push(
     `- Rows whose \`<MATN>\`/\`<SANAD>\` open and close counts disagree: ${count(facts.slice.unbalancedTagRows)} — ` +
       "the tag structure, not a heuristic, is what makes those rows unparseable.",
   );
-  lines.push("## Narrator resolution (deterministic pass)", "");
+  lines.push("## Narrator coverage (deterministic pass)", "");
   lines.push(`- Mentions: ${count(facts.narrator.mentions)}`);
   lines.push(`- Distinct raw names: ${count(facts.narrator.rawDistinct)}`);
   lines.push(
@@ -109,20 +122,38 @@ export function renderReportMarkdown(document: StudyReportDocument): string {
     `- Singleton names: ${count(facts.narrator.singletonClusters)} (${count(facts.narrator.singletonMentions)} mentions)`,
   );
   lines.push(
-    `- Resolution rate: ${percent(facts.narrator.resolutionRate)} — a singleton is not counted as resolved`,
+    `- Coverage rate (non-singleton mentions): ${percent(facts.narrator.nonSingletonMentionRate)} — a mention counts when its ` +
+      "folded name occurs more than once, so this is a coalescing share, not an identity rate",
+  );
+  lines.push(
+    `- Identity evidence, counted not adjudicated: ${count(facts.narrator.foldedVariants)} raw spellings the fold merged, ` +
+      `${count(facts.narrator.bandNames)} names sharing a blocking key, ${count(facts.narrator.candidatePairs)} candidate pairs awaiting adjudication`,
   );
   lines.push(
     `- Blocking keys: ${count(facts.narrator.blockingKeys)}; ${count(facts.narrator.multiNameBlockingKeys)} of them hold two or more distinct names`,
-  );
-  lines.push(
-    `- Candidate identity pairs in the narrator band: ${count(facts.narrator.candidatePairs)}`,
     "",
   );
   lines.push("## Matn cascade", "");
   lines.push(`- Rows cascaded: ${count(facts.matn.preparedRows)}`);
-  lines.push(`- Distinct matns after the cascade: ${count(facts.matn.groups)}`);
   lines.push(
-    `- Chains per child (chain-bearing rows / distinct prepared matns): ${facts.matn.chainsPerChild.toFixed(4)}:1`,
+    `- Children after the cascade (book scope: **${facts.matn.bookScope}**): ${count(facts.matn.children)} — a child is a distinct matn inside one book, the thing an isnad attaches to`,
+  );
+  lines.push(
+    `- Distinct normalized matns before coalescing: ${count(facts.matn.distinctMatnTexts)}`,
+  );
+  lines.push(
+    `- Cross-book joins the book scope prevented: ${count(facts.matn.crossBook.unscopedTotal)} of the deterministic joins ` +
+      `an unscoped book would make (exact ${count(facts.matn.crossBook.unscopedExact)}, folded ${count(facts.matn.crossBook.unscopedFolded)}, ` +
+      `trigram ${count(facts.matn.crossBook.unscopedTrigram)}); it would produce ${count(facts.matn.crossBook.unscopedChildren)} children ` +
+      `instead of ${count(facts.matn.crossBook.scopedChildren)}, and this run's own book made ${count(facts.matn.crossBook.joinsInThisRun)} cross-book joins`,
+  );
+  lines.push(
+    `- Isnads per child (attachable rows / children): ${facts.matn.chainsPerChild.toFixed(4)}:1 — ` +
+      `${count(facts.matn.attachableRows)} attachable rows over ${count(facts.matn.children)} children`,
+  );
+  lines.push(
+    `- Isnads per child, quarantine-inclusive (${count(facts.matn.isnadBearingRows)} isnad-bearing rows / children): ` +
+      `${facts.matn.chainsPerChildAllBearing.toFixed(4)}:1 — mixes two populations and is not the sizing input`,
   );
   lines.push(
     `- Match rate (scope **${facts.matn.matchRate.scope}**): ${percent(facts.matn.matchRate.value)} ` +
@@ -135,12 +166,19 @@ export function renderReportMarkdown(document: StudyReportDocument): string {
     "",
   );
   lines.push("## Model band", "");
-  lines.push(`- Matn rows inside the band [0.60, 0.90): ${count(facts.band.matnRows)}`);
+  lines.push(
+    `- Matn rows inside the band ${band}: ${count(facts.band.matnRows)} — one adjudication each`,
+  );
+  lines.push(
+    "- Matn rows quarantined as an ambiguous best match inside the band (two groups within the margin): " +
+      `${count(facts.band.ambiguousQuarantined)} — never sent to a model, so never a call`,
+  );
   lines.push(
     `- Narrator candidate pairs needing identity adjudication: ${count(facts.band.narratorPairs)} over ${count(facts.band.narratorNames)} names`,
   );
   lines.push(
-    `- Calls the work needs: ${count(facts.band.callsNeeded)}; calls the ceiling allows: ${count(facts.band.callsBudgeted)} of ${count(facts.band.ceiling)}`,
+    `- Calls the work needs: sample ${count(facts.band.sampleCalls)} + band ${count(facts.band.matnRows)} = ` +
+      `${count(facts.band.callsNeeded)}; the ceiling allows ${count(facts.band.callsBudgeted)} of ${count(facts.band.ceiling)}`,
     "",
   );
   lines.push("## Model arm", "");
@@ -164,6 +202,9 @@ export function renderReportMarkdown(document: StudyReportDocument): string {
   lines.push("## Blind sample (pre-registered before any model output)", "");
   lines.push(
     `- Seed: ${facts.sample.seed} · requested ${count(facts.sample.requested)} · selected ${count(facts.sample.selected)} · shortfall ${count(facts.sample.shortfall)}`,
+  );
+  lines.push(
+    "- A pair whose two sides are identical strings is never drawn: it is a free answer, not a question",
   );
   lines.push("- Labels present in this artifact set: no (the template ships empty)", "");
   lines.push(...stratumRows(facts), "");

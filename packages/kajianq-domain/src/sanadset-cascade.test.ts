@@ -2,6 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 import { createCallBudget, ModelCallCeilingError } from "./sanadset-budget";
 import { lshBandKeys, minhashSignature } from "./sanadset-blocking";
 import { runMatnCascade } from "./sanadset-cascade";
+import { measureCrossBookJoins } from "./sanadset-cascade-cross-book";
 import type { PreparedRow } from "./sanadset-prepare";
 
 /**
@@ -26,11 +27,12 @@ function prepared(
   rawMatn: string,
   trigrams: string[],
   normalized?: string,
+  book: PreparedRow["book"] = "صحيح البخاري",
 ): PreparedRow {
   const signature = minhashSignature(trigrams);
   return {
     rowIndex,
-    book: "صحيح البخاري",
+    book,
     hadithNumber: String(rowIndex),
     rawMatn,
     normalizedMatn: normalized ?? `norm-${rowIndex}`,
@@ -140,6 +142,41 @@ describe("the ambiguity rule", () => {
     expect(result.groups).toHaveLength(2);
   });
 
+  it("counts the ambiguity quarantine apart from the band adjudication", async () => {
+    const result = await runMatnCascade({
+      rows: [
+        prepared(0, "a", window(0, 10)),
+        prepared(1, "b", window(4, 10)),
+        prepared(2, "c", window(2, 10)),
+      ],
+      budget: createCallBudget(10),
+      adjudicate: async () => "same",
+    });
+    expect(result.counts.ambiguousQuarantined).toBe(1);
+    expect(result.counts.bandAdjudicated).toBe(0);
+    expect(result.counts.quarantined).toBe(1);
+  });
+
+  it("never quarantines a best match the auto threshold already settles", async () => {
+    // Same scores as the ambiguity case, with the auto threshold moved below them: a top
+    // score at or above the auto threshold is a join, not an ambiguity, whatever the
+    // runner-up scores.
+    const result = await runMatnCascade({
+      rows: [
+        prepared(0, "a", window(0, 10)),
+        prepared(1, "b", window(4, 10)),
+        prepared(2, "c", window(2, 10)),
+      ],
+      autoThreshold: 0.65,
+      bandThreshold: 0.5,
+    });
+    expect(result.decisions[2]?.score).toBeCloseTo(2 / 3, 10);
+    expect(result.decisions[2]?.kind).toBe("trigram");
+    expect(result.counts.ambiguousQuarantined).toBe(0);
+    expect(result.counts.trigram).toBe(1);
+    expect(result.thresholds).toEqual({ band: 0.5, auto: 0.65, ambiguityMargin: 0.02 });
+  });
+
   it("does not quarantine when the top two differ by more than the margin", async () => {
     const rows = [
       prepared(0, "a", window(0, 10)),
@@ -167,6 +204,8 @@ describe("the model band", () => {
     });
     expect(result.decisions[1]?.kind).toBe("model-same");
     expect(result.model.calls).toBe(1);
+    expect(result.counts.bandAdjudicated).toBe(1);
+    expect(result.counts.ambiguousQuarantined).toBe(0);
     expect(result.groups).toHaveLength(1);
   });
 
@@ -221,6 +260,22 @@ describe("the model band", () => {
     expect(result.counts.bandUnresolved).toBeGreaterThan(0);
   });
 
+  it("does not count a call an empty budget refused", async () => {
+    let asked = 0;
+    const result = await runMatnCascade({
+      rows: bandRows(),
+      budget: createCallBudget(0),
+      adjudicate: async () => {
+        asked += 1;
+        return "same";
+      },
+    });
+    expect(asked).toBe(0);
+    expect(result.model.calls).toBe(0);
+    expect(result.counts.bandUnresolved).toBe(1);
+    expect(result.model.ceilingReached).toBe(true);
+  });
+
   it("propagates a non-ceiling adjudicator failure instead of degrading it to a verdict", async () => {
     await expect(
       runMatnCascade({
@@ -239,5 +294,43 @@ describe("the call ceiling", () => {
     const budget = createCallBudget(1);
     budget.take();
     expect(() => budget.take()).toThrow(ModelCallCeilingError);
+  });
+});
+
+/**
+ * The book scope. A child is a matn inside one book, so two works' identical texts are two
+ * children — and the same cascade replayed against an unscoped book measures what the
+ * scope prevents instead of the report quoting a constant.
+ */
+describe("the book scope", () => {
+  const sameMatnAcrossBooks = (): [PreparedRow, PreparedRow] => [
+    prepared(0, "matn", ["a", "b", "c"], "norm", "صحيح البخاري"),
+    prepared(1, "matn", ["a", "b", "c"], "norm", "صحيح مسلم"),
+  ];
+
+  it("never joins two books' identical matns into one child", async () => {
+    const result = await runMatnCascade({ rows: sameMatnAcrossBooks() });
+    expect(result.bookScope).toBe("book");
+    expect(result.counts.exact).toBe(0);
+    expect(result.counts.folded).toBe(0);
+    expect(result.groups).toHaveLength(2);
+  });
+
+  it("measures the unscoped joins the scope prevents, and reports none in its own book", async () => {
+    const rows = sameMatnAcrossBooks();
+    const scoped = await runMatnCascade({ rows });
+    const crossBook = await measureCrossBookJoins(rows, scoped);
+    expect(crossBook.joinsInThisRun).toBe(0);
+    expect(crossBook.unscopedTotal).toBe(1);
+    expect(crossBook.unscopedExact).toBe(1);
+    expect(crossBook.scopedChildren).toBe(2);
+    expect(crossBook.unscopedChildren).toBe(1);
+  });
+
+  it("joins the same matn inside one book, so the scope is not a blanket refusal", async () => {
+    const rows = [prepared(0, "matn", ["a", "b", "c"]), prepared(1, "matn", ["a", "b", "c"])];
+    const result = await runMatnCascade({ rows });
+    expect(result.counts.exact).toBe(1);
+    expect(result.groups).toHaveLength(1);
   });
 });

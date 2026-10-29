@@ -1,19 +1,23 @@
 /**
- * The adjudication arm: which provider, which model, what a call costs, and where the
- * credential comes from.
+ * The shape of the adjudication arm: what a provider profile configures, what a request
+ * resolves to, and how a credential is looked up.
+ *
+ * This module holds the **shape, not the values**. Endpoints, model ids, list prices and
+ * credential locations are configuration, and configuration arrives from the composition
+ * root (`scripts/sanadset-study.mjs` and the arm profile module it owns) — the library
+ * never names a vendor, never carries a price and never reads `process.env` or the home
+ * directory. That is the pluggability rule for model choice: swapping a provider or a
+ * pilot model changes the CLI's config, not this package.
  *
  * A key never leaves `loadApiKey` and the client it builds: every other function here
  * returns booleans and prices, so a report, a log line or an artifact cannot carry the
- * credential by accident. Prices are list prices from the provider's published sheet;
- * a model with no price on file is refused rather than estimated, because a spend
- * figure with an invented price is worse than no figure.
+ * credential by accident. Prices are list prices from the provider's published sheet; a
+ * model with no price on file is refused rather than estimated, because a spend figure
+ * with an invented price is worse than no figure.
  */
 
-import { homedir } from "node:os";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-
-export type ProviderId = "dashscope" | "ollama";
 
 export type ArmPrice = {
   /** USD per million input tokens. */
@@ -22,6 +26,7 @@ export type ArmPrice = {
   readonly outputUsdPerMTok: number;
 };
 
+/** One provider's configuration: endpoint, credential location, default model, list prices. */
 export type ProviderProfile = {
   readonly baseUrl: string;
   readonly apiKeyEnv: string;
@@ -30,39 +35,11 @@ export type ProviderProfile = {
   readonly prices: Readonly<Record<string, ArmPrice>>;
 };
 
-/** Ollama Cloud's OpenAI-compatible surface and its owned-plan list prices. */
-const OLLAMA_PROFILE: ProviderProfile = {
-  baseUrl: "https://ollama.com/v1",
-  apiKeyEnv: "OLLAMA_API_KEY",
-  keyFileName: "ollama-key",
-  defaultModel: "gemma4:31b",
-  prices: {
-    "gemma4:31b": { inputUsdPerMTok: 0.14, outputUsdPerMTok: 0.4 },
-    "glm-5.3-flash": { inputUsdPerMTok: 0.15, outputUsdPerMTok: 0.5 },
-    "deepseek-v4.1-flash": { inputUsdPerMTok: 0.3, outputUsdPerMTok: 1.2 },
-  },
-};
-
-/** DashScope / Model Studio, international, OpenAI-compatible surface. */
-const DASHSCOPE_PROFILE: ProviderProfile = {
-  baseUrl: "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
-  apiKeyEnv: "DASHSCOPE_API_KEY",
-  keyFileName: "dashscope-key",
-  defaultModel: "qwen3.7-flash",
-  prices: {
-    "qwen3.7-flash": { inputUsdPerMTok: 0.03, outputUsdPerMTok: 0.13 },
-    "qwen3.8-flash": { inputUsdPerMTok: 0.15, outputUsdPerMTok: 0.47 },
-    "qwen3.7-plus": { inputUsdPerMTok: 0.276, outputUsdPerMTok: 1.101 },
-  },
-};
-
-export const PROVIDER_PROFILES: Readonly<Record<ProviderId, ProviderProfile>> = {
-  dashscope: DASHSCOPE_PROFILE,
-  ollama: OLLAMA_PROFILE,
-};
+/** The provider profiles the composition root injects, keyed by the id a run may request. */
+export type ArmProfiles = Readonly<Record<string, ProviderProfile>>;
 
 export type ArmDefinition = {
-  readonly provider: ProviderId;
+  readonly provider: string;
   readonly baseUrl: string;
   readonly model: string;
   readonly apiKeyEnv: string;
@@ -71,16 +48,22 @@ export type ArmDefinition = {
 };
 
 export type ArmRequest = {
-  readonly provider: ProviderId;
+  readonly provider: string;
   readonly model?: string;
   readonly priceInUsdPerMTok?: number;
   readonly priceOutUsdPerMTok?: number;
   readonly baseUrl?: string;
 };
 
+/** Where the profiles and the home directory a key file is resolved under come from. */
+export type ArmResolverConfig = {
+  readonly profiles: ArmProfiles;
+  readonly homeDir: string;
+};
+
 function priceOverride(input: ArmRequest, profile: ProviderProfile, model: string): ArmPrice {
+  const listed = profile.prices[model];
   if (input.priceInUsdPerMTok !== undefined || input.priceOutUsdPerMTok !== undefined) {
-    const listed = profile.prices[model];
     const inputPrice = input.priceInUsdPerMTok ?? listed?.inputUsdPerMTok;
     const outputPrice = input.priceOutUsdPerMTok ?? listed?.outputUsdPerMTok;
     if (inputPrice === undefined || outputPrice === undefined) {
@@ -88,7 +71,6 @@ function priceOverride(input: ArmRequest, profile: ProviderProfile, model: strin
     }
     return { inputUsdPerMTok: inputPrice, outputUsdPerMTok: outputPrice };
   }
-  const listed = profile.prices[model];
   if (listed === undefined) {
     throw new Error(
       `no price on file for ${input.provider}:${model} — add it to the profile or pass --price-in/--price-out`,
@@ -98,15 +80,19 @@ function priceOverride(input: ArmRequest, profile: ProviderProfile, model: strin
 }
 
 /** Resolve a provider/model into a fully priced arm; an unpriced model throws. */
-export function resolveArm(input: ArmRequest): ArmDefinition {
-  const profile = PROVIDER_PROFILES[input.provider];
+export function resolveArm(input: ArmRequest, config: ArmResolverConfig): ArmDefinition {
+  const profile = config.profiles[input.provider];
+  if (profile === undefined) {
+    const known = Object.keys(config.profiles).sort().join(", ");
+    throw new Error(`unknown provider "${input.provider}"; configured providers: ${known}`);
+  }
   const model = input.model ?? profile.defaultModel;
   return {
     provider: input.provider,
     baseUrl: input.baseUrl ?? profile.baseUrl,
     model,
     apiKeyEnv: profile.apiKeyEnv,
-    keyFile: join(homedir(), ".config", "kajianq", profile.keyFileName),
+    keyFile: join(config.homeDir, ".config", "kajianq", profile.keyFileName),
     price: priceOverride(input, profile, model),
   };
 }
@@ -116,9 +102,14 @@ export type ApiKeyLookup = { readonly key: ApiKey | null; readonly detail: strin
 
 /**
  * Resolve the credential: environment first, then the machine-local key file. The
- * returned detail never contains the key, so it can be logged.
+ * returned detail never contains the key, so it can be logged. The environment is an
+ * argument, not `process.env`: a library that reads the process environment cannot be
+ * exercised without the machine's real configuration.
  */
-export function loadApiKey(arm: ArmDefinition, env: NodeJS.ProcessEnv = process.env): ApiKeyLookup {
+export function loadApiKey(
+  arm: ArmDefinition,
+  env: Readonly<Record<string, string | undefined>>,
+): ApiKeyLookup {
   const fromEnv = env[arm.apiKeyEnv];
   if (fromEnv !== undefined && fromEnv.trim().length > 0) {
     return { key: { value: fromEnv.trim(), source: "env" }, detail: `${arm.apiKeyEnv} set` };
@@ -134,7 +125,7 @@ export function loadApiKey(arm: ArmDefinition, env: NodeJS.ProcessEnv = process.
 }
 
 export type ArmStatus = {
-  readonly provider: ProviderId;
+  readonly provider: string;
   readonly baseUrl: string;
   readonly model: string;
   readonly keyPresent: boolean;

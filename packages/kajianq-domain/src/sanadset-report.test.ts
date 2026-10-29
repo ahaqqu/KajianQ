@@ -18,6 +18,7 @@ function facts(overrides: Partial<StudyFacts> = {}): StudyFacts {
     schemaVersion: 1,
     runId: "s1-test",
     command: "bun study:sanadset --no-model",
+    artifactsDir: "/tmp/sanadset-artifacts/s1-test",
     source: { fileName: "sanadset.csv", bytes: 10, sha256: "a".repeat(64), recordsRead: 10 },
     slice: {
       books: ["صحيح البخاري", "صحيح مسلم"],
@@ -39,8 +40,8 @@ function facts(overrides: Partial<StudyFacts> = {}): StudyFacts {
       foldedVariants: 10,
       singletonClusters: 20,
       singletonMentions: 20,
-      resolvedMentions: 80,
-      resolutionRate: 0.8,
+      nonSingletonMentions: 80,
+      nonSingletonMentionRate: 0.8,
       blockingKeys: 50,
       multiNameBlockingKeys: 5,
       bandNames: 10,
@@ -49,9 +50,22 @@ function facts(overrides: Partial<StudyFacts> = {}): StudyFacts {
     },
     matn: {
       preparedRows: 8,
-      groups: 6,
-      distinctMatns: 6,
-      chainsPerChild: 10 / 6,
+      children: 6,
+      distinctMatnTexts: 7,
+      bookScope: "book",
+      crossBook: {
+        joinsInThisRun: 0,
+        unscopedTotal: 2,
+        unscopedExact: 1,
+        unscopedFolded: 1,
+        unscopedTrigram: 0,
+        scopedChildren: 6,
+        unscopedChildren: 4,
+      },
+      attachableRows: 8,
+      isnadBearingRows: 10,
+      chainsPerChild: 8 / 6,
+      chainsPerChildAllBearing: 10 / 6,
       matchRate: { scope: "slice-internal", matchedRows: 2, rows: 8, value: 0.25 },
       byBook: {
         "صحيح البخاري": { scope: "slice-internal", matchedRows: 1, rows: 5, value: 0.2 },
@@ -62,8 +76,12 @@ function facts(overrides: Partial<StudyFacts> = {}): StudyFacts {
     },
     band: {
       matnRows: 1,
+      matnBandLower: 0.6,
+      matnBandUpper: 0.9,
+      ambiguousQuarantined: 2,
       narratorPairs: 12,
       narratorNames: 10,
+      sampleCalls: 300,
       callsNeeded: 301,
       callsBudgeted: 301,
       ceiling: 6000,
@@ -155,7 +173,7 @@ describe("assembleReportDocument", () => {
 
 describe("evaluateGates", () => {
   const base = {
-    narratorRate: 0.97,
+    narratorCoverage: 0.97,
     quarantineShare: 0.02,
     spendMicroUsd: 0,
     capMicroUsd: 50_000_000,
@@ -165,7 +183,7 @@ describe("evaluateGates", () => {
   it("passes the gates it can measure and refuses to pass the ones it cannot", () => {
     const gates = evaluateGates(base);
     const byId = new Map(gates.map((gate) => [gate.id, gate]));
-    expect(byId.get("narrator-resolution")?.status).toBe("pass");
+    expect(byId.get("narrator-coverage")?.status).toBe("pass");
     expect(byId.get("quarantine-share")?.status).toBe("pass");
     expect(byId.get("spend-cap")?.status).toBe("pass");
     expect(byId.get("corpus-match-rate")?.status).toBe("not-measured");
@@ -175,7 +193,7 @@ describe("evaluateGates", () => {
   });
 
   it("never reports a pass without a measurement", () => {
-    for (const gate of evaluateGates({ ...base, narratorRate: 0, quarantineShare: 1 })) {
+    for (const gate of evaluateGates({ ...base, narratorCoverage: 0, quarantineShare: 1 })) {
       if (gate.status === "pass") expect(gate.measured).not.toBeNull();
       if (gate.measured === null) expect(gate.status).toBe("not-measured");
     }
@@ -183,12 +201,12 @@ describe("evaluateGates", () => {
 
   it("fails the resolution gate and the quarantine gate on the measured values", () => {
     const byId = new Map(
-      evaluateGates({ ...base, narratorRate: 0.8, quarantineShare: 0.109 }).map((gate) => [
+      evaluateGates({ ...base, narratorCoverage: 0.8, quarantineShare: 0.109 }).map((gate) => [
         gate.id,
         gate,
       ]),
     );
-    expect(byId.get("narrator-resolution")?.status).toBe("fail");
+    expect(byId.get("narrator-coverage")?.status).toBe("fail");
     expect(byId.get("quarantine-share")?.status).toBe("fail");
     expect(byId.get("quarantine-share")?.measured).toBe("10.90%");
   });
@@ -213,7 +231,7 @@ describe("renderReportMarkdown", () => {
     const document = assembleReportDocument({
       facts: facts({
         gates: evaluateGates({
-          narratorRate: 0.97,
+          narratorCoverage: 0.97,
           quarantineShare: 0.02,
           spendMicroUsd: 0,
           capMicroUsd: 50_000_000,

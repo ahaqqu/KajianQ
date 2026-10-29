@@ -4,8 +4,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { parseIngestionReport } from "@app/contracts";
 import { hashFile, toCsv } from "./sanadset-csv";
-import { runSanadsetStudy, type StudyOptions } from "./sanadset-study";
+import { runSanadsetStudy, studyRunId, type StudyOptions } from "./sanadset-study";
+import { sampleSeed } from "./sanadset-sample";
 import { resolveArm, type ApiKeyLookup } from "./sanadset-arm";
+import { TEST_ARM_CONFIG } from "./test-utils/sanadset-arm";
 import type { FetchLike } from "./sanadset-model";
 import {
   LABELS_CSV,
@@ -92,7 +94,11 @@ function options(
     expectedSha256: sha256,
     ceiling: 100,
     capMicroUsd: 50_000_000,
-    arm: { requested: false, definition: resolveArm({ provider: "dashscope" }), lookup: ABSENT },
+    arm: {
+      requested: false,
+      definition: resolveArm({ provider: "dashscope" }, TEST_ARM_CONFIG),
+      lookup: ABSENT,
+    },
     now: () => 1_700_000_000_000,
     ...rest,
   };
@@ -136,10 +142,46 @@ describe("a full study run", () => {
       REPORT_MARKDOWN,
       QUARANTINE_JSON,
     ]) {
-      expect(existsSync(join(dir, name))).toBe(true);
+      expect(existsSync(join(run.artifactsDir, name))).toBe(true);
     }
-    expect(existsSync(join(dir, PREDICTIONS_JSON))).toBe(false);
+    expect(existsSync(join(run.artifactsDir, PREDICTIONS_JSON))).toBe(false);
     expect(run.document.study.modelArm.stopReason).toBe("not-requested");
+  });
+
+  it("scopes every artifact to a directory named by the run id, outside the repo", async () => {
+    const fixture = makeFixture();
+    const hashed = await hashFile(fixture);
+    const dir = mkdtempSync(join(tmpdir(), "sanadset-out-"));
+    const run = await runSanadsetStudy(
+      options({ csvPath: fixture, sha256: hashed.sha256, outDir: dir }),
+    );
+    expect(run.artifactsDir).toBe(join(dir, run.runId));
+    expect(run.written.every((path) => path.startsWith(`${run.artifactsDir}/`))).toBe(true);
+    expect(run.document.study.artifactsDir).toBe(run.artifactsDir);
+    expect(readFileSync(join(run.artifactsDir, REPORT_MARKDOWN), "utf8")).toContain(run.runId);
+    expect(existsSync(join(dir, SAMPLE_JSON))).toBe(false);
+  });
+
+  it("refuses to overwrite a label sheet the owner has already scored", async () => {
+    const fixture = makeFixture();
+    const hashed = await hashFile(fixture);
+    const dir = mkdtempSync(join(tmpdir(), "sanadset-out-"));
+    const first = await runSanadsetStudy(
+      options({ csvPath: fixture, sha256: hashed.sha256, outDir: dir }),
+    );
+    // The owner scores a row: the evidence this study exists to produce is now on disk.
+    const labelsPath = join(first.artifactsDir, LABELS_CSV);
+    const rows = toCsv([
+      ["pair_id", "kind", "a", "b", "label", "notes"],
+      ["P001", "matn", "a", "b", "same", "owner-scored"],
+    ]);
+    writeFileSync(labelsPath, rows, "utf8");
+    const before = readFileSync(labelsPath, "utf8");
+
+    await expect(
+      runSanadsetStudy(options({ csvPath: fixture, sha256: hashed.sha256, outDir: dir })),
+    ).rejects.toThrow(/scored labels/u);
+    expect(readFileSync(labelsPath, "utf8")).toBe(before);
   });
 
   it("records the measured counts the report quotes", async () => {
@@ -158,35 +200,41 @@ describe("a full study run", () => {
     expect(facts.quarantine.byRule["reference_only_matn"]).toBe(1);
     expect(facts.quarantine.byRule["nested_sanad_in_matn"]).toBe(1);
     expect(facts.slice.unbalancedTagRows).toBe(1);
-    expect(facts.matn.groups).toBeGreaterThan(0);
+    expect(facts.matn.children).toBeGreaterThan(0);
     expect(facts.matn.matchRate.scope).toBe("slice-internal");
-    expect(facts.matn.distinctMatns).toBe(facts.matn.groups);
+    expect(facts.matn.distinctMatnTexts).toBeGreaterThanOrEqual(facts.matn.children);
     expect(facts.narrator.mentions).toBeGreaterThan(0);
-    expect(facts.narrator.resolutionRate).toBeGreaterThanOrEqual(0);
+    expect(facts.narrator.nonSingletonMentionRate).toBeGreaterThanOrEqual(0);
   });
 
   it("writes a report.json that satisfies the ingestion contract", async () => {
     const fixture = makeFixture();
     const hashed = await hashFile(fixture);
     const dir = mkdtempSync(join(tmpdir(), "sanadset-out-"));
-    await runSanadsetStudy(options({ csvPath: fixture, sha256: hashed.sha256, outDir: dir }));
+    const run = await runSanadsetStudy(
+      options({ csvPath: fixture, sha256: hashed.sha256, outDir: dir }),
+    );
     const parsed = parseIngestionReport(
-      JSON.parse(readFileSync(join(dir, REPORT_JSON), "utf8")).report,
+      JSON.parse(readFileSync(join(run.artifactsDir, REPORT_JSON), "utf8")).report,
     );
     expect(parsed.parentsWritten).toBe(0);
     expect(parsed.childrenWritten).toBe(0);
     expect(parsed.llmCalls).toEqual([]);
-    expect(readFileSync(join(dir, QUARANTINE_JSON), "utf8")).toContain("implausible_chain_length");
+    expect(readFileSync(join(run.artifactsDir, QUARANTINE_JSON), "utf8")).toContain(
+      "implausible_chain_length",
+    );
   });
 
   it("pre-registers the sample before the first model request", async () => {
     const fixture = makeFixture();
     const hashed = await hashFile(fixture);
     const dir = mkdtempSync(join(tmpdir(), "sanadset-out-"));
+    const runId = studyRunId({ sha256: hashed.sha256, seed: sampleSeed(hashed.sha256) });
     let sampleExistedAtFirstCall = false;
     const stub = verdictStub();
     const fetch: FetchLike = async (url, init) => {
-      if (!sampleExistedAtFirstCall) sampleExistedAtFirstCall = existsSync(join(dir, SAMPLE_JSON));
+      if (!sampleExistedAtFirstCall)
+        sampleExistedAtFirstCall = existsSync(join(dir, runId, SAMPLE_JSON));
       return stub.fetch(url, init);
     };
     const run = await runSanadsetStudy(
@@ -196,7 +244,7 @@ describe("a full study run", () => {
         outDir: dir,
         arm: {
           requested: true,
-          definition: resolveArm({ provider: "dashscope" }),
+          definition: resolveArm({ provider: "dashscope" }, TEST_ARM_CONFIG),
           lookup: PRESENT,
         },
         fetch,
@@ -207,9 +255,9 @@ describe("a full study run", () => {
     expect(run.document.study.modelArm.ran).toBe(true);
     expect(run.document.study.modelArm.calls).toBeGreaterThan(0);
     expect(run.document.study.modelArm.spendMicroUsd).toBeGreaterThan(0);
-    expect(existsSync(join(dir, PREDICTIONS_JSON))).toBe(true);
-    const predictions = JSON.parse(readFileSync(join(dir, PREDICTIONS_JSON), "utf8"));
-    expect(predictions.model).toBe("qwen3.7-flash");
+    expect(existsSync(join(run.artifactsDir, PREDICTIONS_JSON))).toBe(true);
+    const predictions = JSON.parse(readFileSync(join(run.artifactsDir, PREDICTIONS_JSON), "utf8"));
+    expect(predictions.model).toBe("qwen-test");
     expect(predictions.predictions.length).toBe(run.document.study.sample.selected);
     expect(JSON.stringify(predictions)).not.toContain("test-key-not-a-real-secret");
   });
@@ -223,7 +271,11 @@ describe("a full study run", () => {
         csvPath: fixture,
         sha256: hashed.sha256,
         outDir: dir,
-        arm: { requested: true, definition: resolveArm({ provider: "dashscope" }), lookup: ABSENT },
+        arm: {
+          requested: true,
+          definition: resolveArm({ provider: "dashscope" }, TEST_ARM_CONFIG),
+          lookup: ABSENT,
+        },
       }),
     );
     expect(run.document.study.modelArm.stopReason).toBe("key-absent");
@@ -244,18 +296,69 @@ describe("a full study run", () => {
       options({ csvPath: fixture, sha256: hashed.sha256, outDir: secondDir, now: () => 9_000 }),
     );
     expect(second.runId).toBe(first.runId);
-    expect({ ...second.document.study, timings: null }).toEqual({
+    // The artifact directory is a run parameter, not a measured fact: the two runs write
+    // different directories and must agree on everything the directory does not change.
+    expect({ ...second.document.study, timings: null, artifactsDir: null }).toEqual({
       ...first.document.study,
       timings: null,
+      artifactsDir: null,
     });
-    expect(readFileSync(join(secondDir, REPORT_MARKDOWN), "utf8")).toEqual(
-      readFileSync(join(firstDir, REPORT_MARKDOWN), "utf8"),
-    );
+    const withoutArtifactDir = (dir: string): string =>
+      readFileSync(join(dir, REPORT_MARKDOWN), "utf8")
+        .split("\n")
+        .filter((line) => !line.startsWith("- Directory:"))
+        .join("\n");
+    expect(withoutArtifactDir(second.artifactsDir)).toEqual(withoutArtifactDir(first.artifactsDir));
     const sample = (dir: string): string =>
       JSON.stringify(
         (JSON.parse(readFileSync(join(dir, SAMPLE_JSON), "utf8")) as { pairs: unknown }).pairs,
       );
-    expect(sample(secondDir)).toEqual(sample(firstDir));
+    expect(sample(second.artifactsDir)).toEqual(sample(first.artifactsDir));
+  });
+
+  it("reconciles the sample and band calls into the projected total", async () => {
+    const fixture = makeFixture();
+    const hashed = await hashFile(fixture);
+    const dir = mkdtempSync(join(tmpdir(), "sanadset-out-"));
+    const run = await runSanadsetStudy(
+      options({ csvPath: fixture, sha256: hashed.sha256, outDir: dir }),
+    );
+    const facts = run.document.study;
+    expect(facts.band.sampleCalls).toBe(facts.sample.selected);
+    expect(facts.band.callsNeeded).toBe(facts.band.sampleCalls + facts.band.matnRows);
+    expect(facts.band.callsBudgeted).toBe(Math.min(facts.band.ceiling, facts.band.callsNeeded));
+    expect(facts.modelArm.estimate?.calls).toBe(
+      Math.min(facts.band.ceiling, facts.band.callsNeeded),
+    );
+    expect(facts.band.matnBandLower).toBe(0.6);
+    expect(facts.band.matnBandUpper).toBe(0.9);
+  });
+
+  it("draws no pair whose two sides are the same string", async () => {
+    const fixture = makeFixture();
+    const hashed = await hashFile(fixture);
+    const dir = mkdtempSync(join(tmpdir(), "sanadset-out-"));
+    const run = await runSanadsetStudy(
+      options({ csvPath: fixture, sha256: hashed.sha256, outDir: dir }),
+    );
+    const artifact = JSON.parse(readFileSync(join(run.artifactsDir, SAMPLE_JSON), "utf8")) as {
+      pairs: { a: string; b: string; stratum: string }[];
+    };
+    expect(artifact.pairs.length).toBeGreaterThan(0);
+    expect(artifact.pairs.every((pair) => pair.a !== pair.b)).toBe(true);
+  });
+
+  it("makes no cross-book matn join and states the book scope", async () => {
+    const fixture = makeFixture();
+    const hashed = await hashFile(fixture);
+    const dir = mkdtempSync(join(tmpdir(), "sanadset-out-"));
+    const run = await runSanadsetStudy(
+      options({ csvPath: fixture, sha256: hashed.sha256, outDir: dir }),
+    );
+    const facts = run.document.study;
+    expect(facts.matn.bookScope).toBe("book");
+    expect(facts.matn.crossBook.joinsInThisRun).toBe(0);
+    expect(facts.matn.crossBook.scopedChildren).toBe(facts.matn.children);
   });
 
   it("records a bounded rehearsal as bounded", async () => {

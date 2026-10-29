@@ -7,6 +7,10 @@
  * and the presentation files carry no stratum, no lexical score and no predicted
  * label. Anything that would tell a labeller the answer stays in the analyst-side
  * preregistration file.
+ *
+ * A pair whose two sides are the same string is never drawn, whatever stratum offers
+ * it: it is a free correct answer, so it would inflate the macro-F1 this sample exists
+ * to measure and spend a call on a question with no signal.
  */
 
 import { fnv1a } from "./sanadset-blocking";
@@ -106,7 +110,8 @@ export function selectBlindSample(input: {
 
   const ordered = new Map<PairStratum, StudyPair[]>();
   for (const stratum of ALL_STRATA) {
-    ordered.set(stratum, seededOrder(input.candidates.get(stratum) ?? [], input.seed));
+    const eligible = (input.candidates.get(stratum) ?? []).filter((pair) => pair.a !== pair.b);
+    ordered.set(stratum, seededOrder(eligible, input.seed));
   }
 
   const selected: StudyPair[] = [];
@@ -148,7 +153,7 @@ export function selectBlindSample(input: {
     stratum,
     kind: kindOf(stratum),
     target: targets[stratum] ?? 0,
-    candidates: (input.candidates.get(stratum) ?? []).length,
+    candidates: (ordered.get(stratum) ?? []).length,
     selected: selectedCount.get(stratum) ?? 0,
   }));
   return {
