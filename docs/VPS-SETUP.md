@@ -1,5 +1,13 @@
 # VPS setup and hardening — bare box to green deploy
 
+> **Frozen path (ADR-0065).** The host-configuration install path in this
+> repository (`provision/vps/apply.sh`) is frozen: new host configuration goes
+> to the private [`ahaqqu/vps`](https://github.com/ahaqqu/vps) repository, whose
+> root applier is bootstrapped once and thereafter applies that repository's
+> protected branch. This document remains the record of how the box was built
+> and still describes the running box; the path stays the deploy's drift
+> baseline until the switchover retires it.
+
 You have a fresh Debian VPS, no domain necessarily, and you want KajianQ
 serving. This takes you from a bare box to a green deploy and a hardened,
 backed-up instance, in the order the steps actually have to happen. It is

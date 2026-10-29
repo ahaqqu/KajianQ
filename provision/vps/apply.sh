@@ -1,4 +1,11 @@
 #!/usr/bin/env bash
+# FROZEN (ADR-0065). New host configuration does not belong here: it goes to the
+# private ahaqqu/vps repository, whose root applier installs that repository's
+# protected branch. This path is frozen rather than deleted because the deploy
+# still compares the installed files against this checkout; it must keep working
+# unchanged until the switchover retires it, at which point this script is
+# deleted so the box has one writer.
+#
 # provision/vps/apply.sh — place the hardening configs on the VPS and enable the
 # services (ADR-0043, issue #180).
 #
