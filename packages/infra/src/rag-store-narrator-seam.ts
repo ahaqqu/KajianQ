@@ -130,7 +130,8 @@ export interface RagStoreNarrators {
   /**
    * A keyset page over one collection's chains, ordered by `id`. `afterId` is the
    * previous page's `nextAfterId`; absent starts at the first row. A page is at most
-   * `limit` rows, and `nextAfterId` is null when the page is the end of the set.
+   * `limit` rows, and `nextAfterId` is the last returned id when the page is full
+   * (there may be more) or null when it is short of `limit` (the set is exhausted).
    * `limit <= 0` returns an empty page without issuing a query.
    */
   listChainsByCollection(

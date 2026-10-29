@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vite-plus/test";
-import { Effect } from "effect";
 import type { NarratorRecord } from "@app/infra";
 import { GRADES, type Grade } from "./filters";
 import {

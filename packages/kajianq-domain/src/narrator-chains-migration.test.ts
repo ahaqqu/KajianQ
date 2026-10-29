@@ -79,6 +79,16 @@ run("narrators + narrator_chains migration (real Postgres, throwaway schema)", (
     return rows.map((row: { indexname: string }) => row.indexname);
   };
 
+  const columnNamesOf = async (table: string): Promise<string[]> => {
+    const { rows } = await query(
+      `SELECT attname FROM pg_attribute
+       WHERE attrelid = $1::regclass AND attnum > 0 AND NOT attisdropped
+       ORDER BY attnum`,
+      [table],
+    );
+    return rows.map((row: { attname: string }) => row.attname);
+  };
+
   const tablesInSchema = async (): Promise<string[]> => {
     const { rows } = await query(
       `SELECT table_name FROM information_schema.tables WHERE table_schema = $1 ORDER BY table_name`,
@@ -101,8 +111,12 @@ run("narrators + narrator_chains migration (real Postgres, throwaway schema)", (
     // table.
     await query(`CREATE SCHEMA ${SCHEMA}`);
     await query(`SET search_path TO ${SCHEMA}`);
-    await query(`CREATE TABLE doc_children (id uuid PRIMARY KEY DEFAULT gen_random_uuid())`);
-    await query(`INSERT INTO doc_children (id) VALUES ($1)`, [CHILD_ID]);
+    // A stand-in for the pre-existing table the migration must not rewrite: one
+    // column the migration never mentions, holding a value it must not change.
+    await query(
+      `CREATE TABLE doc_children (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), payload text)`,
+    );
+    await query(`INSERT INTO doc_children (id, payload) VALUES ($1, 'before-up')`, [CHILD_ID]);
   });
 
   afterAll(async () => {
@@ -122,8 +136,12 @@ run("narrators + narrator_chains migration (real Postgres, throwaway schema)", (
     await query(upSql());
     // The row written before the migration is untouched: additive means no
     // rewrite of what already exists.
-    const child = await query(`SELECT id FROM doc_children WHERE id = $1`, [CHILD_ID]);
-    expect(child.rows).toHaveLength(1);
+    expect(
+      (await query(`SELECT payload FROM doc_children WHERE id = $1`, [CHILD_ID])).rows,
+    ).toEqual([{ payload: "before-up" }]);
+    // Additive means the existing table's shape is untouched too: no column was
+    // added, dropped or retyped on the table the migration only references.
+    expect(await columnNamesOf("doc_children")).toEqual(["id", "payload"]);
     // Compare as a set, sorted by code unit: the database's collation must not
     // decide whether this assertion passes.
     expect((await tablesInSchema()).sort()).toEqual([
@@ -374,12 +392,14 @@ run("narrators + narrator_chains migration (real Postgres, throwaway schema)", (
   it("rolls back cleanly: only the new objects go, and pre-existing data stays", async () => {
     // The cascade case removed the original stub row; a fresh one stands in for
     // "data that existed before the migration" at rollback time.
-    await query(`INSERT INTO doc_children (id) VALUES ($1) ON CONFLICT (id) DO NOTHING`, [
-      CHILD_ID,
-    ]);
+    await query(
+      `INSERT INTO doc_children (id, payload) VALUES ($1, 'before-down') ON CONFLICT (id) DO NOTHING`,
+      [CHILD_ID],
+    );
     await query(downSql());
     expect(await tablesInSchema()).toEqual(["doc_children"]);
-    const child = await query(`SELECT id FROM doc_children WHERE id = $1`, [CHILD_ID]);
-    expect(child.rows).toHaveLength(1);
+    const child = await query(`SELECT payload FROM doc_children WHERE id = $1`, [CHILD_ID]);
+    expect(child.rows).toEqual([{ payload: "before-down" }]);
+    expect(await columnNamesOf("doc_children")).toEqual(["id", "payload"]);
   });
 });
