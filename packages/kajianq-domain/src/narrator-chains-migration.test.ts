@@ -187,6 +187,13 @@ run("narrators + narrator_chains migration (real Postgres, throwaway schema)", (
       created_at: { dataType: "timestamp with time zone", nullable: false },
       updated_at: { dataType: "timestamp with time zone", nullable: false },
     });
+    // The order column is a store-assigned identity sequence, not a plain integer
+    // a writer could leave null or reuse.
+    const identity = await query(
+      `SELECT attidentity FROM pg_attribute
+       WHERE attrelid = 'narrator_chains'::regclass AND attname = 'seq'`,
+    );
+    expect(identity.rows).toEqual([{ attidentity: "a" }]);
   });
 
   it("indexes the two lookups the reads make: narrator names and chain -> child", async () => {
