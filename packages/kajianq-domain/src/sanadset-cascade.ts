@@ -22,7 +22,6 @@ import {
   type BestCandidate,
   type CascadeOptions,
   type CascadeResult,
-  type MatnAdjudicator,
   type MatnCounts,
   type MatnDecisionKind,
   type MatnVerdict,

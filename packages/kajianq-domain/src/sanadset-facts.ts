@@ -49,6 +49,8 @@ export type FactsInput = {
   readonly quarantined: readonly QuarantinedRow[];
   readonly arm: ArmFacts;
   readonly ceiling: number;
+  /** Calls the arm would issue for this run: the pre-registered sample plus the band. */
+  readonly callsNeeded: number;
   readonly capMicroUsd: number;
   readonly limits: readonly string[];
   readonly timings: {
@@ -95,7 +97,7 @@ export function buildStudyFacts(input: FactsInput): StudyFacts {
   for (const row of input.quarantined)
     quarantineByRule[row.rule] = (quarantineByRule[row.rule] ?? 0) + 1;
   const bandRows = counts.bandRows;
-  const callsNeeded = bandRows + input.sample.selected;
+  const callsNeeded = input.callsNeeded;
 
   return {
     schemaVersion: 1,

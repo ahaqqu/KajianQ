@@ -49,7 +49,7 @@ export function fnv1a(text: string): number {
  * collisions only add candidates.
  */
 export function minhashSignature(trigrams: readonly string[]): number[] {
-  const signature = new Array<number>(SIGNATURE_LENGTH).fill(0xffffffff);
+  const signature = Array.from({ length: SIGNATURE_LENGTH }, () => 0xffffffff);
   for (const trigram of trigrams) {
     const first = fnv1a(trigram);
     const second = fnv1a(`${trigram}\u0000salt`);

@@ -148,15 +148,15 @@ and reclaimed by a retention window.
 
 ### 4.1 Sources (licensing duties noted)
 
-| Corpus                     | Source                                             | Licensing duty                                              |
-| -------------------------- | -------------------------------------------------- | ----------------------------------------------------------- |
-| Quran (Uthmani + metadata) | Tanzil.net                                         | Public domain text; attribute                               |
-| Terjemahan ID              | Kemenag via Tanzil                                 | **Verify terms**; attribute                                 |
-| Tafsir (planned)           | Tanzil / Quran.com (Ibnu Katsir, Jalalayn, Tabari) | Attribute; prefer public-domain editions                    |
-| Hadith (v1)                | fawazahmed0/hadith-api (ADR-0026)                  | Unlicense (public domain); attribute + sunnah.com upstream  |
-| Hadith with sanad (v2)     | Sanadset (Kaggle)                                  | Check Kaggle terms; attribute                               |
-| Hadith API                 | Sunnah.com                                         | Key request no longer blocks v1 (ADR-0026); enrichment only |
-| Kitab                      | Shamela `.bok` / OpenITI TEI                       | Classical texts public domain; attribute Shamela/OpenITI    |
+| Corpus                     | Source                                                   | Licensing duty                                              |
+| -------------------------- | -------------------------------------------------------- | ----------------------------------------------------------- |
+| Quran (Uthmani + metadata) | Tanzil.net                                               | Public domain text; attribute                               |
+| Terjemahan ID              | Kemenag via Tanzil                                       | **Verify terms**; attribute                                 |
+| Tafsir (planned)           | Tanzil / Quran.com (Ibnu Katsir, Jalalayn, Tabari)       | Attribute; prefer public-domain editions                    |
+| Hadith (v1)                | fawazahmed0/hadith-api (ADR-0026)                        | Unlicense (public domain); attribute + sunnah.com upstream  |
+| Hadith with sanad (v2)     | Sanadset 650K (Mendeley Data, DOI 10.17632/5xth87zwb5.5) | CC BY 4.0; attribute the authors                            |
+| Hadith API                 | Sunnah.com                                               | Key request no longer blocks v1 (ADR-0026); enrichment only |
+| Kitab                      | Shamela `.bok` / OpenITI TEI                             | Classical texts public domain; attribute Shamela/OpenITI    |
 
 All attributions ship in `NOTICES/DATASETS.md` (MIT repo).
 
@@ -297,7 +297,7 @@ Two additive tables — narrators and hadith chains — with v1 rows, embeddings
 
 ### 9.4 Ingestion
 
-Acquire (Kaggle; **verify licence terms first**) → parse sanad/matn tags → narrator entity resolution (deterministic Arabic name normalization, LLM assist on unresolved cases, sampled cross-vendor review, variants recorded) → matn reconciliation (exact → normalized → fuzzy with LLM adjudication; low-confidence matches quarantined, never force-merged) → attach chains; the ingestion report carries match rate, resolution rate, quarantine count, and cost.
+Acquire (Mendeley Data, CC BY 4.0 — attribution recorded in `NOTICES/DATASETS.md`) → parse sanad/matn tags → narrator entity resolution (deterministic Arabic name normalization, LLM assist on unresolved cases, sampled cross-vendor review, variants recorded) → matn reconciliation (exact → normalized → fuzzy with LLM adjudication; low-confidence matches quarantined, never force-merged) → attach chains; the ingestion report carries match rate, resolution rate, quarantine count, and cost.
 
 ### 9.5 Retrieval, generation, UI
 
@@ -313,7 +313,7 @@ The v2 work is sequenced schema → ingestion → per-chain grades in retrieval,
 
 ### 9.8 Risks
 
-Narrator name-resolution errors, wrong matn matches, and Kaggle licensing are handled by the verification discipline in §9.4; scope creep toward GraphRAG is an explicit out of scope (§9.2, ADR-0012).
+Narrator name-resolution errors, wrong matn matches, and dataset licensing are handled by the verification discipline in §9.4; scope creep toward GraphRAG is an explicit out of scope (§9.2, ADR-0012).
 
 ---
 

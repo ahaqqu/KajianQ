@@ -58,6 +58,14 @@ function stratumRows(facts: StudyFacts): string[] {
   return rows;
 }
 
+/** Why the arm stopped, in the report's own words rather than a bare enum. */
+function describeStop(arm: StudyReportDocument["study"]["modelArm"]): string {
+  if (arm.stopReason === "key-absent") return "the credential is absent, so the arm did not start";
+  if (arm.stopReason === "not-requested") return "the run asked for no model calls";
+  if (arm.stopReason === "ceiling-reached") return "the call ceiling stopped the arm";
+  return "the arm ran inside the ceiling";
+}
+
 /** Render the markdown report; the JSON next to it is the machine-readable copy. */
 export function renderReportMarkdown(document: StudyReportDocument): string {
   const facts = document.study;
@@ -136,9 +144,7 @@ export function renderReportMarkdown(document: StudyReportDocument): string {
     "",
   );
   lines.push("## Model arm", "");
-  lines.push(
-    `- Status: **${arm.stopReason}** (ran: ${String(arm.ran)}; key ${arm.keyPresent ? `present via ${arm.keySource}` : "absent"})`,
-  );
+  lines.push(`- Status: **${arm.stopReason}** (ran: ${String(arm.ran)}; ${describeStop(arm)})`);
   lines.push(
     `- Provider: \`${arm.provider}\` · endpoint \`${arm.baseUrl}\` · model \`${arm.model}\``,
   );
@@ -151,7 +157,7 @@ export function renderReportMarkdown(document: StudyReportDocument): string {
   lines.push(`- Spend: ${usd(arm.spendMicroUsd)}`);
   if (arm.estimate !== null) {
     lines.push(
-      `- Pre-flight projection for the band: ${count(arm.estimate.calls)} calls · ${count(arm.estimate.tokensIn)} in / ${count(arm.estimate.tokensOut)} out · ${usd(arm.estimate.costMicroUsd)} (estimated, not metered)`,
+      `- Pre-flight projection (band + pre-registered sample): ${count(arm.estimate.calls)} calls · ${count(arm.estimate.tokensIn)} in / ${count(arm.estimate.tokensOut)} out · ${usd(arm.estimate.costMicroUsd)} (estimated, not metered)`,
     );
   }
   lines.push("");

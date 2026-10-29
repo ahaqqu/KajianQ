@@ -10,6 +10,7 @@
 
 import { lshBandKeys, minhashSignature } from "./sanadset-blocking";
 import { parseSanadList } from "./sanadset-csv";
+import { hasNestedSanad, hasUnbalancedTags, isNoSanad } from "./sanadset-tags";
 import {
   foldNarratorName,
   isReferenceOnlyMatn,
@@ -103,38 +104,7 @@ export type PrepareAccumulator = {
   readonly stats: PrepareStats;
 };
 
-const MATN_SPAN = /<MATN>[\s\S]*?<\/MATN>/gu;
 const DETAIL_LIMIT = 160;
-
-/** Rule 6: an opening `<SANAD>` inside a `<MATN>` span means the tags do not describe this record. */
-function hasNestedSanad(hadith: string): boolean {
-  for (const match of hadith.matchAll(MATN_SPAN)) {
-    if (match[0].includes("<SANAD>")) return true;
-  }
-  return false;
-}
-
-const OPEN_MATN = /<MATN>/gu;
-const CLOSE_MATN = /<\/MATN>/gu;
-const OPEN_SANAD = /<SANAD>/gu;
-const CLOSE_SANAD = /<\/SANAD>/gu;
-
-function countMatches(pattern: RegExp, text: string): number {
-  return [...text.matchAll(pattern)].length;
-}
-
-/** True when the tag counts disagree, which no linear span reading can survive. */
-function hasUnbalancedTags(hadith: string): boolean {
-  return (
-    countMatches(OPEN_MATN, hadith) !== countMatches(CLOSE_MATN, hadith) ||
-    countMatches(OPEN_SANAD, hadith) !== countMatches(CLOSE_SANAD, hadith)
-  );
-}
-
-function isNoSanad(raw: string): boolean {
-  const text = raw.trim();
-  return text.length === 0 || text === "No SANAD";
-}
 
 function truncateDetail(text: string): string {
   return text.length > DETAIL_LIMIT ? `${text.slice(0, DETAIL_LIMIT - 3)}...` : text;

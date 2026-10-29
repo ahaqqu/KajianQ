@@ -19,30 +19,27 @@ import {
   createCallBudget,
   describeArm,
   hashFile,
-  estimateArm,
-  estimateMatnCall,
-  estimateNarratorCall,
   labelsTemplateRows,
-  ModelCallCeilingError,
   ownerSpotCheckRows,
   renderReportMarkdown,
   runMatnCascade,
-  S1_AUTO_MATCH_THRESHOLD,
-  S1_MODEL_BAND_THRESHOLD,
   sampleSeed,
   selectBlindSample,
   toCsv,
   type ApiKeyLookup,
   type ArmDefinition,
-  type ArmFacts,
-  type ArmVerdict,
+  type FetchLike,
   type NarratorMention,
   type PairCandidates,
-  type PairKind,
   type QuarantinedRow,
-  type ReportInput,
   type StudyReportDocument,
 } from "./sanadset-core";
+import {
+  estimateStudyCalls,
+  runSamplePredictions,
+  summariseArm,
+  type SamplePrediction,
+} from "./sanadset-arm-run";
 import { buildStudyFacts } from "./sanadset-facts";
 import { streamSlice } from "./sanadset-stream";
 import {
@@ -81,13 +78,11 @@ export type StudyOptions = {
   readonly limit?: number;
   readonly seed?: number;
   readonly now?: () => number;
+  /** Injected transport for the arm; absent means the platform fetch. */
+  readonly fetch?: FetchLike;
 };
 
-export type SamplePrediction = {
-  readonly pairId: string;
-  readonly kind: PairKind;
-  readonly verdict: ArmVerdict;
-};
+export type { SamplePrediction } from "./sanadset-arm-run";
 
 export type StudyRun = {
   readonly runId: string;
@@ -160,24 +155,11 @@ export async function runSanadsetStudy(options: StudyOptions): Promise<StudyRun>
           apiKey: key.value,
           ceiling: options.ceiling,
           now,
+          ...(options.fetch === undefined ? {} : { fetch: options.fetch }),
         })
       : null;
 
-  const predictions: SamplePrediction[] = [];
-  if (client !== null) {
-    for (const pair of selection.pairs) {
-      try {
-        const verdict =
-          pair.kind === "matn"
-            ? await client.predictSampleMatn({ a: pair.a, b: pair.b })
-            : await client.predictSampleNarrator({ a: pair.a, b: pair.b });
-        predictions.push({ pairId: pair.pairId, kind: pair.kind, verdict });
-      } catch (error) {
-        if (error instanceof ModelCallCeilingError) break;
-        throw error;
-      }
-    }
-  }
+  const predictions = client === null ? [] : await runSamplePredictions(client, selection.pairs);
 
   const budget = createCallBudget(options.ceiling);
   const cascade = await runMatnCascade({
@@ -187,66 +169,22 @@ export async function runSanadsetStudy(options: StudyOptions): Promise<StudyRun>
   });
   const finishedAt = now();
 
-  const rawByIndex = new Map(prepared.map((row) => [row.rowIndex, row.rawMatn]));
-  const estimateCalls = selection.pairs.map((pair) =>
-    pair.kind === "matn"
-      ? estimateMatnCall({ a: pair.a, b: pair.b })
-      : estimateNarratorCall({ a: pair.a, b: pair.b }),
-  );
-  for (const decision of cascade.decisions) {
-    const best = decision.bestCandidate;
-    if (best === null || decision.score === null) continue;
-    if (decision.score < S1_MODEL_BAND_THRESHOLD || decision.score >= S1_AUTO_MATCH_THRESHOLD)
-      continue;
-    estimateCalls.push(
-      estimateMatnCall({
-        a: rawByIndex.get(best.rowIndex) ?? "",
-        b: rawByIndex.get(decision.rowIndex) ?? "",
-        score: decision.score,
-      }),
-    );
-  }
-  const estimate = estimateArm(
-    options.arm.definition.price,
-    estimateCalls.slice(0, options.ceiling),
-  );
+  const estimate = estimateStudyCalls({
+    pairs: selection.pairs,
+    decisions: cascade.decisions,
+    rawMatnByIndex: new Map(prepared.map((row) => [row.rowIndex, row.rawMatn])),
+    ceiling: options.ceiling,
+    price: options.arm.definition.price,
+  });
 
-  const totals = client?.totals() ?? {
-    calls: 0,
-    requests: 0,
-    tokensIn: 0,
-    tokensOut: 0,
-    costMicroUsd: 0,
-    estimated: false,
-  };
-  const arm: ArmFacts = {
-    ...status,
-    ran: client !== null,
-    stopReason:
-      client === null
-        ? options.arm.requested
-          ? "key-absent"
-          : "not-requested"
-        : cascade.model.ceilingReached
-          ? "ceiling-reached"
-          : "ran",
-    requests: totals.requests,
-    calls: totals.calls,
-    tokensIn: totals.tokensIn,
-    tokensOut: totals.tokensOut,
-    estimatedTokens: totals.estimated,
-    spendMicroUsd: totals.costMicroUsd,
+  const { arm, costRecords } = summariseArm({
+    status,
+    requested: options.arm.requested,
+    client,
+    ceilingReached: cascade.model.ceilingReached,
     estimate,
     samplePredictions: predictions.length,
-  };
-  const costRecords: ReportInput["costRecords"] = (client?.calls() ?? []).map((record) => ({
-    modelId: record.model,
-    tokensIn: record.tokensIn,
-    tokensOut: record.tokensOut,
-    latencyMs: record.latencyMs,
-    costMicroUsd: record.costMicroUsd,
-    estimated: record.estimated,
-  }));
+  });
 
   const quarantineRows: QuarantinedRow[] = [...slice.quarantined, ...cascade.quarantined];
   const limits = [
@@ -289,6 +227,7 @@ export async function runSanadsetStudy(options: StudyOptions): Promise<StudyRun>
     quarantined: quarantineRows,
     arm,
     ceiling: options.ceiling,
+    callsNeeded: estimate.calls,
     capMicroUsd: options.capMicroUsd,
     limits,
     timings: { startedAt, finishedAt, wallClockMs: finishedAt - startedAt },
