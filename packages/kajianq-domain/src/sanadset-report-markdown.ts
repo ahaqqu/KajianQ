@@ -139,13 +139,16 @@ export function renderReportMarkdown(document: StudyReportDocument): string {
     `- Children after the cascade (book scope: **${facts.matn.bookScope}**): ${count(facts.matn.children)} — a child is a distinct matn inside one book, the thing an isnad attaches to`,
   );
   lines.push(
-    `- Distinct normalized matns before coalescing: ${count(facts.matn.distinctMatnTexts)}`,
+    `- Distinct normalized matns, book-agnostic: ${count(facts.matn.distinctMatnTexts)} — the pool the children are drawn from; ` +
+      `the trigram stage merges different spellings, and a quarantined row becomes no child at all`,
   );
   lines.push(
-    `- Cross-book joins the book scope prevented: ${count(facts.matn.crossBook.unscopedTotal)} of the deterministic joins ` +
-      `an unscoped book would make (exact ${count(facts.matn.crossBook.unscopedExact)}, folded ${count(facts.matn.crossBook.unscopedFolded)}, ` +
-      `trigram ${count(facts.matn.crossBook.unscopedTrigram)}); it would produce ${count(facts.matn.crossBook.unscopedChildren)} children ` +
-      `instead of ${count(facts.matn.crossBook.scopedChildren)}, and this run's own book made ${count(facts.matn.crossBook.joinsInThisRun)} cross-book joins`,
+    `- Cross-book joins: ${count(facts.matn.crossBook.joinsInThisRun)} in this run. ` +
+      `Replaying the same cascade against an unscoped book joins ${count(facts.matn.crossBook.unscopedTotal)} rows across books ` +
+      `(exact ${count(facts.matn.crossBook.unscopedExact)}, folded ${count(facts.matn.crossBook.unscopedFolded)}, ` +
+      `trigram ${count(facts.matn.crossBook.unscopedTrigram)}) and yields ${count(facts.matn.crossBook.unscopedChildren)} children ` +
+      `instead of ${count(facts.matn.crossBook.scopedChildren)}; with the ${count(facts.matn.matchRate.matchedRows)} in-book joins, ` +
+      `${count(facts.matn.matchRate.matchedRows + facts.matn.crossBook.unscopedTotal)} deterministic joins`,
   );
   lines.push(
     `- Isnads per child (attachable rows / children): ${facts.matn.chainsPerChild.toFixed(4)}:1 — ` +
