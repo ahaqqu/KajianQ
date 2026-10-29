@@ -84,7 +84,22 @@ provision/vps/deploy/deploy.sh --env /etc/kajianq/deploy.env
 
 What it does, in order:
 
-1. **Preflight — the provisioned files on the box match this checkout.**
+1. **Preflight — the database is current.** `migration-check.sh` reads the shared
+   `schema_migrations` ledger through `bun run db:status:all` — the engine,
+   domain and product migration sets share one ledger — and refuses the deploy
+   before the build when any migration is pending, printing the files and the
+   exact `db:up:*` command for the set each belongs to. The database listens on
+   loopback only (§2.8), so the check opens its own short-lived ssh tunnel to
+   `127.0.0.1:5432` on the box and closes it on exit; `DATABASE_URL` must name a
+   loopback host and the tunnel port (the deploy env file on the operator path,
+   `secrets.STAGING_DATABASE_URL` on the workflow path — §1.4). It fails closed: a
+   missing `DATABASE_URL`, a DSN naming any other host, a tunnel that does not
+   come up, or a status command that exits non-zero all refuse the deploy,
+   because an unverified schema is not a green deploy. The check is read-only
+   and also runs under `--dry-run`. `--skip-migration-check` is the one explicit
+   way past it, and CI never passes it. This is what enforces the
+   migrate-then-restart order in §2.3 instead of only documenting it.
+2. **Preflight — the provisioned files on the box match this checkout.**
    Provisioning is an operator action: only `provision/vps/apply.sh`, run as
    root on the box, places a unit, script or config. `provision-drift.sh` (piped
    over ssh) enumerates what `apply.sh` places from the script's own table
@@ -158,7 +173,7 @@ What it does, in order:
    short-lived file under `/tmp`), and it runs before the provenance check below
    because a stale unit can satisfy that check's record — exactly the state a
    deploy must not call healthy.
-2. **Preflight — the backup unit's provenance.** Before anything is built or
+3. **Preflight — the backup unit's provenance.** Before anything is built or
    touched, `backup-provenance.sh` (piped over ssh) reads the backup job's own
    provenance record — `/var/lib/kajianq/backup-provenance`, root-owned 0644 in
    a root-owned 0755 directory — and asserts that the last completed run exited
@@ -184,25 +199,25 @@ What it does, in order:
    exists on the box — a red here costs an ssh round trip and leaves the box on
    its previous revision, where a red after the ship would leave the new tree
    live, the API restarted, and the smoke and doctor below skipped.
-3. **Build.** `bun run build:web` for the PWA, then two `bun build
+4. **Build.** `bun run build:web` for the PWA, then two `bun build
    --target=bun` bundles from `apps/api/src/boot.ts` (serving) and
    `apps/api/src/cleanup.ts` (the nightly reclamation). Bundling for Bun is what
    makes `pg` a dependency of the artifact rather than a runtime resolve against
    a `node_modules` tree the box does not have. A missing
    `apps/web/dist/index.html` fails the deploy here — an empty web directory
    would otherwise serve the API's 503 and look like an app bug.
-4. **Ship.** `rsync -az --delete --chmod=D755,F644` of the two trees to
+5. **Ship.** `rsync -az --delete --chmod=D755,F644` of the two trees to
    `/srv/kajianq/api` and `/srv/kajianq/web`. `--delete` is deliberate: the SPA
    is content-hashed, and a stale file on the box is a stale file, not a
    rollback.
-5. **Restart.** `sudo systemctl restart kajianq-api.service`, then a plain
+6. **Restart.** `sudo systemctl restart kajianq-api.service`, then a plain
    (unprivileged) `systemctl is-active --quiet` so a unit that died on start
    fails the deploy immediately, then `sudo systemctl start kajianq-cron.service`
    once, so a rotated env var or a missing key fails the deploy now rather than
    silently at 03:17. The timer itself is not restarted — its schedule does not
    depend on the shipped code. Both `sudo` calls are covered by exactly two
    grants (§1.5); the `is-active` check needs none.
-6. **Smoke, against the public URL** (through DNS, the proxy, and TLS — never
+7. **Smoke, against the public URL** (through DNS, the proxy, and TLS — never
    the loopback port, which would skip exactly where a TLS, upstream, header,
    or content-type regression shows up):
    - `GET /v1/health` succeeds;
@@ -215,20 +230,22 @@ What it does, in order:
      while health stays green).
 
 Flags: `--dry-run` prints every action without writing; `--no-smoke` skips step
-6; `--env <path>` overrides the env file. The script exits non-zero on the first
-failure — a half-shipped tree that reported success is worse than a failed
-deploy.
+7; `--env <path>` overrides the env file; `--skip-migration-check` skips step 1
+and deploys against an unverified schema — the one explicit way past the
+preflight, never an environment default, and never passed by CI. The script
+exits non-zero on the first failure — a half-shipped tree that reported success
+is worse than a failed deploy.
 
-A deploy **does not**: run migrations (operator action — §2.3, and when the
-release ships an `apps/api` migration the order is **migrate, then restart**), run
-`provision/vps/apply.sh` (step 1 refuses a stale box instead — applying is
-root's, on the box), take a snapshot (§2.4), touch DNS, or restart the backup
-timer.
+A deploy **does not**: apply migrations (operator action — §2.3; the step 1
+preflight refuses while any is pending, so a release that ships an `apps/api`
+migration must be migrated first), run `provision/vps/apply.sh` (step 2 refuses a
+stale box instead — applying is root's, on the box), take a snapshot (§2.4),
+touch DNS, or restart the backup timer.
 
 Each refusal's closing, state by state. Each row carries the line the script
 prints — on stderr, prefixed `deploy:` — with the box's own paths and values
 standing where `provision/vps/deploy/provision-drift.sh` interpolates them; the
-class is the one the script assigns, and the run-level close in step 1 follows
+class is the one the script assigns, and the run-level close in step 2 follows
 from it. A `manual` remedy can still name `provision/vps/apply.sh` — the
 artifact table it repairs lives there — and both table-repair rows say an apply
 cannot change their state. The `conf.d`-is-a-file repair is the one `manual`
@@ -320,6 +337,13 @@ builds anything. The tree has **no built-in default**, so the operator's env fil
 is the only source for where a deploy ships; §1.4 records which GitHub scope
 carries that value on the workflow path.
 
+The same file carries `DATABASE_URL` for the migration preflight (§1.1 step 1) on
+the operator path; the workflow path passes `secrets.STAGING_DATABASE_URL` in the
+deploy step's environment instead. The value is read from the environment, never
+a command argument, and the script prints neither it nor its password. A missing
+one refuses the deploy by name before anything is built — `--skip-migration-check`
+is the single explicit exception and is visible in the invocation that ran.
+
 `api.env` is the serving process's **whole** configuration (plus the cron
 entry's, which reads the same `DATABASE_URL`). Its keys mirror
 `apps/api/src/lib/server.ts`'s `PASSTHROUGH_KEYS` exactly — a test
@@ -371,15 +395,15 @@ value, its jobs read the other environment's box instead of failing by name — 
 **a superseded copy is removed rather than left.** Re-measure the split with
 `gh variable list` / `gh secret list`, with and without `--env`.
 
-| Kind   | Name                      | Scope             | Read by                                                                                         |
-| ------ | ------------------------- | ----------------- | ----------------------------------------------------------------------------------------------- |
-| var    | `VPS_HOST`                | `staging`, `prod` | the deploy job (→ `KAJIANQ_DEPLOY_HOST`) and the Staging tunnel                                 |
-| var    | `VPS_USER`                | `staging`, `prod` | the deploy job (→ `KAJIANQ_DEPLOY_USER`) and the Staging tunnel                                 |
-| var    | `VPS_ROOT`                | `staging`, `prod` | the deploy job (→ `KAJIANQ_DEPLOY_ROOT`, required — §1.3)                                       |
-| var    | `VPS_PUBLIC_URL`          | `staging`, `prod` | the deploy smoke, and the Staging smoke, ZAP and Schemathesis steps                             |
-| secret | `VPS_DEPLOY_SSH_KEY`      | `staging`, `prod` | the deploy job and the Staging tunnel — each at the scope it declares                           |
-| secret | `STAGING_DATABASE_URL`    | repository        | the Staging Golden Set smoke — the VPS Postgres loopback URL **through the tunnel port** (§2.8) |
-| secret | `RATE_BYPASS_PRIVATE_KEY` | repository        | the Staging Schemathesis fuzz — the purpose-locked bypass token (ADR-0041)                      |
+| Kind   | Name                      | Scope             | Read by                                                                                                                                  |
+| ------ | ------------------------- | ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| var    | `VPS_HOST`                | `staging`, `prod` | the deploy job (→ `KAJIANQ_DEPLOY_HOST`) and the Staging tunnel                                                                          |
+| var    | `VPS_USER`                | `staging`, `prod` | the deploy job (→ `KAJIANQ_DEPLOY_USER`) and the Staging tunnel                                                                          |
+| var    | `VPS_ROOT`                | `staging`, `prod` | the deploy job (→ `KAJIANQ_DEPLOY_ROOT`, required — §1.3)                                                                                |
+| var    | `VPS_PUBLIC_URL`          | `staging`, `prod` | the deploy smoke, and the Staging smoke, ZAP and Schemathesis steps                                                                      |
+| secret | `VPS_DEPLOY_SSH_KEY`      | `staging`, `prod` | the deploy job and the Staging tunnel — each at the scope it declares                                                                    |
+| secret | `STAGING_DATABASE_URL`    | repository        | the deploy job's migration preflight and the Staging Golden Set smoke — the VPS Postgres loopback URL **through the tunnel port** (§2.8) |
+| secret | `RATE_BYPASS_PRIVATE_KEY` | repository        | the Staging Schemathesis fuzz — the purpose-locked bypass token (ADR-0041)                                                               |
 
 Both `VPS_HOST`s point at the **one box** (§1.2), because no production
 deployment is provisioned (ADR-0044 decision 2; deferred 2026-10-03).
@@ -401,10 +425,12 @@ exists only in the environment, while omitting the mapping resolves the name to
 an empty string there. The mapping therefore stays.
 
 `deploy-vps.yml` fails at a named "Require the deploy access" step when
-`VPS_HOST`, `VPS_USER`, `VPS_ROOT`, `VPS_PUBLIC_URL` or the key is missing — an
-actionable failure rather than a silent no-op, so an empty
-`KAJIANQ_DEPLOY_ROOT` cannot reach the script as a default tree. The private key
-is written to a runner-local file the job removes when it ends.
+`VPS_HOST`, `VPS_USER`, `VPS_ROOT`, `VPS_PUBLIC_URL`, `STAGING_DATABASE_URL` or
+the key is missing — an actionable failure rather than a silent no-op, so an
+empty `KAJIANQ_DEPLOY_ROOT` cannot reach the script as a default tree and an
+unmapped `STAGING_DATABASE_URL` cannot leave the migration preflight to fail for
+the same missing value. The private key is written to a runner-local file the job
+removes when it ends.
 
 **Legacy variables removed (step 7 executed).** `STAGING_URL` is deleted;
 `PROD_URL` is re-pointed at the VPS's public origin
@@ -733,23 +759,30 @@ From the box (loopback, so no tunnel):
 `db:status:all` must show every migration applied after a restore (the archive's
 `schema_migrations` ledger is the source of truth for what it already carries).
 
-**Ordering a deploy that ships a migration: migrate first, then restart.** A
-deploy restarts the API and runs no migrations (§1), so a
-release carrying an `apps/api` migration is an operator-ordered pair:
+**Ordering a deploy that ships a migration: migrate first, then restart — and
+the deploy now enforces the order.** A deploy restarts the API and never applies
+a migration (§1). Its first preflight (`migration-check.sh`, §1.1 step 1) reads
+`db:status:all` through a short-lived tunnel and refuses while anything is
+pending, printing the pending files and the exact `db:up:*` command for the
+migration set they belong to. The pair is therefore:
 
 ```bash
 ( export DATABASE_URL="postgres://kajianq:$(sudo cat /etc/kajianq/db-password)@127.0.0.1:5432/kajianq"
   bun run db:up:api )
-# then the deploy (which restarts the API)
+# then the deploy (whose preflight re-reads the ledger, then restarts the API)
 ```
 
 Apply-then-restart is the safe direction because the migrations are additive: the
 previous build ignores a table it does not read, while the new build fails closed
-with a 503 on the routes that need it until the table exists. Nothing in the
-pipeline enforces the order — the smoke checks (health, the anonymous mint, the
-chat page) all pass on the half-migrated box, because none of them touches the
-admin surface. The failure is visible only to the operator using it, which is why
-the order is written here rather than inferred from a green deploy.
+with a 503 on the routes that need it until the table exists. The preflight is
+what makes the order real: the smoke checks (health, the anonymous mint, the chat
+page) all pass on the half-migrated box, because none of them touches the admin
+surface, so a deploy that did not read the ledger could not tell a current schema
+from a stale one. `bun run db:up:all` is the always-safe command the check falls
+back to when a pending file's set is ambiguous; `--skip-migration-check` bypasses
+the preflight only when the operator has verified the ledger another way, and it
+is explicit on the command line — never an environment default, and never passed
+by CI.
 
 ### 2.4 Snapshots (ADR-0038 — the paid corpus's durability layer)
 
