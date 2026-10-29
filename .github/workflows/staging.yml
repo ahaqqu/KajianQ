@@ -134,6 +134,11 @@ jobs:
       environment: staging
     secrets:
       VPS_DEPLOY_SSH_KEY: ${{ secrets.VPS_DEPLOY_SSH_KEY }}
+      # The deploy's migration preflight reads this at the deploy job: the same
+      # tunnel-port URL the Golden Set smoke below uses (docs/VPS-OPERATIONS.md
+      # §1.4). It is a repository-level secret, and the reusable workflow sees
+      # only the secrets its caller maps.
+      STAGING_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
 
   # ---------------------------------------------------------------------------
   # Post-deploy checks — the evidence job. Its Golden Set smoke step is what a
