@@ -161,6 +161,26 @@ _Avoid_: fatwa notice, legal disclaimer (generic — names no claim), weak-hadit
 The element reference a feedback report carries (#13): a thumbs row anchors `answer`; a flag anchors one Trace element — `chunk` (a trace chunk id), `citation`, `translation`, or `grade` (a citation label) — with exactly one reason category per anchor type (`irrelevant_chunk`, `wrong_citation`, `bad_machine_translation`, `questionable_grade`). The server stores a flag only if the persisted Trace grounds the anchor; flags persist as rating −1. Identifiers come from the shared contract's frames only, never free-form coordinates (ADR-0007).
 _Avoid_: report tag, flag type, feedback reason (unqualified)
 
+**Narrator**:
+A resolved transmitter (rawi) in an Isnad: one row in the narrator catalogue, carrying the canonical Arabic spelling plus every recorded variant. Two narrators may share a name; identity is settled by resolution, never by the name string, and a narrator is never merged on name alone.
+_Avoid_: source (ambiguous with a cited work), transmitter (unqualified), chain link
+
+**Kunya**:
+The teknonymic name element a narrator is known by, typically "father of …" (e.g. Abu Hurayra), stored as the source states it. It is neither the canonical name nor a spelling variant of it; null when the source records none.
+_Avoid_: nickname (vague), laqab (a different name element)
+
+**Laqab**:
+The descriptive honorific or epithet attached to a narrator's name (e.g. al-Siddiq), stored as the source states it; null when the source records none. Not the kunya and not a spelling variant of the canonical name.
+_Avoid_: title (vague), kunya (a teknonym)
+
+**Tabaqa**:
+The generation label a source gives a narrator in the Isnad (the tabaqat classification), stored as the source's own text rather than an integer level: classification systems differ between critics, and a bare number would imply a system the row does not record. Null when the source states none.
+_Avoid_: level, generation number (both imply one universal scale)
+
+**Critic assessment**:
+One hadith critic's recorded verdict on a narrator, as jarh wa ta'dil records it: the critic's key, the critic's own verdict term (`thiqa`, `saduq`, `la-ba'sa-bihi`, `dhaif`, `matruk`, …), and where the critic recorded it. Stored as a map keyed by critic, kept verbatim; the vocabulary is open, never a closed enum, because the discipline distinguishes terms a closed list would merge. Distinct from a chain's Grade, which classifies the Isnad rather than the narrator.
+_Avoid_: rating, score (imply a numeric scale), narrator grade (the Grade is the chain's)
+
 **Isnad**:
 The ordered chain of narrators through which a hadith was transmitted. From v2 stored as structured rows (narrators + chains), not prose; grading applies to the Isnad, not the Matn (ADR-0012).
 _Avoid_: sanad (unqualified romanization drift), chain (unqualified)

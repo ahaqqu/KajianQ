@@ -10,5 +10,10 @@ export { memoryFeedbackMethods } from "./memory-rag-store-feedback";
 export { memoryAuthMethods } from "./memory-rag-store-auth";
 export { memoryChatMethods } from "./memory-rag-store-chat";
 export { memoryModelConfigMethods } from "./memory-rag-store-model-config";
+export {
+  memoryNarratorMethods,
+  type MemoryNarratorMethods,
+  type SeededChain,
+} from "./memory-rag-store-narrator";
 export { matchesMetadataFilters } from "./memory-rag-store-filter";
 export { memoryScopeMethods, toReadChild } from "./memory-rag-store-scope";

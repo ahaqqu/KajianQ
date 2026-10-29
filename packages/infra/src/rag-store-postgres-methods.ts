@@ -1,5 +1,6 @@
 import type { SqlRunner } from "./rag-store-postgres-errors";
 import { postgresModelConfigMethods } from "./rag-store-postgres-model-config";
+import { postgresNarratorMethods } from "./rag-store-postgres-narrator";
 import { postgresStoreMethods } from "./rag-store-postgres-parts";
 
 /**
@@ -9,5 +10,9 @@ import { postgresStoreMethods } from "./rag-store-postgres-parts";
  * concern.
  */
 export function postgresMethods(sql: SqlRunner) {
-  return { ...postgresStoreMethods(sql), ...postgresModelConfigMethods(sql) };
+  return {
+    ...postgresStoreMethods(sql),
+    ...postgresModelConfigMethods(sql),
+    ...postgresNarratorMethods(sql),
+  };
 }

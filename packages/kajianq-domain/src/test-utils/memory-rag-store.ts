@@ -6,6 +6,7 @@ import {
   type DocParentInsert,
   type FeedbackInsert,
   type ModelConfigRecord,
+  type NarratorRecord,
   type RagStore,
   type SimilarChild,
 } from "@app/infra";
@@ -17,9 +18,11 @@ import {
   memoryEvalMethods,
   memoryFeedbackMethods,
   memoryModelConfigMethods,
+  memoryNarratorMethods,
   memoryScopeMethods,
   toReadChild,
   type MemoryAdminAccessRecord,
+  type SeededChain,
 } from "./memory-rag-store-parts";
 
 /**
@@ -52,6 +55,10 @@ export function createMemoryRagStore(): RagStore & {
   allAdminAccess: () => readonly MemoryAdminAccessRecord[];
   /** The model-config mirror, sorted like the adapter's read (test introspection). */
   allModelConfigs: () => readonly ModelConfigRecord[];
+  /** Seed one narrator row (the seam has no ingestion writes yet). */
+  seedNarrator: (narrator: NarratorRecord) => void;
+  /** Seed one chain row; `seq` is its store-assigned insertion order in the neutral read. */
+  seedChain: (chain: SeededChain) => void;
   cosineSearch: (
     track: "primary" | "fallback",
     query: readonly number[],
@@ -122,6 +129,10 @@ export function createMemoryRagStore(): RagStore & {
     rows: modelConfigRows,
     now: () => Date.now(),
   });
+  const narratorMethods = memoryNarratorMethods({
+    narrators: new Map<string, NarratorRecord>(),
+    chains: new Map<string, SeededChain>(),
+  });
 
   const cosine = (a: readonly number[], b: readonly number[]): number => {
     let dot = 0;
@@ -138,6 +149,7 @@ export function createMemoryRagStore(): RagStore & {
   const store: RagStore = {
     ...adminMethods,
     ...modelConfigMethods,
+    ...narratorMethods,
     insertDocParent(input) {
       return Effect.sync(() => {
         seq += 1;
@@ -272,6 +284,8 @@ export function createMemoryRagStore(): RagStore & {
     allFeedback: () => [...feedback.values()],
     allAdminAccess: adminMethods.allAdminAccess,
     allModelConfigs: modelConfigMethods.allModelConfigs,
+    seedNarrator: narratorMethods.seedNarrator,
+    seedChain: narratorMethods.seedChain,
     cosineSearch: (track, query, limit) =>
       Effect.runPromise(store.similaritySearch(track, query, { limit })),
   };
