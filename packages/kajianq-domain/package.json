@@ -5,7 +5,8 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./test-utils/*": "./src/test-utils/*"
+    "./test-utils/*": "./src/test-utils/*",
+    "./sanadset": "./src/sanadset.ts"
   },
   "scripts": {
     "check": "tsc -p tsconfig.json --noEmit"

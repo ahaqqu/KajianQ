@@ -43,6 +43,7 @@
     "eval:decision-bench": "bun packages/eval/scripts/decision-bench.mjs",
     "ingest:quran": "bun packages/kajianq-domain/scripts/ingest-quran.mjs",
     "ingest:hadith": "bun packages/kajianq-domain/scripts/ingest-hadith.mjs",
+    "study:sanadset": "bun packages/kajianq-domain/scripts/sanadset-study.mjs",
     "e2e": "bddgen && playwright test",
     "api:serve": "bun apps/api/src/boot.ts",
     "api:cleanup": "bun apps/api/src/cleanup.ts",
