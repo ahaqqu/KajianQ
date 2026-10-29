@@ -106,7 +106,9 @@ function exportTarget(exports: Readonly<Record<string, string>>, subpath: string
     const suffix = key.slice(star + 1);
     if (!subpath.startsWith(prefix) || !subpath.endsWith(suffix)) continue;
     if (subpath.length < prefix.length + suffix.length) continue;
-    return target.replace("*", subpath.slice(prefix.length, subpath.length - suffix.length));
+    const inner = subpath.slice(prefix.length, subpath.length - suffix.length);
+    const at = target.indexOf("*");
+    return at < 0 ? target : `${target.slice(0, at)}${inner}${target.slice(at + 1)}`;
   }
   return null;
 }
