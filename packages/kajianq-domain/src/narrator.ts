@@ -5,11 +5,14 @@ import { GRADES, type Grade } from "./filters";
  * The domain pack's view of the graph rows the store seam calls narrators and
  * narrator chains, bound to CONTEXT.md's vocabulary.
  *
- * The store's records are role-named on purpose (the engine never names a domain
- * concept): the pack is where `NarratorChainRecord` becomes the **Isnad** — the
- * ordered chain of narrators through which a hadith was transmitted — and where a
- * grade is narrowed to the four-value Grade vocabulary instead of an opaque
- * string.
+ * The engine's physical and record names are role-based, and its records carry the
+ * pack's own columns as pass-through it never interprets: the pack owns the
+ * concepts and narrows the rows. This is where `NarratorChainRecord` becomes the
+ * **Isnad** — the ordered chain of narrators through which a hadith was
+ * transmitted — and where a grade is narrowed to the four-value Grade vocabulary
+ * instead of an opaque string. The boundary gate's remaining terms are
+ * review-enforced (ADR-0019), so this ownership is what keeps the two
+ * vocabularies honest.
  *
  * The two readers below are the seam's typed boundary, and they refuse rather
  * than coerce: a stored grade outside the vocabulary, or a reliability map whose

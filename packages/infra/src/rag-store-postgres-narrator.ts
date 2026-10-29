@@ -103,10 +103,13 @@ export function postgresNarratorMethods(
     },
 
     getNarratorsByIds(ids) {
-      // Canonicalise once, before dedupe, SQL and lookup: Postgres accepts braces
-      // and any case for a uuid and returns the lowercase form, so the map cannot
-      // be keyed by the caller's spelling. The first spelling of each canonical id
-      // is kept for a missing report; a blank id addresses nothing.
+      // Canonicalise once, before dedupe, SQL and lookup: the seam's spelling
+      // tolerance (padding, a matched brace pair, case) is wider than what Postgres
+      // accepts raw, and every row it returns is in the canonical lowercase form,
+      // so the map cannot be keyed by the caller's spelling. A malformed spelling
+      // is left as given — the query rejects it rather than the seam repairing it.
+      // The first spelling of each canonical id is kept for a missing report; a
+      // blank id addresses nothing.
       const requested = new Map<string, string>();
       for (const raw of ids) {
         const canonical = canonicalNarratorId(raw);

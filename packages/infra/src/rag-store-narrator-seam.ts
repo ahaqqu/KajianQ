@@ -78,14 +78,25 @@ export type NarratorChainRecord = {
 };
 
 /**
- * The canonical spelling of a narrator id: trimmed, braces stripped, lowercased.
- * Postgres accepts every one of those spellings of a uuid and returns the canonical
- * lowercase form, so a read maps rows and caller ids under this form while
- * `missingIds` keeps the caller's own spelling. A value that is not a uuid is not
- * repaired here; the query rejects it as a `constraint` StoreError.
+ * The canonical spelling of a narrator id: surrounding whitespace trimmed, one
+ * matched brace pair stripped, lowercased.
+ *
+ * Only the whole-value form `{uuid}` is stripped, and only when the interior holds
+ * no brace of its own (its own padding is trimmed). An unbalanced (`{uuid`,
+ * `uuid}`), doubled (`{{uuid}}`) or empty (`{}`) pair is not a spelling of a uuid,
+ * so it is passed through unchanged and the query rejects it as a `constraint`
+ * StoreError instead of this function repairing it into a resolved id or a blank.
+ *
+ * Postgres accepts the braced, any-case form and returns the canonical lowercase
+ * form, but not the padded spellings the seam tolerates; trimming and the
+ * matched-pair strip above are the seam's own canonicalisation, so a read maps
+ * rows and caller ids under this form while `missingIds` keeps the caller's own
+ * spelling.
  */
 export function canonicalNarratorId(id: string): string {
-  return id.trim().replace(/^\{/, "").replace(/\}$/, "").trim().toLowerCase();
+  const trimmed = id.trim();
+  const inner = /^\{([^{}]+)\}$/.exec(trimmed)?.[1]?.trim();
+  return (inner !== undefined && inner !== "" ? inner : trimmed).toLowerCase();
 }
 
 /**

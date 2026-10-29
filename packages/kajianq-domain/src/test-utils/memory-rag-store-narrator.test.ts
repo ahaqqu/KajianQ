@@ -108,6 +108,19 @@ describe("the memory double's narrator reads", () => {
     expect(lookup.narrators.map((row) => row.id)).toEqual(["n-c", "n-a"]);
     expect(lookup.missingIds).toEqual(["N-MISSING"]);
   });
+
+  it("does not repair a malformed brace spelling into a seeded id", async () => {
+    // Each shape is one brace operation away from a seeded narrator. The adapter
+    // rejects all four at the type cast; the double has no type system, so here
+    // they must at least stay unresolved instead of being repaired into `n-a` or
+    // blanked into the ignored-empty case.
+    const store = storeWithFixture();
+    for (const malformed of ["{n-a", "n-a}", "{{n-a}}", "{}"]) {
+      const lookup = await Effect.runPromise(store.getNarratorsByIds([malformed]));
+      expect(lookup.narrators).toEqual([]);
+      expect(lookup.missingIds).toEqual([malformed]);
+    }
+  });
 });
 
 describe("the memory double's chain reads", () => {

@@ -314,6 +314,19 @@ run("narrator and chain reads (real Postgres adapter, memory equal)", () => {
     expect(missing.missingIds).toEqual([`{${NARRATOR_UNKNOWN.toUpperCase()}}`]);
   });
 
+  it("refuses every malformed brace spelling instead of repairing it into an id", async () => {
+    // Each shape is one brace operation away from the seeded row: stripping a
+    // leading and a trailing brace independently would resolve the first two,
+    // reduce `{{uuid}}` to a braced uuid Postgres accepts, and blank `{}` into
+    // the ignored-empty case. The adapter must pass each through to the type
+    // cast and fail the seam's documented `constraint` contract. The memory
+    // double has no type system to reject a spelling with, so this case is the
+    // adapter's own, like `not-a-uuid` above.
+    for (const malformed of [`{${NARRATOR_ONE}`, `${NARRATOR_ONE}}`, `{{${NARRATOR_ONE}}}`, "{}"]) {
+      expect((await runFail(postgres.getNarratorsByIds([malformed]))).kind).toBe("constraint");
+    }
+  });
+
   it("returns a child's chains in store-assigned insertion order, sequence verbatim", async () => {
     const chains = await both((store) => store.listChainsForChild(childIds[0]!, { limit: 10 }));
     expect(chains.map((chain) => chain.id)).toEqual([chainIds[0], chainIds[1], chainIds[3]]);
