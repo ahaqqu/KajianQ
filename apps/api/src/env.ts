@@ -69,6 +69,15 @@ export type AppBindings = {
    * refuses more ids than its ceiling, so a value above it is a typed config failure
    * when the chat wiring builds — never a trace that fails to parse. */
   CALLER_PRIORITY_K?: string;
+  /** The per-chain evidence read's budgets, as non-negative integer strings: how many
+   * retrieved children are read for one answer (`0` reads none and records every
+   * chain-bearing child as unread) and how many transmission rows are carried per
+   * child (at least 1 and at most the trace contract's bound; `0` and above-bound are
+   * typed config failures when the chat wiring builds). Absent = the domain default
+   * for the child budget and the contract's bound for the row budget. Both ride the
+   * same filtered env view as the caps above. */
+  CHAIN_EVIDENCE_CHILD_CAP?: string;
+  CHAIN_EVIDENCE_CHAIN_CAP?: string;
   /** The single admin credential (ADR-0064). Optional: unset means the admin surface
    * is disabled — every admin route answers the uniform 401 — and the public
    * product is untouched, so this variable can never be a boot precondition. */

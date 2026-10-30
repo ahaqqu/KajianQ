@@ -183,6 +183,8 @@ export function gradeLabel(grade: string): string {
  * consulted, which the trace must not confuse with a read that found nothing.
  * A read budget that leaves chain-bearing children unread still records them, so
  * the frames can mark those passages instead of flattening their grade.
+ * A zero row budget reads nothing and records every chain-bearing child unread;
+ * the config parser refuses `0` and this guards a caller that reads directly.
  */
 export function readChainEvidence(input: {
   chunks: readonly Chunk[];
@@ -194,9 +196,8 @@ export function readChainEvidence(input: {
   chainCap?: number;
 }): Effect.Effect<{ chunks: Chunk[]; detail: ChainEvidenceDetail | null }, { cause: unknown }> {
   const childCap = Math.max(0, input.childCap ?? DEFAULT_CHAIN_EVIDENCE_CHILD_CAP);
-  // The trace contract refuses a longer list, so clamp where the record is
-  // produced: a composition root that forgets the config refusal cannot emit an
-  // event the store's trace parse rejects after the answer was produced.
+  // The trace contract refuses a longer list, so clamp here: a caller that
+  // ignores the config refusal must not emit an event the store will reject.
   const chainCap = Math.min(
     Math.max(0, input.chainCap ?? CHAIN_EVIDENCE_TRACE_LIMIT),
     CHAIN_EVIDENCE_TRACE_LIMIT,
@@ -204,8 +205,13 @@ export function readChainEvidence(input: {
   return Effect.gen(function* () {
     const chainBearing = input.chunks.filter((chunk) => bearsChain(chunk));
     if (chainBearing.length === 0) return { chunks: [...input.chunks], detail: null };
-    const candidates = chainBearing.slice(0, childCap);
-    const notConsulted = chainBearing.slice(childCap).map((chunk) => chunk.id);
+    // A zero row budget carries nothing, so no child is read and every
+    // chain-bearing child is recorded unread rather than consulted-and-empty.
+    const zeroBudget = chainCap === 0;
+    const candidates = zeroBudget ? [] : chainBearing.slice(0, childCap);
+    const notConsulted = (zeroBudget ? chainBearing : chainBearing.slice(childCap)).map(
+      (chunk) => chunk.id,
+    );
     const unread = notConsulted.length > 0 ? { notConsulted } : {};
     if (candidates.length === 0) {
       return {

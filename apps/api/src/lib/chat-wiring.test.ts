@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vite-plus/test";
-import { CALLER_PRIORITY_K } from "@app/contracts";
+import { CALLER_PRIORITY_K, CHAIN_EVIDENCE_TRACE_LIMIT } from "@app/contracts";
 import { runStoreEffect } from "@app/kajianq-domain";
 import { createMemoryRagStore } from "@app/kajianq-domain/test-utils/memory-rag-store";
 import {
@@ -9,6 +9,7 @@ import {
   ChatConfigError,
   createProvidersFromEnv,
   parseCallerPriorityK,
+  parseChainEvidenceChainCap,
   parseLabelLookupCap,
   parseNeighbourCap,
   parseNeighbourRadius,
@@ -183,6 +184,37 @@ describe("parseScopeExpansionCap — ADR-0045's budget knob", () => {
       callerPriorityK: 2,
     });
     expect(buildChatWiring(keyed).pipeline.retrieval.callerPriorityK).toBeUndefined();
+  });
+
+  it("parses the per-chain row budget with a refused 0, the trace ceiling, and wires it", () => {
+    expect(parseChainEvidenceChainCap(undefined)).toBeUndefined();
+    expect(parseChainEvidenceChainCap("  ")).toBeUndefined();
+    expect(parseChainEvidenceChainCap("1")).toBe(1);
+    expect(parseChainEvidenceChainCap(String(CHAIN_EVIDENCE_TRACE_LIMIT))).toBe(
+      CHAIN_EVIDENCE_TRACE_LIMIT,
+    );
+    // `0` has no disable meaning here: the read would consult a child, carry no row
+    // and record nothing, so the citation would fall back to the flattened grade. It
+    // is a typed config failure like the above-limit value, not a second spelling of
+    // "off": CHAIN_EVIDENCE_CHILD_CAP=0 is the read's disable.
+    expect(() => parseChainEvidenceChainCap("0")).toThrow(ChatConfigError);
+    expect(() => parseChainEvidenceChainCap("0")).toThrow(
+      /CHAIN_EVIDENCE_CHAIN_CAP must be at least 1/,
+    );
+    expect(() => parseChainEvidenceChainCap(String(CHAIN_EVIDENCE_TRACE_LIMIT + 1))).toThrow(
+      /CHAIN_EVIDENCE_CHAIN_CAP must not exceed/,
+    );
+    for (const bad of ["-1", "abc", "1.5", "12x"]) {
+      expect(() => parseChainEvidenceChainCap(bad)).toThrow(/CHAIN_EVIDENCE_CHAIN_CAP/);
+    }
+    const keyed = { DATABASE_URL: "postgres://x", DEEPSEEK_API_KEY: "k" };
+    expect(
+      buildChatWiring({ ...keyed, CHAIN_EVIDENCE_CHAIN_CAP: "2" }).pipeline.retrieval,
+    ).toMatchObject({ chainEvidenceChainCap: 2 });
+    expect(buildChatWiring(keyed).pipeline.retrieval.chainEvidenceChainCap).toBeUndefined();
+    expect(() => buildChatWiring({ ...keyed, CHAIN_EVIDENCE_CHAIN_CAP: "0" })).toThrow(
+      ChatConfigError,
+    );
   });
 });
 

@@ -146,10 +146,8 @@ describe("readChainEvidence — the stored transmission, never a selection", () 
     // page: the evidence block carries the rows, so a reader cannot read one
     // verdict for a passage whose chains disagree.
     const rendered = renderEvidenceChunk(chunks[0]!);
-    // Assert the label's head and the absence of the flat parenthetical before the
-    // chain evidence: `not.toContain("(Sahih)]")` could never fire here because
-    // the label ends with the rows, and a surviving `(Sahih)` before them would
-    // have gone unnoticed.
+    // The label ends with the rows, so assert its head and that no flat
+    // parenthetical survives before them.
     expect(rendered).toContain("[HR. Bukhari no. 1 (Dhaif — al-daraqutni");
     expect(rendered).not.toContain("(Sahih) (");
     expect(rendered).toContain("Dhaif — al-daraqutni");
@@ -285,9 +283,8 @@ describe("readChainEvidence — the stored transmission, never a selection", () 
   });
 
   it("reads six of eight chain-bearing children and records the remaining two unread", async () => {
-    // The default cap is six; a route with two to four sub-queries routinely puts
-    // more chain-bearing children in context. The old read sliced them away and
-    // left each unread citation rendering its flattened grade with no marker.
+    // The children past the cap must be recorded unread, not silently dropped:
+    // their citations then carry the unread marker instead of the flattened grade.
     const ids = ["h1", "h2", "h3", "h4", "h5", "h6", "h7", "h8"];
     const { store, reads } = fakeStore({
       chains: ids.map((childId) => chain({ childId })),
@@ -327,6 +324,32 @@ describe("readChainEvidence — the stored transmission, never a selection", () 
       notConsulted: ["h1"],
     });
     expect(isnadEvidenceOf(chunks[0]!)).toBeNull();
+  });
+
+  it("records every chain-bearing child as unread when the per-child row budget is zero", async () => {
+    const { store, reads } = fakeStore({ chains: [chain()], narrators: [narrator()] });
+    const { chunks, detail } = await Effect.runPromise(
+      readChainEvidence({ chunks: [hadithChunk("h1")], store, bridge, chainCap: 0 }),
+    );
+    // A zero row budget can carry nothing, so the read is never issued: the child
+    // is recorded unread, which keeps "the rows were not read" distinct from a
+    // read that issued and found no row (`consulted: 1`, empty `children`).
+    expect(reads).toEqual([]);
+    expect(detail).toEqual({
+      consulted: 0,
+      perChildCap: 0,
+      children: [],
+      missingNarratorIds: [],
+      notConsulted: ["h1"],
+    });
+    expect(isnadEvidenceOf(chunks[0]!)).toBeNull();
+    const parsed = v.safeParse(TraceEventSchema, {
+      stage: "retriever" as const,
+      kind: "chain_evidence" as const,
+      detail,
+      at: 1,
+    });
+    expect(parsed.success).toBe(true);
   });
 
   it("clamps the per-child row bound to the trace contract's limit", async () => {

@@ -34,10 +34,11 @@ export function createRagStoreFromEnv(env: { DATABASE_URL?: string }): RagStore 
 /**
  * The one parser behind every bounded retrieval knob: absent/empty = the domain
  * default, a malformed value is a typed config failure naming the variable, and
- * **`0` is the documented disable while a negative value is malformed config** —
- * `-1` is not a second spelling of "off". The failure is raised when the chat
- * wiring builds, which the chat route does **per request**, so the process boots
- * green and every `/v1/chat` request answers 503.
+ * **`0` is the documented disable unless a caller narrows the range** — `-1` is
+ * not a second spelling of "off". The per-chain row budget refuses 0 because
+ * carrying no row would flatten a chain-bearing passage. The failure is raised
+ * when the chat wiring builds, which the chat route does **per request**, so the
+ * process boots green and every `/v1/chat` request answers 503.
  */
 function parseBoundedKnob(raw: string | undefined, name: string): number | undefined {
   if (raw === undefined || raw.trim() === "") return undefined;
@@ -83,13 +84,22 @@ export function parseChainEvidenceChildCap(raw: string | undefined): number | un
 }
 
 /**
- * `CHAIN_EVIDENCE_CHAIN_CAP`: rows carried per child. A value above the trace
- * contract's own bound is refused here rather than at write time, because the
- * `chain_evidence` event cannot persist a longer list — a configured cap above
- * it would fail the answer's trace parse for every hadith answer the box serves.
+ * `CHAIN_EVIDENCE_CHAIN_CAP`: rows carried per child. The value is bounded on both
+ * sides and refused here rather than at read or write time: a cap above the trace
+ * contract's limit cannot persist a longer list (the answer's trace parse would
+ * fail), and `0` would carry no row for a child the read consulted — the child and
+ * its `moreMayExist` would be lost, leaving the citation to fall back to the
+ * flattened grade. Disabling the read entirely is `CHAIN_EVIDENCE_CHILD_CAP=0`'s
+ * job, not this knob's.
  */
 export function parseChainEvidenceChainCap(raw: string | undefined): number | undefined {
   const value = parseBoundedKnob(raw, "CHAIN_EVIDENCE_CHAIN_CAP");
+  if (value === 0) {
+    throw new ChatConfigError(
+      `chat route: CHAIN_EVIDENCE_CHAIN_CAP must be at least 1 (got "${raw}"); 0 would carry no row and flatten a chain-bearing passage — set CHAIN_EVIDENCE_CHILD_CAP=0 to disable the read`,
+      "CHAIN_EVIDENCE_CHAIN_CAP",
+    );
+  }
   if (value !== undefined && value > CHAIN_EVIDENCE_TRACE_LIMIT) {
     throw new ChatConfigError(
       `chat route: CHAIN_EVIDENCE_CHAIN_CAP must not exceed the trace's bound of ${CHAIN_EVIDENCE_TRACE_LIMIT} (got "${raw}")`,

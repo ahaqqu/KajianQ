@@ -9,7 +9,7 @@ import {
 } from "@app/kajianq-domain";
 import { createMemoryRagStore } from "@app/kajianq-domain/test-utils/memory-rag-store";
 import { createStubChatProviders } from "@app/kajianq-domain/test-utils/stub-chat-providers";
-import { buildChatWiring } from "./chat-wiring";
+import { buildChatWiring, ChatConfigError } from "./chat-wiring";
 
 /**
  * INTEGRATION TEST — every retriever tunable the pipeline deps carry is driven through
@@ -470,5 +470,14 @@ describe("buildChatWiring — every configured retriever tunable reaches its arm
       tunable.question,
     );
     tunable.assert(run);
+  });
+
+  it("refuses a zero per-chain row budget instead of carrying no row", () => {
+    // The child budget's `0` is the read's disable, probed above as a run. The row
+    // budget has no disable meaning: a zero would consult a child, carry no row and
+    // lose the unread record, so the composition root refuses it before any read.
+    expect(() => buildChatWiring({ ...KEYED_ENV, CHAIN_EVIDENCE_CHAIN_CAP: "0" })).toThrow(
+      ChatConfigError,
+    );
   });
 });

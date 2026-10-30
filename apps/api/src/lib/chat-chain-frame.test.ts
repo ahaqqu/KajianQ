@@ -300,8 +300,8 @@ describe("narratorNamesOrEmpty — the display join degrades by omission", () =>
       }) as never,
     );
     // The production join's whole job: ask the store for the recorded ids and run
-    // that Effect through the injected bridge. A fetcher that ignored either side
-    // would pass the old assertion, which never called it.
+    // that Effect through the injected bridge; the assertions below pin both sides
+    // of that delegation.
     await expect(fetcher([NARRATOR_ONE])).resolves.toBe(lookup);
     expect(asked).toEqual([[NARRATOR_ONE]]);
     expect(bridged).toEqual([effect]);
