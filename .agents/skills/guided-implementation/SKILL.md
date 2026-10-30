@@ -67,8 +67,8 @@ For each area the plan touches, verify compliance before writing code.
 ### Security
 
 - [ ] Valibot validates every external input boundary.
-- [ ] Secrets arrive through the root-owned `EnvironmentFile=/etc/kajianq/api.env` (mode 0600, never the unit text, never `argv`) or the CI environment — never committed, never written empty over a live value. A new key joins `apps/api/src/lib/server.ts`'s `PASSTHROUGH_KEYS` **and** `provision/vps/api.env.example` (a test pins the two in sync).
-- [ ] `secure-headers` middleware applied (`packages/hardening`); CORS locked to known origins (`ALLOWED_ORIGINS`). Static paths served by nginx carry their own headers (`provision/vps/nginx/kajianq.conf`).
+- [ ] Secrets arrive through the root-owned `EnvironmentFile=/etc/kajianq/api.env` (mode 0600, never the unit text, never `argv`) or the CI environment — never committed, never written empty over a live value. A new key joins `apps/api/src/lib/server.ts`'s `PASSTHROUGH_KEYS` **and** the `kajianq` env template in [ahaqqu/vps](https://github.com/ahaqqu/vps).
+- [ ] `secure-headers` middleware applied (`packages/hardening`); CORS locked to known origins (`ALLOWED_ORIGINS`). Static paths served by nginx carry their own headers (the `kajianq` nginx template in [ahaqqu/vps](https://github.com/ahaqqu/vps)).
 
 ### Testing
 

@@ -1,12 +1,12 @@
 # VPS setup and hardening — bare box to green deploy
 
-> **Frozen path (ADR-0065).** The host-configuration install path in this
-> repository (`provision/vps/apply.sh`) is frozen: new host configuration goes
-> to the private [`ahaqqu/vps`](https://github.com/ahaqqu/vps) repository, whose
-> root applier is bootstrapped once and thereafter applies that repository's
-> protected branch. This document remains the record of how the box was built
-> and still describes the running box; the path stays the deploy's drift
-> baseline until the switchover retires it.
+> **Host configuration lives in [`ahaqqu/vps`](https://github.com/ahaqqu/vps).**
+> Its root applier installs nginx, systemd units and timers, logrotate, sudoers,
+> the Postgres posture, journald retention and the env templates from the
+> `kajianq` manifest; a merged PR there is the host change. This repository
+> carries no host-config copy and no installer. This guide remains the record of
+> the box baseline, the database/certificate/backup prerequisites and the deploy
+> path.
 
 You have a fresh Debian VPS, no domain necessarily, and you want KajianQ
 serving. This takes you from a bare box to a green deploy and a hardened,
@@ -19,8 +19,8 @@ backups, and restore discipline fixed by
 [`adr/0043-netcup-vps-hosting-gdpr-posture.md`](../adr/0043-netcup-vps-hosting-gdpr-posture.md)
 (ADR-0043 decision 4, issue #180). The Art. 30 record's TOMs that these steps
 implement are in [`docs/GDPR-ARTICLE-30-RECORD.md`](./GDPR-ARTICLE-30-RECORD.md)
-§7. Hardening is not a separate pass here: `apply.sh` places it in §7, so a box
-set up by following this document is hardened by construction.
+§7. Hardening is not a separate pass here: the host configuration installs it in
+§7, so a box set up by following this document is hardened by construction.
 
 This is the **fork-and-run** path. The other documents in this repo record how
 _the project's own_ box was set up and how it is operated day to day; this one
@@ -55,10 +55,11 @@ PostgreSQL + pgvector   127.0.0.1:5432 only
 ```
 
 The deploy path is CI-owned: a push to `main` (or a manual dispatch) builds the
-web bundle and three Bun bundles, ships them over `rsync`, restarts the API,
-runs the reclamation once, asserts the backup unit is healthy, and smokes the
-public URL through the proxy and TLS. The box itself runs no build tooling and
-needs no `node_modules`.
+web bundle and three Bun bundles, uploads one artifact, asks the root helper to
+swap it and restart the API, runs the reclamation once, asserts the backup unit's
+provenance, smokes the public URL through the proxy and TLS, then runs the
+shared-box doctor. The box itself runs no build tooling and needs no
+`node_modules`.
 
 **Cost note, stated plainly.** The serving path calls paid LLM APIs. Price is
 weighed in every model decision and each query's cost is recorded on its trace,
@@ -66,35 +67,17 @@ but a live instance costs money per question. Ingestion and the Golden Set smoke
 also spend. Budget for it before you start, and read [§9](#9-what-it-costs-and-what-you-need-to-buy)
 before provisioning keys.
 
-### Everything `apply.sh` places, and where it comes from
+### Host configuration comes from ahaqqu/vps
 
-Every config below is config-as-code under [`provision/vps/`](../provision/vps/)
-— placed and enabled by `apply.sh` in §7, never hand-copied. The authoritative
-list of what it places is what `provision/vps/apply.sh --list-artifacts` prints:
-the deploy's preflight compares exactly that list with the checkout
-([`docs/VPS-OPERATIONS.md`](VPS-OPERATIONS.md) §1.1 step 1), so a change to a
-provisioned file is a deploy failure until it is applied. This table is the map
-from repo file to host path, including the files the deploy bundles rather than
-`apply.sh` placing, so you can review a change before it lands:
-
-| File                                        | Lands at                                             | Purpose                                                                                |
-| ------------------------------------------- | ---------------------------------------------------- | -------------------------------------------------------------------------------------- |
-| `apply.sh`                                  | (runs in place)                                      | Places every config below and enables the units                                        |
-| `nginx/kajianq.conf`                        | `/etc/nginx/sites-available/kajianq.conf`            | Reverse proxy + the minimal access-log format                                          |
-| `nginx/kajianq.conf` (enabled)              | `/etc/nginx/sites-enabled/kajianq.conf` (symlink)    | Enables the block; drift = the link missing or retargeted                              |
-| `logrotate/kajianq-proxy`                   | `/etc/logrotate.d/kajianq-proxy`                     | 14-day proxy access/error-log rotation                                                 |
-| `logrotate/kajianq-postgres`                | `/etc/logrotate.d/kajianq-postgres`                  | 14-day Postgres log rotation                                                           |
-| `journald/kajianq.conf`                     | `/etc/systemd/journald.conf.d/kajianq.conf`          | 14-day / 512M cap for API structured logs                                              |
-| `postgres/99-kajianq.conf`                  | `/etc/postgresql/<v>/main/conf.d/99-kajianq.conf`    | Loopback-only listener; no statement text in logs                                      |
-| `systemd/kajianq-api.service`               | `/etc/systemd/system/kajianq-api.service`            | Unprivileged API unit, credentials from an env file                                    |
-| `systemd/kajianq-cron.service` / `.timer`   | `/etc/systemd/system/kajianq-cron.{service,timer}`   | Nightly anonymous-session reclamation (ADR-0017) at 03:17                              |
-| `systemd/kajianq-backup.service` / `.timer` | `/etc/systemd/system/kajianq-backup.{service,timer}` | Daily encrypted backup, enabled by `apply.sh`                                          |
-| `backup/kajianq-backup.mjs`                 | (bundled to `/srv/kajianq/api/backup.js`)            | Encrypted dump + manifest + 30-day rolling retention                                   |
-| `backup/kajianq-backup-pending.sh`          | `/usr/local/sbin/kajianq-backup-pending`             | Marks every run pending before the job body — the deploy gate refuses a pending record |
-| `backup/kajianq-restore.mjs`                | (runs in place)                                      | Restore into a scratch target, re-applying erasure                                     |
-| `backup/restore-drill.mjs`                  | (CI + on demand)                                     | The executable restore test                                                            |
-| `sudoers/kajianq-deploy`                    | `/etc/sudoers.d/kajianq-deploy`                      | The deploy identity's entire root grant — two commands, installed behind `visudo -cf`  |
-| `proxy.env.example` / `backup.env.example`  | `/etc/kajianq/*.env`                                 | The only place real hostnames/credentials appear                                       |
+The nginx site, the systemd units and timers, the logrotate stanzas, the
+journald cap, the Postgres posture and the sudoers grant — plus the env
+templates that carry placeholders — are files in the private
+[`ahaqqu/vps`](https://github.com/ahaqqu/vps) repository under `kajianq/`. Its
+root-owned applier fetches the protected branch on a timer, validates every
+candidate before touching an installed file, applies the set as one recorded
+transaction and restores the previous bytes if any step fails; a merged PR there
+is the host change. This repository ships the application artifact and the
+backup tooling, and keeps no copy of the host files (ADR-0065).
 
 ### Two hardening choices worth stating, since both are deliberate
 
@@ -163,24 +146,26 @@ confusing rather than obvious:
 1. **Box baseline** — you need a non-root login and a firewall before anything
    else, and you need to prove that login works from a _second_ terminal before
    you disable password auth.
-2. **Runtime packages** — `apply.sh` installs configuration but assumes nginx,
-   Postgres, restic, and **Bun at `/usr/bin/bun`** already exist. Bun's location
+2. **Runtime packages** — the host configuration assumes nginx, Postgres,
+   restic, and **Bun at `/usr/bin/bun`** already exist. Bun's location
    is load-bearing: the systemd units run with `ProtectHome=yes`, so a Bun under
    `/home` is invisible to them and `ExecStart` fails with "no such file or
    directory". Install it system-wide, not via the `~/.bun` installer.
-3. **Database role and database** — `apply.sh` installs the Postgres _posture_
-   but does not create your role or database. Create them before the first
-   deploy, or the API starts and immediately fails to connect.
+3. **Database role and database** — the host configuration installs the
+   Postgres _posture_ but does not create your role or database. Create them
+   before the first deploy, or the API starts and immediately fails to connect.
 4. **TLS certificate** — the deploy smoke hits `https://`, so the certificate
    must exist before the first deploy, not after.
-5. **The checkout on the box** — `apply.sh` runs _from a checkout_, and so does
-   the on-host restore drill. How the repo gets there is your choice (git clone,
-   `git bundle`, rsync); the box needs the working tree, not a build.
-6. **Env files** — `proxy.env` on the box and `deploy.env` on whatever machine
-   you deploy from. Both scripts refuse to source a file with any group or other
-   permission bit, so `chmod 600` is enforced, not documented.
-7. **`apply.sh`** — places every config from `provision/vps/`, creates both
-   accounts, installs the sudo grant behind `visudo -cf`, enables the units.
+5. **The checkout on the box** — the on-host restore drill and the one-time
+   backup bootstrap run from a checkout. How the repo gets there is your choice
+   (git clone, `git bundle`, rsync); the box needs the working tree, not a
+   build.
+6. **Env files** — `api.env` and `backup.env` on the box, and `deploy.env` on
+   whatever machine you deploy from. `deploy.sh` refuses to source a file with
+   any group or other permission bit, so `chmod 600` is enforced, not documented.
+7. **Host configuration** — apply the `kajianq` manifest in `ahaqqu/vps`; its
+   applier installs the units, nginx site, retention files and grant, and the
+   one-time host setup creates the service accounts it names.
 8. **Build and deploy** — either dispatch the workflow, or run `deploy.sh`
    directly from your machine.
 9. **Prove it** — the deploy's own gates, plus the restore drill.
@@ -251,7 +236,7 @@ sudo ufw status verbose        # expect exactly 22, 80, 443 (v4 and v6)
 ### If you inherited a box already serving on :80/:443
 
 nginx cannot share those ports with another server. If a previous setup left
-Caddy running (or any other server), retire it **before** `apply.sh` runs — the
+Caddy running (or any other server), retire it **before** the host configuration is applied — the
 nginx render will fail to bind otherwise:
 
 ```bash
@@ -331,9 +316,10 @@ them are the same major.
 
 ## 3. Database role and database
 
-`apply.sh` installs the Postgres posture — the loopback-only listener and the
-log policy — but it deliberately does not create a role or a database. Do that
-yourself, and keep the password out of your shell history and out of the repo:
+The host configuration installs the Postgres posture — the loopback-only
+listener and the log policy — but it deliberately does not create a role or a
+database. Do that yourself, and keep the password out of your shell history and
+out of the repo:
 
 ```bash
 # Generate the password on the box and store it root-only. It never leaves.
@@ -390,10 +376,11 @@ sudo certbot certonly --nginx -d <your-host>
 
 You do not need to write a server block for this: Debian's nginx package ships
 a default site listening on :80, which is enough for certbot to work with.
-`apply.sh` installs the real server block in §7 and takes over :443 then.
+The host configuration installs the real server block in §7 and takes over :443
+then.
 
 Certbot installs its own renewal timer; you do not need a cron entry. Note where
-the files landed — you will need those two paths in `proxy.env`:
+the files landed — you will need those two paths in the `kajianq` manifest:
 
 ```
 /etc/letsencrypt/live/<your-host>/fullchain.pem
@@ -404,9 +391,9 @@ the files landed — you will need those two paths in `proxy.env`:
 
 ## 5. Get the checkout onto the box
 
-`apply.sh` runs from a checkout of this repository, and the on-host restore drill
-runs from the same tree. Put the working tree somewhere on the box; it does not
-need to be built. This guide uses `/srv/kajianq-src`.
+The on-host restore drill and the one-time backup bootstrap run from a checkout
+of this repository. Put the working tree somewhere on the box; it does not need
+to be built. This guide uses `/srv/kajianq-src`.
 
 ```bash
 sudo git clone https://github.com/<you>/<your-repo>.git /srv/kajianq-src
@@ -422,34 +409,21 @@ production-executed file is shipped by the deploy as a bundle under
 
 ## 6. Fill in the env files
 
-Four files carry every hostname, certificate path, and credential. Nothing else
-does. They are all root-owned and mode 0600, and both scripts **refuse** to
+Three files carry the credentials and endpoints the deploy and backup scripts
+read. They are all root-owned and mode 0600, and `deploy.sh` **refuses** to
 source a file with any group or other bit rather than trusting a documented
-`chmod` — a sourced file runs with the operator's privileges.
-
-### On the box: `/etc/kajianq/proxy.env`
-
-Drives the nginx render.
-
-```bash
-sudo install -d -o root -g root -m 0700 /etc/kajianq
-sudo install -o root -g root -m 0600 /srv/kajianq-src/provision/vps/proxy.env.example \
-    /etc/kajianq/proxy.env
-sudoedit /etc/kajianq/proxy.env
-```
-
-Fill in the four values: your hostname, the two certificate paths from step 4,
-and the loopback upstream (`http://127.0.0.1:8787` — leave it as-is unless you
-change the API port).
+`chmod` — a sourced file runs with the operator's privileges. The hostname,
+certificate paths and upstream belong to the `kajianq` manifest in `ahaqqu/vps`,
+whose root-only environment files feed the applier.
 
 ### On the box: `/etc/kajianq/api.env`
 
-The serving process's entire configuration. Copy the example **before** running
-`apply.sh`:
+The serving process's entire configuration. Create it root-owned and fill it in;
+the template lives with the host configuration in `ahaqqu/vps`:
 
 ```bash
-sudo install -o root -g root -m 0600 /srv/kajianq-src/provision/vps/api.env.example \
-    /etc/kajianq/api.env
+sudo install -d -o root -g root -m 0700 /etc/kajianq
+sudo install -o root -g root -m 0600 /dev/null /etc/kajianq/api.env
 sudoedit /etc/kajianq/api.env
 ```
 
@@ -537,13 +511,16 @@ Two more values are easy to overlook and both are load-bearing:
 
 ### On the box: `/etc/kajianq/backup.env`
 
-The backup target. The example defaults to a local path; an **off-box** target
-is strongly preferred, because a backup on the same disk as the database does
-not survive the disk. Any restic-supported backend works.
+The backup target. The template lives in `ahaqqu/vps` at
+`kajianq/env/backup.env.example`; its keys are `RESTIC_REPOSITORY`,
+`RESTIC_PASSWORD_FILE`, `PGDATABASE_URL` and `RESTORE_TARGET_URL`. Its example
+defaults to a local path, and an **off-box** target is strongly preferred,
+because a backup on the same disk as the database does not survive the disk.
+Any restic-supported backend works.
 
 ```bash
-sudo install -o root -g root -m 0600 /srv/kajianq-src/provision/vps/backup/backup.env.example \
-    /etc/kajianq/backup.env
+sudo install -d -o root -g root -m 0700 /etc/kajianq
+sudo install -o root -g root -m 0600 /dev/null /etc/kajianq/backup.env
 sudoedit /etc/kajianq/backup.env
 ```
 
@@ -594,42 +571,26 @@ sudo cat /etc/kajianq/restic.pass
 sudo sh -c 'set -a; . /etc/kajianq/backup.env; set +a; restic -r "$RESTIC_REPOSITORY" init'
 ```
 
-Now apply the configuration. This is idempotent — re-running it is safe and is
-the normal way to pick up a config change. Run it from a checkout pulled to the
-revision being deployed: the deploy's preflight compares every installed file
-with that checkout and refuses a box whose provisioning is stale, naming the
-file and, for a difference an apply clears, the apply
-([`docs/VPS-OPERATIONS.md`](VPS-OPERATIONS.md) §1.1 step 1, whose table lists
-what each refusal state ends with). A refusal whose remedy needs no apply
-closes with that remedy and no apply instruction — a path the deploy identity
-cannot read or search is one, and its remedy is that path's mode or ownership,
-because the apply installs into that tree and leaves the mode that hides it in
-place. One state's repair is followed by an install, so its remedy names both: a
-`conf.d` that is not a directory is repaired first (Postgres recreated so the
-path is a directory again), then applied, then deployed.
-
-```bash
-cd /srv/kajianq-src
-sudo provision/vps/apply.sh --env /etc/kajianq/proxy.env
-```
-
-`--dry-run` prints every action without writing, which is worth one pass the
-first time.
-
-What it does, in order: creates the `kajianq` service account and the
-`kajianq-deploy` identity; renders and installs the nginx server block, links it
-into `sites-enabled`, and reloads nginx; installs both logrotate stanzas and
-validates them; installs the journald cap; installs the Postgres posture where
-the server's `conf.d` directory exists (otherwise logs that Postgres must be
-installed and skips that step — the log/reachability posture is not applied on
-that box); installs and **enables** (does not start) the API
-and cron units; installs the backup units and enables the timer; installs the
-sudo grant for `kajianq-deploy` only after `visudo -cf` parses it.
+Now apply the host configuration. It is a PR in
+[`ahaqqu/vps`](https://github.com/ahaqqu/vps): the `kajianq` manifest holds every
+host file, and a merge is the host change — the root applier fetches the
+protected branch, validates the whole set and installs it as one transaction,
+restoring the previous bytes if any step fails. Bootstrap the applier once by
+following that repository's bootstrap runbook (the only step that needs root by
+hand); after that no human privileged step sits between a merged change and the
+live host. The one-time host setup also creates the accounts the manifest
+assumes — `kajianq` (system, `nologin`) runs the units, and `kajianq-deploy`
+uploads the artifact into `/srv/vps-incoming` as a member of `vps-upload` — and
+writes the root-only env files. The applier then renders and installs the nginx
+server block and reloads nginx, installs the units and timers, both logrotate
+stanzas, the journald cap, the Postgres posture and the sudo grant for
+`kajianq-deploy` only after `visudo -cf` parses it. Nginx and the certificate
+from §4 must exist first.
 
 ### Create the deploy identity's key
 
 CI authenticates as `kajianq-deploy`, never as your admin login — otherwise the
-workflow would hold an admin credential and the two-command grant would scope
+workflow would hold an admin credential and the bounded grant would scope
 nothing. Generate a key pair **for CI only** (on your deploying machine, not on
 the box), then install the public half:
 
@@ -637,15 +598,15 @@ the box), then install the public half:
 # On your deploying machine.
 ssh-keygen -t ed25519 -f ~/.ssh/kajianq-deploy -C kajianq-vps-deploy-key -N ''
 
-# On the box, as root — or pass the .pub to apply.sh's --deploy-pubkey instead
-# and let it do this step. Every command here needs sudo: /home is root-owned,
-# and omitting it fails with `install: cannot create directory
+# On the box, as root — the account is provisioned by the host configuration in
+# ahaqqu/vps, so this only adds the key. Every command here needs sudo: /home is
+# root-owned, and omitting it fails with `install: cannot create directory
 # '/home/kajianq-deploy': Permission denied`.
 sudo install -d -o kajianq-deploy -g kajianq-deploy -m 0700 /home/kajianq-deploy/.ssh
 
 # Idempotent append — a plain `>>` re-run duplicates every line. Harmless to
 # sshd, which authenticates on the first match, but it stops the file being a
-# readable record of what is authorized. apply.sh uses the same rule.
+# readable record of what is authorized. Keep the append idempotent.
 sudo sh -c 'grep -qxF "$(cat <your-deploy-pubkey.pub>)" /home/kajianq-deploy/.ssh/authorized_keys \
     || cat <your-deploy-pubkey.pub> >> /home/kajianq-deploy/.ssh/authorized_keys'
 
@@ -659,12 +620,12 @@ confusing "a password is required" that names neither the rule nor the command:
 
 ```bash
 ssh -i ~/.ssh/kajianq-deploy kajianq-deploy@<your-host> \
-    'sudo -n systemctl restart kajianq-api.service && systemctl is-active kajianq-api.service'
+    'sudo -n /usr/local/sbin/vps-deploy kajianq status'
 ```
 
-That restart also starts the API for the first time. If it is the very first
-deploy, the API will have no bundles shipped yet and will fail to start — that
-is expected before §8, and the `sudo -n` succeeding is the part being tested.
+`status` is one of the four bounded helper verbs, so a successful run proves the
+grant without mutating the box. If it is the very first deploy there is no
+deployed tree yet; the verb naming the state is the part being tested.
 
 **If you no longer hold the private key** — GitHub secrets are write-only, so a
 key uploaded and then deleted locally cannot be recovered — test the grant on
@@ -674,21 +635,20 @@ part that fails:
 ```bash
 # On the box, as root. `sudo -u` becomes the deploy identity, so the grant is
 # evaluated exactly as it would be for the ssh session.
-sudo -u kajianq-deploy -H sudo -n systemctl restart kajianq-api.service
-sudo -u kajianq-deploy -H systemctl is-active kajianq-api.service
+sudo -u kajianq-deploy -H sudo -n /usr/local/sbin/vps-deploy kajianq status
 ```
 
 **If you inherited a box whose deploy ran as your admin login**, the switch is
 two halves and doing only one fails: the key must belong to `kajianq-deploy`
 (this section), _and_ CI must authenticate as that account (§8's `VPS_USER`).
 Move the key first, then flip the variable, then dispatch a deploy — a deploy
-run in between fails on ssh auth or on the `rsync`, because `apply.sh` has
-already given the deployed tree to `kajianq-deploy`. While the admin account
+run in between fails on ssh auth or on the artifact upload, because the host
+configuration has already made `kajianq-deploy` the upload identity. While the admin account
 still holds the deploy key lines, remove them once the new path works: leaving
 them keeps a deploy credential usable against an account with broader rights,
 which is the arrangement this split exists to end.
 
-### Verify the apply
+### Verify the host configuration
 
 ```bash
 systemctl status kajianq-api                    # enabled, inactive until you start it
@@ -699,8 +659,7 @@ sudo logrotate --debug /etc/logrotate.d/kajianq-postgres
 sudo nginx -t
 sudo nginx -T | grep -A2 log_format             # the access format, no user-agent/referer
 sudo systemctl cat systemd-journald | grep -A3 '\[Journal\]'   # the 14-day cap
-sudo -l -U kajianq-deploy                       # exactly two systemctl commands
-stat -c '%U:%G %a %n' /srv/kajianq/api /srv/kajianq/web   # kajianq-deploy:kajianq-deploy 755
+sudo -l -U kajianq-deploy                       # helper verbs, cron start, two diagnostics
 ```
 
 The `logrotate --debug` runs matter: a syntax error in a stanza fails the apply
@@ -723,9 +682,9 @@ curl -s https://<your-host>/v1/admin/session   # {"authenticated":false,"csrfTok
 The session probe is the gate: the API answers it with JSON whether or not
 `ADMIN_PASSWORD` is set, while a box whose proxy is not wired answers the shell.
 Because the admin API adds no top-level path, a normal code deploy is enough —
-no `apply.sh` run and no sudo. A new top-level API namespace would still need its
-own nginx location, which is why the hardening suite derives that set from the
-route table.
+no host-config change and no sudo. A new top-level API namespace would still need
+its own nginx location in the `kajianq` manifest, which is a host-configuration
+PR in `ahaqqu/vps`.
 
 Login additionally requires `ALLOWED_ORIGINS` to name this host's public https
 origin: the API is a plain-HTTP listener behind the TLS proxy, so an unset or
@@ -870,53 +829,8 @@ public-URL checks (for a box whose DNS or certificate is not ready yet).
 
 The deploy gates on all of these, and fails loudly on any of them:
 
-- **the provisioned files match the checkout**: every artifact `apply.sh`
-  places — the units, the `ExecStartPre` marker script, the
-  logrotate/journald/Postgres config, the rendered nginx block and the
-  `sites-enabled` link that enables it, and the sudoers grant — is compared with
-  the checkout the deploy runs from. A difference fails the deploy, naming the
-  file and the remedy: run `apply.sh` on the box from a pulled checkout. A
-  content change is reported with the expected and installed digest, a rendered
-  block with the first line that differs. The Postgres posture is compared only
-  where a `conf.d` directory exists. With no `/etc/postgresql` at all, Postgres
-  is not installed: `apply.sh` skips the row, and the preflight skips it too,
-  naming that, instead of refusing a file the installer cannot place. With
-  `/etc/postgresql` present but no `main/conf.d`, Postgres is installed and its
-  log/reachability posture is not applied on the box: the preflight still skips
-  the row the installer skips, but says so as a misconfiguration, so the deploy
-  does not pass over it silently. A path the deploy identity cannot read or
-  search is refused rather than skipped — at `/etc/postgresql`, at a `<ver>`
-  directory under it, at `<ver>/main`, and at the `conf.d` below it — because an
-  empty glob under an unsearchable directory is indistinguishable from an absent
-  one. Those are also the paths where the preflight and the installer could pick
-  different versions: `apply.sh` runs as root and expands through a directory the
-  deploy identity cannot enter, so the preflight refuses a version it cannot
-  enumerate instead of comparing the one it can see. That refusal's remedy is
-  to make the named path readable and searchable for the deploy identity (its
-  mode or ownership), then deploy again; `apply.sh` cannot clear it, because it
-  installs into that tree and leaves the mode that hides it in place. Each
-  refusal ends the way its state does: one whose remedy needs no apply closes
-  with that remedy and no `apply.sh` instruction, and one whose repair is
-  followed by an install names both. The one refusal of the second shape is the
-  `conf.d` that is a regular file: repair Postgres so that path is a directory
-  again, then apply and deploy again — removing the file alone leaves the row
-  skipped, so the posture stays unapplied. The state-by-state endings are in
-  [`docs/VPS-OPERATIONS.md`](VPS-OPERATIONS.md) §1.1. The generic `apply.sh`
-  closing prints only when no refusal in the run is one an apply cannot clear,
-  so a mismatch in such a run keeps its per-file `apply.sh` line and the run
-  ends without the generic closing; the count line then reads `could not be
-  compared or do not match the checkout` rather than `do not match the
-  checkout`. A rendered block whose comparison cannot run — the scratch file is
-  unavailable or the manifest's template payload does not decode — is refused
-  with that cause and its own remedy, not reported as a mismatch. A row naming a
-  kind outside `config`, `render`, `link` and `sudoers` is refused with a repair
-  of the artifact table, installed or not, because `apply.sh` exits 1 on that
-  table.
-  The marker script's presence, mode and content are part of that comparison, so
-  a deleted or non-executable marker is refused before the provenance gate reads
-  a record.
 - the web build produced an SPA (`apps/web/dist/index.html` exists)
-- the API restarted and `systemctl is-active` reports active
+- the API restarted and the helper's own health check answered `/v1/health`
 - the reclamation ran once — so a rotated env var fails the deploy rather than
   surfacing at 03:17
 - **the backup unit is healthy**: the job's durable record
@@ -935,9 +849,8 @@ The deploy gates on all of these, and fails loudly on any of them:
   rejects a record written before the unit's current definition. It does not by
   itself prove the unit's `ExecStart` ran, because the documented first-record
   bootstrap writes from the checkout. The gate reads no systemd run state:
-  `is-failed` and `Result` describe the current boot (a reboot clears them, and
-  `apply.sh` clears them on a re-install), so they cannot carry a verdict across
-  one.
+  `is-failed` and `Result` describe the current boot (a reboot clears them), so
+  they cannot carry a verdict across one.
 - the public URL answers `/v1/health`, mints an anonymous session, and serves
   `/chat` through the real proxy and TLS
 
@@ -946,29 +859,27 @@ anonymous minting stay green with a missing reviewer or embedder key. The Golden
 Set smoke in the `Staging` workflow is what exercises the real answering path —
 run that next.
 
-> **Ordering trap.** `apply.sh` writes the unit only when the installed copy
-> differs, so re-running it over unchanged content leaves the unit file's mtime —
-> and the deploy's backup gate — alone. A **changed** unit definition does move
-> that mtime, and then the gate stays red until a run after that install. Once
-> the deployed bundle has the writer, prove it through the service:
+> **Ordering trap.** A **changed** unit definition moves the unit file's mtime,
+> and then the deploy's backup gate stays red until a run after that install.
+> Once the deployed bundle has the writer, prove it through the service:
 > `sudo systemctl start kajianq-backup.service`. A box still on the pre-record
-> bundle bootstraps from the checkout instead (below). The re-apply is enforced:
-> the deploy's first preflight refuses a box whose installed artifacts differ
-> from the checkout, so an unapplied unit can no longer read as healthy.
+> bundle bootstraps from the checkout instead (below).
 
-> **The pre-body marker is installed with the unit.** `apply.sh` (§7) places
-> `/usr/local/sbin/kajianq-backup-pending` and the unit whose `ExecStartPre` runs
-> it. A box that has not been re-applied keeps its previous unit definition — no
-> marker — so a run that dies before the job body leaves no trace the gate can
-> read, and the previous success stays current. Re-apply once after upgrading;
-> the changed unit definition keeps the gate red until a run after that install.
+> **The pre-body marker is installed with the unit.** The host configuration
+> (§7) places `/usr/local/sbin/kajianq-backup-pending` and the unit whose
+> `ExecStartPre` runs it. A box whose manifest has not been applied keeps its
+> previous unit definition — no marker — so a run that dies before the job body
+> leaves no trace the gate can read, and the previous success stays current.
+> Apply the manifest once after upgrading; the changed unit definition keeps the
+> gate red until a run after that install.
 
 > **First record on a box whose installed bundle predates it.** The deploy ships
 > the writer, but the preflight runs before the ship, so starting the unit on a
 > box with no record yet would run the old `/srv/kajianq/api/backup.js` — the
 > pre-record bundle — and leave the gate red. The order on a transition box is
-> **pull → `apply.sh` → bootstrap → deploy**: `apply.sh` (§7) installs this unit
-> definition, and the bootstrap record must postdate that install. Bootstrap
+> **host configuration applied → bootstrap → deploy**: the applied manifest (§7)
+> installs this unit definition, and the bootstrap record must postdate that
+> install. Bootstrap
 > once, on the box, in its §5 checkout pulled to a commit at or after this
 > change, as root (the checkout's script has the writer; the deployed bundle
 > does not yet):
@@ -982,11 +893,11 @@ run that next.
 > ```
 >
 > That is a real backup run; its root-owned record satisfies the gate, and a run
-> that is not root cannot write it. Bootstrap **after** `apply.sh`, never before:
-> a record written first is older than the unit, and the stale-record refusal
-> cannot be cleared by `systemctl start` while the deployed bundle is still the
-> pre-record one. The deploy that follows ships the new bundle and does not touch
-> the unit's mtime.
+> that is not root cannot write it. Bootstrap **after** the manifest is applied,
+> never before: a record written first is older than the unit, and the
+> stale-record refusal cannot be cleared by `systemctl start` while the deployed
+> bundle is still the pre-record one. The deploy that follows ships the new
+> bundle and does not touch the unit's mtime.
 
 ---
 
@@ -1164,10 +1075,11 @@ The 30-day rolling window is enforced by the backup script's
 `sudo systemctl restart kajianq-api.service`. Config is read once at process
 start, so a running process keeps the old values.
 
-**Re-apply box configuration.** Edit `provision/vps/*` in your checkout, pull it
-on the box, and re-run `apply.sh`. Remember the ordering trap in §8: a changed
-unit definition invalidates the backup gate until a backup runs again, so start
-the service afterwards.
+**Change host configuration.** Open a PR in
+[`ahaqqu/vps`](https://github.com/ahaqqu/vps) under `kajianq/` — the applier is
+the only writer, and a merge is the host change. Remember the ordering trap in
+§8: a changed unit definition invalidates the backup gate until a backup runs
+again, so start the service afterwards.
 
 **Take a backup now.** `sudo systemctl start kajianq-backup.service`.
 
@@ -1189,12 +1101,12 @@ that before you need it.
 These values are not cosmetic — they are what a privacy notice and a processing
 record would declare, so if you change one, change the document that states it:
 
-| Log                            | Rotation                     | Window | Where enforced                             |
-| ------------------------------ | ---------------------------- | ------ | ------------------------------------------ |
-| Reverse proxy access + error   | daily, `maxsize 100M`, gzip  | 14 d   | `provision/vps/logrotate/kajianq-proxy`    |
-| Postgres                       | daily, `maxsize 100M`, gzip  | 14 d   | `provision/vps/logrotate/kajianq-postgres` |
-| API structured logs (journald) | byte + time cap              | 14 d   | `provision/vps/journald/kajianq.conf`      |
-| Postgres backups               | daily, restic `--keep-daily` | 30 d   | `provision/vps/backup/kajianq-backup.mjs`  |
+| Log                            | Rotation                     | Window | Where enforced                            |
+| ------------------------------ | ---------------------------- | ------ | ----------------------------------------- |
+| Reverse proxy access + error   | daily, `maxsize 100M`, gzip  | 14 d   | the `kajianq` manifest in ahaqqu/vps      |
+| Postgres                       | daily, `maxsize 100M`, gzip  | 14 d   | the `kajianq` manifest in ahaqqu/vps      |
+| API structured logs (journald) | byte + time cap              | 14 d   | the `kajianq` manifest in ahaqqu/vps      |
+| Postgres backups               | daily, restic `--keep-daily` | 30 d   | `provision/vps/backup/kajianq-backup.mjs` |
 
 The proxy's access-log format is deliberately minimal: client IP, timestamp,
 request line, status, bytes, correlation id, request time — no user-agent, no
@@ -1210,18 +1122,19 @@ record than three.
 
 ### What setting up the box deliberately does not do
 
-- **No data migration.** A fresh box starts empty; `apply.sh` writes
-  configuration and enables units but moves no data. To bring an existing
+- **No data migration.** A fresh box starts empty; the host configuration
+  writes files and enables units but moves no data. To bring an existing
   database across, see [§12](#12-moving-an-existing-database-to-this-box).
-- **No serving.** `apply.sh` enables `kajianq-api.service` but does not start
+- **No serving.** The applier enables `kajianq-api.service` but does not start
   it, so a box cannot accidentally serve with default logging. Starting it is
   §8's deploy.
 - **No DPA.** Concluding one with your provider is your action, not a
   command — and it is a precondition of the box touching anyone's personal
   data. Nothing in this setup writes to a store that holds personal data,
   because on a freshly bought VPS none exists yet.
-- **No secrets in the repo.** The only hostnames and credentials live in
-  `/etc/kajianq/*.env`, mode 0600, outside version control.
+- **No secrets in the repo.** Hostnames and credentials live in root-only files
+  on the box and in `ahaqqu/vps`'s protected, placeholder-only templates, never
+  in this repository.
 
 ### If you serve the public, the privacy duties are yours
 
@@ -1361,18 +1274,20 @@ variables as shown in §10.
 
 **`Script not found` from the backup unit.** The unit's `ExecStart` should name
 `/srv/kajianq/api/backup.js`. If it names a `__KAJIANQ_` token or a path under
-the checkout, run `apply.sh` and then deploy — the bundle is shipped by the
-deploy, not by `apply.sh`.
+the checkout, fix the `kajianq` manifest in `ahaqqu/vps` so the applier installs
+it, then deploy — the bundle is shipped by the deploy.
 
-**nginx will not start after `apply.sh`.** `apply.sh` renders the server block
-from `proxy.env` and refuses to install it with a placeholder still in place, so
-a failure here usually means a certificate path that does not exist yet. Re-run
-step 4.
+**nginx will not start after a manifest change.** The applier renders the server
+block from the `kajianq` manifest and refuses to install it with a placeholder
+still in place, so a failure here usually means a certificate path that does not
+exist yet. Re-run step 4, then fix the value in `ahaqqu/vps`.
 
 ---
 
 ## Related
 
+- [ahaqqu/vps](https://github.com/ahaqqu/vps) — the host configuration and its
+  root applier; a merged PR there is the host change
 - [`docs/VPS-OPERATIONS.md`](./VPS-OPERATIONS.md) — the operator's manual for the
   project's own box: deploy, Postgres, backups, restore, monitoring
 - [`docs/VPS-CUTOVER-RECORD.md`](./VPS-CUTOVER-RECORD.md) — the executed cutover,

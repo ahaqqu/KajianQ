@@ -166,7 +166,7 @@
  *       *value* that looks like one is written inside a fence (above).
  *
  *   COST, named: a bare file name that is *not* a tracked root-level file is
- *   not a claim, so `` `models.json` `` and `` `apply.sh` `` (both real files
+ *   not a claim, so `` `models.json` `` and `` `deploy.sh` `` (both real files
  *   under subdirectories) stay prose, and a *deleted* root-level file named
  *   bare — `VPS-CUTOVER-RUNBOOK.md` — would not be caught. A wider "any bare
  *   dotted token" rule is a false-positive factory: such tokens are mostly

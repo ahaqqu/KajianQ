@@ -12,7 +12,7 @@ import { createRagStoreFromEnv, ChatConfigError } from "./chat-wiring";
  * must never take serving down or page anyone: it logs and returns.
  *
  * Runtime-agnostic by design: the schedule's source of truth is the systemd
- * timer `provision/vps/systemd/kajianq-cron.timer` (the retention value the
+ * timer `kajianq-cron.timer` in the host configuration (the retention value the
  * privacy notice's "30-day inactivity" row depends on), whose
  * `kajianq-cron.service` invokes the dedicated entry
  * `apps/api/src/cleanup.ts`, which calls this function. Verification of that

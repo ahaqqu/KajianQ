@@ -8,13 +8,13 @@
 # box that fails it is left on its previous revision, and the failure costs an
 # ssh round trip instead of a shipped tree whose smoke and doctor were skipped.
 #
-# Usage: bash backup-provenance.sh [unit-file] [record-file]
+# Usage: bash backup-provenance.sh [unit-file] [record-file] [marker-file]
 #
-# Both paths are arguments so the assertion can be executed against a fixture by
-# tests/scripts/vps-hardening.test.mjs; the deploy passes nothing and gets the
-# installed unit and the installed record. The deploy pipes this file into
-# `bash -s` rather than quoting it into the ssh command line, so what the test
-# runs is byte-for-byte what the box runs.
+# All three paths are arguments so the assertion can be executed against a fixture
+# by tests/scripts/vps-hardening.test.mjs; the deploy passes nothing and gets the
+# installed unit, the installed record and the installed marker. The deploy pipes
+# this file into `bash -s` rather than quoting it into the ssh command line, so
+# what the test runs is byte-for-byte what the box runs.
 #
 # The record is the authority, never systemd's runtime state. `ExecMainStatus`
 # and `ExecMainExitTimestamp` describe the CURRENT boot: a reboot clears them,
@@ -44,9 +44,9 @@
 # one.
 #
 # systemd's failed state is deliberately NOT read as a second signal: it
-# describes the current boot. A reboot clears it (and `apply.sh` clears it with
-# `reset-failed` on a re-install), so a unit that failed before a reboot reads
-# as healthy afterwards — the opposite of the durability this check exists for.
+# describes the current boot. A reboot clears it, so a unit that failed before a
+# reboot reads as healthy afterwards — the opposite of the durability this check
+# exists for.
 #
 # What the record proves is the pair: the last completed run exited 0, and it
 # completed AFTER this unit's current definition was installed. A record older
@@ -56,22 +56,20 @@
 # writer, the first record comes from the checkout bootstrap, not the unit
 # (docs/VPS-SETUP.md).
 #
-# The install side keeps that mtime meaningful: apply.sh writes a config only
-# when the installed file differs, so a re-apply over unchanged content does not
-# re-stamp the unit and cannot mark an exercised unit as unproven.
-#
-# The marker script is itself a provisioned artifact, and the deploy runs its
-# provisioned-artifact preflight (provision-drift.sh) before this check: a
-# missing, non-executable or stale /usr/local/sbin/kajianq-backup-pending is
-# refused there, naming the file, so a post-install deletion of the marker
-# cannot leave this check reading an older success. This check does not repeat
-# that assertion.
+# The host-configuration applier writes the unit only when its installed
+# definition differs, so re-applying unchanged content does not re-stamp the
+# unit and cannot mark an exercised unit as unproven. The marker script the
+# unit's ExecStartPre runs (/usr/local/sbin/kajianq-backup-pending) is installed
+# by the same applier and must be present and executable: a deleted marker
+# leaves the last success record passing while the next run dies before the job
+# body writes anything, so this check refuses rather than trusting the record.
 
 set -euo pipefail
 
 UNIT="kajianq-backup.service"
 UNIT_FILE="${1:-/etc/systemd/system/${UNIT}}"
 RECORD_FILE="${2:-/var/lib/kajianq/backup-provenance}"
+PENDING_FILE="${3:-/usr/local/sbin/kajianq-backup-pending}"
 
 # Print each line as a deploy refusal and exit 1; keeps the matrix below readable.
 refuse() {
@@ -83,7 +81,16 @@ refuse() {
 }
 
 if [ ! -f "${UNIT_FILE}" ]; then
-    refuse "${UNIT_FILE} is not installed — provision/vps/apply.sh has not placed it on this box"
+    refuse "${UNIT_FILE} is not installed — the host configuration in ahaqqu/vps has not placed it on this box"
+fi
+
+# The ExecStartPre marker must exist and be executable. Without it, a run that
+# starts can die before the job body writes anything and leave the previous
+# success record current — the record would pass this check over a broken backup.
+if [ ! -x "${PENDING_FILE}" ]; then
+    refuse \
+        "${PENDING_FILE} is missing or not executable — the backup start marker is not installed" \
+        "apply the kajianq manifest in ahaqqu/vps, then deploy again"
 fi
 
 # Absent record: the backup has never completed on this box. The same refusal
@@ -93,7 +100,7 @@ if [ ! -f "${RECORD_FILE}" ]; then
         "${UNIT} has never run — the encrypted backup is unproven" \
         "a human with root must prove it: sudo systemctl start ${UNIT}" \
         "if that answers 'Unit ${UNIT} not found', systemd has not loaded" \
-        "the unit at all: sudo systemctl daemon-reload, and re-run provision/vps/apply.sh" \
+        "the unit at all: sudo systemctl daemon-reload, and apply the kajianq manifest in ahaqqu/vps" \
         "if the installed bundle predates the writer, bootstrap from the checkout: docs/VPS-SETUP.md §8"
 fi
 

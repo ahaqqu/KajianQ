@@ -70,7 +70,7 @@ export function applyMiddleware(api: Hono<ApiEnv>, opts?: MiddlewareOpts): void 
       ctx.logger.warn("rate.bypass_rejected", { reason: bypass.reason });
     }
     // The client IP is proxy-established: nginx overwrites CF-Connecting-IP
-    // from $remote_addr (provision/vps/nginx/kajianq.conf), so a client-set
+    // from $remote_addr (the `kajianq` manifest in ahaqqu/vps), so a client-set
     // value cannot influence the limiter. It is digested before it names a
     // counter (fnv1aHex) so the limiter holds no raw address — the retention
     // notice's "kept in memory and named by a digest" claim (ADR-0043 d4).
