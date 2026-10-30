@@ -137,6 +137,10 @@ describe("the ingest CLI", () => {
         "bukhari",
         "--dry-run",
         "--test-allow-no-snapshot",
+        // A plan path outside the checkout is accepted by the same guard as `--report`;
+        // the run then fails on the archive the test pointed at, before any plan file.
+        "--plan-out",
+        join(tmpdir(), "sanadset-cli-plan.json"),
         "--csv",
         MISSING_ARCHIVE,
       ],
