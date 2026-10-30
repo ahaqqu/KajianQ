@@ -54,7 +54,7 @@ export const SNAPSHOT_TABLES = [
 const CORPUS_TABLES = ["doc_parents", "doc_children", "aligned_pairs", "schema_migrations"];
 
 /**
- * The subset of `SNAPSHOTABLE` that carries personal data (ADR-0043 decision 5).
+ * The subset of `SNAPSHOT_TABLES` that carries personal data (ADR-0043 decision 5).
  *
  * Named here so the CLI can say — in the manifest and in the create banner —
  * whether an archive carries personal data, rather than leaving a reader to
