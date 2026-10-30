@@ -295,11 +295,15 @@ Close v1's integrity gap. v1 stores one flattened grade per matn, but hadith sci
 
 ### 9.3 Data layer (additive migration)
 
-Two additive tables — narrators and hadith chains — with v1 rows, embeddings, and indexes untouched: no re-ingestion and no re-indexing.
+Two additive tables — narrators and hadith chains — with v1 rows, embeddings, and indexes untouched: no re-ingestion and no re-indexing. Writes are keyed by the source, not by a generated id: a narrator carries an identity key and a chain carries its collection plus the source's own address for it, both enforced by unique indexes, so a re-run updates the rows it wrote instead of appending a second copy. A chain row keeps the source's ordered narrator sequence verbatim, including a name that repeats across parallel isnads.
 
 ### 9.4 Ingestion
 
 Acquire (Mendeley Data, CC BY 4.0 — attribution recorded in `NOTICES/DATASETS.md`) → parse sanad/matn tags → narrator entity resolution (deterministic Arabic name normalization, LLM assist on unresolved cases, sampled cross-vendor review, variants recorded) → matn reconciliation (exact → normalized → fuzzy with LLM adjudication; low-confidence matches quarantined, never force-merged) → attach chains; the ingestion report carries match rate, resolution rate, quarantine count, and cost.
+
+The first stage is a deterministic pilot over one collection before any paid step: names are folded and clustered with every raw spelling recorded as a variant, and two clusters the fold cannot settle are reported as candidates rather than merged; matn groups are reconciled only inside that collection (exact, then folded, then fuzzy with an auto threshold and an ambiguity margin), and a group that ties between two stored children is quarantined whole; chains are attached with no grade, because no grade producer exists yet; unmatched matns become children with no embedding, stay lexically retrievable, and are excluded from the next run's target set so a rerun converges. The report states the match rate with the one-collection scope it was measured in, the name-level basis of narrator resolution, quarantine by rule, and a cost of zero.
+
+Every store-writing ingest is bracketed by the snapshots of ADR-0038: the command refuses to write unless a verified pre-ingest label exists, a dry run prints the plan and writes nothing, and a test-only escape for a disposable database records itself as such so a report can never imply snapshot backing it did not have.
 
 ### 9.5 Retrieval, generation, UI
 

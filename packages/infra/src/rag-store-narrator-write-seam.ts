@@ -50,8 +50,12 @@ export type NarratorChainInsert = {
   grade?: string | null;
   /** The grader `grade` belongs to; present exactly when `grade` is. */
   grader?: string | null;
-  /** The source's own address for this chain: its natural key. Non-blank. */
-  sourceRef: string;
+  /**
+   * The source's own address for this chain: its natural key when present. `null`
+   * records a chain the source does not address (a curated addition), which no
+   * re-run can upsert; a blank string is refused.
+   */
+  sourceRef: string | null;
 };
 
 /** The write methods; `RagStoreNarrators` extends this, so consumers see one seam. */
@@ -76,9 +80,9 @@ export interface RagStoreNarratorWrites {
    *
    * Idempotent by `(collection, sourceRef)`: writing the same source address
    * again updates the row it wrote before (its child, its ordered narrator
-   * sequence, its grade pair) instead of appending a second chain. A row whose
-   * `sourceRef` is blank, whose `narratorIds` is empty or carries a blank
-   * element, whose `collection`/`childId` is blank, whose grade and grader are
+   * sequence, its grade pair) instead of appending a second chain. A `null`
+   * address writes a chain no re-run can key on. A row whose `sourceRef` is
+   * blank, whose `narratorIds` is empty or carries a blank element, whose `collection`/`childId` is blank, whose grade and grader are
    * not present together, or whose grader is blank, fails as a `constraint`
    * StoreError for the whole batch: a half-written chain set would report a
    * transmission the corpus does not hold.
@@ -123,24 +127,25 @@ export function narratorWriteProblem(input: NarratorUpsert): string | null {
  * {@link narratorWriteProblem}, mirrored by the memory double.
  */
 export function chainWriteProblem(row: NarratorChainInsert): string | null {
+  const address = row.sourceRef ?? "(no address)";
   if (row.childId.trim() === "") return "chain write has a blank child id";
   if (row.collection.trim() === "") return "chain write has a blank collection";
-  if (row.sourceRef.trim() === "") {
-    return "chain write has no source address — an unaddressable chain cannot be upserted";
+  if (row.sourceRef !== null && row.sourceRef.trim() === "") {
+    return "chain write has a blank source address — an addressed chain cannot be upserted";
   }
-  if (row.narratorIds.length === 0) return `chain '${row.sourceRef}' has no narrator`;
+  if (row.narratorIds.length === 0) return `chain '${address}' has no narrator`;
   for (const id of row.narratorIds) {
-    if (id.trim() === "") return `chain '${row.sourceRef}' carries a blank narrator id`;
+    if (id.trim() === "") return `chain '${address}' carries a blank narrator id`;
   }
   const grade = row.grade ?? null;
   const grader = row.grader ?? null;
   if ((grade === null) !== (grader === null)) {
     return grade === null
-      ? `chain '${row.sourceRef}' carries a grader without a grade`
-      : `chain '${row.sourceRef}' carries a grade without a grader`;
+      ? `chain '${address}' carries a grader without a grade`
+      : `chain '${address}' carries a grade without a grader`;
   }
   if (grader !== null && grader.trim() === "") {
-    return `chain '${row.sourceRef}' carries a blank grader`;
+    return `chain '${address}' carries a blank grader`;
   }
   return null;
 }
