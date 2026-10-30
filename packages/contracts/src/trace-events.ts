@@ -6,6 +6,7 @@ import {
   rerankEventSchema,
   searchHitsEventSchema,
 } from "./trace-retriever";
+import { chainEvidenceEventSchema } from "./trace-chain-evidence";
 import { sourceRoutingEventSchema } from "./trace-source-routing";
 
 /**
@@ -63,6 +64,9 @@ export const TraceEventSchema = v.variant("kind", [
    * owner `./trace-retriever`. */
   searchHitsEventSchema,
   callerPriorityEventSchema, // owner: ./trace-retriever
+  /** The transmission rows retrieval read for the children in context; owner
+   * `./trace-chain-evidence`. */
+  chainEvidenceEventSchema,
   v.object({
     stage: v.literal("assembler"),
     kind: v.literal("assembly"),

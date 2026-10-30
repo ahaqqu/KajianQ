@@ -1,4 +1,4 @@
-import { CALLER_PRIORITY_K } from "@app/contracts";
+import { CALLER_PRIORITY_K, CHAIN_EVIDENCE_TRACE_LIMIT } from "@app/contracts";
 import { resolvePostgresStore, type RagStore } from "@app/infra";
 
 /** The chat wiring's configuration surface: the typed config failure, the store
@@ -70,6 +70,31 @@ export function parseNeighbourCap(raw: string | undefined): number | undefined {
 /** `LABEL_LOOKUP_CAP`: chunks the citation-label lookup may add per query. */
 export function parseLabelLookupCap(raw: string | undefined): number | undefined {
   return parseBoundedKnob(raw, "LABEL_LOOKUP_CAP");
+}
+
+/**
+ * `CHAIN_EVIDENCE_CHILD_CAP`: retrieved children whose transmission rows the
+ * per-chain evidence read covers (`0` disables the read).
+ */
+export function parseChainEvidenceChildCap(raw: string | undefined): number | undefined {
+  return parseBoundedKnob(raw, "CHAIN_EVIDENCE_CHILD_CAP");
+}
+
+/**
+ * `CHAIN_EVIDENCE_CHAIN_CAP`: rows carried per child. A value above the trace
+ * contract's own bound is refused here rather than at write time, because the
+ * `chain_evidence` event cannot persist a longer list — a configured cap above
+ * it would fail the answer's trace parse for every hadith answer the box serves.
+ */
+export function parseChainEvidenceChainCap(raw: string | undefined): number | undefined {
+  const value = parseBoundedKnob(raw, "CHAIN_EVIDENCE_CHAIN_CAP");
+  if (value !== undefined && value > CHAIN_EVIDENCE_TRACE_LIMIT) {
+    throw new ChatConfigError(
+      `chat route: CHAIN_EVIDENCE_CHAIN_CAP must not exceed the trace's bound of ${CHAIN_EVIDENCE_TRACE_LIMIT} (got "${raw}")`,
+      "CHAIN_EVIDENCE_CHAIN_CAP",
+    );
+  }
+  return value;
 }
 
 /**

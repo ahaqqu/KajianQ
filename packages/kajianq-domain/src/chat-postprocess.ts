@@ -1,6 +1,7 @@
 import type { AssembledContext, Chunk, Draft } from "@app/rag-core";
 import type { KajianQFilters } from "./filters";
 import { MACHINE_TRANSLATION_LABEL } from "./chat-assembler";
+import { hasWeakChain, isnadEvidenceOf } from "./chat-isnad-evidence";
 
 /**
  * Deterministic product rules applied after the reviewer passes a draft
@@ -74,11 +75,19 @@ export function ulamaDisclaimer(language: "id" | "en"): string {
 /** The weak-grade label the ingestion writes into chunk metadata. */
 const WEAK_GRADE = "dhaif";
 
-/** True when any retrieved chunk carries the weak grade. */
+/**
+ * True when any retrieved chunk carries the weak grade — as its flattened grade,
+ * or on any of its stored transmission rows. The second half is what keeps a
+ * passage whose corpus grade is sound but whose chains include a weak one
+ * flagged: the warning is about the evidence retrieved, not about the one value
+ * the ingester happened to consolidate.
+ */
 export function hasWeakGradeChunk(chunks: readonly Chunk[]): boolean {
   return chunks.some((chunk) => {
     const meta = (chunk.metadata ?? {}) as Record<string, unknown>;
-    return meta["grade"] === WEAK_GRADE;
+    if (meta["grade"] === WEAK_GRADE) return true;
+    const evidence = isnadEvidenceOf(chunk);
+    return evidence !== null && hasWeakChain(evidence);
   });
 }
 

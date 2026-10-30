@@ -12,6 +12,8 @@ import {
   ChatConfigError,
   createRagStoreFromEnv,
   parseCallerPriorityK,
+  parseChainEvidenceChainCap,
+  parseChainEvidenceChildCap,
   parseLabelLookupCap,
   parseNeighbourCap,
   parseNeighbourRadius,
@@ -25,6 +27,8 @@ export {
   ChatConfigError,
   createRagStoreFromEnv,
   parseCallerPriorityK,
+  parseChainEvidenceChainCap,
+  parseChainEvidenceChildCap,
   parseLabelLookupCap,
   parseNeighbourCap,
   parseNeighbourRadius,
@@ -219,6 +223,8 @@ export function buildChatWiring(env: Record<string, string | undefined>): ChatWi
     neighbourCap: parseNeighbourCap(env["NEIGHBOUR_EXPANSION_CAP"]),
     labelLookupCap: parseLabelLookupCap(env["LABEL_LOOKUP_CAP"]),
     callerPriorityK: parseCallerPriorityK(env["CALLER_PRIORITY_K"]),
+    chainEvidenceChildCap: parseChainEvidenceChildCap(env["CHAIN_EVIDENCE_CHILD_CAP"]),
+    chainEvidenceChainCap: parseChainEvidenceChainCap(env["CHAIN_EVIDENCE_CHAIN_CAP"]),
   });
   return {
     pipeline: pipelineBag({

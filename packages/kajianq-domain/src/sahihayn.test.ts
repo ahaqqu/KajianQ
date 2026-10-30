@@ -1,7 +1,7 @@
 import { Effect } from "effect";
 import { describe, expect, it } from "vite-plus/test";
 import { storeFilters } from "./chat-filter-policy";
-import { FILTER_DIMENSIONS } from "./filters";
+import { storeKeyOf } from "./filters";
 import { HADITH_COLLECTIONS, hadithMetadata, type HadithRecord } from "./hadith-source";
 import { SAHIHAYN_BASIS, effectiveGrade, sahihFilterExpansion } from "./sahihayn";
 import { createMemoryRagStore } from "./test-utils/memory-rag-store";
@@ -83,7 +83,7 @@ describe("effectiveGrade — the collection is the evidence where the source gra
     expect(Object.hasOwn(metadata, SAHIHAYN_BASIS.gradeKey)).toBe(true);
     expect(metadata[SAHIHAYN_BASIS.gradeKey]).toBeNull();
     expect(metadata[SAHIHAYN_BASIS.collectionKey]).toBe("bukhari");
-    expect(FILTER_DIMENSIONS.grade).toBe(SAHIHAYN_BASIS.gradeKey);
+    expect(storeKeyOf("grade")).toBe(SAHIHAYN_BASIS.gradeKey);
     expect(effectiveGrade(metadata)).toBe("sahih");
   });
 });

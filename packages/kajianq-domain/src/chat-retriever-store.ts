@@ -1,8 +1,19 @@
 import type { Effect } from "effect";
-import type { StoreError } from "@app/rag-core";
-import type { MetadataFilterValue } from "@app/infra";
+import type { CostRecord, StoreError } from "@app/rag-core";
+import type { MetadataFilterValue, NarratorChainRecord, NarratorIdsLookup } from "@app/infra";
 import type { NeighbourChildRow } from "./chat-neighbour-expansion";
 import type { ScopeChildRow } from "./chat-scope-expansion";
+
+/** The embedding seam the retriever calls once per run. */
+export type RetrieverEmbedder = {
+  embed(spec: {
+    texts: readonly string[];
+    /** Required on the serving seam: the embedded texts are the user's sub-queries, i.e.
+     * personal data. Non-optional so a call site that drops it is a compile error; the
+     * provider seam then skips free-tier candidates. */
+    personalData: true;
+  }): Effect.Effect<{ vectors: readonly (readonly number[])[]; cost: CostRecord }, unknown>;
+};
 
 /**
  * The retriever's store role — the narrow structural view of `RagStore` the
@@ -45,6 +56,18 @@ export type RetrieverStore = {
     anchorChildIds: readonly string[],
     opts: { radius: number; limit: number },
   ): Effect.Effect<readonly NeighbourChildRow[], StoreError>;
+  /**
+   * The chains attached to one child — the per-chain evidence arm's read. Optional
+   * on the role because a narrow unit fixture may model no catalogue at all; the
+   * serving composition root pins the full store, so a wiring that drops the read
+   * is a compile error there.
+   */
+  listChainsForChild?(
+    childId: string,
+    opts: { limit: number },
+  ): Effect.Effect<readonly NarratorChainRecord[], StoreError>;
+  /** The narrator rows for the ids a chain names, with the unknown ids reported. */
+  getNarratorsByIds?(ids: readonly string[]): Effect.Effect<NarratorIdsLookup, StoreError>;
   /** The bounded exact-match read of the children carrying a label's opaque metadata
    * pairs — the one read the citation-label arm issues. */
   findDocChildrenByMetadata(

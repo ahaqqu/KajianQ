@@ -73,6 +73,85 @@ async function seedSurah(store: Store): Promise<void> {
   );
 }
 
+/**
+ * Seed one hadith with two chains that disagree — the child the per-chain evidence
+ * arm reads. It rides the same embedding as the verse so it is always retrieved, and
+ * its stored rows are what a chain knob's effect is observed on.
+ */
+async function seedChainedHadith(store: Store): Promise<{ childId: string }> {
+  const parentId = await runStoreEffect(
+    store.insertDocParent({
+      sourceKey: "hadith:contract-fixture",
+      title: "HR. Bukhari",
+      metadata: { sourceType: "hadith" },
+    }),
+  );
+  const childId = await runStoreEffect(
+    store.insertDocChild({
+      parentId,
+      textRaw: "حدثنا",
+      textAr: "حدثنا",
+      textId: null,
+      citation: { sourceType: "hadith", collection: "bukhari", hadithNo: 1 },
+      embeddingPrimary: HIT_VEC,
+      embeddingFallback: null,
+      ordinal: 0,
+      metadata: {
+        sourceType: "hadith",
+        collection: "bukhari",
+        grade: "sahih",
+        citation: "HR. Bukhari no. 1 (Sahih)",
+      },
+    }),
+  );
+  store.seedNarrator({
+    id: NARRATOR_ONE,
+    canonicalNameAr: "نافع",
+    nameVariants: [],
+    kunya: null,
+    laqab: null,
+    deathYear: null,
+    tabaqa: null,
+    reliabilityByCritic: { "yahya-ibn-said": { verdict: "thiqa", sourceRef: "tahdzib-1" } },
+    metadata: {},
+  });
+  store.seedNarrator({
+    id: NARRATOR_TWO,
+    canonicalNameAr: "ابن عمر",
+    nameVariants: [],
+    kunya: null,
+    laqab: null,
+    deathYear: null,
+    tabaqa: null,
+    reliabilityByCritic: {},
+    metadata: {},
+  });
+  store.seedChain({
+    id: "33333333-3333-4333-8333-333333333331",
+    childId,
+    collection: "bukhari",
+    narratorIds: [NARRATOR_ONE, NARRATOR_TWO],
+    grade: "sahih",
+    grader: "al-bukhari",
+    sourceRef: null,
+    seq: 1,
+  });
+  store.seedChain({
+    id: "33333333-3333-4333-8333-333333333332",
+    childId,
+    collection: "bukhari",
+    narratorIds: [NARRATOR_ONE],
+    grade: "dhaif",
+    grader: "al-daraqutni",
+    sourceRef: null,
+    seq: 2,
+  });
+  return { childId };
+}
+
+const NARRATOR_ONE = "11111111-1111-4111-8111-111111111101";
+const NARRATOR_TWO = "22222222-2222-4222-8222-222222222202";
+
 /** The fused hit every configuration holds: the expansion's anchor, always in context. */
 const ANCHOR = "QS. 2:255";
 
@@ -93,6 +172,10 @@ type Run = {
   citationReads: { limit: number }[];
   /** Every bounded neighbourhood read the retriever issued, with its options. */
   neighbourReads: { anchors: readonly string[]; radius: number; limit: number }[];
+  /** Every per-child chain read the evidence arm issued, with its bound. */
+  chainReads: { childId: string; limit: number }[];
+  /** The typed chain-evidence record, when the arm ran. */
+  chainEvidence: { consulted: number; perChildCap: number } | undefined;
   /** The assembled context the generator was shown. */
   context: string;
   /** The cap each typed scope event recorded. */
@@ -125,10 +208,12 @@ async function runWith(
 ): Promise<Run> {
   const store = createMemoryRagStore();
   await seedSurah(store);
+  await seedChainedHadith(store);
   const searches: Run["searches"] = [];
   const scopeReads: Run["scopeReads"] = [];
   const citationReads: Run["citationReads"] = [];
   const neighbourReads: Run["neighbourReads"] = [];
+  const chainReads: Run["chainReads"] = [];
   const storeSpy: Store = {
     ...store,
     similaritySearch(track, vector, opts) {
@@ -146,6 +231,10 @@ async function runWith(
     listDocChildNeighboursByChildIds(anchors, opts) {
       neighbourReads.push({ anchors: [...anchors], radius: opts.radius, limit: opts.limit });
       return store.listDocChildNeighboursByChildIds(anchors, opts);
+    },
+    listChainsForChild(childId, opts) {
+      chainReads.push({ childId, limit: opts.limit });
+      return store.listChainsForChild(childId, opts);
     },
   };
   const stub = createStubChatProviders({
@@ -174,11 +263,17 @@ async function runWith(
   if (userTurn === undefined) throw new Error("the generator was never shown a context");
   const event = answer.trace.events.find((entry) => entry.kind === "neighbour_expansion");
   const callerEvent = answer.trace.events.find((entry) => entry.kind === "caller_priority");
+  const chainEvent = answer.trace.events.find((entry) => entry.kind === "chain_evidence");
   return {
     searches,
     scopeReads,
     citationReads,
     neighbourReads,
+    chainReads,
+    chainEvidence:
+      chainEvent === undefined
+        ? undefined
+        : { consulted: chainEvent.detail.consulted, perChildCap: chainEvent.detail.perChildCap },
     context: userTurn,
     scopeCaps: answer.trace.events
       .filter((entry) => entry.kind === "scope_expansion")
@@ -215,11 +310,11 @@ describe("buildChatWiring — the configured neighbourhood window reaches the re
   it("applies the configured cap to the read and to the context", async () => {
     const run = await runWith({ NEIGHBOUR_EXPANSION_RADIUS: "3", NEIGHBOUR_EXPANSION_CAP: "2" });
 
-    // The cap bounds what reaches the context; the read asks for cap + the rows the
-    // dedup may drop (the one anchor already in context) + one proof row. The read
-    // answers in the store's order — the anchor's window by ascending ordinal — so the
-    // cap keeps the window's first rows.
-    expect(run.neighbourReads[0]).toMatchObject({ radius: 3, limit: 2 + 1 + 1 });
+    // The cap bounds what reaches the context; the read asks for cap + one slot per
+    // row already in context (the verse anchor and the chained hadith) + one proof row.
+    // The read answers in the store's order — the anchor's window by ascending ordinal
+    // — so the cap keeps the window's first rows.
+    expect(run.neighbourReads[0]).toMatchObject({ radius: 3, limit: 2 + 2 + 1 });
     expect(run.detail).toMatchObject({ radius: 3, cap: 2, returned: 2, truncated: true });
     expect(neighbourCitationsIn(run.context)).toEqual(["QS. 2:252", "QS. 2:253"]);
   });
@@ -231,7 +326,7 @@ describe("buildChatWiring — the configured neighbourhood window reaches the re
     // at most.
     expect(unset.neighbourReads[0]).toMatchObject({
       radius: DEFAULT_NEIGHBOUR_RADIUS,
-      limit: DEFAULT_NEIGHBOUR_CAP + 1 + 1,
+      limit: DEFAULT_NEIGHBOUR_CAP + 2 + 1,
     });
     expect(unset.detail).toMatchObject({
       radius: DEFAULT_NEIGHBOUR_RADIUS,
@@ -312,9 +407,9 @@ const TUNABLES: Record<keyof Required<ChatPipelineDeps["retrieval"]>, TunablePro
     binding: { name: "NEIGHBOUR_EXPANSION_CAP", value: "5" },
     question: PLAIN_QUESTION,
     assert: (run) => {
-      // The read asks for the cap, plus a slot per row the dedup can drop (the fused
-      // anchor), plus one proof row.
-      expect(run.neighbourReads.map((read) => read.limit)).toEqual([5 + 1 + 1]);
+      // The read asks for the cap, plus one slot per row already in context (the verse
+      // anchor and the chained hadith), plus one proof row.
+      expect(run.neighbourReads.map((read) => read.limit)).toEqual([5 + 2 + 1]);
       expect(run.detail).toMatchObject({ cap: 5 });
     },
   },
@@ -325,6 +420,26 @@ const TUNABLES: Record<keyof Required<ChatPipelineDeps["retrieval"]>, TunablePro
       // The label read asks for the cap plus one proof row.
       expect(run.citationReads.map((read) => read.limit)).toEqual([4]);
       expect(run.citationCap).toBe(3);
+    },
+  },
+  chainEvidenceChildCap: {
+    binding: { name: "CHAIN_EVIDENCE_CHILD_CAP", value: "2" },
+    question: PLAIN_QUESTION,
+    assert: (run) => {
+      // The child cap bounds how many retrieved children are read; each read asks for
+      // one row beyond its own row bound, so the bound is observable here as cap + 1.
+      expect(run.chainReads.every((read) => read.limit === 9)).toBe(true);
+      expect(run.chainEvidence?.consulted).toBe(1);
+    },
+  },
+  chainEvidenceChainCap: {
+    // `1` is the discriminating value: the read asks for two rows (one plus the
+    // proof row) and the event records the bound the run applied.
+    binding: { name: "CHAIN_EVIDENCE_CHAIN_CAP", value: "1" },
+    question: PLAIN_QUESTION,
+    assert: (run) => {
+      expect(run.chainReads.map((read) => read.limit)).toEqual([2]);
+      expect(run.chainEvidence?.perChildCap).toBe(1);
     },
   },
   callerPriorityK: {

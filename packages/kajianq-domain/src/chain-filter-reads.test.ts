@@ -157,10 +157,13 @@ run("chain-grade and narrator retrieval filters (real Postgres, memory equal)", 
       const childId = row.childId === matchedChildId ? memoryMatched : memoryPlain;
       if (childId === undefined) throw new Error("memory fixture child missing");
       memory.seedChain({
-        ...row,
         id: crypto.randomUUID(),
-        sourceRef: null,
         childId,
+        collection: "fixture",
+        narratorIds: row.narratorIds,
+        grade: row.grade,
+        grader: row.grader,
+        sourceRef: null,
         seq: index + 1,
       });
     }
@@ -227,7 +230,7 @@ run("chain-grade and narrator retrieval filters (real Postgres, memory equal)", 
   });
 
   it("returns every child when the dimension is absent, and none when the grade is unrepresented", async () => {
-    expect((await both({})).sort()).toEqual(["matched", "plain"]);
+    expect([...(await both({}))].sort()).toEqual(["matched", "plain"]);
     expect(await both(chainFilters("chainGrade", ["mutawatir"]))).toEqual([]);
   });
 });

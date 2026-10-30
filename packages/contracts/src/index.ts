@@ -108,6 +108,16 @@ export {
   type AlignedPair,
   type MorphToken,
 } from "./ingestion";
+export {
+  CHAIN_EVIDENCE_TRACE_LIMIT,
+  chainEvidenceChildSchema,
+  chainEvidenceDetailSchema,
+  chainEvidenceEventSchema,
+  chainEvidenceRowSchema,
+  type ChainEvidenceChild,
+  type ChainEvidenceDetail,
+  type ChainEvidenceRow,
+} from "./trace-chain-evidence";
 export { describeIssue, issuePath, type ValidationIssue } from "./issue-path";
 export {
   CALLER_PRIORITY_K,

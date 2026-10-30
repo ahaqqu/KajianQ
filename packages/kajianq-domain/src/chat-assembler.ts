@@ -8,6 +8,12 @@ import {
   type Turn,
 } from "@app/rag-core";
 import { CALLER_PRIORITY_ORIGIN } from "./chat-caller-priority";
+import {
+  citationBaseAddress,
+  isnadEvidenceOf,
+  renderChainCitation,
+  renderNarratorReliability,
+} from "./chat-isnad-evidence";
 import type { KajianQFilters } from "./filters";
 
 /**
@@ -51,27 +57,58 @@ function presentationRank(chunk: Chunk): number {
 /** The machine-translation label (ADR-0006). Domain vocabulary lives here. */
 export const MACHINE_TRANSLATION_LABEL = "Terjemahan mesin — lihat teks Arab asli";
 
-/** One evidence block, exactly as the Generator's prompt renders it — exported so the
- * Reviewer is shown the SAME evidence and cannot disagree with the prompt. */
+/** The product's narrator line label, in the evidence block's own language. */
+export const NARRATOR_LINE_LABEL = "Narator";
+
+/**
+ * One evidence block, exactly as the Generator's prompt renders it — exported so the
+ * Reviewer is shown the SAME evidence and cannot disagree with the prompt.
+ *
+ * **A passage with stored transmission rows renders those rows, never the flattened
+ * grade.** The corpus label's trailing grade parenthetical is the v1 flattening, and
+ * carrying it beside per-chain evidence would hand the model a single grade for a
+ * passage whose chains disagree — the upgrade this evidence exists to prevent. So the
+ * label is reduced to its address and each chain's own `(Grade — grader; sanad: …)`
+ * attribution follows it, in stored order. The address itself is untouched, so the
+ * citation gate grounds the answer's citations exactly as before.
+ *
+ * A narrator with a stored verdict also gets one line carrying the critic, the
+ * verdict term and the source — the rows a narrator-reliability question is
+ * answered from.
+ */
 export function renderEvidenceChunk(chunk: Chunk): string {
   const meta = (chunk.metadata ?? {}) as Record<string, unknown>;
   const citation = typeof meta["citation"] === "string" ? meta["citation"] : "";
-  // The corpus citation may already carry the grade ("HR. Malik no. 187 (Sahih)"), so add
-  // it only when the label lacks it — a duplicated grade reads as a modified citation.
-  const gradeName = typeof meta["grade"] === "string" ? meta["grade"] : "";
-  const grade =
-    gradeName !== "" && !citation.toLowerCase().includes(gradeName.toLowerCase())
-      ? ` (${gradeName})`
-      : "";
-  const label = citation !== "" ? ` [${citation}${grade}]` : "";
+  const evidence = isnadEvidenceOf(chunk);
+  const label =
+    citation === ""
+      ? ""
+      : evidence === null
+        ? ` [${citation}${flatGradeSuffix(citation, meta)}]`
+        : ` [${[citationBaseAddress(citation), renderChainCitation(evidence)].join(" ").trim()}]`;
+  const narratorLine = evidence === null ? "" : renderNarratorReliability(evidence);
+  const chainLine =
+    evidence !== null && narratorLine !== "" ? `\n${NARRATOR_LINE_LABEL}: ${narratorLine}` : "";
   // Arabic original first, then the display translation — the label is emitted only when
   // both layers are in hand, never claiming a translation of the original itself.
   const original = typeof meta["textAr"] === "string" ? meta["textAr"] : null;
   const translation = typeof meta["textId"] === "string" ? meta["textId"] : null;
   if (original !== null && original !== "" && translation !== null && translation !== "") {
-    return `${original}\n(${MACHINE_TRANSLATION_LABEL})\n${translation}${label}`;
+    return `${original}\n(${MACHINE_TRANSLATION_LABEL})\n${translation}${label}${chainLine}`;
   }
-  return `${chunk.text}${label}`;
+  return `${chunk.text}${label}${chainLine}`;
+}
+
+/**
+ * The flattened grade the corpus label appends when it lacks it: `HR. Malik no. 187
+ * (Sahih)`. Only a passage with no chain evidence reaches this — the per-chain path
+ * renders the rows themselves.
+ */
+function flatGradeSuffix(citation: string, meta: Record<string, unknown>): string {
+  const gradeName = typeof meta["grade"] === "string" ? meta["grade"] : "";
+  return gradeName !== "" && !citation.toLowerCase().includes(gradeName.toLowerCase())
+    ? ` (${gradeName})`
+    : "";
 }
 
 /** The prior-conversation preamble (empty string when there is no history). */
