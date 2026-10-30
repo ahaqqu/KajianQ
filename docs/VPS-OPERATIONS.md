@@ -404,10 +404,8 @@ Three distinct identities, deliberately:
   - the two read-only diagnostics the shared doctor gate uses (`nginx -t`,
     `certbot certificates`).
 
-  The installed file still carries the legacy `systemctl restart
-  kajianq-api.service` until the vps cleanup PR
-  ([ahaqqu/vps#15](https://github.com/ahaqqu/vps/pull/15)) merges; this deploy no
-  longer invokes it.
+  The installed file carries no raw `systemctl restart kajianq-api.service`:
+  the helper owns that restart, and this deploy never issues one.
 
   By absolute path, no wildcards, no shell, no `ALL`. The account uploads the
   artifact to `/srv/vps-incoming` as a member of the upload group; the helper,
