@@ -105,8 +105,10 @@ What it does, in order:
    is the one explicit way past it, and CI never passes it. This is what enforces
    the migrate-then-restart order in §2.3 instead of only documenting it.
 2. **Preflight — the provisioned files on the box match this checkout.**
-   Provisioning is an operator action: only `provision/vps/apply.sh`, run as
-   root on the box, places a unit, script or config. `provision-drift.sh` (piped
+   Provisioning is live through the `ahaqqu/vps` applier (a merged PR there is
+   the host change); this repository's `provision/vps/apply.sh`, run as root on
+   the box, is the frozen baseline the preflight compares against until the
+   host-config retirement PR removes it. `provision-drift.sh` (piped
    over ssh) enumerates what `apply.sh` places from the script's own table
    (`provision/vps/apply.sh --list-artifacts`, so the checked set and the
    installed set cannot drift apart) and compares every installed copy with the
@@ -119,7 +121,8 @@ What it does, in order:
    decides which block the box actually serves — a link retargeted at an older
    copy, or deleted, is drift; the sudoers grant by owner, mode and size, because
    it is 0440 root:root and unreadable from the deploy identity by design, and
-   the commands it grants are exercised by this very deploy. A destination under
+   the entries this path uses — the helper deploy, the cron proof and the two
+   diagnostics — are exercised by this very deploy. A destination under
    the server's major-version directory is resolved the way `apply.sh` resolves
    it — the first `ls -d` match, directory or not, then the file name — so a
    copy under another version cannot stand in for the target; a `conf.d` that is
@@ -293,8 +296,8 @@ line names the install that would apply the posture.
 
 That column names a **GitHub environment**, not a deployment
 environment on a host. Both `staging` and `prod` deploy to **the one box** (§0):
-`deploy.sh` names one `DEPLOY_ROOT`, the helper contract one target tree, and
-nginx serves one `root`, so the choice selects that environment's vars/secrets —
+the helper contract names one target tree and nginx serves one `root`, so the
+choice selects that environment's vars/secrets —
 and `prod`'s approval gate — and nothing else. **No production deployment is provisioned** (ADR-0044
 decision 2; deferred 2026-10-03): the box is labeled `staging`, provisioning production is
 deferred rather than pending, and a `prod` dispatch today deploys the same box
@@ -344,11 +347,12 @@ privilege-escalation path. Examples with every key live in
 [`provision/vps/proxy.env.example`](../provision/vps/proxy.env.example), and
 [`provision/vps/backup/backup.env.example`](../provision/vps/backup/backup.env.example).
 
-`deploy.sh` requires `KAJIANQ_DEPLOY_HOST`, `KAJIANQ_DEPLOY_USER` and
-`KAJIANQ_DEPLOY_ROOT` from that file, and fails by name on an empty one before it
-builds anything. The tree has **no built-in default**, so the operator's env file
-is the only source for where a deploy ships; §1.4 records which GitHub scope
-carries that value on the workflow path.
+`deploy.sh` requires `KAJIANQ_DEPLOY_HOST` and `KAJIANQ_DEPLOY_USER` from that
+file, and fails by name on an empty one before it builds anything.
+`KAJIANQ_DEPLOY_ROOT` is an optional operator label: it is logged for comparison,
+never gated, because the helper's root-only contract is the only source for where
+a deploy ships and nothing the deploy identity can read proves the label matches.
+§1.4 records which GitHub scope carries those values on the workflow path.
 
 The same file carries `DATABASE_URL` for the migration preflight (§1.1 step 1) on
 the operator path; the workflow path passes `secrets.STAGING_DATABASE_URL` in the
@@ -398,8 +402,9 @@ at the scope of the job that reads it — a job that declares a GitHub environme
 resolves that environment's copy of a name, and a repository-level value is read
 only by a job whose own scope carries no copy of that name. So the dispatching
 environment decides where a deploy lands and what it authenticates with. Both
-scopes carry the five `VPS_*` names — the deploy's four variables and its deploy
-key; the repository level carries only what no scope shadows: `STAGING_DATABASE_URL`
+scopes carry the five `VPS_*` names — the deploy's four variables (the tree one
+being a log-only label) and its deploy key; the repository level carries only
+what no scope shadows: `STAGING_DATABASE_URL`
 and `RATE_BYPASS_PRIVATE_KEY`, whose readers are in the first table below, and the
 reader-less legacy and provider entries in the second. **No `VPS_*` name keeps a
 repository-level copy:** a copy shadowed at every scope that reads the name is a
@@ -412,7 +417,7 @@ value, its jobs read the other environment's box instead of failing by name — 
 | ------ | ------------------------- | ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
 | var    | `VPS_HOST`                | `staging`, `prod` | the deploy job (→ `KAJIANQ_DEPLOY_HOST`) and the Staging tunnel                                                                          |
 | var    | `VPS_USER`                | `staging`, `prod` | the deploy job (→ `KAJIANQ_DEPLOY_USER`) and the Staging tunnel                                                                          |
-| var    | `VPS_ROOT`                | `staging`, `prod` | the deploy job (→ `KAJIANQ_DEPLOY_ROOT`, required — §1.3)                                                                                |
+| var    | `VPS_ROOT`                | `staging`, `prod` | the deploy job (→ `KAJIANQ_DEPLOY_ROOT`, optional log label — §1.3)                                                                      |
 | var    | `VPS_PUBLIC_URL`          | `staging`, `prod` | the deploy smoke, and the Staging smoke, ZAP and Schemathesis steps                                                                      |
 | secret | `VPS_DEPLOY_SSH_KEY`      | `staging`, `prod` | the deploy job and the Staging tunnel — each at the scope it declares                                                                    |
 | secret | `STAGING_DATABASE_URL`    | repository        | the deploy job's migration preflight and the Staging Golden Set smoke — the VPS Postgres loopback URL **through the tunnel port** (§2.8) |
@@ -438,12 +443,12 @@ exists only in the environment, while omitting the mapping resolves the name to
 an empty string there. The mapping therefore stays.
 
 `deploy-vps.yml` fails at a named "Require the deploy access" step when
-`VPS_HOST`, `VPS_USER`, `VPS_ROOT`, `VPS_PUBLIC_URL`, `STAGING_DATABASE_URL` or
-the key is missing — an actionable failure rather than a silent no-op, so an
-empty `KAJIANQ_DEPLOY_ROOT` cannot reach the script as a default tree and an
-unmapped `STAGING_DATABASE_URL` cannot leave the migration preflight to fail for
-the same missing value. The private key is written to a runner-local file the job
-removes when it ends.
+`VPS_HOST`, `VPS_USER`, `VPS_PUBLIC_URL`, `STAGING_DATABASE_URL` or the key is
+missing — an actionable failure rather than a silent no-op, so an unmapped
+`STAGING_DATABASE_URL` cannot leave the migration preflight to fail for the same
+missing value. `VPS_ROOT` is not gated: the helper's contract decides the target,
+and the label is only logged. The private key is written to a runner-local file
+the job removes when it ends.
 
 **Legacy variables removed (step 7 executed).** `STAGING_URL` is deleted;
 `PROD_URL` is re-pointed at the VPS's public origin
@@ -482,12 +487,13 @@ Three distinct identities, deliberately:
   [`provision/vps/sudoers/kajianq-deploy`](../provision/vps/sudoers/kajianq-deploy)
   is the frozen baseline `apply.sh` still knows and must keep the same bytes:
   - `vps-deploy kajianq` (deploy and `--rollback`) and its four bounded service
-    verbs for `kajianq-api.service` — the path this deploy uses;
-  - the legacy `systemctl restart kajianq-api.service` and
-    `systemctl start kajianq-cron.service`, kept only until the legacy path is
-    retired;
+    verbs for `kajianq-api.service` — the helper path this deploy uses;
+  - `systemctl start kajianq-cron.service` — the cron proof the helper does not
+    own;
   - the two read-only diagnostics the shared doctor gate uses (`nginx -t`,
-    `certbot certificates`).
+    `certbot certificates`);
+  - the legacy `systemctl restart kajianq-api.service` — bridge-only until the
+    host-config cleanup removes it.
 
   By absolute path, no wildcards, no shell, no `ALL`. The account uploads the
   artifact to `/srv/vps-incoming` as a member of the upload group; the helper,
@@ -515,9 +521,12 @@ Three distinct identities, deliberately:
 > disagree silently. Record: ADR-0044 decision 6.
 
 The helper unpacks with root ownership and the contract's `0755`/`root:root`
-target, so the first swap retires the identity's write access to the live tree;
-a deploy cannot leave a stale file the process still holds — the swap and its
-restart are what put the new code in front of the API.
+target, so a helper-swapped tree is not writable by the deploy identity. That is
+not yet the box's steady state: the frozen `provision/vps/apply.sh` still chowns
+`/srv/kajianq` back to `kajianq-deploy` if it is run, and it remains in the
+checkout until the host-config retirement PR removes it. A deploy cannot leave a
+stale file the process still holds — the helper's swap and restart put the new
+code in front of the API.
 
 ### 1.6 The public hostname (and how to change it)
 

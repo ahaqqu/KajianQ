@@ -1736,17 +1736,20 @@ describe("provisioning config as code stays true to the ADR", () => {
     expect(script).toMatch(/cleanup\.ts/);
   });
 
-  it("the deploy requires KAJIANQ_DEPLOY_ROOT and has no tree to fall back to", () => {
-    // The tree decides what a deploy replaces, so both halves are pinned: the name is in the
-    // required-name gate, and the assignment carries no `:-` default. Reverting both halves
-    // would let an operator env file that omits the tree ship to /srv/kajianq while reporting
-    // success; each half alone still fails — the loop by name, the expansion as an unbound
-    // variable under `set -u`.
+  it("gates only the values the script uses and treats the tree as an optional label", () => {
+    // The helper's root-only contract decides the target; nothing the deploy identity can read
+    // proves KAJIANQ_DEPLOY_ROOT matches it, so the label is logged, never gated.
     const script = read("provision/vps/deploy/deploy.sh");
     const required = /for var in ([^;]+); do/.exec(script)?.[1];
     expect(required, "deploy.sh must keep its required-name loop").toBeTruthy();
-    expect(required.split(/\s+/)).toContain("KAJIANQ_DEPLOY_ROOT");
-    expect(script).toMatch(/^DEPLOY_ROOT="\$\{KAJIANQ_DEPLOY_ROOT\}"$/m);
+    expect(required.split(/\s+/)).not.toContain("KAJIANQ_DEPLOY_ROOT");
+    expect(required.split(/\s+/)).toContain("KAJIANQ_DEPLOY_HOST");
+    expect(required.split(/\s+/)).toContain("KAJIANQ_DEPLOY_USER");
+    expect(script).toMatch(/^DEPLOY_ROOT="\$\{KAJIANQ_DEPLOY_ROOT:-\}"$/m);
+    // Logged when set, never used as a path or a gate.
+    expect(script).toMatch(/operator-declared target: \$\{DEPLOY_ROOT\}/);
+    expect(script).not.toMatch(/mkdir[^\n]*DEPLOY_ROOT/);
+    expect(script).not.toMatch(/rsync[^\n]*DEPLOY_ROOT/);
   });
 
   it("the deploy script builds with documented forms and smokes the SPA, not only the API", () => {
@@ -2558,6 +2561,15 @@ describe("provisioning config as code stays true to the ADR", () => {
     // api/… and web/…. The archive sits beside them and the tar names only those two trees,
     // so it cannot include itself.
     expect(script).toMatch(/tar -czf "\$\{STAGE\}\/kajianq\.tar\.gz" -C "\$\{STAGE\}" api web/);
+    // The helper does not restore member readability; the staged tree is normalized before
+    // the tar, so a build under a stricter umask cannot ship a bundle nobody can read.
+    expect(script).toMatch(
+      /find "\$\{STAGE\}\/api" "\$\{STAGE\}\/web" -type d -exec chmod 0755 \{\} \+/,
+    );
+    expect(script).toMatch(
+      /find "\$\{STAGE\}\/api" "\$\{STAGE\}\/web" -type f -exec chmod 0644 \{\} \+/,
+    );
+    expect(script.indexOf('find "${STAGE}/api"')).toBeLessThan(script.indexOf("tar -czf"));
     // Uploaded to the contract's fixed incoming path; the helper verifies its owner and caps.
     expect(script).toMatch(/-a --partial[\s\S]{0,160}\/srv\/vps-incoming\/kajianq\.tar\.gz/);
     // The helper is the only writer of the live tree.
@@ -2567,7 +2579,7 @@ describe("provisioning config as code stays true to the ADR", () => {
     expect(script).not.toMatch(/rsync[^\n]*\$\{DEPLOY_ROOT\}/);
     expect(script).not.toMatch(/rsync[^\n]*\/srv\/kajianq/);
     expect(script).not.toMatch(/mkdir -p[^\n]*DEPLOY_ROOT/);
-    expect(script).not.toMatch(/systemctl restart kajianq-api\.service/);
+    expect(script).not.toMatch(/sudo[^\n]*restart kajianq-api\.service/);
     expect(script).not.toMatch(/is-active --quiet/);
   });
 
