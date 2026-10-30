@@ -35,10 +35,18 @@ export {
   type ChatSessionMessages,
 } from "./chat";
 export {
+  ChatChainNarratorSchema,
+  ChatChainSchema,
+  type ChatChain,
+  type ChatChainNarrator,
+} from "./chat-chain";
+export {
+  ChatTraceChainSchema,
   ChatTraceChunkSchema,
   ChatTraceFrameSchema,
   ChatTraceReviewerItemSchema,
   ChatTraceReviewerSchema,
+  type ChatTraceChain,
   type ChatTraceChunk,
   type ChatTraceFrame,
   type ChatTraceReviewer,
@@ -108,6 +116,12 @@ export {
   type AlignedPair,
   type MorphToken,
 } from "./ingestion";
+export {
+  type ChainEvidenceChild,
+  type ChainEvidenceDetail,
+  type ChainEvidenceRow,
+} from "./trace-retriever";
+export { CHAIN_EVIDENCE_TRACE_LIMIT } from "./trace-primitives";
 export { describeIssue, issuePath, type ValidationIssue } from "./issue-path";
 export {
   CALLER_PRIORITY_K,

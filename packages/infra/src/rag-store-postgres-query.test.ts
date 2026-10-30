@@ -99,3 +99,66 @@ describe("rag-store-postgres-query: a filter's derived case", () => {
     expect(single.values).toEqual(["k", ["v"]]);
   });
 });
+
+/**
+ * The relation clause: a filter over the transmission rows attached to a child.
+ * Its column is the builder's allowlist, so the clause carries no caller-written
+ * identifier, and its match selects the child as a whole — the `EXISTS` yields
+ * one row per matching child, never one row per matching chain.
+ */
+describe("rag-store-postgres-query: a filter's relation clause", () => {
+  it("binds one value set per relation clause and no key parameter", () => {
+    const grade = filterBindings({
+      chainGrade: { relation: "chains", on: "grade", values: ["sound"] },
+    });
+    expect(grade.clauses).toEqual(["chain_grade"]);
+    // No key is bound: the relation and the column are the allowlist's, not the
+    // caller's, so a value set is the whole parameter list.
+    expect(grade.values).toEqual([["sound"]]);
+
+    const narrator = filterBindings({
+      narratorId: { relation: "chains", on: "narratorIds", values: ["n-1", "n-2"] },
+    });
+    expect(narrator.clauses).toEqual(["chain_narrator"]);
+    expect(narrator.values).toEqual([["n-1", "n-2"]]);
+  });
+
+  it("emits a fixed EXISTS clause per column, comparing the child and never a chain row", () => {
+    const grade = buildSimilarityQuery("primary", ["chain_grade"]);
+    expect(grade).toContain(
+      "EXISTS (SELECT 1 FROM narrator_chains WHERE narrator_chains.child_id = doc_children.id AND narrator_chains.grade = ANY($3::text[]))",
+    );
+    const narrator = buildSimilarityQuery("primary", ["chain_narrator"]);
+    expect(narrator).toContain(
+      "EXISTS (SELECT 1 FROM narrator_chains WHERE narrator_chains.child_id = doc_children.id AND narrator_chains.narrator_ids && $3::uuid[])",
+    );
+  });
+
+  it("keeps the slot arithmetic aligned when a relation clause follows a metadata one", () => {
+    const { clauses, values } = filterBindings({
+      sourceType: ["transmitted"],
+      chainGrade: { relation: "chains", on: "grade", values: ["weak"] },
+    });
+    expect(clauses).toEqual(["exact", "chain_grade"]);
+    expect(values).toEqual(["sourceType", ["transmitted"], ["weak"]]);
+    const q = buildSimilarityQuery("primary", clauses);
+    expect(q).toContain("metadata->>$3 = ANY($4::text[])");
+    // $3/$4 are the metadata clause's two slots; the relation clause binds ONE,
+    // at $5 — the count the builder emits and the values it binds come from one
+    // reading of the record.
+    expect(q).toContain("narrator_chains.grade = ANY($5::text[])");
+  });
+
+  it("refuses a relation clause that carries a metadata-only alternative", () => {
+    expect(() =>
+      filterBindings({
+        chainGrade: {
+          relation: "chains",
+          on: "grade",
+          values: ["sound"],
+          whenAbsent: { key: "collection", values: ["fixture"] },
+        } as never,
+      }),
+    ).toThrow(TypeError);
+  });
+});

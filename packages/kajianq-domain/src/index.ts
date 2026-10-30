@@ -14,13 +14,20 @@
  * the pack has one public surface; nothing in this barrel declares a second
  * copy.
  */
+// The filter vocabulary and its exhaustive dimension map.
 export {
+  FILTER_DIMENSIONS,
   GRADES,
   MADZHABS,
+  ROUTABLE_SOURCES,
   TEXT_LAYERS,
+  relationOf,
+  storeKeyOf,
+  type FilterBinding,
   type Grade,
   type KajianQFilters,
   type Madzhab,
+  type RoutableSource,
   type TextLayer,
 } from "./filters";
 
@@ -178,16 +185,9 @@ export {
   type RetrieverStore,
   type StoreBridge,
 } from "./chat-retriever";
-// The caller-priority guarantee's provenance label, exported for the composition
-// roots that inject domain labels into the engine's seams (the eval harness) and
-// for readers of the trace.
 export { CALLER_PRIORITY_ORIGIN } from "./chat-caller-priority";
-// The fusion arithmetic and the two deterministic expansions live in their own
-// modules (the 300-line and 5-import agentic caps) so consumers get one public surface.
 export { hierarchyBonus, rrfFuse, RRF_K, HIERARCHY_BONUS } from "./chat-fusion";
-// The store-facing half of stage 3: the exhaustive dimension map, the loud
-// unexpressible-dimension failure, and the per-dimension relaxation order.
-export { FILTER_DIMENSIONS, ROUTABLE_SOURCES, type RoutableSource } from "./filters";
+// The loud unexpressible-dimension failure, the relaxation order, and the helpers.
 export {
   FilterNotExpressibleError,
   RELAXATION_ORDER,

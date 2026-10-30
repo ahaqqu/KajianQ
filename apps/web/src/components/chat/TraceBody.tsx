@@ -2,7 +2,7 @@ import { useState } from "react";
 import type { ChatTraceFrame } from "@app/contracts";
 import { t, useLocale, type Locale } from "../../lib/i18n";
 import { MonoLabel } from "../ui";
-import { ChunkRow, ReviewerSection, SourceRow, Step } from "./TraceSections";
+import { ChainsSection, ChunkRow, ReviewerSection, SourceRow, Step } from "./TraceSections";
 
 /**
  * The user-facing Trace panel (ADR-0007): every answer expands to show how it
@@ -159,6 +159,15 @@ export function TraceBody({
                     ))}
                   </ul>
                 </div>
+              </Step>
+            )}
+            {(technical.chains !== undefined || technical.chainsNotConsulted !== undefined) && (
+              <Step>
+                <ChainsSection
+                  chains={technical.chains ?? []}
+                  notConsulted={technical.chainsNotConsulted ?? []}
+                  locale={locale}
+                />
               </Step>
             )}
             {technical.chunks.length > 0 && (

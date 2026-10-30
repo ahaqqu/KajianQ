@@ -12,6 +12,8 @@ import {
   ChatConfigError,
   createRagStoreFromEnv,
   parseCallerPriorityK,
+  parseChainEvidenceChainCap,
+  parseChainEvidenceChildCap,
   parseLabelLookupCap,
   parseNeighbourCap,
   parseNeighbourRadius,
@@ -20,11 +22,13 @@ import {
 export { authGuard } from "./auth";
 // Re-exported so the chat route keeps its import count within the agentic cap.
 export { answerFramesFor, rehydrateTranscript } from "./chat-citations";
-export { chunkFetcher, traceRefused } from "./chat-trace";
+export { chunkFetcher, narratorFetcher, traceRefused } from "./chat-trace";
 export {
   ChatConfigError,
   createRagStoreFromEnv,
   parseCallerPriorityK,
+  parseChainEvidenceChainCap,
+  parseChainEvidenceChildCap,
   parseLabelLookupCap,
   parseNeighbourCap,
   parseNeighbourRadius,
@@ -219,6 +223,8 @@ export function buildChatWiring(env: Record<string, string | undefined>): ChatWi
     neighbourCap: parseNeighbourCap(env["NEIGHBOUR_EXPANSION_CAP"]),
     labelLookupCap: parseLabelLookupCap(env["LABEL_LOOKUP_CAP"]),
     callerPriorityK: parseCallerPriorityK(env["CALLER_PRIORITY_K"]),
+    chainEvidenceChildCap: parseChainEvidenceChildCap(env["CHAIN_EVIDENCE_CHILD_CAP"]),
+    chainEvidenceChainCap: parseChainEvidenceChainCap(env["CHAIN_EVIDENCE_CHAIN_CAP"]),
   });
   return {
     pipeline: pipelineBag({

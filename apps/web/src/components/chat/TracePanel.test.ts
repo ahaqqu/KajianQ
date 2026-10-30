@@ -166,3 +166,74 @@ describe("TracePanel — the reviewer pre-gate's verdict", () => {
     expect(screen.queryByTestId("trace-reviewer-outcome")).toBeNull();
   });
 });
+
+/**
+ * The chains consulted (spec §9.5): the panel names every transmission row the run
+ * read for the passages in context, in the server-derived order, with each row's
+ * grade, its grader and its Arabic sanad. A frame whose run recorded no read omits
+ * the block; a run that read and found none says so — the two facts stay distinct.
+ */
+describe("TracePanel — the transmission chains consulted", () => {
+  const withChains = (chains: NonNullable<ChatTraceFrame["technical"]["chains"]>) =>
+    ({ ...frame, technical: { ...frame.technical, chains } }) satisfies ChatTraceFrame;
+
+  it("renders every row of every consulted passage with grade, grader and sanad", () => {
+    renderTechnical(
+      withChains([
+        {
+          childId: "c2",
+          chains: [
+            {
+              narrators: [
+                { id: "n1", nameAr: "نافع" },
+                { id: "n2", nameAr: "ابن عمر" },
+              ],
+              grade: "sahih",
+              grader: "al-bukhari",
+            },
+            {
+              narrators: [{ id: "n1", nameAr: "نافع" }],
+              grade: "dhaif",
+              grader: "al-daraqutni",
+              moreMayExist: true,
+            },
+          ],
+        },
+      ]),
+    );
+
+    const rows = texts("trace-chain-row");
+    expect(rows).toHaveLength(2);
+    // Every row renders its own grade, grader and sanad — the weaker row is not
+    // hidden behind the stronger one.
+    expect(rows[0]).toContain("sahih");
+    expect(rows[0]).toContain("penilai: al-bukhari");
+    expect(rows[0]).toContain("ابن عمر");
+    expect(rows[1]).toContain("dhaif");
+    expect(rows[1]).toContain("penilai: al-daraqutni");
+    expect(texts("trace-chain-child")[0]).toContain("c2");
+  });
+
+  it("says a read found no row when the record is empty", () => {
+    renderTechnical(withChains([]));
+    expect(screen.getByTestId("trace-chains")).toBeTruthy();
+    expect(texts("trace-no-chains")).toEqual(["Tidak ada sanad yang tercatat untuk jawaban ini."]);
+  });
+
+  it("omits the block entirely when the run recorded no read", () => {
+    renderTechnical(frame);
+    expect(screen.queryByTestId("trace-chains")).toBeNull();
+  });
+
+  it("names the chain-bearing passages the read left unread", () => {
+    renderTechnical({
+      ...frame,
+      technical: { ...frame.technical, chains: [], chainsNotConsulted: ["c9"] },
+    });
+    // An empty read and an unread passage are different facts: the panel says the
+    // child was not consulted rather than "no sanad recorded".
+    expect(screen.getByTestId("trace-chains")).toBeTruthy();
+    expect(screen.queryByTestId("trace-no-chains")).toBeNull();
+    expect(texts("trace-chain-unread")).toEqual(["c9"]);
+  });
+});

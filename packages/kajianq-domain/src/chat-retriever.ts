@@ -2,22 +2,19 @@ import { Effect } from "effect";
 import {
   RunContext,
   toStageError,
-  // `@app/rag-core` re-exports the engine's `CostRecord`, so sourcing it here keeps
-  // this module inside the repo's import cap.
-  type CostRecord,
   type RoutedQuery,
   type Retriever,
   type StoreError,
 } from "@app/rag-core";
-import type { KajianQFilters } from "./filters";
 import {
   CALLER_PRIORITY_K,
   DEFAULT_LABEL_LOOKUP_CAP,
   DEFAULT_NEIGHBOUR_CAP,
   DEFAULT_NEIGHBOUR_RADIUS,
   DEFAULT_SCOPE_EXPANSION_CAP,
-  applyCallerPriority,
   callerIndexIn,
+  chainSeamOf,
+  finalizeRetrieval,
   compareHitsByDenseRank,
   expandRetrievedSurahScope,
   expandSurahScope,
@@ -29,6 +26,7 @@ import {
   rrfFuse,
   SEARCH_HITS_TRACE_LIMIT,
   storeFilters,
+  type KajianQFilters,
   type RetrieverStore,
   type TrackHit,
 } from "./chat-retriever-parts";
@@ -38,17 +36,8 @@ import { withTextLayers } from "./chunk-text-layers";
  * embedding tracks (ADR-0013 dual-track), and fuse the hits with Reciprocal Rank
  * Fusion (k=60) plus the spec's hierarchy bonuses.
  */
-export type RetrieverEmbedder = {
-  embed(spec: {
-    texts: readonly string[];
-    /** Required on the serving seam: the embedded texts are the user's sub-queries, i.e.
-     * personal data. Non-optional so a call site that drops it is a compile error; the
-     * provider seam then skips free-tier candidates. */
-    personalData: true;
-  }): Effect.Effect<{ vectors: readonly (readonly number[])[]; cost: CostRecord }, unknown>;
-};
-
-export type { RetrieverStore } from "./chat-retriever-store";
+import type { RetrieverEmbedder } from "./chat-retriever-store";
+export type { RetrieverEmbedder, RetrieverStore } from "./chat-retriever-store";
 
 /** Effect bridge the wiring injects (keeps this module free of runner imports). */
 export type StoreBridge = <A>(effect: Effect.Effect<A, StoreError>) => Promise<A>;
@@ -73,6 +62,11 @@ export type KajianQRetrieverDeps = {
   /** ADR-0062's bound: how many of the caller's leading hits the guarantee promotes,
    * defaulting to `CALLER_PRIORITY_K`; `0` disables it. */
   callerPriorityK?: number | undefined;
+  /** Children the per-chain evidence read covers (`0` reads none and marks every
+   * chain-bearing child unread) and rows per child it carries; the module's defaults
+   * apply when absent. */
+  chainEvidenceChildCap?: number | undefined;
+  chainEvidenceChainCap?: number | undefined;
 };
 
 export function createKajianQRetriever(deps: KajianQRetrieverDeps): Retriever<KajianQFilters> {
@@ -283,12 +277,17 @@ export function createKajianQRetriever(deps: KajianQRetrieverDeps): Retriever<Ka
               at: run.now(),
             });
           }
-          return applyCallerPriority({
+          return yield* finalizeRetrieval({
             callerLists,
             returned: [...inContext, ...neighbours.chunks],
             k: callerPriorityK,
-            at: run.now(),
-            record: (event) => run.record(event),
+            run,
+            chains: chainSeamOf({
+              store: deps.store,
+              bridge: deps.bridge,
+              childCap: deps.chainEvidenceChildCap,
+              chainCap: deps.chainEvidenceChainCap,
+            }),
           });
         }),
       ),

@@ -1,4 +1,5 @@
 import * as v from "valibot";
+import { ChatChainSchema } from "./chat-chain";
 import { ChatTraceFrameSchema } from "./chat-trace";
 
 /**
@@ -161,6 +162,20 @@ export const ChatCitationSchema = v.object({
   arabic: v.pipe(v.string(), v.minLength(1)),
   translation: v.optional(v.string()),
   grade: v.optional(v.pipe(v.string(), v.minLength(1))),
+  /**
+   * The passage's transmission rows, projected from the persisted
+   * `chain_evidence` event. Absent means the run recorded none for this child —
+   * never "the rows were read and dropped": the evidence frame carries every row
+   * the read returned, in its order.
+   */
+  chains: v.optional(v.array(ChatChainSchema)),
+  /**
+   * True when the passage is chain-bearing but the retrieval budget left it
+   * unread. A renderer must say the chains were not consulted and must not fall
+   * back to `grade` for this citation: the flattened field names the passage,
+   * not the rows nobody read.
+   */
+  chainsUnread: v.optional(v.boolean()),
   machineTranslated: v.boolean(),
   source: v.optional(v.pipe(v.string(), v.minLength(1))),
 });

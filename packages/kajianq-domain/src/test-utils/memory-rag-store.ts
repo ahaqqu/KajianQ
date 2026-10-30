@@ -129,10 +129,14 @@ export function createMemoryRagStore(): RagStore & {
     rows: modelConfigRows,
     now: () => Date.now(),
   });
-  const narratorMethods = memoryNarratorMethods({
+  // The narrator/chain state is held above the method spread because the
+  // similarity search reads the same chains: a relation filter selects the child
+  // by the rows attached to it, so the double must answer from one state.
+  const narratorState = {
     narrators: new Map<string, NarratorRecord>(),
     chains: new Map<string, SeededChain>(),
-  });
+  };
+  const narratorMethods = memoryNarratorMethods(narratorState);
 
   const cosine = (a: readonly number[], b: readonly number[]): number => {
     let dot = 0;
@@ -190,9 +194,11 @@ export function createMemoryRagStore(): RagStore & {
     similaritySearch(track, embedding, opts) {
       return Effect.sync(() => {
         const vec = track === "primary" ? "embeddingPrimary" : "embeddingFallback";
+        const chainsOf = (childId: string) =>
+          [...narratorState.chains.values()].filter((chain) => chain.childId === childId);
         const rows = [...children.values()]
           .filter((c) => c[vec] !== null && c[vec] !== undefined)
-          .filter((c) => matchesMetadataFilters(c.metadata ?? {}, opts.filters))
+          .filter((c) => matchesMetadataFilters(c.metadata ?? {}, opts.filters, chainsOf(c.id)))
           .map((c) => ({
             child: toReadChild(c),
             distance: 1 - cosine(embedding, (c[vec] ?? []) as readonly number[]),

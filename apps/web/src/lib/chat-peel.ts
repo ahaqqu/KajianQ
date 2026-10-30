@@ -28,6 +28,8 @@ export const DISCLAIMER_MARKERS = [
 const CANONICAL_WARNINGS: readonly string[] = [
   messages.en.dhaifWarningCard,
   messages.id.dhaifWarningCard,
+  messages.en.dhaifChainWarningCard,
+  messages.id.dhaifChainWarningCard,
 ];
 
 /** A rule paragraph is one short line; anything longer is answer prose. */

@@ -62,6 +62,7 @@ export {
 export {
   canonicalMessageId,
   filterMatchOf,
+  isRelationFilter,
   type AlignedPairInsert,
   type AnswerFeedbackTarget,
   type ChatMessage,
@@ -74,6 +75,7 @@ export {
   type MetadataFilterMatch,
   type MetadataFilterValue,
   type RagStore,
+  type RelationFilterMatch,
   type RetrievalTrack,
   type SimilarChild,
 } from "./rag-store";

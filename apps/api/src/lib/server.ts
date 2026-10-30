@@ -47,11 +47,16 @@ const PASSTHROUGH_KEYS = [
   // view or the knob is dead in serving.
   "SCOPE_EXPANSION_CAP",
   // Same contract as the scope cap, for the two neighbourhood knobs, the
-  // citation-label lookup's budget, and the caller-priority bound.
+  // citation-label lookup's budget, the caller-priority bound, and the per-chain
+  // evidence read's child/row budgets. A dropped chain budget silently runs the
+  // defaults: the read still happens, but not for the children or rows the
+  // operator configured.
   "NEIGHBOUR_EXPANSION_RADIUS",
   "NEIGHBOUR_EXPANSION_CAP",
   "LABEL_LOOKUP_CAP",
   "CALLER_PRIORITY_K",
+  "CHAIN_EVIDENCE_CHILD_CAP",
+  "CHAIN_EVIDENCE_CHAIN_CAP",
 ] as const;
 
 /** The filtered env view requests receive: every present (non-empty) `PASSTHROUGH_KEYS`

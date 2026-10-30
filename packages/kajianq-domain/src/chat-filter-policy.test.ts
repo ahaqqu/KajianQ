@@ -4,6 +4,8 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   FILTER_DIMENSIONS,
   ROUTABLE_SOURCES,
+  relationOf,
+  storeKeyOf,
   type KajianQFilters,
   type RoutableSource,
 } from "./filters";
@@ -65,6 +67,8 @@ describe("the dimension map is exhaustive over the filter type", () => {
     const samples: Required<KajianQFilters> = {
       sourceType: ["quran"],
       grade: ["sahih"],
+      chainGrade: ["sahih"],
+      narratorId: ["n-1"],
     };
     expect(Object.keys(samples).sort()).toEqual(declared);
   });
@@ -72,8 +76,40 @@ describe("the dimension map is exhaustive over the filter type", () => {
   it.each([
     ["sourceType", "sourceType", { sourceType: ["quran"] }],
     ["grade", "grade", { grade: ["sahih", "hasan"] }],
+    // A relation dimension has no metadata key: its record key is its own name, so
+    // the trace's filter record can carry it without colliding with `grade`.
+    ["chainGrade", "chainGrade", { chainGrade: ["sahih"] }],
+    ["narratorId", "narratorId", { narratorId: ["n-1", "n-2"] }],
   ] as const)("binds the %s dimension to its store key", (dimension, key, filters) => {
     expect(metadataFilters(filters)).toEqual({ [key]: filters[dimension as keyof typeof filters] });
+  });
+
+  it.each([
+    ["chainGrade", "grade", ["sahih", "dhaif"]],
+    ["narratorId", "narratorIds", ["n-1"]],
+  ] as const)(
+    "binds %s to the relation clause the store's %s column answers",
+    (dimension, column, values) => {
+      // The store-facing record is a relation clause, never a metadata match: a
+      // relation dimension read as a metadata key would bind `metadata->>chainGrade`,
+      // a key no row carries, and the search would match nothing.
+      expect(relationOf(storeKeyOf(dimension))).toBe(column);
+      expect(storeFilters({ [dimension]: [...values] })).toEqual({
+        [dimension]: { relation: "chains", on: column, values: [...values] },
+      });
+    },
+  );
+
+  it("keeps a relation dimension's record key out of the metadata key space", () => {
+    // `grade` is a metadata dimension and `chainGrade` a relation one; a shared
+    // record key would make `intended − dropped` ambiguous on the relaxation
+    // trace, so the two key spaces must stay disjoint.
+    const metadataKeys = Object.entries(FILTER_DIMENSIONS)
+      .filter(([, binding]) => binding.on === "metadata")
+      .map(([, binding]) => (binding as { key: string }).key);
+    for (const dimension of ["chainGrade", "narratorId"] as const) {
+      expect(metadataKeys).not.toContain(storeKeyOf(dimension));
+    }
   });
 
   it("carries a set-valued dimension through as a set, in declared order", () => {
@@ -117,7 +153,15 @@ const readFixture = (relative: string) => readFile(resolve(FIXTURES, relative), 
  * edit to this committed list rather than a one-line change the corpus pins
  * cannot see.
  */
-const FILTER_VOCABULARY = ["sourceType", "grade", "madzhab", "textLayer", "principleTags"] as const;
+const FILTER_VOCABULARY = [
+  "sourceType",
+  "grade",
+  "chainGrade",
+  "narratorId",
+  "madzhab",
+  "textLayer",
+  "principleTags",
+] as const;
 
 /** Dimensions the corpus cannot satisfy; they may return only when ingestion writes their keys. */
 const RETIRED_FILTER_KEYS = ["madzhab", "textLayer", "principleTags"] as const;
@@ -174,11 +218,28 @@ async function ingestedMetadataKeys(): Promise<Set<string>> {
 describe("the filter map is pinned to the metadata ingestion writes", () => {
   it("binds only keys the production ingesters actually write", async () => {
     const written = await ingestedMetadataKeys();
-    for (const [dimension, key] of Object.entries(FILTER_DIMENSIONS)) {
+    for (const [dimension, binding] of Object.entries(FILTER_DIMENSIONS)) {
+      // A relation dimension binds the seam's chain rows, not a metadata key; the
+      // chain schema pin below is its own guard.
+      if (binding.on !== "metadata") continue;
       expect(
-        written.has(key),
-        `${dimension} binds metadata key "${key}", which ingestion never writes`,
+        written.has(binding.key),
+        `${dimension} binds metadata key "${binding.key}", which ingestion never writes`,
       ).toBe(true);
+    }
+  });
+
+  it("binds each relation dimension to a column the chain row carries", () => {
+    // The seam's chain record is the relation's table: a clause naming a column it
+    // does not carry fails here rather than matching nothing in production.
+    const chainRow = {
+      grade: "sahih",
+      grader: "x",
+      narratorIds: ["n-1"],
+      sourceRef: "s",
+    } satisfies Record<string, unknown>;
+    for (const dimension of ["chainGrade", "narratorId"] as const) {
+      expect(Object.keys(chainRow)).toContain(relationOf(storeKeyOf(dimension)));
     }
   });
 
@@ -273,7 +334,7 @@ describe("the relaxation order is declared, not incidental", () => {
     // The model's grade hint goes first because it is the one most often wrong;
     // the source selection is the routing decision and goes last — dropping it
     // puts every source back in play, the widest possible widening.
-    expect(RELAXATION_ORDER).toEqual(["grade", "sourceType"]);
+    expect(RELAXATION_ORDER).toEqual(["grade", "chainGrade", "narratorId", "sourceType"]);
     expect(new Set(RELAXATION_ORDER)).toEqual(new Set(Object.keys(FILTER_DIMENSIONS)));
   });
 

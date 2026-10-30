@@ -59,6 +59,83 @@ describe("conversationMarkdown", () => {
     expect(md).not.toContain("- QS.");
     expect(md.trimEnd().endsWith("Apa itu ayat kursi?")).toBe(true);
   });
+
+  it("writes every chain row with its grade, grader and sanad — never the flat grade", () => {
+    // The downloaded copy is one of the paths that render a citation grade. A
+    // sahih+dhaif citation must keep both rows, exactly as the sheet does; the
+    // passage's flattened `grade` is not the verdict of either chain.
+    const transcript: ChatSessionMessages = {
+      ...TRANSCRIPT,
+      messages: [
+        TRANSCRIPT.messages[0]!,
+        {
+          ...TRANSCRIPT.messages[1]!,
+          citations: {
+            messageId: "m2",
+            refusal: false,
+            dhaifWarning: false,
+            citations: [
+              {
+                label: "HR. Bukhari no. 1",
+                arabic: "حدثنا",
+                grade: "sahih",
+                machineTranslated: false,
+                chains: [
+                  {
+                    narrators: [
+                      { id: "n1", nameAr: "نافع" },
+                      { id: "n2", nameAr: "ابن عمر" },
+                    ],
+                    grade: "sahih",
+                    grader: "al-bukhari",
+                  },
+                  {
+                    narrators: [{ id: "n1", nameAr: "نافع" }],
+                    grade: "dhaif",
+                    grader: "al-daraqutni",
+                  },
+                ],
+              },
+            ],
+          },
+        },
+      ],
+    };
+    const md = conversationMarkdown(transcript, "id", "Hadits");
+    expect(md).toContain(
+      "- HR. Bukhari no. 1 — (sahih — al-bukhari; Jalur periwayatan: نافع < ابن عمر) (dhaif — al-daraqutni; Jalur periwayatan: نافع)",
+    );
+    expect(md).not.toContain("(sahih)");
+  });
+
+  it("writes the unread marker for a passage whose chains were not read", () => {
+    const transcript: ChatSessionMessages = {
+      ...TRANSCRIPT,
+      messages: [
+        TRANSCRIPT.messages[0]!,
+        {
+          ...TRANSCRIPT.messages[1]!,
+          citations: {
+            messageId: "m2",
+            refusal: false,
+            dhaifWarning: false,
+            citations: [
+              {
+                label: "HR. Bukhari no. 1",
+                arabic: "حدثنا",
+                grade: "sahih",
+                machineTranslated: false,
+                chainsUnread: true,
+              },
+            ],
+          },
+        },
+      ],
+    };
+    const md = conversationMarkdown(transcript, "id", "Hadits");
+    expect(md).toContain("- HR. Bukhari no. 1 — (sanad tidak dibaca)");
+    expect(md).not.toContain("(sahih)");
+  });
 });
 
 describe("conversationFileName", () => {

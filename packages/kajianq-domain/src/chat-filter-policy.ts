@@ -1,10 +1,11 @@
 import type { MetadataFilterValue } from "@app/infra";
-import { FILTER_DIMENSIONS, type KajianQFilters } from "./filters";
+import { FILTER_DIMENSIONS, relationOf, storeKeyOf, type KajianQFilters } from "./filters";
 import { sahihFilterExpansion } from "./sahihayn";
 
 /**
  * The domain→store filter mapping — Smart Router stage 3 (spec §3.3 item 3:
- * source selection and SQL metadata filters over `sourceType` and `grade`).
+ * source selection and SQL filters over the metadata dimensions and the
+ * per-chain relation dimensions).
  *
  * **The invariant this module owns** (the reason it exists as its own file):
  * *the routing decision the trace publishes and the filter record the store
@@ -12,10 +13,11 @@ import { sahihFilterExpansion } from "./sahihayn";
  * fails the run loudly instead of being dropped.* Two silent failures are ruled
  * out by construction rather than by care:
  *
- * 1. **A dimension with no store key.** `FILTER_DIMENSIONS` is an exhaustive
+ * 1. **A dimension with no store binding.** `FILTER_DIMENSIONS` is an exhaustive
  *    `Record<keyof KajianQFilters, …>`: adding a dimension to the filter type
- *    without naming the metadata key it maps to is a typecheck failure, and a
- *    test pins the map to the keys ingestion writes. Otherwise a route can
+ *    without naming the metadata key — or the relation clause — it binds to is a
+ *    typecheck failure, and a test pins each metadata key to the keys ingestion
+ *    writes and each relation dimension to the seam's chain-row columns. Otherwise a route can
  *    decide "search the Quran, for the yusr lens" and the search runs over the
  *    whole corpus with no error, no trace entry, and no gate that notices — the
  *    failure this invariant forbids.
@@ -57,7 +59,11 @@ export type FilterEntry = {
    * cannot drift apart without a typecheck failure.
    */
   dimension: keyof KajianQFilters;
-  /** The `metadata` JSONB key the store binds — always a parameter, never SQL. */
+  /**
+   * The record key the store binds — a `metadata` JSONB key for a metadata
+   * dimension, or the relation dimension's own name for a chain clause. Always a
+   * parameter, never SQL.
+   */
   key: string;
   values: readonly string[];
 };
@@ -102,12 +108,9 @@ export function filterEntries(filters: KajianQFilters | undefined): FilterEntry[
     }
   }
   const entries: FilterEntry[] = [];
-  for (const [dimension, key] of Object.entries(FILTER_DIMENSIONS) as [
-    keyof KajianQFilters,
-    string,
-  ][]) {
+  for (const dimension of Object.keys(FILTER_DIMENSIONS) as (keyof KajianQFilters)[]) {
     const values = valuesOf(dimension, source[dimension]);
-    if (values !== null) entries.push({ dimension, key, values });
+    if (values !== null) entries.push({ dimension, key: storeKeyOf(dimension), values });
   }
   return entries;
 }
@@ -156,7 +159,16 @@ export function storeFilters(
 ): Record<string, MetadataFilterValue> {
   const out: Record<string, MetadataFilterValue> = {};
   for (const [key, values] of Object.entries(filters)) {
-    const expansion = key === FILTER_DIMENSIONS.grade ? sahihFilterExpansion(values) : undefined;
+    const relation = relationOf(key);
+    if (relation !== null) {
+      // A chain dimension binds its own clause over the rows attached to the
+      // child. No read-time expansion reaches it: every grade here is evidence
+      // the rows carry, and widening one would select children on a grade no
+      // stored row states.
+      out[key] = { relation: "chains", on: relation, values: [...values] };
+      continue;
+    }
+    const expansion = key === storeKeyOf("grade") ? sahihFilterExpansion(values) : undefined;
     out[key] = expansion ?? [...values];
   }
   return out;
@@ -169,7 +181,10 @@ export function storeFilters(
  *
  * 1. `grade` — a hint the cheap model inferred, so it is the cheapest to be
  *    wrong about.
- * 2. `sourceType` — the routing decision; dropping it is the widest possible
+ * 2. `chainGrade` — the same hint over the per-chain rows.
+ * 3. `narratorId` — a caller-pinned narrator identity; the narrowest filter in
+ *    the record, so it is probed away only after the two grade hints.
+ * 4. `sourceType` — the routing decision; dropping it is the widest possible
  *    widening (every source back in play) and the trace must show the route
  *    gave up its own decision only after the cheaper hint.
  *
@@ -181,6 +196,8 @@ export function storeFilters(
  */
 export const RELAXATION_ORDER = [
   "grade",
+  "chainGrade",
+  "narratorId",
   "sourceType",
 ] as const satisfies readonly (keyof KajianQFilters)[];
 

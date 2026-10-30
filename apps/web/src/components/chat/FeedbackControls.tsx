@@ -1,8 +1,29 @@
 import { useState } from "react";
-import type { FeedbackAnchor } from "@app/contracts";
+import type { ChatChain, ChatCitation, FeedbackAnchor } from "@app/contracts";
 import type { FeedbackPayload } from "../../lib/feedback";
 import { sendFeedback } from "../../lib/feedback";
 import { t, useLocale, type Locale } from "../../lib/i18n";
+
+/**
+ * The grade flag for one rendered chain row: the citation label, the row's
+ * position, and that row's own verdict. The server re-derives the row and
+ * rejects a mismatch, so a complaint can always be resolved to the sanad the
+ * reader was looking at — never to the passage's flattened grade.
+ */
+export function chainGradeAnchor(
+  citation: ChatCitation,
+  chain: ChatChain,
+  index: number,
+): FeedbackAnchor {
+  return {
+    type: "chain",
+    category: "questionable_grade",
+    id: citation.label,
+    chainIndex: index,
+    ...(chain.grade !== undefined ? { grade: chain.grade } : {}),
+    ...(chain.grader !== undefined ? { grader: chain.grader } : {}),
+  };
+}
 
 /**
  * The feedback affordances (ADR-0007): anonymous thumbs on the answer

@@ -4,6 +4,7 @@ import {
   authGuard,
   buildChatWiring,
   chunkFetcher,
+  narratorFetcher,
   sseFrame,
   traceRefused,
   wiringOr503,
@@ -206,6 +207,7 @@ export const chatRoutes = newRouter().post("/v1/chat", CHAT_OPENAPI_DESCRIPTION,
     messageId: storedMessageId,
     answerText: answer.text,
     fetchChunks: chunkFetcher(store, runStore),
+    fetchNarrators: narratorFetcher(store, runStore),
     warn: (msg, fields) => logger.warn(msg, fields),
   });
 

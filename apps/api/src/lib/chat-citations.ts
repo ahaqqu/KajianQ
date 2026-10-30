@@ -19,11 +19,17 @@ import {
 } from "@app/kajianq-domain";
 // The trace-frame module owns the shared chunk-ref + display-fetch plumbing.
 import {
+  citationEvidenceFor,
   chunksByIdOrEmpty,
   deriveTraceFrame,
+  narratorNamesOrEmpty,
+  recordedEvidence,
   traceChunkIds,
   traceRefused,
   type CitationChunkSource,
+  type CitationEvidence,
+  type NarratorNames,
+  type NarratorSource,
   type Warn,
 } from "./chat-trace";
 import * as v from "valibot";
@@ -48,7 +54,11 @@ function labelsOf(chunk: DocChildById): string[] {
   );
 }
 
-function toCitation(label: string, chunk: DocChildById): ChatCitation {
+function toCitation(
+  label: string,
+  chunk: DocChildById,
+  evidence: CitationEvidence | undefined,
+): ChatCitation {
   const meta = (chunk.metadata ?? {}) as Record<string, unknown>;
   const grade = meta["grade"];
   const translation = chunk.textId !== null && chunk.textId !== "" ? chunk.textId : undefined;
@@ -57,6 +67,13 @@ function toCitation(label: string, chunk: DocChildById): ChatCitation {
     arabic: chunk.textAr,
     ...(translation !== undefined ? { translation } : {}),
     ...(typeof grade === "string" && grade !== "" ? { grade } : {}),
+    // The passage's transmission rows, projected from the run's own record. When
+    // they are present a renderer shows THEM and not the flattened grade; the flat
+    // field stays for a trace persisted before per-chain evidence existed. An
+    // unread passage carries the explicit marker instead: it has rows nobody read,
+    // so the flat field would be a verdict the evidence never supported.
+    ...(evidence !== undefined && evidence.unread !== true ? { chains: evidence.chains } : {}),
+    ...(evidence?.unread === true ? { chainsUnread: true } : {}),
     // Provenance honesty: this flag must agree with the prompt's label — the assembler
     // renders every chunk carrying both layers with `MACHINE_TRANSLATION_LABEL`, so a
     // translation exists exactly when a translation layer does. A human-checked layer
@@ -79,8 +96,12 @@ export function deriveCitationsFrame(input: {
   messageId: string;
   answerText: string;
   chunksById: ReadonlyMap<string, DocChildById>;
+  /** The display join for the narrators the trace's evidence names; absent = ids only. */
+  narratorNames?: NarratorNames;
 }): ChatCitationsFrame {
   const { trace, messageId, answerText, chunksById } = input;
+  const names: NarratorNames = input.narratorNames ?? new Map();
+  const evidence = recordedEvidence(trace);
   const grounded = new Map<string, DocChildById>();
   for (const id of traceChunkIds(trace)) {
     const chunk = chunksById.get(id);
@@ -102,7 +123,7 @@ export function deriveCitationsFrame(input: {
       .map((label) => grounded.get(label))
       .find((candidate): candidate is DocChildById => candidate !== undefined);
     if (chunk === undefined || citations.some((c) => c.label === span)) continue;
-    citations.push(toCitation(span, chunk));
+    citations.push(toCitation(span, chunk, citationEvidenceFor(chunk.id, evidence, names)));
   }
   return {
     messageId,
@@ -127,9 +148,11 @@ export async function answerFramesFor(input: {
   messageId: string;
   answerText: string;
   fetchChunks: CitationChunkSource;
+  /** The narrator display join; absent renders catalogue ids in place of names. */
+  fetchNarrators?: NarratorSource;
   warn: Warn;
 }): Promise<{ citations: ChatCitationsFrame; trace: ChatTraceFrame }> {
-  const { trace, messageId, answerText, fetchChunks, warn } = input;
+  const { trace, messageId, answerText, fetchChunks, fetchNarrators, warn } = input;
   // A pure refusal needs no store read: an empty id list would only round-trip the seam.
   const ids = traceChunkIds(trace);
   const chunksById =
@@ -142,12 +165,24 @@ export async function answerFramesFor(input: {
           warnKey: "chat.answer.chunk_lookup_failed",
           warnFields: { messageId },
         });
+  // One narrator read serves both frames, bounded by the ids the trace's own
+  // evidence recorded; a failed read degrades both to ids with one warning.
+  const narratorNames = await narratorNamesOrEmpty({
+    ids: recordedEvidence(trace)?.narratorIds ?? [],
+    fetchNarrators,
+    warn,
+    warnKey: "chat.answer.narrator_lookup_failed",
+    warnFields: { messageId },
+  });
   return {
     citations: v.parse(
       ChatCitationsFrameSchema,
-      deriveCitationsFrame({ trace, messageId, answerText, chunksById }),
+      deriveCitationsFrame({ trace, messageId, answerText, chunksById, narratorNames }),
     ),
-    trace: v.parse(ChatTraceFrameSchema, deriveTraceFrame({ trace, messageId, chunksById })),
+    trace: v.parse(
+      ChatTraceFrameSchema,
+      deriveTraceFrame({ trace, messageId, chunksById, narratorNames }),
+    ),
   };
 }
 
@@ -166,9 +201,11 @@ export async function rehydrateTranscript(input: {
   /** Reads a trace by the message row's `answer_trace_id` (the FK value). */
   getTrace: (traceId: string) => Promise<Trace | null>;
   fetchChunks: CitationChunkSource;
+  /** The narrator display join; absent renders catalogue ids in place of names. */
+  fetchNarrators?: NarratorSource;
   warn: Warn;
 }): Promise<ChatSessionMessages> {
-  const { sessionId, rows, truncated, getTrace, fetchChunks, warn } = input;
+  const { sessionId, rows, truncated, getTrace, fetchChunks, fetchNarrators, warn } = input;
   const traces = new Map<string, Trace>();
   await Promise.all(
     rows.map(async (row) => {
@@ -197,6 +234,19 @@ export async function rehydrateTranscript(input: {
     warnKey: "chat.rehydration.chunk_lookup_failed",
     warnFields: { sessionId },
   });
+  // One narrator read for the whole transcript, bounded by the ids the traces'
+  // evidence recorded — the same degradation the per-answer frame takes.
+  const narratorIds = new Set<string>();
+  for (const trace of traces.values()) {
+    for (const id of recordedEvidence(trace)?.narratorIds ?? []) narratorIds.add(id);
+  }
+  const narratorNames = await narratorNamesOrEmpty({
+    ids: [...narratorIds],
+    fetchNarrators,
+    warn,
+    warnKey: "chat.rehydration.narrator_lookup_failed",
+    warnFields: { sessionId },
+  });
   const messages: ChatSessionMessage[] = rows.map((row) => {
     // The route only ever writes the transcript's two roles.
     const base = {
@@ -216,6 +266,7 @@ export async function rehydrateTranscript(input: {
         messageId: row.id,
         answerText: row.content,
         chunksById,
+        narratorNames,
       }),
     );
     if (!parsed.success) {
@@ -223,7 +274,7 @@ export async function rehydrateTranscript(input: {
     }
     const traceParsed = v.safeParse(
       ChatTraceFrameSchema,
-      deriveTraceFrame({ trace, messageId: row.id, chunksById }),
+      deriveTraceFrame({ trace, messageId: row.id, chunksById, narratorNames }),
     );
     if (!traceParsed.success) {
       warn("chat.rehydration.invalid_trace_frame", { messageId: row.id });

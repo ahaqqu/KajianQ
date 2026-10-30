@@ -7,6 +7,24 @@ import {
 } from "@app/contracts";
 import type { DocChildById, RagStore } from "@app/infra";
 import { CITATION_SUPPORT_PURPOSE, type StoreBridge } from "@app/kajianq-domain";
+import {
+  recordedEvidence,
+  traceChainsNotConsultedOf,
+  traceChainsOf,
+  type NarratorNames,
+} from "./chat-chain-frame";
+export {
+  citationEvidenceFor,
+  narratorFetcher,
+  narratorNamesOrEmpty,
+  recordedEvidence,
+  traceChainsNotConsultedOf,
+  traceChainsOf,
+  type CitationEvidence,
+  type NarratorNames,
+  type NarratorSource,
+  type RecordedEvidence,
+} from "./chat-chain-frame";
 
 /**
  * The user-facing Trace frame (ADR-0007) — the invariant this module owns:
@@ -145,8 +163,11 @@ export function deriveTraceFrame(input: {
   trace: Trace;
   messageId: string;
   chunksById: ReadonlyMap<string, DocChildById>;
+  /** The display join for the narrators the trace's evidence names; absent = ids only. */
+  narratorNames?: NarratorNames;
 }): ChatTraceFrame {
   const { trace, messageId, chunksById } = input;
+  const names: NarratorNames = input.narratorNames ?? new Map();
   const refs = traceChunkRefs(trace);
   const intentEvent = trace.events.find((event) => event.kind === "intent");
   const subQueries = trace.events
@@ -192,6 +213,12 @@ export function deriveTraceFrame(input: {
   // threshold. Absent when the run never reached the pre-gate (a refusal, a
   // validator failure, an unwired decider) — absence is never "cleared".
   const reviewerEvent = trace.events.findLast(isReviewerDecision);
+  // The chains consulted, from the trace's own `chain_evidence` record: absent when
+  // the run recorded none, present-and-empty when it read and found no row. The
+  // unread list is the same record's own fact, never inferred from a missing row.
+  const evidence = recordedEvidence(trace);
+  const chains = traceChainsOf(evidence, names);
+  const chainsNotConsulted = traceChainsNotConsultedOf(evidence);
   return {
     messageId,
     sources: refs.map((ref) => toSource(ref, chunksById)),
@@ -215,6 +242,8 @@ export function deriveTraceFrame(input: {
       subQueries,
       chunks: refs.map((ref) => toTechnicalChunk(ref, chunksById)),
       models,
+      ...(chains !== undefined ? { chains } : {}),
+      ...(chainsNotConsulted !== undefined ? { chainsNotConsulted: [...chainsNotConsulted] } : {}),
       ...(reviewerEvent !== undefined
         ? {
             reviewer: {

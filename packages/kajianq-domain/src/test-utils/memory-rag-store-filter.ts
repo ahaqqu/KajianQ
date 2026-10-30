@@ -1,4 +1,10 @@
-import { filterMatchOf, type MetadataFilterValue } from "@app/infra";
+import { filterMatchOf, isRelationFilter, type MetadataFilterValue } from "@app/infra";
+
+/** One transmission row as the double stores it: the columns a relation filter binds. */
+export type FilterChainRow = {
+  readonly grade: string | null;
+  readonly narratorIds: readonly string[];
+};
 
 /**
  * The adapter binds each filter dimension as `metadata->>$k = ANY($v::text[])`,
@@ -10,10 +16,16 @@ import { filterMatchOf, type MetadataFilterValue } from "@app/infra";
  * the dimension's own key yields no text — the derived case the adapter's
  * `(key = ANY(…) OR (key IS NULL AND other = ANY(…)))` expresses. An empty or
  * absent filter record constrains nothing.
+ *
+ * A relation clause is answered against the rows attached to the child: `grade`
+ * matches when any row's classification is one of the values, `narratorIds` when
+ * any row's ordered sequence contains one of the ids (the adapter's `&&` array
+ * overlap). No rows means no match, which is what the SQL's `EXISTS` yields.
  */
 export function matchesMetadataFilters(
   metadata: Record<string, unknown>,
   filters: Record<string, MetadataFilterValue> | undefined,
+  chains: readonly FilterChainRow[] = [],
 ): boolean {
   const textOf = (key: string): string | null => {
     const raw = metadata[key];
@@ -25,6 +37,14 @@ export function matchesMetadataFilters(
         : JSON.stringify(raw);
   };
   for (const [key, wanted] of Object.entries(filters ?? {})) {
+    if (isRelationFilter(wanted)) {
+      const hit =
+        wanted.on === "grade"
+          ? chains.some((row) => row.grade !== null && wanted.values.includes(row.grade))
+          : chains.some((row) => row.narratorIds.some((id) => wanted.values.includes(id)));
+      if (!hit) return false;
+      continue;
+    }
     const match = filterMatchOf(wanted);
     const text = textOf(key);
     if (text !== null) {

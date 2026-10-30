@@ -61,6 +61,7 @@ export const RouterReplySchema = v.object({
   category: v.optional(v.pipe(v.string(), v.minLength(1))),
   madzhab: v.optional(v.string()),
   grade: v.optional(v.string()),
+  chainGrade: v.optional(v.string()),
   textLayer: v.optional(v.string()),
   needsPrinciple: v.optional(v.boolean()),
   principleTags: v.optional(v.array(v.string())),
@@ -166,6 +167,12 @@ export function readRouterReply(
   // caller's explicit value wins over the hint.
   const grade = filters.grade ?? narrow(GRADES, reply.grade);
   if (grade !== undefined) filters.grade = grade;
+  // The per-chain grade is a separate dimension from the flattened `grade`: a
+  // question about transmission evidence asks "does a chain carry this grade",
+  // and collapsing the two would let one hint constrain the other's evidence.
+  // The caller's pin wins over the hint, as for every dimension.
+  const chainGrade = filters.chainGrade ?? narrow(GRADES, reply.chainGrade);
+  if (chainGrade !== undefined) filters.chainGrade = chainGrade;
 
   // Classifications the corpus cannot filter on: read into their vocabularies
   // and recorded on the reading, never copied into `filters`.
@@ -253,6 +260,7 @@ export const ROUTER_SYSTEM_PROMPT = [
   ` "category": "${alternatives(SUBJECT_AREAS)}",`,
   ` "madzhab": "" | "${alternatives(MADZHABS)}",`,
   ` "grade": "" | "${alternatives(GRADES)}",`,
+  ` "chainGrade": "" | "${alternatives(GRADES)}",`,
   ` "textLayer": "" | "${alternatives(TEXT_LAYERS)}",`,
   ' "needsPrinciple": true | false,',
   ` "principleTags": [] | ["${alternatives(PRINCIPLE_TAGS)}"],`,

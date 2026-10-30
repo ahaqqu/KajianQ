@@ -39,6 +39,14 @@ describe("FeedbackRequestSchema", () => {
       { type: "citation", category: "wrong_citation", id: "QS. 2:255" },
       { type: "translation", category: "bad_machine_translation", id: "QS. 2:255" },
       { type: "grade", category: "questionable_grade", id: "HR. Malik no. 18" },
+      {
+        type: "chain",
+        category: "questionable_grade",
+        id: "HR. Malik no. 18",
+        chainIndex: 1,
+        grade: "grade-a",
+        grader: "grader-a",
+      },
     ] as const;
     for (const anchor of pairs) {
       const parsed = v.parse(FeedbackRequestSchema, base({ rating: undefined, anchor }));
@@ -108,6 +116,23 @@ describe("FeedbackRequestSchema", () => {
     expect(
       v.is(FeedbackAnchorSchema, { type: "chunk", category: "wrong_citation", id: "chunk-1" }),
     ).toBe(false);
+    // A chain row's flag is a grade complaint, never a citation one.
+    expect(
+      v.is(FeedbackAnchorSchema, {
+        type: "chain",
+        category: "wrong_citation",
+        id: "QS. 2:255",
+        chainIndex: 0,
+      }),
+    ).toBe(false);
+  });
+
+  it("requires a chain anchor to name its row position", () => {
+    const baseChain = { type: "chain", category: "questionable_grade", id: "QS. 2:255" };
+    expect(v.is(FeedbackAnchorSchema, baseChain)).toBe(false);
+    expect(v.is(FeedbackAnchorSchema, { ...baseChain, chainIndex: -1 })).toBe(false);
+    expect(v.is(FeedbackAnchorSchema, { ...baseChain, chainIndex: 1.5 })).toBe(false);
+    expect(v.is(FeedbackAnchorSchema, { ...baseChain, chainIndex: 0 })).toBe(true);
   });
 
   it("rejects unknown anchor types and unknown categories", () => {

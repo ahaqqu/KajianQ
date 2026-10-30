@@ -1,4 +1,9 @@
-import { filterMatchOf, type MetadataFilterValue, type RetrievalTrack } from "./rag-store";
+import {
+  filterMatchOf,
+  isRelationFilter,
+  type MetadataFilterValue,
+  type RetrievalTrack,
+} from "./rag-store";
 
 /**
  * Postgres-specific similarity-search SQL builder.
@@ -30,7 +35,7 @@ const SIMILARITY_COLUMNS: Record<RetrievalTrack, string> = {
  * `derived` adds the absent-key alternative's two, so its clause is
  * `(key = ANY(values) OR (key IS NULL AND absentKey = ANY(absentValues)))`.
  */
-export type FilterClause = "exact" | "derived";
+export type FilterClause = "exact" | "derived" | "chain_grade" | "chain_narrator";
 
 /**
  * Read a filter record into the clauses {@link buildSimilarityQuery} emits and
@@ -41,6 +46,12 @@ export type FilterClause = "exact" | "derived";
  * Values stay bound in the caller's order. A `whenAbsent` alternative appends
  * its own key and value set after its dimension's — never before, which is the
  * slot order the builder assigns.
+ *
+ * A **relation clause** binds only its value set: the relation and its column are
+ * fixed by the builder's allowlist, so the key a caller wrote is not a parameter
+ * and can never become an identifier. It is refused when it also carries a
+ * `whenAbsent` alternative — the derived case is a metadata-key rule the relation
+ * clause has no column for, and silently dropping it would widen the filter.
  */
 export function filterBindings(filters: Record<string, MetadataFilterValue>): {
   clauses: FilterClause[];
@@ -49,6 +60,14 @@ export function filterBindings(filters: Record<string, MetadataFilterValue>): {
   const clauses: FilterClause[] = [];
   const values: unknown[] = [];
   for (const [key, value] of Object.entries(filters)) {
+    if (isRelationFilter(value)) {
+      if ("whenAbsent" in value) {
+        throw new TypeError("a relation filter carries no absent-key alternative");
+      }
+      clauses.push(value.on === "grade" ? "chain_grade" : "chain_narrator");
+      values.push([...value.values]);
+      continue;
+    }
     const match = filterMatchOf(value);
     values.push(key, match.values);
     if (match.whenAbsent === undefined) {
@@ -93,6 +112,19 @@ export function buildSimilarityQuery(
   let slot = 3;
   const where: string[] = [];
   for (const clause of clauses) {
+    if (clause === "chain_grade" || clause === "chain_narrator") {
+      // The relation clause binds ONE value set and no key: the relation table and
+      // the column are the allowlist's, so nothing a caller wrote is an identifier.
+      // A child matches when ANY of its rows carries one of the values — the
+      // filter selects the child, never a subset of its rows.
+      const vIdx = slot++;
+      where.push(
+        clause === "chain_grade"
+          ? `EXISTS (SELECT 1 FROM narrator_chains WHERE narrator_chains.child_id = doc_children.id AND narrator_chains.grade = ANY($${vIdx}::text[]))`
+          : `EXISTS (SELECT 1 FROM narrator_chains WHERE narrator_chains.child_id = doc_children.id AND narrator_chains.narrator_ids && $${vIdx}::uuid[])`,
+      );
+      continue;
+    }
     const kIdx = slot++;
     const vIdx = slot++;
     if (clause === "exact") {

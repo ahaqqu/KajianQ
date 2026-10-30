@@ -65,6 +65,17 @@ describe("bindingsFromEnv", () => {
       });
     }
   });
+
+  it("passes through the per-chain evidence read's budgets", () => {
+    // Both knobs are read by `buildChatWiring`; dropped here they silently run the
+    // domain defaults, so an operator's bound never reaches the parser.
+    const bindings = bindingsFromEnv({
+      CHAIN_EVIDENCE_CHILD_CAP: "0",
+      CHAIN_EVIDENCE_CHAIN_CAP: "2",
+    });
+    expect(bindings.CHAIN_EVIDENCE_CHILD_CAP).toBe("0");
+    expect(bindings.CHAIN_EVIDENCE_CHAIN_CAP).toBe("2");
+  });
 });
 
 /** The startup provider-posture report: which env vars the chat path found absent and

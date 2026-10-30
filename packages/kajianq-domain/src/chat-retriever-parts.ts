@@ -77,6 +77,26 @@ export {
   type NeighbourStore,
 } from "./chat-neighbour-expansion";
 export {
+  DEFAULT_CHAIN_EVIDENCE_CHILD_CAP,
+  ISNAD_EVIDENCE_KEY,
+  bearsChain,
+  hasWeakChain,
+  isnadEvidenceOf,
+  readChainEvidence,
+  type IsnadEvidence,
+  type IsnadNarrator,
+  citationBaseAddress,
+  MORE_CHAINS_MARKER,
+  renderChainCitation,
+  renderChainSegments,
+  renderNarratorReliability,
+  SANAD_SEPARATOR,
+  UNGRADED_CHAIN_LABEL,
+} from "./chat-isnad";
+export type { KajianQFilters } from "./filters";
+export { chainSeamOf, recordChainEvidence } from "./chat-retrieval-chains";
+export { finalizeRetrieval } from "./chat-retrieval-finalize";
+export {
   CITATION_LOOKUP_ORIGIN,
   DEFAULT_LABEL_LOOKUP_CAP,
   lookupCitationLabels,

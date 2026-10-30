@@ -184,7 +184,10 @@ export async function deriveFeedbackCitations(input: {
  * citation/translation/grade label must be a label of the derived citations
  * frame — and translation/grade additionally require the cited sheet to
  * actually carry that layer (flagging a translation that does not exist is
- * itself malformed).
+ * itself malformed). A grade anchor is valid only for a citation that renders
+ * the flattened grade (no per-chain rows, not unread); a chain anchor must name
+ * a row the citation actually rendered, at that position and with that row's
+ * own grade and grader.
  */
 export function validateFeedbackAnchor(input: {
   anchor: FeedbackAnchor;
@@ -197,6 +200,26 @@ export function validateFeedbackAnchor(input: {
   const citation = citations.citations.find((c) => c.label === anchor.id);
   if (citation === undefined) return false;
   if (anchor.type === "translation") return citation.translation !== undefined;
-  if (anchor.type === "grade") return citation.grade !== undefined;
+  if (anchor.type === "chain") {
+    const chain = citation.chains?.[anchor.chainIndex];
+    return chain !== undefined && chain.grade === anchor.grade && chain.grader === anchor.grader;
+  }
+  if (anchor.type === "grade") {
+    return (
+      citation.grade !== undefined &&
+      citation.chainsUnread !== true &&
+      (citation.chains === undefined || citation.chains.length === 0)
+    );
+  }
   return true; // "citation"
+}
+
+/**
+ * The id a flag persists under. A chain flag names its row in that id because the
+ * feedback table's natural key is (anchor_type, anchor_id, category): without the
+ * position, complaints about two rows of one citation would update one record and
+ * the review queue could not tell them apart.
+ */
+export function feedbackAnchorRowId(anchor: FeedbackAnchor): string {
+  return anchor.type === "chain" ? `${anchor.id}#chain:${anchor.chainIndex}` : anchor.id;
 }

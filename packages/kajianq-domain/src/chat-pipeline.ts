@@ -47,6 +47,8 @@ export type ChatPipelineDeps = {
     | "listDocChildrenByParentSourceKey"
     | "listDocChildNeighboursByChildIds"
     | "findDocChildrenByMetadata"
+    | "listChainsForChild"
+    | "getNarratorsByIds"
   >;
   bridge: StoreBridge;
   language: import("./chat-prompts").ChatLanguage;

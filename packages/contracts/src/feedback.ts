@@ -23,7 +23,13 @@ export const FeedbackRatingSchema = v.picklist(["up", "down"]);
 export type FeedbackRating = v.InferOutput<typeof FeedbackRatingSchema>;
 
 /** The element class a flag anchors to. `answer` is reserved for thumbs. */
-export const FeedbackAnchorTypeSchema = v.picklist(["chunk", "citation", "translation", "grade"]);
+export const FeedbackAnchorTypeSchema = v.picklist([
+  "chunk",
+  "citation",
+  "translation",
+  "grade",
+  "chain",
+]);
 
 export type FeedbackAnchorType = v.InferOutput<typeof FeedbackAnchorTypeSchema>;
 
@@ -49,6 +55,11 @@ export type FeedbackCategory = v.InferOutput<typeof FeedbackCategorySchema>;
  *   - `citation` / `translation` / `grade` → the citation label (the chip and
  *     its passage sheet). The server re-derives the citations frame from the
  *     persisted trace and rejects a label it does not ground.
+ *   - `chain` → the citation label plus the row's position in that citation's
+ *     rendered `chains` list, and that row's own grade and grader when it has
+ *     them. The server re-derives the row and rejects an anchor whose position,
+ *     grade or grader does not match it; a chain anchor never names the
+ *     passage's flattened grade.
  */
 export const FeedbackAnchorSchema = v.variant("type", [
   v.object({
@@ -70,6 +81,14 @@ export const FeedbackAnchorSchema = v.variant("type", [
     type: v.literal("grade"),
     category: v.literal("questionable_grade"),
     id: v.pipe(v.string(), v.minLength(1)),
+  }),
+  v.object({
+    type: v.literal("chain"),
+    category: v.literal("questionable_grade"),
+    id: v.pipe(v.string(), v.minLength(1)),
+    chainIndex: v.pipe(v.number(), v.integer(), v.minValue(0)),
+    grade: v.optional(v.pipe(v.string(), v.minLength(1))),
+    grader: v.optional(v.pipe(v.string(), v.minLength(1))),
   }),
 ]);
 
@@ -161,6 +180,10 @@ export const FeedbackResponseSchema = v.object({
       type: FeedbackAnchorTypeSchema,
       category: FeedbackCategorySchema,
       id: v.pipe(v.string(), v.minLength(1)),
+      /** A chain anchor's row position and that row's own verdict, when graded. */
+      chainIndex: v.optional(v.pipe(v.number(), v.integer(), v.minValue(0))),
+      grade: v.optional(v.pipe(v.string(), v.minLength(1))),
+      grader: v.optional(v.pipe(v.string(), v.minLength(1))),
     }),
   ),
   /** The admin review queue state (spec §4): a fresh report starts pending. */
