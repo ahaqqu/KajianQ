@@ -8,18 +8,19 @@ import {
 import type { DocChildById, RagStore } from "@app/infra";
 import { CITATION_SUPPORT_PURPOSE, type StoreBridge } from "@app/kajianq-domain";
 import {
-  citationChainsFor,
-  narratorNamesOrEmpty,
   recordedEvidence,
+  traceChainsNotConsultedOf,
   traceChainsOf,
   type NarratorNames,
 } from "./chat-chain-frame";
 export {
-  citationChainsFor,
+  citationEvidenceFor,
   narratorFetcher,
   narratorNamesOrEmpty,
   recordedEvidence,
+  traceChainsNotConsultedOf,
   traceChainsOf,
+  type CitationEvidence,
   type NarratorNames,
   type NarratorSource,
   type RecordedEvidence,
@@ -213,8 +214,11 @@ export function deriveTraceFrame(input: {
   // validator failure, an unwired decider) — absence is never "cleared".
   const reviewerEvent = trace.events.findLast(isReviewerDecision);
   // The chains consulted, from the trace's own `chain_evidence` record: absent when
-  // the run recorded none, present-and-empty when it read and found no row.
-  const chains = traceChainsOf(recordedEvidence(trace), names);
+  // the run recorded none, present-and-empty when it read and found no row. The
+  // unread list is the same record's own fact, never inferred from a missing row.
+  const evidence = recordedEvidence(trace);
+  const chains = traceChainsOf(evidence, names);
+  const chainsNotConsulted = traceChainsNotConsultedOf(evidence);
   return {
     messageId,
     sources: refs.map((ref) => toSource(ref, chunksById)),
@@ -239,6 +243,7 @@ export function deriveTraceFrame(input: {
       chunks: refs.map((ref) => toTechnicalChunk(ref, chunksById)),
       models,
       ...(chains !== undefined ? { chains } : {}),
+      ...(chainsNotConsulted !== undefined ? { chainsNotConsulted: [...chainsNotConsulted] } : {}),
       ...(reviewerEvent !== undefined
         ? {
             reviewer: {

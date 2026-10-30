@@ -1,7 +1,20 @@
-import type { AssembledContext, Chunk, Draft } from "@app/rag-core";
+import type { AssembledContext, Draft } from "@app/rag-core";
 import type { KajianQFilters } from "./filters";
 import { MACHINE_TRANSLATION_LABEL } from "./chat-assembler";
-import { hasWeakChain, isnadEvidenceOf } from "./chat-isnad-evidence";
+import {
+  dhaifChainWarning,
+  dhaifWarning,
+  hasWeakWarning,
+  weakGradeScope,
+} from "./chat-weak-warning";
+
+export {
+  dhaifChainWarning,
+  dhaifWarning,
+  hasWeakGradeChunk,
+  hasWeakWarning,
+  type WeakGradeScope,
+} from "./chat-weak-warning";
 
 /**
  * Deterministic product rules applied after the reviewer passes a draft
@@ -54,13 +67,6 @@ export type ProductRulesResult = {
   applied: readonly string[];
 };
 
-/** The dhaif warning line (ID/EN). */
-export function dhaifWarning(language: "id" | "en"): string {
-  return language === "en"
-    ? "[Warning] The cited hadith is graded weak (dhaif); it may not be used as a primary proof."
-    : "[Peringatan] Hadits yang dikutip berderajat lemah (dhaif); tidak dapat dijadikan dalil utama.";
-}
-
 /**
  * The not-a-fatwa disclaimer (ID/EN) — the copy every answer the rules decorate
  * closes with, and the one wording the product promises. `applyProductRules`
@@ -70,25 +76,6 @@ export function ulamaDisclaimer(language: "id" | "en"): string {
   return language === "en"
     ? "This answer is not a fatwa; consult a scholar for legal rulings."
     : "Jawaban ini bukan fatwa; rujuk ulama untuk keputusan hukum.";
-}
-
-/** The weak-grade label the ingestion writes into chunk metadata. */
-const WEAK_GRADE = "dhaif";
-
-/**
- * True when any retrieved chunk carries the weak grade — as its flattened grade,
- * or on any of its stored transmission rows. The second half is what keeps a
- * passage whose corpus grade is sound but whose chains include a weak one
- * flagged: the warning is about the evidence retrieved, not about the one value
- * the ingester happened to consolidate.
- */
-export function hasWeakGradeChunk(chunks: readonly Chunk[]): boolean {
-  return chunks.some((chunk) => {
-    const meta = (chunk.metadata ?? {}) as Record<string, unknown>;
-    if (meta["grade"] === WEAK_GRADE) return true;
-    const evidence = isnadEvidenceOf(chunk);
-    return evidence !== null && hasWeakChain(evidence);
-  });
 }
 
 /** True when the answer quotes a passage the assembler labeled as a translation. */
@@ -222,28 +209,6 @@ function withoutDisclaimer(text: string): string {
 }
 
 /**
- * True when the text already carries the product's own dhaif warning copy, in
- * either language. Exported because this IS what the citations frame's
- * `dhaifWarning` flag means (`apps/api/src/lib/chat-citations.ts`): one
- * predicate, two readers, so the delivered answer and the frame derived from
- * it can never disagree about whether the warning is present.
- *
- * The predicate is deliberately the COPY, not the grade vocabulary. The
- * deterministic evidence renders a weak-grade chunk's label as `(Dhaif)` —
- * `renderEvidenceChunk` appends the store's grade — and the generator is
- * instructed to reproduce the evidence's labels verbatim, so an answer whose
- * context carries a dhaif chunk contains the bare token `dhaif` for a reason
- * that is not a warning at all; suppressing on that token would switch the
- * control OFF on exactly the answers it exists for. Spec §2.2 makes the grade
- * flag an "Always" control so it does not depend on the model, so only the copy
- * suppresses; an informal weakness claim gains the canonical line exactly as an
- * informal "lemah" already did.
- */
-export function hasWeakWarning(text: string): boolean {
-  return text.includes(dhaifWarning("id")) || text.includes(dhaifWarning("en"));
-}
-
-/**
  * Apply the deterministic product rules to a draft. It is called for every
  * text the run delivers as answer content — the reviewer-passed draft, the
  * pre-gate skip, the no-provider exit, and a HYBRID refusal (a grounded partial
@@ -274,8 +239,11 @@ export function applyProductRules(
   const body = withoutDisclaimer(draft.text);
   const parts: string[] = body === "" ? [] : [body];
 
-  if (hasWeakGradeChunk(context.chunks) && !hasWeakWarning(body)) {
-    parts.push(dhaifWarning(language));
+  const weak = weakGradeScope(context.chunks);
+  if (weak !== null && !hasWeakWarning(body)) {
+    // The copy names the trigger: a weak row on one sanad is not the same claim
+    // as a passage graded weak, and the sheet beside this card may render both.
+    parts.push(weak === "passage" ? dhaifWarning(language) : dhaifChainWarning(language));
     applied.push("dhaif_warning");
   }
   if (contextHasTranslation(context) && !quotesTranslation(body)) {

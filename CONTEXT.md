@@ -190,7 +190,7 @@ The hadith critic or source whose verdict a chain's Grade is: the name that acco
 _Avoid_: source (that is the cited work), authority (vague)
 
 **Chain evidence**:
-The Isnads stored for a passage that reached retrieval context, read together with their narrator rows and recorded on the Trace: their stored order, each row's Grade and Grader, and the narrator spellings resolved by id. The citation sheet and the Trace panel render that recorded evidence — never a fresh read, and never a selected best row — so a passage whose chains disagree reads as disagreement; a list the read bounded is a prefix and says so.
+The Isnads stored for a passage that reached retrieval context, read together with their narrator rows and recorded on the Trace: their stored order, each row's Grade and Grader, and the narrator spellings resolved by id. The citation sheet, the downloaded conversation and the Trace panel render that recorded evidence — never a fresh read, and never a selected best row — so a passage whose chains disagree reads as disagreement; a list the read bounded is a prefix and says so, and a chain-bearing passage the read did not reach is marked unread rather than given a flattened headline grade.
 _Avoid_: chain metadata (implies a summary), sanad list (unqualified — a bounded list is a prefix)
 
 **Takhrij**:

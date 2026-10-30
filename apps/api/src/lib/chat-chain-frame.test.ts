@@ -122,6 +122,21 @@ describe("deriveCitationsFrame — the per-chain evidence a citation carries", (
   it("omits the field for a trace that recorded no chain read", () => {
     const frame = derive(traceOf(null), names);
     expect(frame.citations[0]?.chains).toBeUndefined();
+    expect(frame.citations[0]?.chainsUnread).toBeUndefined();
+  });
+
+  it("marks a chain-bearing citation the read budget left unread", () => {
+    // The read recorded the child as NOT consulted. The citation must carry that
+    // fact explicitly: absent `chains` alone cannot distinguish "no stored row"
+    // from "rows exist but nobody read them", and the renderer would otherwise
+    // fall back to the flattened headline grade.
+    const frame = derive(
+      traceOf({ ...detail, consulted: 0, children: [], notConsulted: ["h1"] }),
+      names,
+    );
+    expect(v.safeParse(ChatCitationsFrameSchema, frame).success).toBe(true);
+    expect(frame.citations[0]?.chains).toBeUndefined();
+    expect(frame.citations[0]?.chainsUnread).toBe(true);
   });
 
   it("binds the rows to their own child, never to another cited passage", () => {
@@ -193,6 +208,19 @@ describe("deriveTraceFrame — the chains-consulted block", () => {
     };
     expect(derive(traceOf(bounded)).technical.chains?.[0]?.moreMayExist).toBe(true);
   });
+
+  it("carries the unread children separately from the rows it read", () => {
+    const unread: ChainEvidenceDetail = {
+      ...detail,
+      consulted: 0,
+      children: [],
+      notConsulted: ["h1", "h2"],
+    };
+    const frame = derive(traceOf(unread));
+    expect(v.safeParse(ChatTraceFrameSchema, frame).success).toBe(true);
+    expect(frame.technical.chains).toEqual([]);
+    expect(frame.technical.chainsNotConsulted).toEqual(["h1", "h2"]);
+  });
 });
 
 describe("narratorNamesOrEmpty — the display join degrades by omission", () => {
@@ -256,16 +284,26 @@ describe("narratorNamesOrEmpty — the display join degrades by omission", () =>
 
   it("binds the fetcher to the store's by-id read", async () => {
     const asked: (readonly string[])[] = [];
+    const bridged: unknown[] = [];
+    const lookup: NarratorIdsLookup = { narrators: [], missingIds: [NARRATOR_ONE] };
+    const effect = { pipe: () => ({}) };
     const fetcher = narratorFetcher(
       {
         getNarratorsByIds: (ids: readonly string[]) => {
           asked.push(ids);
-          return { pipe: () => ({}) } as never;
+          return effect as never;
         },
       } as never,
-      ((effect: unknown) => Promise.resolve(effect)) as never,
+      ((value: unknown) => {
+        bridged.push(value);
+        return Promise.resolve(lookup);
+      }) as never,
     );
-    void fetcher;
-    expect(asked).toEqual([]);
+    // The production join's whole job: ask the store for the recorded ids and run
+    // that Effect through the injected bridge. A fetcher that ignored either side
+    // would pass the old assertion, which never called it.
+    await expect(fetcher([NARRATOR_ONE])).resolves.toBe(lookup);
+    expect(asked).toEqual([[NARRATOR_ONE]]);
+    expect(bridged).toEqual([effect]);
   });
 });

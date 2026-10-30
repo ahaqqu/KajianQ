@@ -9,6 +9,7 @@ import { messages } from "../../apps/web/src/lib/i18n-messages";
 import { MACHINE_TRANSLATION_LABEL as ASSEMBLER_LABEL } from "../../packages/kajianq-domain/src/chat-assembler";
 import {
   applyProductRules,
+  dhaifChainWarning,
   dhaifWarning,
   ulamaDisclaimer,
 } from "../../packages/kajianq-domain/src/chat-postprocess";
@@ -30,11 +31,20 @@ import {
  * the guard asserts the real values instead of a third hand-copied literal.
  */
 const WARNINGS = { id: dhaifWarning("id"), en: dhaifWarning("en") };
+const CHAIN_WARNINGS = { id: dhaifChainWarning("id"), en: dhaifChainWarning("en") };
 
 describe("the web rule copy matches the domain pack's canonical copy", () => {
   it("pins the warning line the card renders to dhaifWarning()", () => {
     expect(messages.id.dhaifWarningCard).toBe(WARNINGS.id);
     expect(messages.en.dhaifWarningCard).toBe(WARNINGS.en);
+  });
+
+  it("pins the chain-scoped warning the card renders to dhaifChainWarning()", () => {
+    expect(messages.id.dhaifChainWarningCard).toBe(CHAIN_WARNINGS.id);
+    expect(messages.en.dhaifChainWarningCard).toBe(CHAIN_WARNINGS.en);
+    // The two copies are distinct claims: a weak sanad is not a weak hadith.
+    expect(CHAIN_WARNINGS.id).not.toBe(WARNINGS.id);
+    expect(CHAIN_WARNINGS.en).not.toBe(WARNINGS.en);
   });
 
   it("pins the ADR-0006 MT label to the assembler's constant", () => {
@@ -52,7 +62,8 @@ describe("the web rule copy matches the domain pack's canonical copy", () => {
   });
 
   it("peels the server's own strings in the delivered tail shape", () => {
-    for (const [locale, warning] of Object.entries(WARNINGS)) {
+    const copies = [...Object.entries(WARNINGS), ...Object.entries(CHAIN_WARNINGS)];
+    for (const [locale, warning] of copies) {
       // The delivered tail shape: warning → MT label.
       const delivered = ["Jawaban.", warning, `[${ASSEMBLER_LABEL}]`].join("\n\n");
       const split = splitAnswerBlocks(delivered);

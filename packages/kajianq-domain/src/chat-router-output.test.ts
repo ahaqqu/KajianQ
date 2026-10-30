@@ -140,6 +140,38 @@ describe("readRouterReply narrowing", () => {
     expect(reading?.attributes).toMatchObject({ grade: ["sahih"] });
   });
 
+  it("reads a per-chain grade hint into its own filter dimension", () => {
+    const reading = reply({ chainGrade: "sahih" });
+    expect(reading?.filters).toEqual({ chainGrade: ["sahih"] });
+    expect(reading?.attributes).toMatchObject({ chainGrade: ["sahih"] });
+    // The flat grade stays absent: a chain hint must not constrain the passage's
+    // headline grade, and vice versa.
+    expect(reading?.filters).not.toHaveProperty("grade");
+  });
+
+  it("drops an out-of-vocabulary chain grade and keeps the reply usable", () => {
+    for (const chainGrade of ["daif", "sahihh", "", 3]) {
+      const reading = reply({ chainGrade });
+      expect(reading?.filters).toEqual({});
+      expect(reading?.attributes).not.toHaveProperty("chainGrade");
+      expect(reading?.intent).toBe("ruling");
+    }
+  });
+
+  it("keeps the flat grade and the chain grade as separate dimensions", () => {
+    const reading = reply({ grade: "sahih", chainGrade: "dhaif" });
+    expect(reading?.filters).toEqual({ grade: ["sahih"], chainGrade: ["dhaif"] });
+  });
+
+  it("lets the caller's chain-grade pin win over the model's hint", () => {
+    const reading = readRouterReply(
+      { intent: "ruling", category: "fikih", chainGrade: "hasan" } as never,
+      { chainGrade: ["sahih"] },
+    );
+    expect(reading?.filters).toEqual({ chainGrade: ["sahih"] });
+    expect(reading?.attributes).toMatchObject({ chainGrade: ["sahih"] });
+  });
+
   it("keeps a caller key outside the filter vocabulary for the store mapping to reject", () => {
     // The reader does not silently drop an unknown key: it rides into
     // `filters`, where `filterEntries` raises `FilterNotExpressibleError`

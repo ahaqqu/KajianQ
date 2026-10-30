@@ -74,7 +74,9 @@ export function parseLabelLookupCap(raw: string | undefined): number | undefined
 
 /**
  * `CHAIN_EVIDENCE_CHILD_CAP`: retrieved children whose transmission rows the
- * per-chain evidence read covers (`0` disables the read).
+ * per-chain evidence read covers. `0` reads none and records every
+ * chain-bearing child as unread; the citations and Trace say so instead of
+ * falling back to a flattened grade.
  */
 export function parseChainEvidenceChildCap(raw: string | undefined): number | undefined {
   return parseBoundedKnob(raw, "CHAIN_EVIDENCE_CHILD_CAP");

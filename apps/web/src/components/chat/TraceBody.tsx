@@ -161,9 +161,13 @@ export function TraceBody({
                 </div>
               </Step>
             )}
-            {technical.chains !== undefined && (
+            {(technical.chains !== undefined || technical.chainsNotConsulted !== undefined) && (
               <Step>
-                <ChainsSection chains={technical.chains} locale={locale} />
+                <ChainsSection
+                  chains={technical.chains ?? []}
+                  notConsulted={technical.chainsNotConsulted ?? []}
+                  locale={locale}
+                />
               </Step>
             )}
             {technical.chunks.length > 0 && (

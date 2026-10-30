@@ -30,11 +30,14 @@ import {
  * reliability map (`asNarrator`).
  *
  * **The read is bounded and says so.** At most {@link DEFAULT_CHAIN_EVIDENCE_CHILD_CAP}
- * children and {@link CHAIN_EVIDENCE_TRACE_LIMIT} rows per child are carried, and
- * a child holding more rows than the bound records `moreMayExist` so a consumer
- * presenting the prefix can say it is one. A child with no row is not an error:
- * the event records the children consulted and an empty list, which is what tells
- * "this evidence carries no transmission" apart from "nobody looked".
+ * children and {@link CHAIN_EVIDENCE_TRACE_LIMIT} rows per child are carried. A
+ * child holding more rows than its bound records `moreMayExist` so a consumer
+ * presenting the prefix can say it is one; a chain-bearing child beyond the
+ * child bound records itself in `notConsulted`, so a consumer marks that
+ * passage unread instead of presenting the flattened headline grade as its
+ * evidence. A child with no row is not an error: the event records the children
+ * consulted and an empty list, which is what tells "this evidence carries no
+ * transmission" apart from "nobody looked".
  */
 
 /**
@@ -81,10 +84,6 @@ export const ISNAD_EVIDENCE_KEY = "isnad";
 
 /** The one source type whose children can carry transmission rows. */
 const CHAIN_BEARING_SOURCE = "hadith";
-
-/** The label a row with no stored verdict renders under (evidence-block language). */
-
-/** The separator between the narrators of one chain, in transmission order. */
 
 /** The metadata key naming the source type. */
 const SOURCE_TYPE_KEY = "sourceType";
@@ -182,6 +181,8 @@ export function gradeLabel(grade: string): string {
  * The read is skipped entirely when no child bears a chain — a Quran-only answer
  * issues no extra store call — and `detail` is then `null`: nothing was
  * consulted, which the trace must not confuse with a read that found nothing.
+ * A read budget that leaves chain-bearing children unread still records them, so
+ * the frames can mark those passages instead of flattening their grade.
  */
 export function readChainEvidence(input: {
   chunks: readonly Chunk[];
@@ -192,13 +193,32 @@ export function readChainEvidence(input: {
   /** Rows carried per child; defaults to the trace contract's own limit. */
   chainCap?: number;
 }): Effect.Effect<{ chunks: Chunk[]; detail: ChainEvidenceDetail | null }, { cause: unknown }> {
-  const childCap = input.childCap ?? DEFAULT_CHAIN_EVIDENCE_CHILD_CAP;
-  const chainCap = input.chainCap ?? CHAIN_EVIDENCE_TRACE_LIMIT;
+  const childCap = Math.max(0, input.childCap ?? DEFAULT_CHAIN_EVIDENCE_CHILD_CAP);
+  // The trace contract refuses a longer list, so clamp where the record is
+  // produced: a composition root that forgets the config refusal cannot emit an
+  // event the store's trace parse rejects after the answer was produced.
+  const chainCap = Math.min(
+    Math.max(0, input.chainCap ?? CHAIN_EVIDENCE_TRACE_LIMIT),
+    CHAIN_EVIDENCE_TRACE_LIMIT,
+  );
   return Effect.gen(function* () {
-    const candidates = input.chunks
-      .filter((chunk) => bearsChain(chunk))
-      .slice(0, Math.max(0, childCap));
-    if (candidates.length === 0) return { chunks: [...input.chunks], detail: null };
+    const chainBearing = input.chunks.filter((chunk) => bearsChain(chunk));
+    if (chainBearing.length === 0) return { chunks: [...input.chunks], detail: null };
+    const candidates = chainBearing.slice(0, childCap);
+    const notConsulted = chainBearing.slice(childCap).map((chunk) => chunk.id);
+    const unread = notConsulted.length > 0 ? { notConsulted } : {};
+    if (candidates.length === 0) {
+      return {
+        chunks: [...input.chunks],
+        detail: {
+          consulted: 0,
+          perChildCap: chainCap,
+          children: [],
+          missingNarratorIds: [],
+          ...unread,
+        },
+      };
+    }
 
     const read = yield* Effect.forEach(candidates, (chunk) =>
       readChildEvidence({
@@ -254,6 +274,7 @@ export function readChainEvidence(input: {
         perChildCap: chainCap,
         children,
         missingNarratorIds: [...lookup.missingIds],
+        ...unread,
       },
     };
   });

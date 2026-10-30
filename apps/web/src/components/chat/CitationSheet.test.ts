@@ -1,10 +1,11 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { createElement } from "react";
 import { afterEach, describe, expect, it } from "vite-plus/test";
-import type { ChatCitation } from "@app/contracts";
+import type { ChatCitation, ChatSessionMessage } from "@app/contracts";
 import { LocaleCtx } from "../../lib/i18n";
 import { CitationSheet } from "./CitationSheet";
+import { MessageCard } from "./MessageCard";
 
 // React 19 + vitest: mark the environment for act() (testing-library's flushes).
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -67,11 +68,21 @@ describe("CitationSheet — per-chain transmission evidence", () => {
     // behind the stronger chain: the sheet never picks the best row.
     expect(texts("grade-badge")).toEqual(["sahih", "dhaif"]);
     expect(texts("citation-grader")).toEqual(["penilai: al-bukhari", "penilai: al-daraqutni"]);
+    // The sanad section is labelled like every other section of the sheet.
+    expect(screen.getAllByText("Jalur periwayatan")).toHaveLength(1);
     // The sanad renders in the record's order, not sorted or deduped.
     const sanads = screen.getAllByTestId("citation-sanad");
     expect(sanads[0]?.getAttribute("dir")).toBe("rtl");
     expect(sanads[0]?.textContent).toBe("نافع < ابن عمر");
     expect(sanads[1]?.textContent).toBe("نافع");
+  });
+
+  it("marks an unread passage and suppresses its flattened grade", () => {
+    renderSheet({ ...BASE, grade: "sahih", chainsUnread: true });
+    // The read never covered this passage, so its flat grade is not evidence: the
+    // sheet has to say the chains were not read and show no verdict at all.
+    expect(texts("grade-badge")).toEqual([]);
+    expect(texts("citation-chains-unread")[0]).toContain("tidak dibaca");
   });
 
   it("shows no flat grade badge when the chains are present", () => {
@@ -118,5 +129,56 @@ describe("CitationSheet — per-chain transmission evidence", () => {
 
     expect(texts("citation-chain-truncated")).toEqual(["sanad lain tidak ditampilkan"]);
     expect(screen.getByTestId("citation-sanad").textContent).toBe("n1");
+  });
+});
+
+/**
+ * The sheet's footer flags come from MessageCard. A chained passage must offer a
+ * grade flag per rendered row and no flat-grade flag: the flat anchor cannot name
+ * which sanad the reader disputes, so the server could not resolve it to a row.
+ */
+describe("MessageCard — a chained citation's grade flags name their rows", () => {
+  const MESSAGE: ChatSessionMessage = {
+    id: "m1",
+    role: "assistant",
+    content: "Hadits [HR. Bukhari no. 1].",
+    createdAt: 1,
+    citations: {
+      messageId: "m1",
+      refusal: false,
+      dhaifWarning: false,
+      citations: [
+        {
+          ...BASE,
+          grade: "sahih",
+          chains: [
+            {
+              narrators: [{ id: "n1", nameAr: "نافع" }],
+              grade: "sahih",
+              grader: "al-bukhari",
+            },
+            {
+              narrators: [{ id: "n2", nameAr: "ابن عمر" }],
+              grade: "dhaif",
+              grader: "al-daraqutni",
+            },
+          ],
+        },
+      ],
+    },
+  };
+
+  it("renders one flag per chain row and none for the flattened grade", () => {
+    render(
+      createElement(
+        LocaleCtx.Provider,
+        { value: "id" },
+        createElement(MessageCard, { message: MESSAGE, persisted: true }),
+      ),
+    );
+    fireEvent.click(screen.getByTestId("citation-chip"));
+    expect(screen.getByTestId("flag-chain-0")).toBeTruthy();
+    expect(screen.getByTestId("flag-chain-1")).toBeTruthy();
+    expect(screen.queryByTestId("flag-grade")).toBeNull();
   });
 });

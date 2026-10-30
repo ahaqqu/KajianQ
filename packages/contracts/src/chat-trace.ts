@@ -137,6 +137,13 @@ export const ChatTraceFrameSchema = v.object({
      * facts the panel distinguishes.
      */
     chains: v.optional(v.array(ChatTraceChainSchema)),
+    /**
+     * Chain-bearing passages in context the read did not cover, in retrieval
+     * order. Their rows were never read, so the panel names them as unread
+     * rather than letting a citation fall back to a flattened grade. Absent
+     * means every chain-bearing passage was read.
+     */
+    chainsNotConsulted: v.optional(v.array(v.pipe(v.string(), v.minLength(1)))),
   }),
 });
 

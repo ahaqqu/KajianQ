@@ -19,15 +19,15 @@ import {
 } from "@app/kajianq-domain";
 // The trace-frame module owns the shared chunk-ref + display-fetch plumbing.
 import {
-  citationChainsFor,
+  citationEvidenceFor,
   chunksByIdOrEmpty,
   deriveTraceFrame,
   narratorNamesOrEmpty,
-  narratorFetcher,
   recordedEvidence,
   traceChunkIds,
   traceRefused,
   type CitationChunkSource,
+  type CitationEvidence,
   type NarratorNames,
   type NarratorSource,
   type Warn,
@@ -57,7 +57,7 @@ function labelsOf(chunk: DocChildById): string[] {
 function toCitation(
   label: string,
   chunk: DocChildById,
-  chains: ChatCitation["chains"],
+  evidence: CitationEvidence | undefined,
 ): ChatCitation {
   const meta = (chunk.metadata ?? {}) as Record<string, unknown>;
   const grade = meta["grade"];
@@ -68,9 +68,12 @@ function toCitation(
     ...(translation !== undefined ? { translation } : {}),
     ...(typeof grade === "string" && grade !== "" ? { grade } : {}),
     // The passage's transmission rows, projected from the run's own record. When
-    // they are present the sheet renders THEM and not the flattened grade; the flat
-    // field stays for a trace persisted before per-chain evidence existed.
-    ...(chains !== undefined ? { chains } : {}),
+    // they are present a renderer shows THEM and not the flattened grade; the flat
+    // field stays for a trace persisted before per-chain evidence existed. An
+    // unread passage carries the explicit marker instead: it has rows nobody read,
+    // so the flat field would be a verdict the evidence never supported.
+    ...(evidence !== undefined && evidence.unread !== true ? { chains: evidence.chains } : {}),
+    ...(evidence?.unread === true ? { chainsUnread: true } : {}),
     // Provenance honesty: this flag must agree with the prompt's label — the assembler
     // renders every chunk carrying both layers with `MACHINE_TRANSLATION_LABEL`, so a
     // translation exists exactly when a translation layer does. A human-checked layer
@@ -120,7 +123,7 @@ export function deriveCitationsFrame(input: {
       .map((label) => grounded.get(label))
       .find((candidate): candidate is DocChildById => candidate !== undefined);
     if (chunk === undefined || citations.some((c) => c.label === span)) continue;
-    citations.push(toCitation(span, chunk, citationChainsFor(chunk.id, evidence, names)));
+    citations.push(toCitation(span, chunk, citationEvidenceFor(chunk.id, evidence, names)));
   }
   return {
     messageId,

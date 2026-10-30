@@ -1,4 +1,9 @@
-import type { ChatSessionMessage, ChatSessionMessages } from "@app/contracts";
+import type {
+  ChatChain,
+  ChatCitation,
+  ChatSessionMessage,
+  ChatSessionMessages,
+} from "@app/contracts";
 import { t, type Locale } from "./i18n";
 
 /**
@@ -19,7 +24,7 @@ export function conversationMarkdown(
   const heading = title.trim() === "" ? t(locale, "historyUntitled") : title.trim();
   const lines: string[] = [`# ${heading}`, ""];
   for (const message of transcript.messages) {
-    const sources = sourcesOf(message);
+    const sources = sourcesOf(message, locale);
     lines.push(`## ${roleLabel(message, locale)}`, "", message.content.trim(), "");
     lines.push(...sources.map((source) => `- ${source}`));
     if (sources.length > 0) lines.push("");
@@ -32,16 +37,39 @@ function roleLabel(message: ChatSessionMessage, locale: Locale): string {
   return t(locale, message.role === "user" ? "exportYou" : "exportAssistant");
 }
 
-/** An answer's cited sources, each one "label — translation (grade)" as shown. */
-function sourcesOf(message: ChatSessionMessage): string[] {
+/**
+ * An answer's cited sources, each one "label — translation (evidence)" as the
+ * sheet shows it. The evidence is the citation's own shape: every stored chain
+ * row with its grade, its grader and its Arabic sanad, the explicit unread
+ * marker when the read never covered the passage, or — only for a citation with
+ * no evidence at all — the passage's flattened grade.
+ */
+function sourcesOf(message: ChatSessionMessage, locale: Locale): string[] {
   const citations = message.citations?.citations ?? [];
   return citations.map((citation) => {
     const parts = [citation.label];
     const text = citation.source ?? citation.translation;
     if (text !== undefined && text.trim() !== "") parts.push(text.trim());
-    if (citation.grade !== undefined) parts.push(`(${citation.grade})`);
+    parts.push(...evidenceOf(citation, locale));
     return parts.join(" — ");
   });
+}
+
+function evidenceOf(citation: ChatCitation, locale: Locale): string[] {
+  if (citation.chainsUnread === true) return [`(${t(locale, "citationChainUnread")})`];
+  if (citation.chains !== undefined && citation.chains.length > 0) {
+    return [citation.chains.map((chain) => chainText(chain, locale)).join(" ")];
+  }
+  return citation.grade !== undefined ? [`(${citation.grade})`] : [];
+}
+
+/** One chain row in the export's prose form: grade, grader, ordered sanad. */
+function chainText(chain: ChatChain, locale: Locale): string {
+  const grade = chain.grade ?? t(locale, "citationChainUngraded");
+  const attribution = chain.grader !== undefined ? ` — ${chain.grader}` : "";
+  const sanad = chain.narrators.map((narrator) => narrator.nameAr ?? narrator.id).join(" < ");
+  const truncated = chain.moreMayExist === true ? `; ${t(locale, "citationChainTruncated")}` : "";
+  return `(${grade}${attribution}; ${t(locale, "citationSanadLabel")}: ${sanad}${truncated})`;
 }
 
 /** `kajianq-ayat-kursi-2026-10-26.md`: a readable, filesystem-safe name. */

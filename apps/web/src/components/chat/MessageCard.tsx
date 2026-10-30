@@ -2,7 +2,7 @@ import type { ChatCitation, ChatSessionMessage } from "@app/contracts";
 import { AnswerCard } from "./AnswerCard";
 import { TracePanel } from "./TracePanel";
 import { CitationSheet, useCitationSheet } from "./CitationSheet";
-import { FeedbackBar, FlagButton } from "./FeedbackControls";
+import { chainGradeAnchor, FeedbackBar, FlagButton } from "./FeedbackControls";
 
 /**
  * One transcript turn: shaped dispatch only. The user turn is a right-aligned
@@ -12,7 +12,9 @@ import { FeedbackBar, FlagButton } from "./FeedbackControls";
  * import cap leaves AnswerCard no room for them. The citation sheet is owned
  * here so its footer can carry the trace-anchored flags: the failing element a
  * user reports from the sheet — wrong citation, bad machine translation,
- * questionable grade — anchors to the label the server-derived frame showed.
+ * questionable grade — anchors to the identifier the server-derived frame
+ * showed. A questionable grade on a chained passage anchors to the specific
+ * row's position and verdict, never to the passage's flattened grade.
  *
  * `persisted` gates every feedback affordance: the live turn is rendered from
  * `send()` onward under a client-local placeholder id that names no row until
@@ -26,6 +28,7 @@ export function MessageCard({
   persisted: boolean;
 }) {
   const sheet = useCitationSheet();
+  const active = sheet.active;
   if (message.role === "user") {
     return (
       <article
@@ -37,38 +40,51 @@ export function MessageCard({
     );
   }
   const openCitation = (citation: ChatCitation) => sheet.open(citation);
+  const flatGrade = active !== null && (active.chains === undefined || active.chains.length === 0);
   return (
     <>
       <AnswerCard message={message} onOpenCitation={openCitation} />
       <FeedbackBar messageId={message.id} persisted={persisted} />
       <TracePanel trace={message.trace} messageId={message.id} persisted={persisted} />
-      {sheet.active !== null && (
-        <CitationSheet citation={sheet.active} onClose={sheet.close}>
+      {active !== null && (
+        <CitationSheet
+          citation={active}
+          onClose={sheet.close}
+          renderChainFlag={(chain, index) => (
+            <FlagButton
+              messageId={message.id}
+              persisted={persisted}
+              anchor={chainGradeAnchor(active, chain, index)}
+              labelKey="flagQuestionableGrade"
+              testId={`flag-chain-${index}`}
+            />
+          )}
+        >
           <FlagButton
             messageId={message.id}
             persisted={persisted}
-            anchor={{ type: "citation", category: "wrong_citation", id: sheet.active.label }}
+            anchor={{ type: "citation", category: "wrong_citation", id: active.label }}
             labelKey="flagWrongCitation"
             testId="flag-citation"
           />
-          {sheet.active.machineTranslated && (
+          {active.machineTranslated && (
             <FlagButton
               messageId={message.id}
               persisted={persisted}
               anchor={{
                 type: "translation",
                 category: "bad_machine_translation",
-                id: sheet.active.label,
+                id: active.label,
               }}
               labelKey="flagBadTranslation"
               testId="flag-translation"
             />
           )}
-          {sheet.active.grade !== undefined && (
+          {flatGrade && active.chainsUnread !== true && active.grade !== undefined && (
             <FlagButton
               messageId={message.id}
               persisted={persisted}
-              anchor={{ type: "grade", category: "questionable_grade", id: sheet.active.label }}
+              anchor={{ type: "grade", category: "questionable_grade", id: active.label }}
               labelKey="flagQuestionableGrade"
               testId="flag-grade"
             />

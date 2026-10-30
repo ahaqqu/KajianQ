@@ -44,12 +44,17 @@ export const messages = {
     stagedCompose: "Composing the answer…",
     dhaifWarningCard:
       "[Warning] The cited hadith is graded weak (dhaif); it may not be used as a primary proof.",
+    dhaifChainWarningCard:
+      "[Warning] One of the cited hadith's transmission chains is graded weak (dhaif); see the chains below — it may not be used as a primary proof.",
     gradeLabel: "Grade",
     sourceLabel: "Source",
     citationSanadLabel: "Transmission chain",
     citationGraderLabel: "grader",
     citationChainUngraded: "no grade",
     citationChainTruncated: "more chains exist than are shown",
+    citationChainsUnread:
+      "The transmission chains for this passage were not read, so no grade is shown.",
+    citationChainUnread: "chain evidence not read",
     arabicOriginal: "Original Arabic text",
     translationLabel: "Translation",
     citationChipAria: "View source for citation",
@@ -179,12 +184,16 @@ export const messages = {
     stagedCompose: "Menyusun jawaban…",
     dhaifWarningCard:
       "[Peringatan] Hadits yang dikutip berderajat lemah (dhaif); tidak dapat dijadikan dalil utama.",
+    dhaifChainWarningCard:
+      "[Peringatan] Salah satu sanad hadits yang dikutip berderajat lemah (dhaif); lihat jalur periwayatan di bawah — tidak dapat dijadikan dalil utama.",
     gradeLabel: "Derajat",
     sourceLabel: "Sumber",
     citationSanadLabel: "Jalur periwayatan",
     citationGraderLabel: "penilai",
     citationChainUngraded: "tanpa penilaian",
     citationChainTruncated: "sanad lain tidak ditampilkan",
+    citationChainsUnread: "Sanad kutipan ini tidak dibaca, sehingga derajatnya tidak ditampilkan.",
+    citationChainUnread: "sanad tidak dibaca",
     arabicOriginal: "Teks Arab asli",
     translationLabel: "Terjemahan",
     citationChipAria: "Lihat sumber sitasi",

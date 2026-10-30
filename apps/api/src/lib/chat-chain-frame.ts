@@ -38,8 +38,8 @@ type RecordedChain = Extract<TraceEvent, { kind: "chain_evidence" }>["detail"]["
 export type RecordedEvidence = {
   /** Child id → the rows the read returned, in the event's (stored) order. */
   byChild: ReadonlyMap<string, RecordedChain>;
-  /** Whether the read bounded any child's list. */
-  moreMayExist: boolean;
+  /** Chain-bearing children the read did not cover, in retrieval order. */
+  notConsulted: readonly string[];
   /** Every narrator id the rows name, in first-seen order — the display join's input. */
   narratorIds: readonly string[];
 };
@@ -53,19 +53,21 @@ export function recordedEvidence(trace: Trace): RecordedEvidence | null {
   if (events.length === 0) return null;
   const byChild = new Map<string, RecordedChain>();
   const narratorIds: string[] = [];
-  let moreMayExist = false;
+  const notConsulted: string[] = [];
   for (const event of events) {
     for (const child of event.detail.children) {
       byChild.set(child.childId, child);
-      if (child.moreMayExist === true) moreMayExist = true;
       for (const chain of child.chains) {
         for (const id of chain.narratorIds) {
           if (!narratorIds.includes(id)) narratorIds.push(id);
         }
       }
     }
+    for (const id of event.detail.notConsulted ?? []) {
+      if (!notConsulted.includes(id)) notConsulted.push(id);
+    }
   }
-  return { byChild, moreMayExist, narratorIds };
+  return { byChild, notConsulted, narratorIds };
 }
 
 /** The resolved display spelling per narrator id; absent means the catalogue lacks it. */
@@ -113,22 +115,36 @@ function toCitationChain(chain: RecordedChain["chains"][number], names: Narrator
   };
 }
 
+/** What a citation should render for one child: its rows, or the fact nobody read them. */
+export type CitationEvidence =
+  | { readonly chains: ChatChain[]; readonly unread?: undefined }
+  | { readonly unread: true };
+
 /**
- * The chains a cited child's rows carry, or `undefined` when the trace recorded
- * no evidence for it. Projected verbatim — every row, in the recorded order — so
- * the sheet cannot present one grade for a passage whose chains disagree.
+ * The evidence a cited child carries: its rows projected verbatim — every row,
+ * in the recorded order, so the sheet cannot present one grade for a passage
+ * whose chains disagree — the explicit unread fact when the read budget left the
+ * child out, or `undefined` when the trace recorded no evidence for it at all.
+ *
+ * The unread case must stay distinct from the no-record case: the first says
+ * chain-bearing rows exist but were never read, and a renderer may not fall back
+ * to the passage's flattened headline grade for it.
  */
-export function citationChainsFor(
+export function citationEvidenceFor(
   childId: string,
   evidence: RecordedEvidence | null,
   names: NarratorNames,
-): ChatChain[] | undefined {
+): CitationEvidence | undefined {
   const recorded = evidence?.byChild.get(childId);
-  if (recorded === undefined) return undefined;
-  return recorded.chains.map((chain) => ({
-    ...toCitationChain(chain, names),
-    ...(recorded.moreMayExist === true ? { moreMayExist: true } : {}),
-  }));
+  if (recorded !== undefined) {
+    return {
+      chains: recorded.chains.map((chain) => ({
+        ...toCitationChain(chain, names),
+        ...(recorded.moreMayExist === true ? { moreMayExist: true } : {}),
+      })),
+    };
+  }
+  return evidence?.notConsulted.includes(childId) === true ? { unread: true } : undefined;
 }
 
 /**
@@ -146,4 +162,11 @@ export function traceChainsOf(
     chains: child.chains.map((chain) => toCitationChain(chain, names)),
     ...(child.moreMayExist === true ? { moreMayExist: true } : {}),
   }));
+}
+
+/** The chain-bearing passages the panel must mark unread; absent when there are none. */
+export function traceChainsNotConsultedOf(
+  evidence: RecordedEvidence | null,
+): readonly string[] | undefined {
+  return evidence !== null && evidence.notConsulted.length > 0 ? evidence.notConsulted : undefined;
 }

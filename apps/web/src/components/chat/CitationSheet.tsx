@@ -2,7 +2,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { MACHINE_TRANSLATION_LABEL } from "../../lib/chat-render";
 import { t, useLocale } from "../../lib/i18n";
 import { MonoLabel } from "../ui";
-import type { ChatCitation } from "@app/contracts";
+import type { ChatChain, ChatCitation } from "@app/contracts";
 
 /**
  * The passage sheet a citation chip opens, in the reference language: serif
@@ -17,10 +17,13 @@ export function CitationSheet({
   citation,
   onClose,
   children,
+  renderChainFlag,
 }: {
   citation: ChatCitation;
   onClose: () => void;
   children?: ReactNode;
+  /** The footer affordance for one chain row, so a grade flag names its own row. */
+  renderChainFlag?: (chain: ChatChain, index: number) => ReactNode;
 }) {
   const locale = useLocale();
   useEffect(() => {
@@ -52,11 +55,20 @@ export function CitationSheet({
           <span className="rounded-md border border-accent/30 bg-accent/10 px-2 py-1 font-mono text-[11px] uppercase tracking-wide text-accent-foreground dark:text-accent">
             {citation.label}
           </span>
-          {(citation.chains === undefined || citation.chains.length === 0) &&
+          {citation.chainsUnread !== true &&
+            (citation.chains === undefined || citation.chains.length === 0) &&
             citation.grade !== undefined && <GradeBadge grade={citation.grade} />}
         </div>
+        {citation.chainsUnread === true && (
+          <p
+            data-testid="citation-chains-unread"
+            className="mb-4 rounded-lg border border-rule px-3 py-2 text-sm text-muted-foreground"
+          >
+            {t(locale, "citationChainsUnread")}
+          </p>
+        )}
         {citation.chains !== undefined && citation.chains.length > 0 && (
-          <ChainList chains={citation.chains} locale={locale} />
+          <ChainList chains={citation.chains} locale={locale} renderChainFlag={renderChainFlag} />
         )}
         <MonoLabel>{t(locale, "arabicOriginal")}</MonoLabel>
         <p
@@ -106,61 +118,68 @@ export function CitationSheet({
 /**
  * The passage's transmission rows, one block per stored row in the record's own
  * order: its grade badge (an ungraded row says so rather than borrowing another
- * row's grade), the grader the trace attributed it to, and the ordered sanad in
- * Arabic. Every row renders — the sheet never picks the strongest — so a passage
- * whose chains disagree reads as conflicting evidence rather than one verdict.
+ * row's grade), the grader the trace attributed it to, the ordered sanad in
+ * Arabic, and — when the parent supplies one — that row's own flag affordance.
+ * Every row renders — the sheet never picks the strongest — so a passage whose
+ * chains disagree reads as conflicting evidence rather than one verdict.
  */
 function ChainList({
   chains,
   locale,
+  renderChainFlag,
 }: {
   chains: NonNullable<ChatCitation["chains"]>;
   locale: ReturnType<typeof useLocale>;
+  renderChainFlag?: ((chain: ChatChain, index: number) => ReactNode) | undefined;
 }) {
   return (
-    <ul data-testid="citation-chains" className="mb-4 space-y-2">
-      {chains.map((chain, index) => (
-        <li
-          data-testid="citation-chain"
-          key={`${chain.grade ?? "ungraded"}-${index}`}
-          className="rounded-lg border border-rule px-3 py-2"
-        >
-          <div className="flex flex-wrap items-center gap-2">
-            {chain.grade !== undefined ? (
-              <GradeBadge grade={chain.grade} />
-            ) : (
-              <span
-                data-testid="citation-chain-ungraded"
-                className="font-mono text-[11px] uppercase tracking-wide text-muted-foreground"
-              >
-                {t(locale, "citationChainUngraded")}
-              </span>
-            )}
-            {chain.grader !== undefined && (
-              <span data-testid="citation-grader" className="text-xs text-muted-foreground">
-                {t(locale, "citationGraderLabel")}: {chain.grader}
-              </span>
-            )}
-          </div>
-          <p
-            dir="rtl"
-            lang="ar"
-            data-testid="citation-sanad"
-            className="mt-1 text-right font-arabic text-lg leading-loose text-card-foreground"
+    <>
+      <MonoLabel>{t(locale, "citationSanadLabel")}</MonoLabel>
+      <ul data-testid="citation-chains" className="mb-4 mt-1 space-y-2">
+        {chains.map((chain, index) => (
+          <li
+            data-testid="citation-chain"
+            key={`${chain.grade ?? "ungraded"}-${index}`}
+            className="rounded-lg border border-rule px-3 py-2"
           >
-            {chain.narrators.map((narrator) => narrator.nameAr ?? narrator.id).join(" < ")}
-          </p>
-          {chain.moreMayExist === true && (
+            <div className="flex flex-wrap items-center gap-2">
+              {chain.grade !== undefined ? (
+                <GradeBadge grade={chain.grade} />
+              ) : (
+                <span
+                  data-testid="citation-chain-ungraded"
+                  className="font-mono text-[11px] uppercase tracking-wide text-muted-foreground"
+                >
+                  {t(locale, "citationChainUngraded")}
+                </span>
+              )}
+              {chain.grader !== undefined && (
+                <span data-testid="citation-grader" className="text-xs text-muted-foreground">
+                  {t(locale, "citationGraderLabel")}: {chain.grader}
+                </span>
+              )}
+              {renderChainFlag?.(chain, index)}
+            </div>
             <p
-              data-testid="citation-chain-truncated"
-              className="mt-1 text-xs text-muted-foreground"
+              dir="rtl"
+              lang="ar"
+              data-testid="citation-sanad"
+              className="mt-1 text-right font-arabic text-lg leading-loose text-card-foreground"
             >
-              {t(locale, "citationChainTruncated")}
+              {chain.narrators.map((narrator) => narrator.nameAr ?? narrator.id).join(" < ")}
             </p>
-          )}
-        </li>
-      ))}
-    </ul>
+            {chain.moreMayExist === true && (
+              <p
+                data-testid="citation-chain-truncated"
+                className="mt-1 text-xs text-muted-foreground"
+              >
+                {t(locale, "citationChainTruncated")}
+              </p>
+            )}
+          </li>
+        ))}
+      </ul>
+    </>
   );
 }
 

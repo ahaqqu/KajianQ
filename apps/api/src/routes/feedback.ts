@@ -10,14 +10,15 @@ import {
   FEEDBACK_OPENAPI,
   chunkFetcher,
   deriveFeedbackCitations,
+  feedbackAnchorRowId,
   parseFeedbackRequest,
   validateFeedbackAnchor,
 } from "../lib/feedback";
 
 /**
  * POST /v1/feedback: anonymous thumbs up/down per answer, plus trace-anchored flags
- * naming the failing element (citation, chunk, translation, grade) from the Trace
- * panel. The anonymous Bearer session the chat already uses is the only credential,
+ * naming the failing element (citation, chunk, translation, grade, chain row) from the
+ * Trace panel. The anonymous Bearer session the chat already uses is the only credential,
  * and the row carries the user id so self-deletion erases the feedback with its author.
  *
  * Invariants, enforced in order:
@@ -127,7 +128,7 @@ export const feedbackRoutes = newRouter().post(
         userId,
         rating: -1, // a flag is negative feedback by definition
         anchorType: anchor.type,
-        anchorId: anchor.id,
+        anchorId: feedbackAnchorRowId(anchor),
         category: anchor.category,
         freeText: req.freeText ?? null,
       }),

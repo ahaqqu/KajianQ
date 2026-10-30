@@ -62,8 +62,9 @@ export type KajianQRetrieverDeps = {
   /** ADR-0062's bound: how many of the caller's leading hits the guarantee promotes,
    * defaulting to `CALLER_PRIORITY_K`; `0` disables it. */
   callerPriorityK?: number | undefined;
-  /** Children the per-chain evidence read covers (`0` disables it) and rows per child
-   * it carries; the module's defaults apply when absent. */
+  /** Children the per-chain evidence read covers (`0` reads none and marks every
+   * chain-bearing child unread) and rows per child it carries; the module's defaults
+   * apply when absent. */
   chainEvidenceChildCap?: number | undefined;
   chainEvidenceChainCap?: number | undefined;
 };

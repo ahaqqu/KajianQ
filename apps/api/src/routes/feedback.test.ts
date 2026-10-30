@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vite-plus/test";
 import { createApi } from "../app";
 import { parseFeedbackRequest } from "../lib/feedback";
-import { STORABLE_TEXT_PATTERN } from "@app/contracts";
+import { STORABLE_TEXT_PATTERN, type Trace } from "@app/contracts";
 import { runStoreEffect } from "@app/kajianq-domain";
 import { createMemoryRagStore } from "@app/kajianq-domain/test-utils/memory-rag-store";
 import { createMemoryRateLimiter } from "@app/rate";
@@ -51,12 +51,13 @@ async function wiredStore() {
 /**
  * Seed one answer owned by `userId`: `chunkCount` chunks (labels QS. 2:255,
  * QS. 2:256; the first carries a translation layer and optionally a grade), a
- * trace referencing them, and an assistant message citing both labels.
+ * trace referencing them, an optional `chain_evidence` record for the first
+ * chunk, and an assistant message citing both labels.
  */
 async function seedAnswer(
   store: ReturnType<typeof createMemoryRagStore>,
   userId: string,
-  opts: { chunkCount?: number; grade?: string } = {},
+  opts: { chunkCount?: number; grade?: string; chains?: { grade: string; grader: string }[] } = {},
 ): Promise<string> {
   const sessionId = await runStoreEffect<string>(store.createChatSession({ userId }));
   const parentId = await runStoreEffect<string>(
@@ -89,7 +90,7 @@ async function seedAnswer(
       ),
     );
   }
-  const trace = {
+  const trace: Trace = {
     id: `trace-${crypto.randomUUID()}`,
     createdAt: 1_700_000_000_000,
     events: [
@@ -99,6 +100,29 @@ async function seedAnswer(
         detail: { chunks: chunkIds.map((id) => ({ id, score: 0.1 })) },
         at: 1_700_000_000_100,
       },
+      ...(opts.chains === undefined
+        ? []
+        : [
+            {
+              stage: "retriever" as const,
+              kind: "chain_evidence" as const,
+              detail: {
+                consulted: 1,
+                perChildCap: 8,
+                children: [
+                  {
+                    childId: chunkIds[0]!,
+                    chains: opts.chains.map((chain) => ({
+                      narratorIds: ["aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"],
+                      ...chain,
+                    })),
+                  },
+                ],
+                missingNarratorIds: [],
+              },
+              at: 1_700_000_000_200,
+            },
+          ]),
     ],
   };
   const messageId = crypto.randomUUID();
@@ -289,6 +313,50 @@ describe("POST /v1/feedback", () => {
       "translation",
       "grade",
     ]);
+  });
+
+  it("anchors a questionable grade to the chain row the reader disputed", async () => {
+    const { store, userId, token } = await wiredStore();
+    const messageId = await seedAnswer(store, userId, {
+      grade: "sahih",
+      chains: [
+        { grade: "sahih", grader: "al-bukhari" },
+        { grade: "dhaif", grader: "al-daraqutni" },
+      ],
+    });
+    const second = {
+      type: "chain",
+      category: "questionable_grade",
+      id: "QS. 2:255",
+      chainIndex: 1,
+      grade: "dhaif",
+      grader: "al-daraqutni",
+    };
+    const first = { ...second, chainIndex: 0, grade: "sahih", grader: "al-bukhari" };
+    const res = await post(token, { messageId, anchor: second });
+    const other = await post(token, { messageId, anchor: first });
+    expect(res.status).toBe(200);
+    expect(other.status).toBe(200);
+    // Each row's complaint is its own record: the stored id must distinguish the
+    // two rows or the review queue cannot tell which sanad was disputed.
+    const rows = store.allFeedback();
+    expect(rows.map((row) => [row.anchorType, row.anchorId])).toEqual([
+      ["chain", "QS. 2:255#chain:1"],
+      ["chain", "QS. 2:255#chain:0"],
+    ]);
+    // The response echoes the anchor the client sent, position and verdict included.
+    expect((await res.json()).anchor).toEqual(second);
+    // A row's own verdict is part of the anchor: an index that points at a dhaif
+    // row while claiming sahih is rejected, never stored.
+    for (const anchor of [
+      { ...second, grade: "sahih", grader: "al-bukhari" },
+      { ...second, chainIndex: 9 },
+      { type: "grade", category: "questionable_grade", id: "QS. 2:255" },
+    ]) {
+      const rejected = await post(token, { messageId, anchor });
+      expect(rejected.status).toBe(422);
+    }
+    expect(store.allFeedback()).toHaveLength(2);
   });
 
   it("rejects a translation/grade flag on a cited label that lacks the layer (422)", async () => {

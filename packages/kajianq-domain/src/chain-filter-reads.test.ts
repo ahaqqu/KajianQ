@@ -173,7 +173,13 @@ run("chain-grade and narrator retrieval filters (real Postgres, memory equal)", 
   }, 60_000);
 
   afterAll(async () => {
-    if (sql !== null) await disposePostgresPools();
+    if (sql === null) return;
+    // The fixture shares the contract database with every other gated suite, and
+    // the fidelity suite scans `doc_children` without a prefix filter: leaving
+    // these corpus-shaped rows behind fails a later suite unrelated to this one.
+    // The parent delete cascades its children and their chains.
+    await sql`DELETE FROM doc_parents WHERE source_key = ${PREFIX}`;
+    await disposePostgresPools();
   }, 30_000);
 
   /**

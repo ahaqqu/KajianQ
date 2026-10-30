@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vite-plus/test";
 import { Effect } from "effect";
 import * as v from "valibot";
-import { TraceEventSchema, type ChainEvidenceDetail } from "@app/contracts";
+import {
+  CHAIN_EVIDENCE_TRACE_LIMIT,
+  TraceEventSchema,
+  type ChainEvidenceDetail,
+} from "@app/contracts";
 import type { NarratorChainRecord, NarratorIdsLookup, NarratorRecord } from "@app/infra";
 
 import type { Chunk } from "@app/rag-core";
@@ -142,7 +146,12 @@ describe("readChainEvidence — the stored transmission, never a selection", () 
     // page: the evidence block carries the rows, so a reader cannot read one
     // verdict for a passage whose chains disagree.
     const rendered = renderEvidenceChunk(chunks[0]!);
-    expect(rendered).not.toContain("(Sahih)]");
+    // Assert the label's head and the absence of the flat parenthetical before the
+    // chain evidence: `not.toContain("(Sahih)]")` could never fire here because
+    // the label ends with the rows, and a surviving `(Sahih)` before them would
+    // have gone unnoticed.
+    expect(rendered).toContain("[HR. Bukhari no. 1 (Dhaif — al-daraqutni");
+    expect(rendered).not.toContain("(Sahih) (");
     expect(rendered).toContain("Dhaif — al-daraqutni");
     expect(rendered).toContain("Sahih — al-bukhari");
     expect(detail?.children[0]?.chains.map((row) => row.grade)).toEqual(["dhaif", "sahih"]);
@@ -269,7 +278,83 @@ describe("readChainEvidence — the stored transmission, never a selection", () 
     );
     expect(reads.map((read) => read.childId)).toEqual(["h1", "h2"]);
     expect(detail?.consulted).toBe(2);
+    // The children beyond the bound are not silently dropped: the record names
+    // them, which is what lets a renderer say their chains were never read.
+    expect(detail?.notConsulted).toEqual(["h3"]);
     expect(DEFAULT_CHAIN_EVIDENCE_CHILD_CAP).toBeGreaterThanOrEqual(2);
+  });
+
+  it("reads six of eight chain-bearing children and records the remaining two unread", async () => {
+    // The default cap is six; a route with two to four sub-queries routinely puts
+    // more chain-bearing children in context. The old read sliced them away and
+    // left each unread citation rendering its flattened grade with no marker.
+    const ids = ["h1", "h2", "h3", "h4", "h5", "h6", "h7", "h8"];
+    const { store, reads } = fakeStore({
+      chains: ids.map((childId) => chain({ childId })),
+      narrators: [narrator()],
+    });
+    const { chunks, detail } = await Effect.runPromise(
+      readChainEvidence({ chunks: ids.map((id) => hadithChunk(id)), store, bridge }),
+    );
+    expect(reads).toHaveLength(DEFAULT_CHAIN_EVIDENCE_CHILD_CAP);
+    expect(detail?.consulted).toBe(DEFAULT_CHAIN_EVIDENCE_CHILD_CAP);
+    expect(detail?.notConsulted).toEqual(["h7", "h8"]);
+    // The unread passages carry no evidence block, so no consumer can mistake the
+    // flattened grade for a read result; the record is the only thing that says so.
+    expect(isnadEvidenceOf(chunks[5]!)).not.toBeNull();
+    expect(isnadEvidenceOf(chunks[6]!)).toBeNull();
+    expect(isnadEvidenceOf(chunks[7]!)).toBeNull();
+    const parsed = v.safeParse(TraceEventSchema, {
+      stage: "retriever" as const,
+      kind: "chain_evidence" as const,
+      detail,
+      at: 1,
+    });
+    expect(parsed.success).toBe(true);
+  });
+
+  it("records every chain-bearing child as unread when the read is disabled", async () => {
+    const { store, reads } = fakeStore({ chains: [chain()], narrators: [narrator()] });
+    const { chunks, detail } = await Effect.runPromise(
+      readChainEvidence({ chunks: [hadithChunk("h1")], store, bridge, childCap: 0 }),
+    );
+    expect(reads).toEqual([]);
+    expect(detail).toEqual({
+      consulted: 0,
+      perChildCap: CHAIN_EVIDENCE_TRACE_LIMIT,
+      children: [],
+      missingNarratorIds: [],
+      notConsulted: ["h1"],
+    });
+    expect(isnadEvidenceOf(chunks[0]!)).toBeNull();
+  });
+
+  it("clamps the per-child row bound to the trace contract's limit", async () => {
+    const rows = Array.from({ length: CHAIN_EVIDENCE_TRACE_LIMIT + 2 }, (_, index) =>
+      chain({ id: `c-${index}` }),
+    );
+    const { store, reads } = fakeStore({ chains: rows, narrators: [narrator()] });
+    const { detail } = await Effect.runPromise(
+      readChainEvidence({
+        chunks: [hadithChunk("h1")],
+        store,
+        bridge,
+        chainCap: CHAIN_EVIDENCE_TRACE_LIMIT + 5,
+      }),
+    );
+    // The exported read is its own guard: a caller that ignores the config
+    // refusal must still produce a record the trace contract accepts.
+    expect(reads[0]?.limit).toBe(CHAIN_EVIDENCE_TRACE_LIMIT + 1);
+    expect(detail?.perChildCap).toBe(CHAIN_EVIDENCE_TRACE_LIMIT);
+    expect(detail?.children[0]?.chains).toHaveLength(CHAIN_EVIDENCE_TRACE_LIMIT);
+    expect(detail?.children[0]?.moreMayExist).toBe(true);
+    const parsed = v.safeParse(TraceEventSchema, {
+      stage: "retriever" as const,
+      kind: "chain_evidence" as const,
+      detail,
+      at: 1,
+    });
+    expect(parsed.success).toBe(true);
   });
 
   it("produces a record the trace contract accepts, attribution included", async () => {

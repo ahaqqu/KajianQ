@@ -4,6 +4,7 @@ import { splitAnswerBlocks } from "../../../apps/web/src/lib/chat-peel";
 import { MACHINE_TRANSLATION_LABEL } from "./chat-assembler";
 import {
   applyProductRules,
+  dhaifChainWarning,
   dhaifWarning,
   hasWeakGradeChunk,
   hasWeakWarning,
@@ -63,6 +64,31 @@ describe("applyProductRules", () => {
     );
     expect(draft.text).toContain(dhaifWarning("id"));
     expect(applied).toContain("dhaif_warning");
+  });
+
+  it("warns about one weak chain without calling the whole hadith weak", () => {
+    // The sheet beside this card renders sahih and dhaif for the same passage:
+    // the card's copy must name the weak sanad, not tell the reader the cited
+    // hadith is graded weak as a whole.
+    const weakRow = {
+      chains: [{ narratorIds: ["n1"], grade: "dhaif", grader: "al-daraqutni" }],
+      narrators: [],
+      moreMayExist: false,
+    };
+    const { draft, applied } = applyProductRules(
+      { text: "Jawaban." },
+      context([chunk({ sourceType: "hadith", grade: "sahih", isnad: weakRow })]),
+      "id",
+    );
+    expect(applied).toContain("dhaif_warning");
+    expect(draft.text).toContain(dhaifChainWarning("id"));
+    expect(draft.text).not.toContain(dhaifWarning("id"));
+    // The peel and the citations frame's flag read the same predicate, so the
+    // chain-scoped copy must be recognised as the product's warning.
+    expect(hasWeakWarning(draft.text)).toBe(true);
+    expect(
+      hasWeakGradeChunk([chunk({ sourceType: "hadith", grade: "sahih", isnad: weakRow })]),
+    ).toBe(true);
   });
 
   it("appends the canonical warning over the model's own informal weakness note (#278)", () => {

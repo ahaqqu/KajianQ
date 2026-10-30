@@ -175,7 +175,9 @@ type Run = {
   /** Every per-child chain read the evidence arm issued, with its bound. */
   chainReads: { childId: string; limit: number }[];
   /** The typed chain-evidence record, when the arm ran. */
-  chainEvidence: { consulted: number; perChildCap: number } | undefined;
+  chainEvidence:
+    | { consulted: number; perChildCap: number; notConsulted: readonly string[] }
+    | undefined;
   /** The assembled context the generator was shown. */
   context: string;
   /** The cap each typed scope event recorded. */
@@ -273,7 +275,11 @@ async function runWith(
     chainEvidence:
       chainEvent === undefined
         ? undefined
-        : { consulted: chainEvent.detail.consulted, perChildCap: chainEvent.detail.perChildCap },
+        : {
+            consulted: chainEvent.detail.consulted,
+            perChildCap: chainEvent.detail.perChildCap,
+            notConsulted: chainEvent.detail.notConsulted ?? [],
+          },
     context: userTurn,
     scopeCaps: answer.trace.events
       .filter((entry) => entry.kind === "scope_expansion")
@@ -423,13 +429,16 @@ const TUNABLES: Record<keyof Required<ChatPipelineDeps["retrieval"]>, TunablePro
     },
   },
   chainEvidenceChildCap: {
-    binding: { name: "CHAIN_EVIDENCE_CHILD_CAP", value: "2" },
+    // `0` is the discriminating value with the one chain-bearing child this fixture
+    // seeds: the read is disabled, so the event records zero reads and names the
+    // child unread. A dropped `childCap` forwarding falls back to the default,
+    // issues the read, and reddens both assertions.
+    binding: { name: "CHAIN_EVIDENCE_CHILD_CAP", value: "0" },
     question: PLAIN_QUESTION,
     assert: (run) => {
-      // The child cap bounds how many retrieved children are read; each read asks for
-      // one row beyond its own row bound, so the bound is observable here as cap + 1.
-      expect(run.chainReads.every((read) => read.limit === 9)).toBe(true);
-      expect(run.chainEvidence?.consulted).toBe(1);
+      expect(run.chainReads).toEqual([]);
+      expect(run.chainEvidence).toMatchObject({ consulted: 0, notConsulted: expect.any(Array) });
+      expect(run.chainEvidence?.notConsulted).toHaveLength(1);
     },
   },
   chainEvidenceChainCap: {

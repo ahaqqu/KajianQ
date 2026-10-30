@@ -224,4 +224,16 @@ describe("TracePanel — the transmission chains consulted", () => {
     renderTechnical(frame);
     expect(screen.queryByTestId("trace-chains")).toBeNull();
   });
+
+  it("names the chain-bearing passages the read left unread", () => {
+    renderTechnical({
+      ...frame,
+      technical: { ...frame.technical, chains: [], chainsNotConsulted: ["c9"] },
+    });
+    // An empty read and an unread passage are different facts: the panel says the
+    // child was not consulted rather than "no sanad recorded".
+    expect(screen.getByTestId("trace-chains")).toBeTruthy();
+    expect(screen.queryByTestId("trace-no-chains")).toBeNull();
+    expect(texts("trace-chain-unread")).toEqual(["c9"]);
+  });
 });

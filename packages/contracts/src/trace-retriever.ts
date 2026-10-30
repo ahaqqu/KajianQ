@@ -275,6 +275,9 @@ export const chainEvidenceDetailSchema = v.object({
   perChildCap: v.pipe(v.number(), v.integer(), v.minValue(0)),
   /** The children that hold at least one row, in retrieval order. */
   children: v.array(chainEvidenceChildSchema),
+  /** Chain-bearing children the read did NOT cover, in retrieval order: mark them
+   * unread instead of rendering a flattened grade. Absent means all were read. */
+  notConsulted: v.optional(v.array(v.pipe(v.string(), v.minLength(1)))),
   /**
    * Narrator ids a chain named that the catalogue does not hold, in first-seen
    * order. Reported rather than dropped: an unknown narrator is a resolution gap,
