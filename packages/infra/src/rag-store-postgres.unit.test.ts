@@ -635,9 +635,9 @@ describe("rag-store-postgres adapter (fake runner)", () => {
   });
 
   it("classifies a cardinality violation (21000) from one upsert as constraint, not transport", async () => {
-    // A sync payload naming one (role, provider, model_id) twice: the single
-    // ON CONFLICT DO UPDATE cannot affect that row a second time, so the server
-    // rejects the transaction deterministically — the same payload fails identically.
+    // The payload the adapter binds names one (role, provider, model_id) twice, so the
+    // single ON CONFLICT DO UPDATE cannot affect that row a second time and the server
+    // rejects the transaction with 21000; the fake rejects it with the same shape.
     const sql = makeFakeSql();
     sql.transaction = () =>
       Promise.reject(
@@ -651,6 +651,12 @@ describe("rag-store-postgres adapter (fake runner)", () => {
     const err = await runFail(store.syncModelConfigs([duplicate, { ...duplicate }]));
     expect(err.kind).toBe("constraint");
     expect((err.cause as { code?: string }).code).toBe("21000");
+    // The bound JSONB payload really does carry the same key twice: that duplicate is
+    // the causality the 21000 encodes, not something the fake's rejection invents.
+    const payload = sql._calls.filter((c) => c.kind === "tag")[0]?.values[0];
+    const records = JSON.parse(String(payload)) as unknown[];
+    expect(records).toHaveLength(2);
+    expect(records[0]).toEqual(records[1]);
   });
 
   it("classifies an auth failure (28P01) as config, not transport", async () => {

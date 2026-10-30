@@ -14,7 +14,7 @@ import { modelConfigKey, StoreError, type ModelConfigRecord, type RagStore } fro
  *
  * Two entries sharing a `(role, provider, model_id)` key are refused, not collapsed:
  * the adapter's single `ON CONFLICT DO UPDATE` rejects that pair with SQLSTATE 21000
- * (cardinality_violation), which the driver's taxonomy classifies as `constraint` — a
+ * (cardinality_violation), which the adapter's `SQLSTATE_KINDS` maps to `constraint` — a
  * deterministic rejection the data must fix, not a retryable one. Last-wins here would
  * accept input the deployment cannot, the one way this double could be more forgiving
  * than the store it stands in for.
