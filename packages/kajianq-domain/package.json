@@ -6,7 +6,8 @@
   "exports": {
     ".": "./src/index.ts",
     "./test-utils/*": "./src/test-utils/*",
-    "./sanadset": "./src/sanadset.ts"
+    "./sanadset": "./src/sanadset.ts",
+    "./sanadset-ingest": "./src/sanadset-ingest.ts"
   },
   "scripts": {
     "check": "tsc -p tsconfig.json --noEmit"

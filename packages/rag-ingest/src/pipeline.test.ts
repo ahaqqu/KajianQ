@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vite-plus/test";
 import type { RagStore } from "@app/infra";
-import type { Provider } from "@app/rag-core";
+import { StoreError, type Provider } from "@app/rag-core";
 import { EmbedMisalignment, runIngestion } from "./pipeline";
 import type { ParsedParent } from "./types";
 import { Cause, Effect } from "effect";
@@ -173,6 +173,14 @@ function fakeStore() {
     },
     listChainsByCollection() {
       return Effect.succeed({ rows: [], nextAfterId: null });
+    },
+    // The graph writes are not ingestion's surface either; the pilot's gated suite
+    // exercises them against the real store.
+    upsertNarrator() {
+      return Effect.fail(new StoreError({ kind: "config", cause: new Error("not a graph store") }));
+    },
+    insertNarratorChains() {
+      return Effect.fail(new StoreError({ kind: "config", cause: new Error("not a graph store") }));
     },
   };
   return {
