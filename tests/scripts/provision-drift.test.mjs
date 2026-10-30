@@ -1112,8 +1112,9 @@ describe("deploy.sh wiring", () => {
     expect(driftAt).toBeLessThan(provenanceAt);
     for (const mutation of [
       "bun run build:web",
-      "rsync -az",
-      "sudo ${SYSTEMCTL} restart",
+      "tar -czf",
+      "rsync -a --partial",
+      "sudo -n /usr/local/sbin/vps-deploy kajianq",
       "sudo ${SYSTEMCTL} start kajianq-cron.service",
     ]) {
       const at = script.indexOf(mutation);

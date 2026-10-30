@@ -2370,8 +2370,8 @@ describe("provisioning config as code stays true to the ADR", () => {
     const check = read("provision/vps/deploy/backup-provenance.sh");
     const apply = read("provision/vps/apply.sh");
     // The writer and the reader must name the same path, and it must not sit under the deploy
-    // root: /srv/kajianq belongs to the deploy identity, so a root-owned record there could be
-    // renamed away, and the shipped subdirectories are replaced with `rsync --delete`.
+    // root: /srv/kajianq belongs to the helper's swap, so a root-owned record there could be
+    // renamed away, and the whole tree is replaced on every deploy.
     expect(provenance).toMatch(/RECORD_DIR = "\/var\/lib\/kajianq"/);
     expect(provenance).toMatch(/RECORD_PATH = `\$\{RECORD_DIR\}\/backup-provenance`/);
     expect(check).toMatch(/RECORD_FILE="\$\{2:-\/var\/lib\/kajianq\/backup-provenance\}"/);
@@ -2427,8 +2427,9 @@ describe("provisioning config as code stays true to the ADR", () => {
     );
     for (const mutation of [
       "bun run build:web",
-      "rsync -az",
-      "sudo ${SYSTEMCTL} restart",
+      "tar -czf",
+      "rsync -a --partial",
+      "sudo -n /usr/local/sbin/vps-deploy kajianq",
       "sudo ${SYSTEMCTL} start kajianq-cron.service",
     ]) {
       const at = script.indexOf(mutation);
@@ -2490,46 +2491,84 @@ describe("provisioning config as code stays true to the ADR", () => {
     expect(example).toMatch(/KAJIANQ_PUBLIC_URL=/);
   });
 
-  it("the deploy grant authorizes exactly the sudo the deploy script runs", () => {
+  it("the deploy's privileged calls are covered by the bridge grant", () => {
     // The deploy's privileged half is sudo over ssh, where a missing grant fails as "a password
-    // is required" — naming neither the rule nor the command. Both directions are pinned: every
-    // sudo'd command is granted, and every granted command is used, so an unused grant cannot
-    // accumulate silently.
+    // is required" — naming neither the rule nor the command. The grant is the bridge between
+    // two deploy paths: it authorizes the shared helper the deploy now runs and the legacy
+    // commands a deploy in flight still uses. So every sudo'd command must be granted; an
+    // unused entry is expected and pinned as part of the bridge, not a licence to accumulate.
     const script = read("provision/vps/deploy/deploy.sh");
     const grant = read("provision/vps/sudoers/kajianq-deploy");
 
     // Extract the sudo'd argv from the script's remote commands. The `sudo ` may follow a shell
-    // quote, so quotes and whitespace are normalized first, and `${SYSTEMCTL}` is resolved to
-    // the literal the grant carries, since sudoers matches the expanded command string. The
-    // capture runs to the next shell separator, so an argument-bearing call is compared in full.
+    // quote, so quotes and whitespace are normalized first, `${SYSTEMCTL}` is resolved to the
+    // literal the grant carries, and `-n` is skipped because sudoers matches the command after
+    // it. The capture runs to the next shell separator, so an argument-bearing call is compared
+    // in full.
     const resolved = script
       .replace(/\$\{SYSTEMCTL\}/g, "/usr/bin/systemctl")
       .replace(/["']/g, "\n");
-    const used = [...resolved.matchAll(/sudo\s+(\/usr\/bin\/systemctl\s+[^\n;|&]+)/g)].map((m) =>
-      m[1].trim(),
-    );
-    expect(used.length).toBeGreaterThanOrEqual(2);
+    const used = [
+      ...resolved.matchAll(
+        /sudo\s+(?:-n\s+)?((?:\/usr\/local\/sbin\/vps-deploy|\/usr\/bin\/systemctl)\s+[^\n;|&]+)/g,
+      ),
+    ].map((m) => m[1].trim());
+    expect(used).toContain("/usr/local/sbin/vps-deploy kajianq");
+    expect(used).toContain("/usr/bin/systemctl start kajianq-cron.service");
+    // The helper owns the restart and its health wait; a raw restart here would fight the
+    // contract's rollback.
+    expect(resolved).not.toMatch(/sudo\s+(?:-n\s+)?\/usr\/bin\/systemctl\s+restart/);
 
-    // The grant's command list: whitespace is collapsed first (the second entry follows a `\`
-    // line continuation), and the capture runs to the entry boundary so an extra-argument grant
-    // is compared in full.
+    // The grant's command list: whitespace is collapsed first (entries follow `\` line
+    // continuations), then the entries are split on the comma boundaries sudoers uses.
     const grantBody = grant
       .slice(grant.indexOf("NOPASSWD:"))
       .replace(/\\\s*\n/g, " ")
       .replace(/\s+/g, " ");
-    const granted = [...grantBody.matchAll(/(\/usr\/bin\/systemctl\s+[^,]+?)\s*(?:,|$)/g)].map(
-      (m) => m[1].trim(),
-    );
-    expect(granted.length).toBeGreaterThanOrEqual(2);
+    const granted = grantBody
+      .replace(/^.*?NOPASSWD:\s*/, "")
+      .split(",")
+      .map((command) => command.trim());
 
     for (const command of used) {
-      expect(granted, `deploy runs \`sudo ${command}\` but the grant omits it`).toContain(command);
-    }
-    for (const command of granted) {
-      expect(used, `the grant allows \`${command}\` but the deploy never runs it`).toContain(
+      expect(granted, `deploy runs \`sudo ${command}\` but the bridge grant omits it`).toContain(
         command,
       );
     }
+    // The bridge keeps both halves: the helper (deploy, rollback and the four bounded verbs)
+    // and the four legacy commands the deploy path used before the swap. The vps repository's
+    // follow-up retires the legacy half and this list with it.
+    expect(granted).toEqual([
+      "/usr/local/sbin/vps-deploy kajianq",
+      "/usr/local/sbin/vps-deploy kajianq --rollback",
+      "/usr/local/sbin/vps-deploy kajianq start",
+      "/usr/local/sbin/vps-deploy kajianq stop",
+      "/usr/local/sbin/vps-deploy kajianq restart",
+      "/usr/local/sbin/vps-deploy kajianq status",
+      "/usr/bin/systemctl restart kajianq-api.service",
+      "/usr/bin/systemctl start kajianq-cron.service",
+      "/usr/sbin/nginx -t",
+      "/usr/bin/certbot certificates",
+    ]);
+  });
+
+  it("ships one tar artifact and asks the helper to swap it, never writing the target", () => {
+    const script = read("provision/vps/deploy/deploy.sh");
+    // Both trees are archived at the root, so the helper's tar-table check sees exactly
+    // api/… and web/…. The archive sits beside them and the tar names only those two trees,
+    // so it cannot include itself.
+    expect(script).toMatch(/tar -czf "\$\{STAGE\}\/kajianq\.tar\.gz" -C "\$\{STAGE\}" api web/);
+    // Uploaded to the contract's fixed incoming path; the helper verifies its owner and caps.
+    expect(script).toMatch(/-a --partial[\s\S]{0,160}\/srv\/vps-incoming\/kajianq\.tar\.gz/);
+    // The helper is the only writer of the live tree.
+    expect(script).toMatch(/sudo -n \/usr\/local\/sbin\/vps-deploy kajianq/);
+    // No rsync or mkdir may reach the target tree again, and the raw restart and its
+    // is-active probe moved into the helper.
+    expect(script).not.toMatch(/rsync[^\n]*\$\{DEPLOY_ROOT\}/);
+    expect(script).not.toMatch(/rsync[^\n]*\/srv\/kajianq/);
+    expect(script).not.toMatch(/mkdir -p[^\n]*DEPLOY_ROOT/);
+    expect(script).not.toMatch(/systemctl restart kajianq-api\.service/);
+    expect(script).not.toMatch(/is-active --quiet/);
   });
 
   it("the deploy grant is scoped: no wildcards, no shell, one identity, absolute paths", () => {
@@ -2549,6 +2588,7 @@ describe("provisioning config as code stays true to the ADR", () => {
       expect(rules).not.toMatch(new RegExp(`/usr/bin/${shell.trim()}`));
     }
     // Absolute binary paths only: sudoers matches the command string exactly.
+    expect(rules).toMatch(/\/usr\/local\/sbin\/vps-deploy kajianq/);
     expect(rules).toMatch(/\/usr\/bin\/systemctl restart kajianq-api\.service/);
     expect(rules).toMatch(/\/usr\/bin\/systemctl start kajianq-cron\.service/);
     // The read-only check must not be granted: unit state is world-readable.
@@ -2584,11 +2624,11 @@ describe("provisioning config as code stays true to the ADR", () => {
     expect(apply).toMatch(/grep -q "\^\$\{DEPLOY_USER\} ALL=\(root\)"/);
   });
 
-  it("the deploy identity owns the deployed tree, so rsync needs no group-write grant", () => {
-    // rsync -az implies -t and --delete removes stale assets; both need write access to the
-    // tree, which ownership by the deploy identity provides without widening the service
-    // account. The recursive chown is the migration half: install -d leaves existing files
-    // owned by the previous owner.
+  it("the frozen legacy installer leaves the deployed tree owned by the deploy identity", () => {
+    // apply.sh is still the drift baseline until the host-configuration retirement PR. Its chown
+    // is why the old rsync path could write the tree before the helper's first swap; the helper
+    // replaces the target with a root-owned tree, so this test pins only the baseline, not the
+    // live deploy.
     const apply = read("provision/vps/apply.sh");
     expect(apply).toMatch(/install -d -o "\$\{DEPLOY_USER\}" -g "\$\{DEPLOY_USER\}" -m 0755/);
     expect(apply).toMatch(
@@ -3038,14 +3078,15 @@ describe("the deploy's migration preflight", () => {
     }
   });
 
-  it("runs the preflight before the build, ship and restart lines in the deploy path", () => {
+  it("runs the preflight before the build, upload and helper lines in the deploy path", () => {
     const script = read(deployScript);
     const preflight = script.indexOf("migration-check.sh");
     expect(preflight).toBeGreaterThan(-1);
     for (const mutation of [
       "bun run build:web",
-      "rsync -az",
-      "sudo ${SYSTEMCTL} restart",
+      "tar -czf",
+      "rsync -a --partial",
+      "sudo -n /usr/local/sbin/vps-deploy kajianq",
       "sudo ${SYSTEMCTL} start kajianq-cron.service",
     ]) {
       const at = script.indexOf(mutation);

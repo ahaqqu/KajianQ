@@ -1,8 +1,8 @@
 name: Deploy to VPS
 
 # The VPS deployer (#181, ADR-0044). Its own home, separate from the app:
-# `provision/vps/deploy/deploy.sh` does preflight → build → ship → restart →
-# smoke, and this workflow is the CI-owned trigger. That separation is the
+# `provision/vps/deploy/deploy.sh` does preflight → build → upload → helper
+# swap → smoke, and this workflow is the CI-owned trigger. That separation is the
 # recorded decision (ADR-0044 decision 3) — app code carries no hosting or
 # deploy logic, the deploy path lives outside `apps/`, and CI gates stay in
 # `.github/workflows/`.
@@ -11,7 +11,7 @@ name: Deploy to VPS
 #   - `workflow_dispatch` for an operator (staging first, then prod — the
 #     single-shot cutover order, issue #181).
 #   - `workflow_call` so the Staging workflow's push-to-main deploy invokes
-#     exactly this job instead of re-implementing build/ship/restart.
+#     exactly this job instead of re-implementing build/upload/swap.
 #
 # The box is not reachable from a stock GitHub-hosted runner without a deploy
 # key, and that credential is the owner's to hold. Every value the deploy needs
@@ -87,7 +87,7 @@ jobs:
         run: |
           test -n "$KAJIANQ_DEPLOY_HOST" || { echo "::error::KAJIANQ_DEPLOY_HOST (vars.VPS_HOST) is unset — the VPS is not reachable without it"; exit 1; }
           test -n "$KAJIANQ_DEPLOY_USER" || { echo "::error::KAJIANQ_DEPLOY_USER (vars.VPS_USER) is unset"; exit 1; }
-          test -n "$KAJIANQ_DEPLOY_ROOT" || { echo "::error::KAJIANQ_DEPLOY_ROOT (vars.VPS_ROOT) is unset — the deploy has no tree to ship to"; exit 1; }
+          test -n "$KAJIANQ_DEPLOY_ROOT" || { echo "::error::KAJIANQ_DEPLOY_ROOT (vars.VPS_ROOT) is unset — the deploy cannot name its tree"; exit 1; }
           test -n "$KAJIANQ_PUBLIC_URL" || { echo "::error::KAJIANQ_PUBLIC_URL (vars.VPS_PUBLIC_URL) is unset — the smoke has no URL"; exit 1; }
           test -n "$SSH_KEY" || { echo "::error::secrets.VPS_DEPLOY_SSH_KEY is unset — the runner has no key to reach the box"; exit 1; }
           test -n "$DATABASE_URL" || { echo "::error::secrets.STAGING_DATABASE_URL is unset — the migration preflight cannot read the ledger and the deploy would refuse"; exit 1; }
@@ -114,7 +114,7 @@ jobs:
           } >> ~/.ssh/config
         env:
           KAJIANQ_DEPLOY_HOST: ${{ vars.VPS_HOST }}
-      - name: Deploy (preflight → build → ship → restart → smoke → doctor)
+      - name: Deploy (preflight → build → upload → helper swap → smoke → doctor)
         # The env file is written 0600 (the script refuses looser permissions —
         # a sourced file with group/other bits is a local privilege issue).
         # DATABASE_URL stays in this step's environment rather than the file: it
