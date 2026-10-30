@@ -90,8 +90,9 @@
 # leaves nginx or a neighbour unhealthy turns THIS build red instead of
 # surfacing later as a mystery on the other side. The sweep is one copy on the
 # box, run over ssh — no GitHub credential, no temp file on the box — and needs
-# the two read-only diagnostics in the grant (nginx -t, certbot certificates); until the box has converged to that grant, the sweep's nginx
-# check degrades to a warning rather than failing every deploy.
+# the two read-only diagnostics in the grant (nginx -t, certbot certificates);
+# until the box has converged to that grant, the sweep's nginx check degrades to
+# a warning rather than failing every deploy.
 #
 # Exit non-zero on the first failure: a half-shipped tree that reports success
 # is worse than a failed deploy, because the operator would stop looking.

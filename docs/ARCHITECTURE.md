@@ -249,7 +249,8 @@ new version, never an in-place break.
 
 **The deployer is a separate concern, by decision (ADR-0044 decision 3).**
 `apps/*` carries app code and build scripts; the preflight → build → upload →
-helper swap → smoke path lives in [`provision/vps/deploy/deploy.sh`](../provision/vps/deploy/deploy.sh)
+helper swap → cron proof → smoke → doctor path lives in
+[`provision/vps/deploy/deploy.sh`](../provision/vps/deploy/deploy.sh)
 with its CI trigger in `.github/workflows/deploy-vps.yml`; host configuration
 lives in [ahaqqu/vps](https://github.com/ahaqqu/vps) (ADR-0065); CI gates are in
 `.github/workflows/`. A fork can change or

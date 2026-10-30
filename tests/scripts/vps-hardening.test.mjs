@@ -12,7 +12,7 @@ import {
 } from "node:fs";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 import { describe, expect, it } from "vite-plus/test";
 import {
@@ -168,6 +168,8 @@ function provenanceFixture() {
   writeFileSync(unit, "[Unit]\nDescription=fixture\n");
   utimesSync(unit, 2000, 2000);
   const record = join(dir, "backup-provenance");
+  const marker = join(dir, "kajianq-backup-pending");
+  writeFileSync(marker, "#!/bin/sh\n", { mode: 0o755 });
   const realCat = spawnSync("sh", ["-c", "command -v cat"], { encoding: "utf8" }).stdout.trim();
   writeFileSync(
     join(dir, "systemctl"),
@@ -194,11 +196,24 @@ exec ${JSON.stringify(realCat)} "$@"
     dir,
     unit,
     record,
+    marker,
     writeRecord: (fields = {}) => writeFileSync(record, provenanceRecord(fields)),
-    run: ({ unitFile = unit, recordFile = record, exited, status, catFail = false } = {}) =>
+    run: ({
+      unitFile = unit,
+      recordFile = record,
+      markerFile = marker,
+      exited,
+      status,
+      catFail = false,
+    } = {}) =>
       spawnSync(
         "/bin/bash",
-        [resolve(process.cwd(), "provision/vps/deploy/backup-provenance.sh"), unitFile, recordFile],
+        [
+          resolve(process.cwd(), "provision/vps/deploy/backup-provenance.sh"),
+          unitFile,
+          recordFile,
+          markerFile,
+        ],
         {
           encoding: "utf8",
           env: {
@@ -385,29 +400,6 @@ function deployEnv({
   ];
   if (databaseUrl) lines.push(`DATABASE_URL=${databaseUrl}`);
   return `${lines.join("\n")}\n`;
-}
-
-/**
- * The marker kajianq-backup.service's ExecStartPre writes, executed from the repository script
- * the host configuration installs at /usr/local/sbin/kajianq-backup-pending. A test cannot
- * start a unit, so
- * this is the unit's half of the pre-body contract: the record the preflight reads is the record
- * the unit's own marker produced.
- *
- * A caller may stub `mv` through PATH to observe the rename: the stub logs its argv and
- * snapshots the destination before the real binary performs it.
- */
-function runPendingMarker(recordFile, { stubDir, mvLog, mvBefore, realMv } = {}) {
-  const env = { ...process.env };
-  if (stubDir) env.PATH = `${stubDir}:${process.env.PATH}`;
-  if (mvLog) env.MV_LOG = mvLog;
-  if (mvBefore) env.MV_BEFORE = mvBefore;
-  if (realMv) env.REAL_MV = realMv;
-  return spawnSync(
-    "/bin/sh",
-    [resolve(process.cwd(), "provision/vps/backup/kajianq-backup-pending.sh"), recordFile],
-    { encoding: "utf8", env },
-  );
 }
 
 /**
@@ -1147,16 +1139,6 @@ describe("erasure a restore must re-apply", () => {
     }
   });
 
-  it("ships the scratch target in the env template as a placeholder, never the live database", () => {
-    // Config-as-code, like the api.env example: the template is committed, so its values can
-    // only be placeholders, and a restore onto the database it names would be refused.
-    const parsed = parseEnvFile(
-      readFileSync(resolve(process.cwd(), "provision/vps/backup/backup.env.example"), "utf8"),
-    );
-    expect(parsed.RESTORE_TARGET_URL).toMatch(/^postgres:\/\/kajianq:CHANGE_ME@/);
-    expect(isSameDatabase(parsed.RESTORE_TARGET_URL, parsed.PGDATABASE_URL)).toBe(false);
-  });
-
   it("names the rows the drill proves gone and the rows it proves survive", () => {
     // This pins that the drill asserts both directions: the negative control (resurrected rows
     // present) and the erase-then-match direction (erased rows gone, live rows intact). A drill
@@ -1457,6 +1439,29 @@ describe("deploy and backup policy stays true to the ADR", () => {
     }
   });
 
+  it("refuses a missing or non-executable start marker (mutation: delete the marker)", () => {
+    // The marker is the unit's pre-body half: without it a run that dies before the job body
+    // leaves the previous success record current, and the record alone would pass this gate.
+    // A deleted or mode-stripped marker must therefore refuse before the record is read.
+    const fx = provenanceFixture();
+    try {
+      fx.writeRecord();
+      expect(fx.run().status).toBe(0);
+
+      const missing = fx.run({ markerFile: join(fx.dir, "no-such-marker") });
+      expect(missing.status).toBe(1);
+      expect(missing.stderr).toContain("missing or not executable");
+
+      const stripped = join(fx.dir, "stripped-marker");
+      writeFileSync(stripped, "#!/bin/sh\n", { mode: 0o644 });
+      const nonExecutable = fx.run({ markerFile: stripped });
+      expect(nonExecutable.status).toBe(1);
+      expect(nonExecutable.stderr).toContain("missing or not executable");
+    } finally {
+      fx.cleanup();
+    }
+  });
+
   it("fails on a missing record (mutation: delete the record)", () => {
     // systemd still reports a healthy run. A check that reads systemd would pass here; the
     // record is gone, so the backup is unproven and the deploy must fail closed.
@@ -1545,8 +1550,8 @@ describe("deploy and backup policy stays true to the ADR", () => {
       fx.writeRecord();
       expect(fx.run().status).toBe(0);
 
-      const marked = runPendingMarker(fx.record);
-      expect(marked.status, marked.stderr).toBe(0);
+      // The unit's ExecStartPre writes this record before ExecStart can fail.
+      fx.writeRecord({ status: "pending", started: 4000, completed: 0 });
       const record = readFileSync(fx.record, "utf8");
       expect(record).toMatch(/^status=pending$/m);
       expect(record).toMatch(/^started_at=\d+$/m);
@@ -1564,72 +1569,6 @@ describe("deploy and backup policy stays true to the ADR", () => {
       expect(gate.stderr).toContain("sudo systemctl start kajianq-backup.service");
     } finally {
       fx.cleanup();
-    }
-  });
-
-  it("marks a run pending atomically and world-readably (mutation: a torn or root-only marker)", () => {
-    // The marker replaces the previous success before anything in the job can fail. It is
-    // written through a same-directory temp file renamed into place, so the deploy identity
-    // reads a whole record rather than a half-written one, and no temp file is left behind.
-    const dir = mkdtempSync(join(tmpdir(), "kajianq-pending-"));
-    const bin = mkdtempSync(join(tmpdir(), "kajianq-pending-bin-"));
-    const record = join(dir, "backup-provenance");
-    const mvLog = join(bin, "mv.log");
-    const mvBefore = join(bin, "record-before");
-    try {
-      const previous = provenanceRecord();
-      writeFileSync(record, previous);
-      const realMv = spawnSync("/bin/sh", ["-c", "command -v mv"], {
-        encoding: "utf8",
-      }).stdout.trim();
-      expect(realMv).not.toBe("");
-      writeFileSync(
-        join(bin, "mv"),
-        [
-          "#!/bin/sh",
-          // Log the argv the marker hands mv, and snapshot the destination first: the test then
-          // sees what the record held at the moment of the rename.
-          'if [ -z "${MV_LOG:-}" ] || [ -z "${MV_BEFORE:-}" ] || [ -z "${REAL_MV:-}" ]; then exit 1; fi',
-          ': > "${MV_LOG}"',
-          'for arg in "$@"; do printf \'%s\\n\' "${arg}" >> "${MV_LOG}"; done',
-          'for arg in "$@"; do dest="${arg}"; done',
-          'cp -- "${dest}" "${MV_BEFORE}" 2>/dev/null || :',
-          'exec "${REAL_MV}" "$@"',
-          "",
-        ].join("\n"),
-        { mode: 0o755 },
-      );
-
-      const marked = runPendingMarker(record, {
-        stubDir: bin,
-        mvLog,
-        mvBefore,
-        realMv,
-      });
-      expect(marked.status, marked.stderr).toBe(0);
-      expect(statSync(record).mode & 0o777).toBe(0o644);
-      expect(readdirSync(dir)).toEqual(["backup-provenance"]);
-      const body = readFileSync(record, "utf8");
-      expect(body).toMatch(/^status=pending$/m);
-      expect(body).toMatch(/^started_at=\d+$/m);
-      expect(body).toMatch(/^completed_at=0$/m);
-
-      // A rename, not an in-place write: the marker hands mv a temp file in the record's own
-      // directory and the record path as the destination. A direct `printf > record` never
-      // reaches this stub, and a temp file outside that directory would not rename atomically.
-      const args = readFileSync(mvLog, "utf8").trim().split("\n");
-      expect(args.slice(0, 2)).toEqual(["-f", "--"]);
-      expect(args).toHaveLength(4);
-      const [tmp, dest] = args.slice(2);
-      expect(dest).toBe(record);
-      expect(dirname(tmp)).toBe(dir);
-      expect(tmp).not.toBe(record);
-      // At the rename the record still held the previous success: the pending body existed only
-      // in the temp file until the move.
-      expect(readFileSync(mvBefore, "utf8")).toBe(previous);
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-      rmSync(bin, { recursive: true, force: true });
     }
   });
 
@@ -1746,8 +1685,10 @@ describe("deploy and backup policy stays true to the ADR", () => {
       writeFileSync(backup.record, provenanceRecord());
       expect(prov.run({ recordFile: backup.record }).status).toBe(0);
 
-      const marked = runPendingMarker(backup.record);
-      expect(marked.status, marked.stderr).toBe(0);
+      writeFileSync(
+        backup.record,
+        provenanceRecord({ status: "pending", started: 4000, completed: 0 }),
+      );
       const beforeJob = prov.run({ recordFile: backup.record, exited: "" });
       expect(beforeJob.status).toBe(1);
       expect(beforeJob.stderr).toContain("never reached the backup job");
@@ -1855,15 +1796,9 @@ describe("deploy and backup policy stays true to the ADR", () => {
     // The job writes the file 0644, so the deploy identity can read a proof it cannot write;
     // the root-owned 0755 directory is the host configuration's half of that contract.
     expect(provenance).toMatch(/writeFileSync\(tmp, body, \{ mode: 0o644 \}\)/);
-    // The unit's pre-body marker must write THAT record: a marker at another path would leave
-    // the preflight reading the previous success, and one under the deploy root could be
-    // replaced by the identity the proof binds.
-    const pending = read("provision/vps/backup/kajianq-backup-pending.sh")
-      .split("\n")
-      .filter((line) => !/^\s*#/.test(line))
-      .join("\n");
-    expect(pending).toMatch(/RECORD="\$\{1:-\/var\/lib\/kajianq\/backup-provenance\}"/);
-    expect(pending).not.toMatch(/\/srv\/kajianq/);
+    // The unit's ExecStartPre marker is a host file installed by ahaqqu/vps; it writes that
+    // same record path, so the preflight reads the pre-body state rather than the previous
+    // success.
   });
 
   it("makes the production record directory world-traversable (mutation: drop the production chmod)", () => {

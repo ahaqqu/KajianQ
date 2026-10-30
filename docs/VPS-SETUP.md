@@ -511,13 +511,16 @@ Two more values are easy to overlook and both are load-bearing:
 
 ### On the box: `/etc/kajianq/backup.env`
 
-The backup target. The example defaults to a local path; an **off-box** target
-is strongly preferred, because a backup on the same disk as the database does
-not survive the disk. Any restic-supported backend works.
+The backup target. The template lives in `ahaqqu/vps` at
+`kajianq/env/backup.env.example`; its keys are `RESTIC_REPOSITORY`,
+`RESTIC_PASSWORD_FILE`, `PGDATABASE_URL` and `RESTORE_TARGET_URL`. Its example
+defaults to a local path, and an **off-box** target is strongly preferred,
+because a backup on the same disk as the database does not survive the disk.
+Any restic-supported backend works.
 
 ```bash
-sudo install -o root -g root -m 0600 /srv/kajianq-src/provision/vps/backup/backup.env.example \
-    /etc/kajianq/backup.env
+sudo install -d -o root -g root -m 0700 /etc/kajianq
+sudo install -o root -g root -m 0600 /dev/null /etc/kajianq/backup.env
 sudoedit /etc/kajianq/backup.env
 ```
 
@@ -679,9 +682,9 @@ curl -s https://<your-host>/v1/admin/session   # {"authenticated":false,"csrfTok
 The session probe is the gate: the API answers it with JSON whether or not
 `ADMIN_PASSWORD` is set, while a box whose proxy is not wired answers the shell.
 Because the admin API adds no top-level path, a normal code deploy is enough —
-no host-config change and no sudo. A new top-level API namespace would still need its
-own nginx location, which is why the hardening suite derives that set from the
-route table.
+no host-config change and no sudo. A new top-level API namespace would still need
+its own nginx location in the `kajianq` manifest, which is a host-configuration
+PR in `ahaqqu/vps`.
 
 Login additionally requires `ALLOWED_ORIGINS` to name this host's public https
 origin: the API is a plain-HTTP listener behind the TLS proxy, so an unset or

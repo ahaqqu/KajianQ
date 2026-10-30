@@ -115,7 +115,9 @@ What it does, in order:
    (`/usr/local/sbin/kajianq-backup-pending`, installed by the host
    configuration) before the job body, so a run that starts and dies before the
    job writes anything — a moved `bun`, an absent deployed bundle, a broken
-   `ExecStart` — leaves that marker and is refused too. A missing or unreadable
+   `ExecStart` — leaves that marker and is refused too. The marker file itself
+   must be present and executable: a deleted marker refuses the deploy rather
+   than trusting the last success record. A missing or unreadable
    `/etc/kajianq/backup.env` is not that case: the unit's optional
    `EnvironmentFile` lets it start, and the job records `status=1` itself. A run
    systemd never starts — `Requires=postgresql.service` failing before any
@@ -235,6 +237,7 @@ carries its own `staging` group to serialize its jobs with each other.
 | -------------------------- | ----------------- | ---------------------------------------------------- | -------------- |
 | `/etc/kajianq/deploy.env`  | deploying machine | `deploy.sh`                                          | mode 0600      |
 | `/etc/kajianq/api.env`     | the box           | `kajianq-api.service` **and** `kajianq-cron.service` | root:root 0600 |
+| `/etc/kajianq/proxy.env`   | the box           | the host applier (nginx render)                      | root:root 0600 |
 | `/etc/kajianq/backup.env`  | the box           | `kajianq-backup.mjs`, `kajianq-restore.mjs`          | root:root 0600 |
 | `/etc/kajianq/restic.pass` | the box           | restic (via `RESTIC_PASSWORD_FILE`)                  | root:root 0600 |
 | `/etc/kajianq/db-password` | the box           | operator (feeds `api.env` / `backup.env`)            | root:root 0600 |
@@ -244,9 +247,9 @@ rather than trusting a documented `chmod`: a sourced file is executed with the
 operator's privileges, so a group-writable one is a local privilege-escalation
 path. Examples with every key live in
 [`provision/vps/deploy/deploy.env.example`](../provision/vps/deploy/deploy.env.example)
-and [`provision/vps/backup/backup.env.example`](../provision/vps/backup/backup.env.example);
-the host-side templates, including `api.env` and nginx's domain/certificate
-values, live in [ahaqqu/vps](https://github.com/ahaqqu/vps).
+for the deploying machine, and in
+[ahaqqu/vps](https://github.com/ahaqqu/vps) for the box — `kajianq/env/api.env.example`,
+`kajianq/env/backup.env.example` and `kajianq/env/proxy.env.example`.
 
 `deploy.sh` requires `KAJIANQ_DEPLOY_HOST` and `KAJIANQ_DEPLOY_USER` from that
 file, and fails by name on an empty one before it builds anything.
@@ -263,10 +266,15 @@ one refuses the deploy by name before anything is built — `--skip-migration-ch
 is the single explicit exception and is visible in the invocation that ran.
 
 `api.env` is the serving process's **whole** configuration (plus the cron
-entry's, which reads the same `DATABASE_URL`). Its keys are the set
-`apps/api/src/lib/server.ts` binds from the environment (`PASSTHROUGH_KEYS` and
-`ADMIN_KEYS`), and the `kajianq` manifest in ahaqqu/vps carries the template. Two
-keys are
+entry's, which reads the same `DATABASE_URL`). The authoritative template is
+`kajianq/env/api.env.example` in [ahaqqu/vps](https://github.com/ahaqqu/vps); the
+serving code binds `APP_ENV`, `DATABASE_URL`, `ALLOWED_ORIGINS`,
+`KAJIANQ_WEB_ROOT`, `SENTRY_DSN`, the provider keys (`GEMINI_API_KEY`,
+`GEMINI_PAID_API_KEY`, `DASHSCOPE_API_KEY`, `DEEPSEEK_API_KEY`,
+`OLLAMA_API_KEY`, `JEV_API_KEY`), `PROVIDER_PROFILE`, the tuning knobs
+(`SCOPE_EXPANSION_CAP`, `NEIGHBOUR_EXPANSION_RADIUS`, `NEIGHBOUR_EXPANSION_CAP`,
+`LABEL_LOOKUP_CAP`, `CALLER_PRIORITY_K`, `CHAIN_EVIDENCE_CHILD_CAP`,
+`CHAIN_EVIDENCE_CHAIN_CAP`) and `ADMIN_PASSWORD`. Two keys are
 chat-path preconditions rather than optional under the default profile:
 `DEEPSEEK_API_KEY` (the generator/router chain head **and** the reviewer, per
 the 2026-09-21 same-vendor owner decision; ADR-0044 decision 7) and
@@ -396,6 +404,11 @@ Three distinct identities, deliberately:
   - the two read-only diagnostics the shared doctor gate uses (`nginx -t`,
     `certbot certificates`).
 
+  The installed file still carries the legacy `systemctl restart
+  kajianq-api.service` until the vps cleanup PR
+  ([ahaqqu/vps#15](https://github.com/ahaqqu/vps/pull/15)) merges; this deploy no
+  longer invokes it.
+
   By absolute path, no wildcards, no shell, no `ALL`. The account uploads the
   artifact to `/srv/vps-incoming` as a member of the upload group; the helper,
   not the identity, writes the deployed tree. It cannot read
@@ -439,11 +452,11 @@ when the world moves on.
 
 The name is configuration, not code, and it lives in exactly three places:
 
-| Where                                | Key                                                   | Read by                                                          |
-| ------------------------------------ | ----------------------------------------------------- | ---------------------------------------------------------------- |
-| the `kajianq` manifest in ahaqqu/vps | domain, certificate paths                             | the root applier, which renders `server_name`/`ssl_certificate*` |
-| `/etc/kajianq/api.env`               | `ALLOWED_ORIGINS`                                     | the API's strict CORS allowlist (§1.3)                           |
-| GitHub variable                      | `VPS_PUBLIC_URL` (§1.4 — every scope that carries it) | deploy smoke, Staging smoke, ZAP, Schemathesis                   |
+| Where                    | Key                                                                             | Read by                                                                                                                      |
+| ------------------------ | ------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `/etc/kajianq/proxy.env` | `KAJIANQ_DOMAIN`, `KAJIANQ_TLS_CERT`, `KAJIANQ_TLS_KEY`, `KAJIANQ_API_UPSTREAM` | the root applier, which renders them into nginx's `server_name`/`ssl_certificate*`; the `kajianq` manifest sources this file |
+| `/etc/kajianq/api.env`   | `ALLOWED_ORIGINS`                                                               | the API's strict CORS allowlist (§1.3)                                                                                       |
+| GitHub variable          | `VPS_PUBLIC_URL` (§1.4 — every scope that carries it)                           | deploy smoke, Staging smoke, ZAP, Schemathesis                                                                               |
 
 The PWA needs no change either way: it calls the API same-origin
 (`apps/web/src/lib/api.ts` → `API_BASE = "/v1"`), and the API additionally
@@ -497,9 +510,12 @@ sudo tar czf "/root/nginx-config-$(date +%F).tgz" -C /etc nginx
 sudo certbot certonly --webroot -w /var/www/html -d <new-host>
 
 # 2. The proxy's own identity — the domain plus the two paths certbot printed.
-#    Change them in the `kajianq` manifest in ahaqqu/vps through a PR. A merged
-#    PR is the host change: the applier renders the block, validates nginx and
-#    reloads it; nobody edits /etc/nginx by hand.
+#    /etc/kajianq/proxy.env is root-only and operator-owned; the `kajianq`
+#    manifest in ahaqqu/vps sources it on every pass, so the applier's next run
+#    renders the block, validates nginx and reloads it. Nobody edits
+#    /etc/nginx by hand. If the template itself must change, that is a PR in
+#    ahaqqu/vps.
+sudoedit /etc/kajianq/proxy.env     # KAJIANQ_DOMAIN, KAJIANQ_TLS_CERT, KAJIANQ_TLS_KEY
 
 # 3. The API's allowlist — the origin exactly: scheme included, no trailing slash.
 sudoedit /etc/kajianq/api.env       # ALLOWED_ORIGINS=https://<new-host>
