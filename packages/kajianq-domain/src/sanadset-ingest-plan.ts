@@ -21,11 +21,7 @@ import {
   S1_AUTO_MATCH_THRESHOLD,
   type MatnDecision,
 } from "./sanadset-cascade-types";
-import {
-  planNarrators,
-  type NarratorPlanResult,
-  type UncertainNamePair,
-} from "./sanadset-ingest-catalogue";
+import { planNarrators, type NarratorPlanResult } from "./sanadset-ingest-catalogue";
 import {
   createChildMatchIndex,
   type ExistingChildRow,
