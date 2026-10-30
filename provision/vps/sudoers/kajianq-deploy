@@ -1,10 +1,8 @@
-# provision/vps/sudoers/kajianq-deploy — the deploy identity's entire root grant
-# (#181, ADR-0044 decision 6; the 2026-09-21 deploy identity).
-#
-# Installed by provision/vps/apply.sh at /etc/sudoers.d/kajianq-deploy, owned
-# root:root mode 0440, and only after the candidate has passed `visudo -cf`: a
-# malformed file in sudoers.d can lock sudo out of the box entirely, so the parse
-# is a gate in front of the install, not a check after it.
+# kajianq/sudoers/kajianq-deploy — the KajianQ deploy identity's entire root
+# grant, installed by the applier at /etc/sudoers.d/kajianq-deploy (root:root
+# 0440) after `visudo -cf` accepts it: a malformed file in sudoers.d can lock
+# sudo out of the box entirely, so the parse is a gate in front of the install,
+# not a check after it. KajianQ's provision/vps/ carries the same bytes.
 #
 # The account name is a literal, not a substituted placeholder, on purpose.
 # sudoers grants are per-username, so a configurable name would let this grant
@@ -14,26 +12,29 @@
 # that must agree, and tests/scripts/vps-hardening.test.mjs fails the build when
 # they stop agreeing.
 #
-# The deploy path (provision/vps/deploy/deploy.sh) runs exactly two privileged
-# operations — restart the API unit after the tree is shipped, and fire the
-# session-reclamation oneshot once so a rotated env var fails the deploy instead
-# of surfacing at 03:17. A third rule carries two READ-ONLY diagnostics
-# (`nginx -t` validates, `certbot certificates` lists; neither writes state):
-# the post-deploy doctor gate (see deploy.sh §5) runs the shared-box sweep from
-# ahaqqu/homepage as this identity, and without the grant the sweep can only
-# warn that the config is unverifiable. They ride the same NOPASSWD rule as the
-# systemctl commands on purpose: the vps-hardening test parses the grant
-# bidirectionally (every granted command used, every used command granted) and
-# its parser tracks /usr/bin/systemctl entries — a separate rule line would
-# parse as a bogus systemctl entry and fail the build. Everything else
-# is unprivileged — the web build, both rsyncs, the smoke, and the read-only
-# `systemctl is-active` check, which needs no grant because unit state is
-# world-readable (verified on the box; the deploy runs it without sudo).
+# This grant is the bridge between two deploy paths. The shared contract is
+# installed at /etc/vps/deploy/kajianq.conf, so the identity may run
+# `vps-deploy kajianq` (deploy and `--rollback`) and the four bounded service
+# verbs for the units it declares — `kajianq-api.service`. The deploy workflow
+# still ships with rsync, so the legacy commands ride the same NOPASSWD line:
+# restart the API unit after the rsync, start the session-reclamation oneshot
+# once so a rotated env var fails the deploy instead of surfacing at 03:17, and
+# two READ-ONLY diagnostics (`nginx -t` validates, `certbot certificates` lists;
+# neither writes state). The post-deploy doctor gate (deploy.sh §5) runs the
+# shared-box sweep from ahaqqu/homepage as this identity, and without the
+# diagnostics the sweep can only warn that the config is unverifiable.
+#
+# Only the restart line is scheduled for removal. When KajianQ's deploy
+# switches to `vps-deploy kajianq`, the helper restarts kajianq-api.service
+# itself, so /usr/bin/systemctl restart kajianq-api.service goes. The cron
+# start stays because deploy.sh still fires the session-reclamation oneshot
+# after the swap, and the two read-only diagnostics stay for the doctor gate
+# every deploy ends with.
 #
 # Exact commands, absolute binary paths, no wildcards: wildcard arguments in
 # sudoers are the classic privilege-escalation footgun. What this grant does NOT
 # give the deploy identity: a root shell, `daemon-reload`, unit-file edits, any
-# other service, or any read of /etc/kajianq/*.env (root:root 0600 — the
+# other service or app, or any read of /etc/kajianq/*.env (root:root 0600 — the
 # provider keys and the database password stay unreadable from that session).
 #
 # Stated rather than left implicit: the deploy identity ships the code
@@ -47,7 +48,13 @@
 # from depending on a distro default a later hardening pass could flip on.
 Defaults:kajianq-deploy !requiretty
 
-kajianq-deploy ALL=(root) NOPASSWD: /usr/bin/systemctl restart kajianq-api.service, \
+kajianq-deploy ALL=(root) NOPASSWD: /usr/local/sbin/vps-deploy kajianq, \
+                                    /usr/local/sbin/vps-deploy kajianq --rollback, \
+                                    /usr/local/sbin/vps-deploy kajianq start, \
+                                    /usr/local/sbin/vps-deploy kajianq stop, \
+                                    /usr/local/sbin/vps-deploy kajianq restart, \
+                                    /usr/local/sbin/vps-deploy kajianq status, \
+                                    /usr/bin/systemctl restart kajianq-api.service, \
                                     /usr/bin/systemctl start kajianq-cron.service, \
                                     /usr/sbin/nginx -t, \
                                     /usr/bin/certbot certificates

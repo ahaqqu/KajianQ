@@ -72,11 +72,13 @@ step both assume this path (a test pins it).
 ### 1.1 The deploy path, end to end
 
 The deployer is its own concern, outside `apps/` (ADR-0044 decision 3): the
-preflight → build → ship → restart → smoke path is
+preflight → build → upload → helper swap → smoke path is
 [`provision/vps/deploy/deploy.sh`](../provision/vps/deploy/deploy.sh), and its
 CI trigger is the reusable
 [`.github/workflows/deploy-vps.yml`](../.github/workflows/deploy-vps.yml). `apps/*`
-carries app code and build scripts only.
+carries app code and build scripts only. The box-side contract and grant live in
+[ahaqqu/vps](https://github.com/ahaqqu/vps) under `kajianq/`; that contract is a
+prerequisite of this path, not an optional follow-up.
 
 ```bash
 provision/vps/deploy/deploy.sh --env /etc/kajianq/deploy.env
@@ -103,8 +105,10 @@ What it does, in order:
    is the one explicit way past it, and CI never passes it. This is what enforces
    the migrate-then-restart order in §2.3 instead of only documenting it.
 2. **Preflight — the provisioned files on the box match this checkout.**
-   Provisioning is an operator action: only `provision/vps/apply.sh`, run as
-   root on the box, places a unit, script or config. `provision-drift.sh` (piped
+   Provisioning is live through the `ahaqqu/vps` applier (a merged PR there is
+   the host change); this repository's `provision/vps/apply.sh`, run as root on
+   the box, is the frozen baseline the preflight compares against until the
+   host-config retirement PR removes it. `provision-drift.sh` (piped
    over ssh) enumerates what `apply.sh` places from the script's own table
    (`provision/vps/apply.sh --list-artifacts`, so the checked set and the
    installed set cannot drift apart) and compares every installed copy with the
@@ -117,7 +121,8 @@ What it does, in order:
    decides which block the box actually serves — a link retargeted at an older
    copy, or deleted, is drift; the sudoers grant by owner, mode and size, because
    it is 0440 root:root and unreadable from the deploy identity by design, and
-   the commands it grants are exercised by this very deploy. A destination under
+   the entries this path uses — the helper deploy, the cron proof and the two
+   diagnostics — are exercised by this very deploy. A destination under
    the server's major-version directory is resolved the way `apply.sh` resolves
    it — the first `ls -d` match, directory or not, then the file name — so a
    copy under another version cannot stand in for the target; a `conf.d` that is
@@ -200,26 +205,34 @@ What it does, in order:
    the unit — it bootstraps once from the checkout, as `docs/VPS-SETUP.md` §8
    shows. It runs before the build because it reads only state that already
    exists on the box — a red here costs an ssh round trip and leaves the box on
-   its previous revision, where a red after the ship would leave the new tree
-   live, the API restarted, and the smoke and doctor below skipped.
-4. **Build.** `bun run build:web` for the PWA, then two `bun build
-   --target=bun` bundles from `apps/api/src/boot.ts` (serving) and
-   `apps/api/src/cleanup.ts` (the nightly reclamation). Bundling for Bun is what
-   makes `pg` a dependency of the artifact rather than a runtime resolve against
-   a `node_modules` tree the box does not have. A missing
+   its previous revision, where a red after the helper swap would leave a new
+   tree live and the smoke and doctor below skipped.
+4. **Build.** `bun run build:web` for the PWA, then three `bun build
+   --target=bun` bundles from `apps/api/src/boot.ts` (serving),
+   `apps/api/src/cleanup.ts` (the nightly reclamation) and
+   `provision/vps/backup/kajianq-backup.mjs` (the backup job). Bundling for Bun
+   is what makes `pg` a dependency of the artifact rather than a runtime resolve
+   against a `node_modules` tree the box does not have. A missing
    `apps/web/dist/index.html` fails the deploy here — an empty web directory
-   would otherwise serve the API's 503 and look like an app bug.
-5. **Ship.** `rsync -az --delete --chmod=D755,F644` of the two trees to
-   `/srv/kajianq/api` and `/srv/kajianq/web`. `--delete` is deliberate: the SPA
-   is content-hashed, and a stale file on the box is a stale file, not a
-   rollback.
-6. **Restart.** `sudo systemctl restart kajianq-api.service`, then a plain
-   (unprivileged) `systemctl is-active --quiet` so a unit that died on start
-   fails the deploy immediately, then `sudo systemctl start kajianq-cron.service`
-   once, so a rotated env var or a missing key fails the deploy now rather than
-   silently at 03:17. The timer itself is not restarted — its schedule does not
-   depend on the shipped code. Both `sudo` calls are covered by exactly two
-   grants (§1.5); the `is-active` check needs none.
+   would otherwise serve the API's 503 and look like an app bug. The three API
+   entries and the web build are then tarred at the archive root into
+   `kajianq.tar.gz` (`api/…`, `web/…`), the one artifact the helper consumes.
+5. **Upload.** The single artifact is uploaded as the deploy identity to
+   `/srv/vps-incoming/kajianq.tar.gz`; nothing writes the live tree directly.
+   The helper verifies it against the root-only contract (owner, size caps,
+   relative regular entries), unpacks it into a root-owned staging tree and
+   swaps `/srv/kajianq` as a whole — so a renamed asset cannot linger and a
+   half-written file cannot land in the tree the API serves.
+6. **Helper swap, then the cron proof.** `sudo -n /usr/local/sbin/vps-deploy
+   kajianq` verifies the artifact, swaps `/srv/kajianq`, restarts
+   `kajianq-api.service`, health-checks `/v1/health` and restores the previous
+   tree (with its declared state) if the health check fails. Then
+   `sudo systemctl start kajianq-cron.service` runs the reclamation once, so a
+   rotated env var or a missing key fails the deploy now rather than silently at
+   03:17. The timer itself is not restarted — its schedule does not depend on
+   the shipped code. Both `sudo` calls are covered by the bridge grant (§1.5);
+   the helper owns the restart and its wait, so the deploy runs no raw restart
+   and no `is-active` probe.
 7. **Smoke, against the public URL** (through DNS, the proxy, and TLS — never
    the loopback port, which would skip exactly where a TLS, upstream, header,
    or content-type regression shows up):
@@ -283,9 +296,9 @@ line names the install that would apply the posture.
 
 That column names a **GitHub environment**, not a deployment
 environment on a host. Both `staging` and `prod` deploy to **the one box** (§0):
-`deploy.sh` uses a single `DEPLOY_ROOT` and nginx serves one `root`, so the
-choice selects that environment's vars/secrets — and `prod`'s approval gate —
-and nothing else. **No production deployment is provisioned** (ADR-0044
+the helper contract names one target tree and nginx serves one `root`, so the
+choice selects that environment's vars/secrets —
+and `prod`'s approval gate — and nothing else. **No production deployment is provisioned** (ADR-0044
 decision 2; deferred 2026-10-03): the box is labeled `staging`, provisioning production is
 deferred rather than pending, and a `prod` dispatch today deploys the same box
 the `staging` environment does.
@@ -334,11 +347,12 @@ privilege-escalation path. Examples with every key live in
 [`provision/vps/proxy.env.example`](../provision/vps/proxy.env.example), and
 [`provision/vps/backup/backup.env.example`](../provision/vps/backup/backup.env.example).
 
-`deploy.sh` requires `KAJIANQ_DEPLOY_HOST`, `KAJIANQ_DEPLOY_USER` and
-`KAJIANQ_DEPLOY_ROOT` from that file, and fails by name on an empty one before it
-builds anything. The tree has **no built-in default**, so the operator's env file
-is the only source for where a deploy ships; §1.4 records which GitHub scope
-carries that value on the workflow path.
+`deploy.sh` requires `KAJIANQ_DEPLOY_HOST` and `KAJIANQ_DEPLOY_USER` from that
+file, and fails by name on an empty one before it builds anything.
+`KAJIANQ_DEPLOY_ROOT` is an optional operator label: it is logged for comparison,
+never gated, because the helper's root-only contract is the only source for where
+a deploy ships and nothing the deploy identity can read proves the label matches.
+§1.4 records which GitHub scope carries those values on the workflow path.
 
 The same file carries `DATABASE_URL` for the migration preflight (§1.1 step 1) on
 the operator path; the workflow path passes `secrets.STAGING_DATABASE_URL` in the
@@ -388,8 +402,9 @@ at the scope of the job that reads it — a job that declares a GitHub environme
 resolves that environment's copy of a name, and a repository-level value is read
 only by a job whose own scope carries no copy of that name. So the dispatching
 environment decides where a deploy lands and what it authenticates with. Both
-scopes carry the five `VPS_*` names — the deploy's four variables and its deploy
-key; the repository level carries only what no scope shadows: `STAGING_DATABASE_URL`
+scopes carry the five `VPS_*` names — the deploy's four variables (the tree one
+being a log-only label) and its deploy key; the repository level carries only
+what no scope shadows: `STAGING_DATABASE_URL`
 and `RATE_BYPASS_PRIVATE_KEY`, whose readers are in the first table below, and the
 reader-less legacy and provider entries in the second. **No `VPS_*` name keeps a
 repository-level copy:** a copy shadowed at every scope that reads the name is a
@@ -402,7 +417,7 @@ value, its jobs read the other environment's box instead of failing by name — 
 | ------ | ------------------------- | ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
 | var    | `VPS_HOST`                | `staging`, `prod` | the deploy job (→ `KAJIANQ_DEPLOY_HOST`) and the Staging tunnel                                                                          |
 | var    | `VPS_USER`                | `staging`, `prod` | the deploy job (→ `KAJIANQ_DEPLOY_USER`) and the Staging tunnel                                                                          |
-| var    | `VPS_ROOT`                | `staging`, `prod` | the deploy job (→ `KAJIANQ_DEPLOY_ROOT`, required — §1.3)                                                                                |
+| var    | `VPS_ROOT`                | `staging`, `prod` | the deploy job (→ `KAJIANQ_DEPLOY_ROOT`, optional log label — §1.3)                                                                      |
 | var    | `VPS_PUBLIC_URL`          | `staging`, `prod` | the deploy smoke, and the Staging smoke, ZAP and Schemathesis steps                                                                      |
 | secret | `VPS_DEPLOY_SSH_KEY`      | `staging`, `prod` | the deploy job and the Staging tunnel — each at the scope it declares                                                                    |
 | secret | `STAGING_DATABASE_URL`    | repository        | the deploy job's migration preflight and the Staging Golden Set smoke — the VPS Postgres loopback URL **through the tunnel port** (§2.8) |
@@ -428,12 +443,12 @@ exists only in the environment, while omitting the mapping resolves the name to
 an empty string there. The mapping therefore stays.
 
 `deploy-vps.yml` fails at a named "Require the deploy access" step when
-`VPS_HOST`, `VPS_USER`, `VPS_ROOT`, `VPS_PUBLIC_URL`, `STAGING_DATABASE_URL` or
-the key is missing — an actionable failure rather than a silent no-op, so an
-empty `KAJIANQ_DEPLOY_ROOT` cannot reach the script as a default tree and an
-unmapped `STAGING_DATABASE_URL` cannot leave the migration preflight to fail for
-the same missing value. The private key is written to a runner-local file the job
-removes when it ends.
+`VPS_HOST`, `VPS_USER`, `VPS_PUBLIC_URL`, `STAGING_DATABASE_URL` or the key is
+missing — an actionable failure rather than a silent no-op, so an unmapped
+`STAGING_DATABASE_URL` cannot leave the migration preflight to fail for the same
+missing value. `VPS_ROOT` is not gated: the helper's contract decides the target,
+and the label is only logged. The private key is written to a runner-local file
+the job removes when it ends.
 
 **Legacy variables removed (step 7 executed).** `STAGING_URL` is deleted;
 `PROD_URL` is re-pointed at the VPS's public origin
@@ -463,23 +478,28 @@ Three distinct identities, deliberately:
   **reads** the deployed tree through the 0755 world bits. It cannot log in, is
   not in `sudo`, and does not own the deployed tree — the API never writes to
   it (nothing in `apps/api` writes to disk), so it needs no write access there.
-- **`kajianq-deploy`** — the deploy identity, created by `apply.sh`. A
-  dedicated unprivileged login account, not a human admin login: CI's deploy
-  key belongs to it, so the owner's admin account is not the credential a
-  workflow holds. Its authorization is **exactly two commands**, installed as
-  code from [`provision/vps/sudoers/kajianq-deploy`](../provision/vps/sudoers/kajianq-deploy)
-  by `apply.sh` (at `/etc/sudoers.d/kajianq-deploy`, root:root 0440, and only
-  after `visudo -cf` parses it):
-  - `systemctl restart kajianq-api.service`
-  - `systemctl start kajianq-cron.service`
+- **`kajianq-deploy`** — the deploy identity. A dedicated unprivileged login
+  account, not a human admin login: CI's deploy key belongs to it, so the
+  owner's admin account is not the credential a workflow holds. Its
+  authorization is the **bridge grant** at `/etc/sudoers.d/kajianq-deploy`
+  (root:root 0440, installed only after `visudo -cf` parses it). Its source is
+  the host-configuration repository (`ahaqqu/vps`); this repository's
+  [`provision/vps/sudoers/kajianq-deploy`](../provision/vps/sudoers/kajianq-deploy)
+  is the frozen baseline `apply.sh` still knows and must keep the same bytes:
+  - `vps-deploy kajianq` (deploy and `--rollback`) and its four bounded service
+    verbs for `kajianq-api.service` — the helper path this deploy uses;
+  - `systemctl start kajianq-cron.service` — the cron proof the helper does not
+    own;
+  - the two read-only diagnostics the shared doctor gate uses (`nginx -t`,
+    `certbot certificates`);
+  - the legacy `systemctl restart kajianq-api.service` — bridge-only until the
+    host-config cleanup removes it.
 
-  By absolute path, no wildcards, no shell, no `ALL`. The read-only
-  `systemctl is-active` check is deliberately **not** granted — unit state is
-  world-readable, so the deploy runs it without `sudo`. The account also
-  **owns the deployed tree** (`/srv/kajianq/{api,web}`), which is what lets
-  `rsync --delete` write it and re-stamp times on unchanged files without any
-  group-write grant. It cannot read `/etc/kajianq/*.env` (root:root 0600), so
-  the provider keys and database password are not reachable from its session.
+  By absolute path, no wildcards, no shell, no `ALL`. The account uploads the
+  artifact to `/srv/vps-incoming` as a member of the upload group; the helper,
+  not the identity, writes the deployed tree. It cannot read
+  `/etc/kajianq/*.env` (root:root 0600), so the provider keys and database
+  password are not reachable from its session.
 
   The name is fixed rather than configurable, because sudoers grants are
   per-username: the account, the grant file, and CI's `VPS_USER` variable must
@@ -500,9 +520,13 @@ Three distinct identities, deliberately:
 > pins on it, so the host precondition and the deploy script can no longer
 > disagree silently. Record: ADR-0044 decision 6.
 
-`rsync --chmod=D755,F644` normalizes what lands: directories 0755, files 0644.
-The API bundle is not written by the service account, so a deploy cannot leave a
-stale file the process still holds — the restart is what swaps the code.
+The helper unpacks with root ownership and the contract's `0755`/`root:root`
+target, so a helper-swapped tree is not writable by the deploy identity. That is
+not yet the box's steady state: the frozen `provision/vps/apply.sh` still chowns
+`/srv/kajianq` back to `kajianq-deploy` if it is run, and it remains in the
+checkout until the host-config retirement PR removes it. A deploy cannot leave a
+stale file the process still holds — the helper's swap and restart put the new
+code in front of the API.
 
 ### 1.6 The public hostname (and how to change it)
 
@@ -540,7 +564,7 @@ touch none of its pieces:
   `/etc/letsencrypt/live/play.gunbatte.ahaqqu.com/`. Renewal and
   `certbot delete` act on one lineage each, so retiring our old name cannot
   touch theirs.
-- Neither `/srv/kajianq` (the deploy's `rsync --delete` target) nor
+- Neither `/srv/kajianq` (the helper's swap target) nor
   `/etc/kajianq/*.env` overlaps gunbatte's static root
   (`/home/kajianq-deploy/gunbatte/website`) or its unit.
 - What is box-wide and therefore a real, if momentary, effect: nginx **reloads**

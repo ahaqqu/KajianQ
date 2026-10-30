@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # provision/vps/deploy/deploy.sh — the VPS deploy path: preflight → build →
-# ship → restart → smoke (#181, ADR-0044).
+# upload → helper swap → smoke (ADR-0044).
 #
 # This is the deployer's own home, deliberately OUTSIDE apps/ (issue #181's
 # deployer-separation criterion): app code holds no hosting or deploy logic,
@@ -9,9 +9,8 @@
 # decision, recorded in ADR-0044 decision 3.
 #
 # Three preflights that change no installed state run before anything is built
-# or shipped, because a red after the ship would leave the new tree live, the API
-# restarted and the smoke and doctor skipped — an unverified deployment already
-# serving:
+# or uploaded, because a red after the helper swap would leave a new tree live
+# and the smoke and doctor skipped — an unverified deployment already serving:
 #
 #   1. the database is current. `bun run db:status:all:json` reads the shared
 #      schema_migrations ledger (engine, domain and product sets), and any
@@ -53,12 +52,11 @@
 #   KAJIANQ_DEPLOY_HOST   the server (or a ~/.ssh/config alias)
 #   KAJIANQ_DEPLOY_USER   the deploy identity (kajianq-deploy — a fixed account,
 #                         see the note below)
-#   KAJIANQ_DEPLOY_ROOT   the deployed tree on the box — required, with no
-#                         default: it must name the tree the units serve
-#                         (WorkingDirectory/ReadWritePaths in
-#                         provision/vps/systemd/kajianq-api.service), and a
-#                         silent /srv/kajianq would let a deploy replace a tree
-#                         nothing reads while reporting success
+#   KAJIANQ_DEPLOY_ROOT   optional operator label for the tree the helper's
+#                         root-only contract swaps. The contract is
+#                         authoritative; this value is logged for comparison and
+#                         never gated, because nothing the deploy identity can
+#                         read proves it matches the contract.
 #   KAJIANQ_PUBLIC_URL    the public base URL the smoke test hits
 #
 # and from the environment (the same env file on the operator path,
@@ -71,28 +69,40 @@
 #                         --skip-migration-check is passed explicitly.
 #
 # The deploy identity is a dedicated unprivileged account, not a human admin
-# login (#181): its authorization is two systemctl commands plus two read-only
-# diagnostics (for the §5 doctor gate), installed as code by
-# provision/vps/apply.sh from provision/vps/sudoers/kajianq-deploy.
-# It owns the deployed tree, which is what lets the rsyncs below write it and
-# delete stale content-hashed assets without a group-write grant. The name is
-# fixed rather than configurable so the account, the sudoers grant, and CI's
-# VPS_USER cannot drift apart silently.
+# login: its authorization is the shared `vps-deploy kajianq` helper (deploy,
+# rollback and the four bounded service verbs), the cron proof
+# (`systemctl start kajianq-cron.service`) and two read-only diagnostics for the
+# §5 doctor gate. The legacy `systemctl restart kajianq-api.service` stays
+# bridge-only until the host-config cleanup removes it. The contract and the
+# grant live in the host-configuration repository (ahaqqu/vps,
+# kajianq/deploy.conf and kajianq/sudoers/kajianq-deploy), which its root
+# applier installs; this repository's
+# provision/vps/sudoers/kajianq-deploy is the drift baseline and must keep the
+# same bytes. The identity uploads the artifact into /srv/vps-incoming as a
+# member of the upload group; the helper, not the identity, writes the deployed
+# tree. The name is fixed rather than configurable so the account, the grant,
+# and CI's VPS_USER cannot drift apart silently.
+#
+# The helper's app name and incoming path are fixed by that contract:
+# /srv/vps-incoming/kajianq.tar.gz, uploaded by kajianq-deploy and swapped by
+# `vps-deploy kajianq`. The contract's target, ownership, size caps and health
+# URL are root-only and not readable by the deploy identity, so this script
+# agrees on the app name and the incoming path and leaves the rest to the
+# helper.
 #
 # The deploy is NOT zero-downtime and does not try to be (ADR-0044 decision 2):
-# there are no live users, so a single-shot replace + restart is the recorded
-# choice, not an omission. A reverse-proxy cache or a second port would be
-# choreography with no beneficiary.
+# there are no live users, so the helper's single-shot tree swap + restart is
+# the recorded choice, not an omission. A reverse-proxy cache or a second port
+# would be choreography with no beneficiary.
 #
 # The deploy ends with a shared-box doctor gate (§5): the box hosts other apps
 # (the manifest lives in the private ahaqqu/homepage repo), so a deploy that
 # leaves nginx or a neighbour unhealthy turns THIS build red instead of
-# surfacing later as a mystery on the other side. The sweep is vendored in
-# this repo and piped over ssh — no GitHub credential, no temp file on the
-# box — and needs the two read-only diagnostics in the sudoers grant
-# (nginx -t, certbot certificates); until apply.sh has been re-run to install
-# that widened grant, the sweep's nginx check degrades to a warning rather
-# than failing every deploy.
+# surfacing later as a mystery on the other side. The sweep is one copy on the
+# box, run over ssh — no GitHub credential, no temp file on the box — and needs
+# the two read-only diagnostics in the bridge grant (nginx -t, certbot
+# certificates); until the box has converged to that grant, the sweep's nginx
+# check degrades to a warning rather than failing every deploy.
 #
 # Exit non-zero on the first failure: a half-shipped tree that reports success
 # is worse than a failed deploy, because the operator would stop looking.
@@ -165,9 +175,11 @@ fi
 # shellcheck source=/dev/null
 . "${ENV_FILE}"
 
-# The tree belongs in this list: a deploy that cannot name its destination must
-# fail here rather than guess one (the header states why there is no default).
-for var in KAJIANQ_DEPLOY_HOST KAJIANQ_DEPLOY_USER KAJIANQ_DEPLOY_ROOT; do
+# Only the two values the script itself uses are required. The tree is an
+# optional operator label: the helper's root-only contract decides the target,
+# and nothing the deploy identity can read proves the label matches, so gating
+# on it would promise a check that does not exist.
+for var in KAJIANQ_DEPLOY_HOST KAJIANQ_DEPLOY_USER; do
     # shellcheck disable=SC2154
     if [ -z "${!var:-}" ]; then
         echo "deploy: ${var} is empty in ${ENV_FILE}" >&2
@@ -175,7 +187,7 @@ for var in KAJIANQ_DEPLOY_HOST KAJIANQ_DEPLOY_USER KAJIANQ_DEPLOY_ROOT; do
     fi
 done
 
-DEPLOY_ROOT="${KAJIANQ_DEPLOY_ROOT}"
+DEPLOY_ROOT="${KAJIANQ_DEPLOY_ROOT:-}"
 PUBLIC_URL="${KAJIANQ_PUBLIC_URL:-}"
 SSH_TARGET="${KAJIANQ_DEPLOY_USER}@${KAJIANQ_DEPLOY_HOST}"
 SSH_OPTS=(-o BatchMode=yes -o StrictHostKeyChecking=accept-new)
@@ -293,43 +305,61 @@ if [ "${DRY_RUN}" -eq 0 ]; then
     cp -r "${REPO_DIR}/apps/web/dist/." "${STAGE}/web/"
 fi
 
-# --- 2. ship ----------------------------------------------------------------
-# rsync with --delete so a renamed asset does not linger on the box: the SPA is
-# content-hashed, and a stale file is a stale file, not a rollback.
-log "shipping to ${SSH_TARGET}:${DEPLOY_ROOT}"
-run ssh "${SSH_OPTS[@]}" "${SSH_TARGET}" \
-    "mkdir -p '${DEPLOY_ROOT}/api' '${DEPLOY_ROOT}/web'"
-run rsync -az --delete --chmod=D755,F644 \
-    -e "ssh ${SSH_OPTS[*]}" \
-    "${STAGE}/api/" "${SSH_TARGET}:${DEPLOY_ROOT}/api/"
-run rsync -az --delete --chmod=D755,F644 \
-    -e "ssh ${SSH_OPTS[*]}" \
-    "${STAGE}/web/" "${SSH_TARGET}:${DEPLOY_ROOT}/web/"
+# The helper only strips group/other write and applies the contract's mode to
+# the tree root; it does not restore readability on the members. Normalize the
+# staged tree so a build under a stricter umask (027) cannot ship a bundle the
+# `kajianq` service account or nginx cannot read — the guarantee the removed
+# `rsync --chmod=D755,F644` provided.
+run find "${STAGE}/api" "${STAGE}/web" -type d -exec chmod 0755 {} +
+run find "${STAGE}/api" "${STAGE}/web" -type f -exec chmod 0644 {} +
 
-# --- 3. restart -------------------------------------------------------------
-# Restart the API, then run the cron unit once so the deploy proves it still
-# executes end to end (its failure mode — a rotated env var, a missing key — is
-# otherwise invisible until 03:17). The timer itself is not restarted: its
-# schedule is unaffected by new code.
+# One artifact at the archive root, so the helper's tar-table check sees exactly
+# the tree it swaps — api/index.js, api/cleanup.js, api/backup.js and web/ —
+# and nothing else. The archive is written beside those trees and the tar lists
+# only `api` and `web`, so it cannot include itself.
+run tar -czf "${STAGE}/kajianq.tar.gz" -C "${STAGE}" api web
+# The helper refuses an artifact writable by group or other; pin the mode rather
+# than depend on the operator's umask.
+run chmod 0644 "${STAGE}/kajianq.tar.gz"
+
+# --- 2. upload --------------------------------------------------------------
+# One artifact into the upload directory, never into the live tree: the helper
+# verifies it (owner, size caps, relative regular entries), unpacks it root-owned
+# and swaps the whole tree. A half-written file in the target is the failure the
+# swap exists to prevent. `-a` preserves the 0644 mode the helper requires; the
+# remote name is fixed by the contract.
+log "uploading the artifact for ${SSH_TARGET} to /srv/vps-incoming/kajianq.tar.gz"
+if [ -n "${DEPLOY_ROOT}" ]; then
+    log "operator-declared target: ${DEPLOY_ROOT} (the helper's contract is authoritative)"
+fi
+run rsync -a --partial -e "ssh ${SSH_OPTS[*]}" \
+    "${STAGE}/kajianq.tar.gz" "${SSH_TARGET}:/srv/vps-incoming/kajianq.tar.gz"
+
+# --- 3. swap, restart and health-check through the helper --------------------
+# The helper is the only writer of the live tree: it verifies the artifact
+# against the root-only contract (/etc/vps/deploy/kajianq.conf), unpacks it into
+# a root-owned staging tree, moves the current target aside, swaps the new tree
+# in, restarts kajianq-api.service and health-checks /v1/health, restoring the
+# previous tree on failure. No raw restart or is-active probe here: the helper
+# owns the command, its wait and its rollback.
 #
-# Root grant: the deploy identity holds passwordless sudo for exactly these two
-# commands and nothing else — /etc/sudoers.d/kajianq-deploy, installed by
-# provision/vps/apply.sh and pinned by tests/scripts/vps-hardening.test.mjs. The
-# `is-active` check is deliberately NOT sudo'd: unit state is world-readable, so
-# it needs no privilege, and keeping it unprivileged keeps the grant equal to
-# what the deploy actually requires. A test fails the build if the sudo calls
-# here and the sudoers grant ever stop agreeing.
+# Root grant: the deploy identity may run `vps-deploy kajianq` only through the
+# bridge grant installed from ahaqqu/vps (kajianq/sudoers/kajianq-deploy) —
+# never a raw systemctl restart. Until that grant is installed the helper call
+# fails as "a password is required", which is why the vps contract and grant are
+# a prerequisite of this path, not an optional follow-up.
+log "asking vps-deploy kajianq to swap the tree its contract names"
+run ssh "${SSH_OPTS[@]}" "${SSH_TARGET}" 'sudo -n /usr/local/sbin/vps-deploy kajianq'
+
+# Prove the cron entry still executes end to end (its failure mode — a rotated
+# env var, a missing key — is otherwise invisible until 03:17). The helper never
+# touches the cron unit; the bridge grant keeps the legacy start command.
 #
-# Absolute binary path in both places: sudoers matches the command string and
-# argv exactly, so a bare `systemctl` resolved through PATH would not match the
-# grant — and widening it with a wildcard is the privilege-escalation footgun
-# this scoping exists to avoid.
+# Absolute binary path: sudoers matches the command string and argv exactly, so
+# a bare `systemctl` resolved through PATH would not match the grant — and
+# widening it with a wildcard is the privilege-escalation footgun this scoping
+# exists to avoid.
 SYSTEMCTL=/usr/bin/systemctl
-log "restarting kajianq-api.service"
-run ssh "${SSH_OPTS[@]}" "${SSH_TARGET}" "sudo ${SYSTEMCTL} restart kajianq-api.service"
-run ssh "${SSH_OPTS[@]}" "${SSH_TARGET}" \
-    "${SYSTEMCTL} is-active --quiet kajianq-api.service"
-
 log "running the reclamation once (proves the cron entry executes)"
 run ssh "${SSH_OPTS[@]}" "${SSH_TARGET}" "sudo ${SYSTEMCTL} start kajianq-cron.service"
 
@@ -376,12 +406,12 @@ fi
 # vendored duplicate to drift, nothing fetched, no credential. It checks
 # nginx -t, sites-enabled hygiene, failed units, every app's listeners and
 # units, cert expiry. Runs as the deploy identity, which may do so because
-# the sudoers grant above carries the two read-only diagnostics it needs.
+# the bridge grant carries the two read-only diagnostics it needs.
 # Until homepage has deployed once since the ops-dir bootstrap the file may
-# be absent — a warning, not a failure. Until apply.sh has been re-run to
-# install the widened sudoers grant, the sweep's nginx check degrades to a
-# warning instead of failing every deploy. Blocking on purpose: a deploy that
-# cannot prove the box healthy has not deployed.
+# be absent — a warning, not a failure. Until the box has converged to the
+# bridge grant, the sweep's nginx check degrades to a warning instead of
+# failing every deploy. Blocking on purpose: a deploy that cannot prove the
+# box healthy has not deployed.
 log "running the shared-box doctor (cross-app gate)"
 run ssh "${SSH_OPTS[@]}" "${SSH_TARGET}" 'if [ -x /srv/vps-ops/doctor.sh ]; then bash /srv/vps-ops/doctor.sh; else echo "deploy: ⚠ /srv/vps-ops/doctor.sh not present yet — has homepage deployed since the ops-dir bootstrap?" >&2; fi'
 

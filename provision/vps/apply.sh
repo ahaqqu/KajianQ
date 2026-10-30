@@ -590,6 +590,6 @@ run systemctl enable kajianq-cron.timer
 run systemctl enable --now kajianq-backup.timer
 
 log "done. Verify with: systemctl status kajianq-api; systemctl list-timers kajianq-backup.timer kajianq-cron.timer; logrotate --debug /etc/logrotate.d/kajianq-proxy"
-log "verify the deploy grant: sudo -l -U ${DEPLOY_USER} (expect exactly two systemctl commands)"
+log "verify the deploy grant: sudo -l -U ${DEPLOY_USER} (expect the bridge: vps-deploy kajianq, the legacy commands and the read-only diagnostics)"
 log "next: the one-time backup-repository init in docs/VPS-SETUP.md (before the timer's first scheduled run)"
 log "next: fill in /etc/kajianq/api.env from provision/vps/api.env.example (placeholders out, mode 0600) — the API unit cannot start without it, and without KAJIANQ_WEB_ROOT the SPA would 503 while health stays green"
