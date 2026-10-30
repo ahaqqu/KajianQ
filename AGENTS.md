@@ -13,6 +13,16 @@ Two projects in one monorepo (ADR-0005):
 
 **Read first, in this order:** `CONTEXT.md` (domain glossary — its vocabulary is normative: use defined terms exactly, never invent synonyms; new domain terms are added to `CONTEXT.md` in the same PR that introduces them) → `SPECS.md` (the sections your task touches) → the ADRs that touch your task → your GitHub issue's acceptance criteria (your definition of done).
 
+## The VPS and host configuration
+
+Production runs on the shared box `62.83.35.220`. **Host configuration is not in this repository** — nginx, systemd units and timers, logrotate, sudoers, the Postgres posture, journald retention and env templates live in [ahaqqu/vps](https://github.com/ahaqqu/vps) under `kajianq/`. A merged PR there is the deploy: a root-owned applier fetches `main` on a timer and installs it as one transaction.
+
+- **Never edit the live box by hand** for a configuration change — no direct edits to `/etc/nginx`, systemd, `/etc/sudoers.d`, logrotate, `/srv/vps-ops` or `/var/lib/vps/repo`. Break-glass repair is allowed only to restore service, and the same change is reconciled in `ahaqqu/vps` in the same session.
+- **Read the vps repository's ACCESS and DEPLOY docs** before touching anything host-level, and change the `kajianq` manifest there with its tests and docs, not a copy under `provision/vps/`.
+- **KajianQ's deploy is still the frozen legacy path** through `kajianq-deploy` (ADR-0065 phase 3). Do not point it at `vps-deploy`, and do not add a `vps-deploy` grant, without that work. Its legacy grant can only restart `kajianq-api.service`, start `kajianq-cron.service`, run `nginx -t` and read `certbot certificates` — never a raw root shell.
+- **App code and its config stay here**; host config belongs in the vps repository. Root-only env files under `/etc/` hold the secrets and are never committed or copied into this repo.
+- **A green deploy includes the shared `/srv/vps-ops/doctor.sh` sweep**; a red sweep or a missing doctor is a failed deploy, not something to bypass.
+
 ## Universal guardrails
 
 These apply to every role and every task. Each bullet names the skill that carries the full checklist — when the bullet binds your work, load that skill.
