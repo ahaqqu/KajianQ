@@ -11,6 +11,7 @@
  *   --dry-run            print the plan and counts; write nothing
  *   --run-id <slug>      report run id (default: s2-<collection>-<sha256 prefix>)
  *   --report <path>      JSON report path (default: per-user cache, run-scoped)
+ *   --plan-out <path>    plan artifact path (default: plan.json beside the report)
  *   --snapshot <label>   the verified pre-ingest snapshot the run requires
  *   --test-allow-no-snapshot  write without a snapshot; disposable databases only
  *   --csv <path>         Sanadset archive (default: per-user cache)
@@ -46,6 +47,7 @@ const USAGE = `ingest:sanadset — the S2 Sanadset pilot (Sahih al-Bukhari slice
   --dry-run                 print the plan and counts; write nothing
   --run-id <slug>           report run id (default: from the archive digest)
   --report <path>           JSON report path (outside the checkout)
+  --plan-out <path>         plan artifact path (outside the checkout; default plan.json beside the report)
   --snapshot <label>        verified pre-ingest snapshot label (required to write)
   --test-allow-no-snapshot  explicit escape: write without a snapshot
   --csv <path>              Sanadset archive (default: per-user cache)
@@ -70,6 +72,7 @@ function parseArgs(argv) {
     "--collection",
     "--run-id",
     "--report",
+    "--plan-out",
     "--snapshot",
     "--csv",
     "--sha256",
@@ -173,9 +176,12 @@ try {
   }
   const report = parsed.values.get("report");
   if (report !== undefined) pilot.assertPilotReportPath(report);
+  const planOut = parsed.values.get("plan-out");
+  if (planOut !== undefined) pilot.assertPilotPlanPath(planOut);
   config = {
     scope,
     report,
+    planOut,
     ...(runId === undefined ? {} : { runId }),
     snapshot: parsed.values.get("snapshot"),
     csvPath:
@@ -235,6 +241,7 @@ try {
     homeDir: homedir(),
     ...(config.runId === undefined ? {} : { runId: config.runId }),
     ...(config.report === undefined ? {} : { reportPath: config.report }),
+    ...(config.planOut === undefined ? {} : { planPath: config.planOut }),
     ...(config.childrenLimit === undefined ? {} : { childReadLimit: config.childrenLimit }),
   });
 } catch (error) {
@@ -247,6 +254,10 @@ log("info", "ingest complete", {
   dryRun: run.dryRun,
   gate: facts.gate,
   written: run.written,
+  planArtifact: facts.plan.artifactPath,
+  planTargets: facts.plan.byTarget,
+  planSampleGroups: facts.plan.sample.length,
+  planQuarantineSample: facts.plan.quarantineSample.length,
   sliceRows: facts.slice.rows,
   preparedRows: facts.slice.prepared,
   quarantined: facts.quarantine.total,
@@ -257,12 +268,15 @@ log("info", "ingest complete", {
   matnGroups: facts.matn.groups,
   matchedGroups: facts.matn.matchedGroups,
   ambiguousGroups: facts.matn.ambiguousGroups,
+  fragmentaryGroups: facts.matn.fragmentaryGroups,
   newChildren: facts.matn.newChildren,
   childrenCreated: facts.write.children.created,
   childrenUpdated: facts.write.children.updated,
   childrenUnchanged: facts.write.children.unchanged,
   childrenDeleted: facts.write.children.deleted,
   matchRate: Number(facts.matn.matchRate.value.toFixed(4)),
+  matchRateRows: facts.matn.matchRate.rows,
+  matchRateRefusedRows: facts.matn.matchRate.refusedRows,
   chainsPlanned: facts.chains.planned,
   chainsCreated: facts.write.chains.created,
   chainsUpdated: facts.write.chains.updated,

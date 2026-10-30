@@ -49,6 +49,7 @@ describe("the ingest CLI", () => {
     expect(result.status).toBe(0);
     expect(result.stdout).toContain("ingest:sanadset");
     expect(result.stdout).toContain("--snapshot");
+    expect(result.stdout).toContain("--plan-out");
     expect(result.stdout).toContain("--test-allow-no-snapshot");
   });
 
@@ -113,6 +114,15 @@ describe("the ingest CLI", () => {
 
   it("refuses a report path inside the checkout before the run", () => {
     const result = runCli(["--collection", "bukhari", "--report", "report.json", "--dry-run"], {
+      DATABASE_URL: FAKE_DATABASE_URL,
+    });
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain("resolves inside the repository");
+    expect(result.stderr).not.toContain("ENOENT");
+  });
+
+  it("refuses a plan path inside the checkout before the run", () => {
+    const result = runCli(["--collection", "bukhari", "--plan-out", "plan.json", "--dry-run"], {
       DATABASE_URL: FAKE_DATABASE_URL,
     });
     expect(result.status).not.toBe(0);

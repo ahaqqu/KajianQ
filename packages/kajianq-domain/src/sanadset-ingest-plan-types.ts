@@ -88,6 +88,21 @@ export type ChainPlan = {
 
 export type IngestPlan = {
   readonly scope: PilotScope;
+  /**
+   * The thresholds this plan was built with. The dry run writes them into its plan
+   * artifact so a refused target can be read against the rule that refused it.
+   */
+  readonly thresholds: {
+    readonly autoMatch: number;
+    readonly ambiguityMargin: number;
+    readonly containment: {
+      readonly minTokens: number;
+      readonly minChars: number;
+      readonly minTokenCoverage: number;
+      readonly maxWindowRatio: number;
+      readonly maxNarrationCharRatio: number;
+    };
+  };
   readonly slice: {
     readonly rows: number;
     readonly noSanad: number;
@@ -104,6 +119,8 @@ export type IngestPlan = {
     readonly compared: number;
     readonly matched: number;
     readonly ambiguous: number;
+    /** Groups whose best candidate was only a fragment of its narration. */
+    readonly fragmentary: number;
     readonly created: readonly NewChildPlan[];
     /** Groups whose candidate search hit its cap: bounded recall, quarantined. */
     readonly truncatedSearches: number;
@@ -118,7 +135,10 @@ export type IngestPlan = {
   readonly matchRate: {
     readonly scope: "v1-corpus";
     readonly matchedRows: number;
+    /** Rows whose target is claimed (existing or new); refused rows are not counted. */
     readonly rows: number;
+    /** Rows held back by an ambiguous, fragmentary or truncated target. */
+    readonly refusedRows: number;
     readonly value: number;
   };
 };

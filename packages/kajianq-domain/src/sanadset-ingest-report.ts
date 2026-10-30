@@ -10,88 +10,28 @@
 
 import type { IngestionReport } from "@app/contracts";
 import type { UncertainNamePair } from "./sanadset-ingest-catalogue";
-import type { IngestPlan } from "./sanadset-ingest-plan";
-import type { WriteCounts } from "./sanadset-ingest-reconcile";
+import {
+  PLAN_SAMPLE_GROUPS,
+  PLAN_SAMPLE_QUARANTINE,
+  sampleArtifactGroups,
+  sampleQuarantineRows,
+} from "./sanadset-ingest-plan-artifact";
+import type {
+  BuildReportOptions,
+  PilotFacts,
+  WriteCounts,
+  WriteFacts,
+} from "./sanadset-ingest-report-types";
 
-/** What the write path did (all zero on a dry run): upserts plus reconciliation deletes. */
-export type WriteFacts = {
-  readonly parentId: string | null;
-  readonly children: WriteCounts;
-  readonly chains: WriteCounts;
-  /** Name-cluster rows upserted; the catalogue is not reconciled. */
-  readonly narratorsUpserted: number;
-};
+export type {
+  BuildReportOptions,
+  PilotFacts,
+  PilotGateFacts,
+  PilotSourceFacts,
+  WriteFacts,
+} from "./sanadset-ingest-report-types";
 
-export type PilotSourceFacts = {
-  readonly fileName: string;
-  readonly bytes: number;
-  readonly sha256: string;
-  readonly recordsRead: number;
-};
-
-export type PilotGateFacts = {
-  readonly mode: string;
-  readonly label: string | null;
-  readonly reasons: readonly string[];
-};
-
-export type PilotFacts = {
-  readonly schemaVersion: 1;
-  readonly runId: string;
-  readonly command: string;
-  readonly dryRun: boolean;
-  readonly collection: string;
-  readonly book: string;
-  readonly source: PilotSourceFacts;
-  readonly slice: {
-    readonly rows: number;
-    readonly noSanad: number;
-    readonly prepared: number;
-    readonly quarantined: number;
-    readonly quarantinedByRule: Readonly<Record<string, number>>;
-  };
-  readonly narrator: {
-    readonly identityBasis: string;
-    readonly mentions: number;
-    readonly foldedNames: number;
-    readonly rawSurfaces: number;
-    readonly foldedVariants: number;
-    readonly resolutionRate: number;
-    readonly upserted: number;
-    readonly variantsRecorded: number;
-    readonly uncertainPairs: number;
-    readonly uncertainByStratum: Readonly<Record<string, number>>;
-  };
-  readonly matn: {
-    readonly groups: number;
-    readonly matchedGroups: number;
-    readonly ambiguousGroups: number;
-    readonly newChildren: number;
-    readonly storedChildrenCompared: number;
-    readonly truncatedSearches: number;
-    readonly matchRate: {
-      readonly scope: string;
-      readonly matchedRows: number;
-      readonly rows: number;
-      readonly value: number;
-    };
-  };
-  readonly chains: { readonly planned: number };
-  /** The rows this run created, updated, left unchanged and deleted. */
-  readonly write: {
-    readonly children: WriteCounts;
-    readonly chains: WriteCounts;
-  };
-  readonly quarantine: {
-    readonly total: number;
-    readonly byRule: Readonly<Record<string, number>>;
-  };
-  readonly gate: PilotGateFacts;
-  readonly cost: { readonly modelCalls: number; readonly costMicroUsd: number };
-  readonly limits: readonly string[];
-  readonly timings: { readonly startedAt: number; readonly finishedAt: number };
-};
-
+/** The document the run writes: the contract's report plus the pilot's facts. */
 export type PilotReportDocument = {
   readonly report: IngestionReport;
   readonly pilot: PilotFacts;
@@ -99,27 +39,15 @@ export type PilotReportDocument = {
   readonly uncertainNarratorPairs: readonly UncertainNamePair[];
 };
 
-export type BuildReportOptions = {
-  readonly runId: string;
-  readonly command: string;
-  readonly dryRun: boolean;
-  readonly plan: IngestPlan;
-  readonly source: PilotSourceFacts;
-  readonly gate: PilotGateFacts;
-  readonly outcome: WriteFacts | null;
-  readonly startedAt: number;
-  readonly finishedAt: number;
-};
-
 const ZERO_COUNTS: WriteCounts = { created: 0, updated: 0, unchanged: 0, deleted: 0 };
 
 /** The report's own limits: every one is a scope a reader could otherwise over-read. */
 export const PILOT_LIMITS: readonly string[] = [
-  "The match rate is measured against one collection's stored children, not the full corpus.",
+  "The match rate is measured against one collection's stored children, not the full corpus, and it is a property of the children this run read: an empty corpus reports zero by construction, a seeded corpus reports what its seed contains, and the plan artifact names every target and every matched child's text digest so a seeded run is reproducible.",
   "Narrator rows are Name clusters on the deterministic fold, not resolved Narrators: two people who share a spelling are one row, and the pairs the fold could not settle are reported unmerged.",
   "No model call is made, so the band is not adjudicated and each band-unresolved matn becomes its own child.",
   "New children carry NULL embeddings and stay lexically retrievable; embedding them is a later, paid run.",
-  "A matn group that ties between two stored children, or whose candidate search hit its cap, is quarantined whole and its chains are not written.",
+  "A matn group that ties between two stored children, whose candidate search hit its cap, or whose containment is only a fragment of a longer narration is quarantined whole and its chains are not written; the plan artifact carries the rule and the measured reason.",
   "A rerun reconciles only this pilot's own rows — children under its parent document and chains carrying its source prefix. Narrator rows stay in the catalogue once written.",
 ];
 
@@ -165,6 +93,7 @@ export function buildPilotReport(options: BuildReportOptions): PilotReportDocume
       groups: plan.groups.length,
       matchedGroups: plan.children.matched,
       ambiguousGroups: plan.children.ambiguous,
+      fragmentaryGroups: plan.children.fragmentary,
       newChildren: plan.children.created.length,
       storedChildrenCompared: plan.children.compared,
       truncatedSearches: plan.children.truncatedSearches,
@@ -172,10 +101,20 @@ export function buildPilotReport(options: BuildReportOptions): PilotReportDocume
         scope: plan.matchRate.scope,
         matchedRows: plan.matchRate.matchedRows,
         rows: plan.matchRate.rows,
+        refusedRows: plan.matchRate.refusedRows,
         value: plan.matchRate.value,
       },
     },
     chains: { planned: plan.chains.length },
+    plan: {
+      artifactPath: options.planArtifactPath,
+      groups: plan.groups.length,
+      byTarget: options.planArtifact.counts.byTarget,
+      sample: sampleArtifactGroups(options.planArtifact),
+      quarantineSample: sampleQuarantineRows(plan.quarantine.rows),
+      sampleLimit: PLAN_SAMPLE_GROUPS,
+      quarantineSampleLimit: PLAN_SAMPLE_QUARANTINE,
+    },
     write: { children: write.children, chains: write.chains },
     quarantine: { total: plan.quarantine.total, byRule: plan.quarantine.byRule },
     gate,

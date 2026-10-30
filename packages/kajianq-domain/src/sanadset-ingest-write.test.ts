@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { hashFile } from "./sanadset-csv";
 import { PILOT_SCOPE } from "./sanadset-ingest-plan";
-import { assertPilotReportPath } from "./sanadset-ingest-report-write";
+import { assertPilotPlanPath, assertPilotReportPath } from "./sanadset-ingest-report-write";
 import { runSanadsetIngest } from "./sanadset-ingest-run";
 import { executeIngestPlan } from "./sanadset-ingest-write";
 import { IngestGateRefusal, assertIngestGate } from "./sanadset-snapshot-gate";
@@ -391,6 +391,21 @@ describe("the pilot write path", () => {
     expect(run.document.pilot.cost).toEqual({ modelCalls: 0, costMicroUsd: 0 });
     expect(existsSync(join(TMP, "dry-run-report.json"))).toBe(true);
     expect(readFileSync(join(TMP, "dry-run-report.md"), "utf8")).toContain("Dry run");
+    // The plan artifact lands beside the report and carries the group targets, so a
+    // dry run can be read at the level a match decision needs.
+    expect(run.document.pilot.plan.artifactPath).toBe(join(TMP, "plan.json"));
+    expect(run.written).toContain(join(TMP, "plan.json"));
+    const artifact = JSON.parse(readFileSync(join(TMP, "plan.json"), "utf8")) as {
+      groups: { groupId: number; target: { kind: string } }[];
+      quarantine: { rule: string; detail: string }[];
+      counts: { byTarget: Record<string, number> };
+    };
+    expect(artifact.groups).toHaveLength(run.plan.groups.length);
+    expect(artifact.groups[0]?.target.kind).toBe("new");
+    expect(artifact.counts.byTarget.new).toBe(1);
+    expect(artifact.quarantine.every((row) => row.rule !== "" && row.detail !== "")).toBe(true);
+    expect(run.document.pilot.plan.sample).toHaveLength(1);
+    expect(run.document.pilot.plan.sample[0]?.target.kind).toBe("new");
   });
 
   it("runs the command twice under two run ids without duplicating a row", async () => {
@@ -449,8 +464,10 @@ describe("the pilot write path", () => {
     expect(document.report.childrenWritten).toBe(0);
   });
 
-  it("refuses a report path inside a checkout before the run starts", () => {
+  it("refuses a report or plan path inside a checkout before the run starts", () => {
     expect(() => assertPilotReportPath("report.json")).toThrow(/repository/);
+    expect(() => assertPilotPlanPath("plan.json")).toThrow(/repository/);
     expect(() => assertPilotReportPath(join(TMP, "report.json"))).not.toThrow();
+    expect(() => assertPilotPlanPath(join(TMP, "plan.json"))).not.toThrow();
   });
 });

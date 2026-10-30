@@ -16,7 +16,14 @@ import {
   type MatnDecision,
 } from "./sanadset-cascade-types";
 import { planNarrators } from "./sanadset-ingest-catalogue";
-import { createChildMatchIndex } from "./sanadset-ingest-match";
+import {
+  MAX_MATCH_WINDOW_RATIO,
+  MAX_NARRATION_MATN_CHAR_RATIO,
+  MIN_CONTAINMENT_CHARS,
+  MIN_CONTAINMENT_TOKENS,
+  MIN_TOKEN_COVERAGE,
+  createChildMatchIndex,
+} from "./sanadset-ingest-match";
 import {
   chainSourceRef,
   type BuildPlanOptions,
@@ -62,10 +69,12 @@ export async function buildSanadsetPlan(options: BuildPlanOptions): Promise<Inge
     if (decision.kind !== "quarantined") written.push(row);
   }
 
+  const autoMatch = options.autoThreshold ?? S1_AUTO_MATCH_THRESHOLD;
+  const ambiguityMargin = options.ambiguityMargin ?? S1_AMBIGUITY_MARGIN;
   const matchIndex = createChildMatchIndex(options.children, {
     collection: scope.collection,
-    autoThreshold: options.autoThreshold ?? S1_AUTO_MATCH_THRESHOLD,
-    ambiguityMargin: options.ambiguityMargin ?? S1_AMBIGUITY_MARGIN,
+    autoThreshold: autoMatch,
+    ambiguityMargin,
   });
   const groups: GroupPlan[] = [];
   for (const group of cascade.groups) {
@@ -85,8 +94,9 @@ export async function buildSanadsetPlan(options: BuildPlanOptions): Promise<Inge
   const targetByGroup = new Map(groups.map((group) => [group.groupId, group.target]));
 
   // A group the matcher refused to place is quarantined whole: every row's chain is
-  // held back, and the reason names the two children that tied (or the cap that cut
-  // the search short) so a reader can tell which refusal held it.
+  // held back, and the reason names the two children that tied, the cap that cut the
+  // search short, or the fragment test the containment failed, so a reader can tell
+  // which refusal held it.
   const refusedRows: QuarantinedRow[] = [];
   const writtenRows = written.filter((row) => {
     const groupId = decisions.get(row.rowIndex)?.groupId;
@@ -102,6 +112,20 @@ export async function buildSanadsetPlan(options: BuildPlanOptions): Promise<Inge
         detail:
           `matn group ${groupId} scored ${target.score.toFixed(3)} against two children ` +
           `(${target.candidates.join(", ")}); no arbitrary target is chosen`,
+        sanadLength: null,
+      });
+      return false;
+    }
+    if (target.kind === "fragmentary") {
+      refusedRows.push({
+        rowIndex: row.rowIndex,
+        book: row.book,
+        hadithNumber: row.hadithNumber,
+        rule: "fragmentary_containment",
+        detail:
+          `matn group ${groupId}'s best candidate child ${target.childId} scored ` +
+          `${target.score.toFixed(3)} by ${target.how}, but ${target.reason}; ` +
+          "no target is claimed",
         sanadLength: null,
       });
       return false;
@@ -181,9 +205,23 @@ export async function buildSanadsetPlan(options: BuildPlanOptions): Promise<Inge
   );
   const matchedRowIndexes = new Set(existingTargetGroups.flatMap((group) => group.memberRows));
   const bookStats = options.stats.byBook[scope.book];
-  const matchRateRows = written.length;
+  // The denominator is the rows whose target is claimed: a row held back by an
+  // ambiguous, fragmentary or truncated target never had a target to match.
+  const matchRateRows = writtenRows.length;
+  const refusedRowCount = written.length - writtenRows.length;
   return {
     scope,
+    thresholds: {
+      autoMatch,
+      ambiguityMargin,
+      containment: {
+        minTokens: MIN_CONTAINMENT_TOKENS,
+        minChars: MIN_CONTAINMENT_CHARS,
+        minTokenCoverage: MIN_TOKEN_COVERAGE,
+        maxWindowRatio: MAX_MATCH_WINDOW_RATIO,
+        maxNarrationCharRatio: MAX_NARRATION_MATN_CHAR_RATIO,
+      },
+    },
     slice: {
       rows: bookStats.rows,
       noSanad: bookStats.noSanad,
@@ -197,6 +235,7 @@ export async function buildSanadsetPlan(options: BuildPlanOptions): Promise<Inge
       compared: matchIndex.collectionChildren,
       matched: existingTargetGroups.length,
       ambiguous: plannedGroups.filter((group) => group.target.kind === "ambiguous").length,
+      fragmentary: plannedGroups.filter((group) => group.target.kind === "fragmentary").length,
       created,
       truncatedSearches: matchIndex.truncatedSearches(),
     },
@@ -211,6 +250,7 @@ export async function buildSanadsetPlan(options: BuildPlanOptions): Promise<Inge
       scope: "v1-corpus",
       matchedRows: matchedRowIndexes.size,
       rows: matchRateRows,
+      refusedRows: refusedRowCount,
       value: matchRateRows === 0 ? 0 : matchedRowIndexes.size / matchRateRows,
     },
   };

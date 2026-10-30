@@ -9,7 +9,9 @@ import { PILOT_LIMITS, type PilotFacts, type PilotReportDocument } from "./sanad
  *   reported as "created";
  * - trap: the total quarantine must appear once as the total, not only as the
  *   prepare-stage slice — a reader of the human artifact must not have to add the
- *   cascade's count themselves.
+ *   cascade's count themselves;
+ * - trap: the digest must show which narration a chain lands on and why a row was
+ *   refused, not only how many matched — the plan sample is the pre-write check.
  */
 
 const baseFacts: PilotFacts = {
@@ -43,12 +45,43 @@ const baseFacts: PilotFacts = {
     groups: 2,
     matchedGroups: 1,
     ambiguousGroups: 0,
+    fragmentaryGroups: 1,
     newChildren: 1,
     storedChildrenCompared: 4,
     truncatedSearches: 0,
-    matchRate: { scope: "v1-corpus", matchedRows: 1, rows: 2, value: 0.5 },
+    matchRate: { scope: "v1-corpus", matchedRows: 1, rows: 2, refusedRows: 1, value: 0.5 },
   },
   chains: { planned: 2 },
+  plan: {
+    artifactPath: "/tmp/plan.json",
+    groups: 2,
+    byTarget: { existing: 1, new: 1, ambiguous: 0, fragmentary: 1, truncated: 0 },
+    sample: [
+      {
+        groupId: 4,
+        representativeRowIndex: 9,
+        hadithNumber: "7",
+        matnKey: "a".repeat(64),
+        memberRows: [9],
+        matnChars: 40,
+        matnTokens: 6,
+        matnPreview: "…",
+        target: { kind: "existing", childId: "child-4", how: "containment", score: 0.97 },
+      },
+    ],
+    quarantineSample: [
+      {
+        rowIndex: 9,
+        book: "صحيح البخاري",
+        hadithNumber: "7",
+        rule: "fragmentary_containment",
+        detail: "the stored narration is 20.0x the matn's characters; the ceiling is 8x",
+        sanadLength: null,
+      },
+    ],
+    sampleLimit: 10,
+    quarantineSampleLimit: 12,
+  },
   write: {
     children: { created: 1, updated: 2, unchanged: 3, deleted: 4 },
     chains: { created: 5, updated: 6, unchanged: 7, deleted: 8 },
@@ -91,5 +124,19 @@ describe("the pilot's Markdown digest", () => {
       "Dry run: nothing written; the plan would create 1 children and write 2 chains.",
     );
     expect(markdown).not.toContain("1 created ·");
+  });
+
+  it("prints the matched target and a quarantine reason from the plan sample", () => {
+    const markdown = render({});
+    expect(markdown).toContain("Plan artifact: `/tmp/plan.json`");
+    expect(markdown).toContain("stored child `child-4` — score 0.970 by containment");
+    expect(markdown).toContain("`fragmentary_containment`");
+    expect(markdown).toContain("the stored narration is 20.0x the matn's characters");
+  });
+
+  it("scopes the match rate to rows with a claimed target and counts refused rows", () => {
+    const markdown = render({});
+    expect(markdown).toContain("(1 of 2 rows with a claimed target; 1 refused a target)");
+    expect(markdown).toContain("Groups quarantined as fragments of a longer narration: 1");
   });
 });

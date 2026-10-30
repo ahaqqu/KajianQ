@@ -28,6 +28,8 @@ export type IngestRunOptions = {
   readonly command: string;
   /** Where the JSON report lands; its Markdown digest lands beside it. */
   readonly reportPath?: string;
+  /** Where the plan artifact lands; defaults to `plan.json` beside the report. */
+  readonly planPath?: string;
   /** The home directory the default report path is resolved from. */
   readonly homeDir: string;
   /** Defaults to `s2-<collection>-<sha256 prefix>`: one run id per archive. */
@@ -40,6 +42,8 @@ export type IngestRun = {
   readonly runId: string;
   readonly dryRun: boolean;
   readonly plan: parts.IngestPlan;
+  /** The plan artifact written before any store write: every target and refusal. */
+  readonly planArtifact: parts.PlanArtifact;
   readonly outcome: parts.WriteOutcome | null;
   readonly document: parts.PilotReportDocument;
   readonly written: readonly string[];
@@ -78,6 +82,19 @@ export async function runSanadsetIngest(options: IngestRunOptions): Promise<Inge
     childrenCapHit: children.capHit,
   });
 
+  // The plan artifact is the write path's input, so it is written before the first
+  // store write: a failed write leaves the plan that was attempted as evidence.
+  const reportPath = options.reportPath ?? parts.defaultPilotReportPath(options.homeDir, runId);
+  const planPath = options.planPath ?? parts.defaultPilotPlanPath(reportPath);
+  const planArtifact = parts.buildPlanArtifact({
+    runId,
+    dryRun: options.dryRun,
+    plan,
+    children: children.children,
+    source: { ...slice.source, recordsRead: slice.recordsRead },
+  });
+  const planWritten = parts.writePilotPlan(planArtifact, planPath);
+
   const outcome = options.dryRun
     ? null
     : await parts.executeIngestPlan({ store: options.store, plan, gate: options.gate });
@@ -87,6 +104,8 @@ export async function runSanadsetIngest(options: IngestRunOptions): Promise<Inge
     command: options.command,
     dryRun: options.dryRun,
     plan,
+    planArtifact,
+    planArtifactPath: planPath,
     source: { ...slice.source, recordsRead: slice.recordsRead },
     gate: {
       mode: options.gate.mode,
@@ -97,7 +116,6 @@ export async function runSanadsetIngest(options: IngestRunOptions): Promise<Inge
     startedAt,
     finishedAt,
   });
-  const reportPath = options.reportPath ?? parts.defaultPilotReportPath(options.homeDir, runId);
-  const written = parts.writePilotReport(document, reportPath);
-  return { runId, dryRun: options.dryRun, plan, outcome, document, written };
+  const written = [...planWritten, ...parts.writePilotReport(document, reportPath)];
+  return { runId, dryRun: options.dryRun, plan, planArtifact, outcome, document, written };
 }

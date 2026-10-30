@@ -9,6 +9,7 @@ export * from "./sanadset-ingest-content";
 export * from "./sanadset-ingest-error";
 export * from "./sanadset-ingest-match";
 export * from "./sanadset-ingest-plan";
+export * from "./sanadset-ingest-plan-artifact";
 export * from "./sanadset-ingest-write";
 export * from "./sanadset-ingest-report";
 export * from "./sanadset-ingest-report-write";

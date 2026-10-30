@@ -13,6 +13,16 @@
  *   stored text holds — so a matn wholly present inside a longer narration scores
  *   at or above the auto threshold instead of reading as a new child.
  *
+ * Containment alone cannot tell a report from a phrase quoted inside another one:
+ * a generic formula appears verbatim in a long, unrelated narration, and every
+ * trigram of it is present there. A fuzzy target is therefore admitted only when
+ * the containment relation holds as a relation of texts, not merely of trigram
+ * sets: the matn must be long enough to be a report, most of its tokens must occur
+ * in the child, those tokens must sit inside a window close to the matn's own
+ * length, and the stored narration must not be many times longer than the matn.
+ * A pair that fails one of those tests is a fragment; the group is quarantined
+ * with the reason rather than attached to the narration that happens to quote it.
+ *
  * Candidates come from rare-token postings rather than MinHash bands. At the
  * containment ratio a narration/matn pair carries, a band signature misses most
  * true pairs (the isnad's trigrams dominate it), while every token of a matn that
@@ -22,14 +32,31 @@
  * reported refusal rather than a guess.
  *
  * What the index refuses to do is choose on a coin flip. Two children at the top
- * score within the ambiguity margin, two children carrying the same text, and a
- * candidate search that hit its cap are each reported rather than resolved: the
- * group is quarantined, because an arbitrary target would put a chain on the
- * wrong narration and nothing later would notice.
+ * score within the ambiguity margin, two children carrying the same text, a
+ * candidate search that hit its cap, and a containment that failed the fragment
+ * tests are each reported rather than resolved: the group is quarantined, because
+ * an arbitrary target would put a chain on the wrong narration and nothing later
+ * would notice.
  */
 
 import { MAX_CANDIDATES_PER_ROW } from "./sanadset-blocking";
+import {
+  containmentEvidence,
+  containmentRefusal,
+  tokenSequence,
+  tokensOf,
+  type EvidenceChild,
+} from "./sanadset-ingest-fragment";
 import { jaccard, matnTrigrams, normalizeMatnText } from "./sanadset-text";
+
+/** The fragment guards live with the evidence they measure; the matcher is their consumer. */
+export {
+  MAX_MATCH_WINDOW_RATIO,
+  MAX_NARRATION_MATN_CHAR_RATIO,
+  MIN_CONTAINMENT_CHARS,
+  MIN_CONTAINMENT_TOKENS,
+  MIN_TOKEN_COVERAGE,
+} from "./sanadset-ingest-fragment";
 
 /** How many rare query tokens seed the candidate search. */
 export const CANDIDATE_TOKENS = 3;
@@ -59,6 +86,15 @@ export type MatnTarget =
     }
   | { readonly kind: "new" }
   | { readonly kind: "ambiguous"; readonly score: number; readonly candidates: readonly string[] }
+  /** A candidate scored above the threshold, but only as a fragment of its narration. */
+  | {
+      readonly kind: "fragmentary";
+      readonly childId: string;
+      readonly score: number;
+      readonly how: "trigram" | "containment";
+      /** Which containment test failed and the measured value, in operator terms. */
+      readonly reason: string;
+    }
   /** The candidate search hit its cap: recall was bounded, so no target is claimed. */
   | { readonly kind: "truncated"; readonly candidates: number; readonly cap: number };
 
@@ -78,12 +114,10 @@ export type ChildMatchOptions = {
   readonly ambiguityMargin: number;
 };
 
-type IndexedChild = {
+type IndexedChild = EvidenceChild & {
   readonly child: ExistingChildRow;
-  readonly normalized: string;
   readonly trigrams: readonly string[];
   readonly trigramSet: ReadonlySet<string>;
-  readonly tokens: readonly string[];
 };
 
 /** A candidate at the top of the score list, used for the ambiguity rule. */
@@ -98,18 +132,6 @@ function pushTo(map: Map<string, string[]>, key: string, id: string): void {
   const bucket = map.get(key);
   if (bucket === undefined) map.set(key, [id]);
   else bucket.push(id);
-}
-
-/** The distinct folded tokens of a normalized text, in text order. */
-function tokensOf(normalized: string): string[] {
-  const seen = new Set<string>();
-  const tokens: string[] = [];
-  for (const token of normalized.split(" ")) {
-    if (token === "" || seen.has(token)) continue;
-    seen.add(token);
-    tokens.push(token);
-  }
-  return tokens;
 }
 
 /** The one target for a bucket of equally good children: none, one, or ambiguous. */
@@ -136,17 +158,19 @@ export function createChildMatchIndex(
     if (child.collection !== options.collection) continue;
     const normalized = normalizeMatnText(child.textRaw);
     const trigrams = matnTrigrams(normalized);
+    const sequence = tokenSequence(normalized);
     const indexed: IndexedChild = {
       child,
       normalized,
       trigrams,
       trigramSet: new Set(trigrams),
-      tokens: tokensOf(normalized),
+      tokenSequence: sequence,
+      tokenSet: new Set(sequence),
     };
     byId.set(child.id, indexed);
     pushTo(exact, child.textRaw, child.id);
     pushTo(folded, normalized, child.id);
-    for (const token of indexed.tokens) pushTo(postings, token, child.id);
+    for (const token of new Set(sequence)) pushTo(postings, token, child.id);
   }
 
   const match = (row: MatnQueryRow): MatnTarget => {
@@ -155,10 +179,11 @@ export function createChildMatchIndex(
     const foldedTarget = targetForBucket(folded.get(row.normalizedMatn), "folded");
     if (foldedTarget !== null) return foldedTarget;
 
+    const queryTokens = tokensOf(row.normalizedMatn);
     // Seed the search from the rarest tokens the matn carries: a matn present in
     // the narration shares every token with it, so one of these postings holds the
     // child, while a common token would return half the corpus for no gain.
-    const ranked = tokensOf(row.normalizedMatn)
+    const ranked = queryTokens
       .map((token) => ({ token, ids: postings.get(token) }))
       .filter((entry): entry is { token: string; ids: string[] } => entry.ids !== undefined)
       .sort(
@@ -201,13 +226,37 @@ export function createChildMatchIndex(
     scored.sort((left, right) => right.score - left.score || left.id.localeCompare(right.id));
     const top = scored[0];
     if (top === undefined || top.score < options.autoThreshold) return { kind: "new" };
+
+    const candidate = byId.get(top.id) as IndexedChild;
+    const evidence = containmentEvidence(queryTokens, candidate);
+    const refusal = containmentRefusal(row.normalizedMatn, queryTokens, evidence, candidate);
+    if (refusal !== null) {
+      return {
+        kind: "fragmentary",
+        childId: top.id,
+        score: top.score,
+        how: top.how,
+        reason: refusal,
+      };
+    }
+
     const second = scored[1];
     if (second !== undefined && top.score - second.score <= options.ambiguityMargin) {
-      return {
-        kind: "ambiguous",
-        score: top.score,
-        candidates: [top.id, second.id].sort(),
-      };
+      const runnerUp = byId.get(second.id) as IndexedChild;
+      const runnerUpRefusal = containmentRefusal(
+        row.normalizedMatn,
+        queryTokens,
+        containmentEvidence(queryTokens, runnerUp),
+        runnerUp,
+      );
+      // A fragment cannot be the competing target, so it does not create doubt.
+      if (runnerUpRefusal === null) {
+        return {
+          kind: "ambiguous",
+          score: top.score,
+          candidates: [top.id, second.id].sort(),
+        };
+      }
     }
     return { kind: "existing", childId: top.id, how: top.how, score: top.score };
   };

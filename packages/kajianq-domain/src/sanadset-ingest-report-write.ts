@@ -14,6 +14,7 @@ import {
   jsonFile,
   writeArtifactFiles,
 } from "./sanadset-artifacts";
+import type { PlanArtifact } from "./sanadset-ingest-plan-artifact";
 import type { PilotReportDocument } from "./sanadset-ingest-report";
 import type { WriteCounts } from "./sanadset-ingest-reconcile";
 
@@ -22,9 +23,27 @@ export function defaultPilotReportPath(homeDir: string, runId: string): string {
   return join(homeDir, DEFAULT_ARTIFACT_DIR, runId, "report.json");
 }
 
+/** The plan artifact lands beside the report by default; `--plan-out` overrides the path. */
+export function defaultPilotPlanPath(reportPath: string): string {
+  return join(dirname(reportPath), "plan.json");
+}
+
 /** Refuse an explicit `--report` path inside a checkout before the run starts writing. */
 export function assertPilotReportPath(path: string): void {
   assertOutsideRepository(dirname(path));
+}
+
+/** The same refusal for `--plan-out`: the plan carries corpus text too. */
+export function assertPilotPlanPath(path: string): void {
+  assertOutsideRepository(dirname(path));
+}
+
+/**
+ * Write the plan artifact (JSON only). `writeArtifactFiles` repeats the
+ * outside-the-checkout refusal, so a `--plan-out` path cannot land in a working tree.
+ */
+export function writePilotPlan(artifact: PlanArtifact, path: string): readonly string[] {
+  return writeArtifactFiles(dirname(path), [{ name: basename(path), content: jsonFile(artifact) }]);
 }
 
 /**
@@ -59,6 +78,25 @@ export function renderPilotMarkdown(document: PilotReportDocument): string {
     .sort(([left], [right]) => left.localeCompare(right))
     .map(([rule, count]) => `  - \`${rule}\`: ${count}`);
   const afterSlice = pilot.quarantine.total - pilot.slice.quarantined;
+  const planLines = pilot.plan.sample.map((group) => {
+    const target = group.target;
+    if (target.kind === "existing") {
+      return `- Group ${group.groupId} (row ${group.representativeRowIndex}, hadith ${group.hadithNumber}) → stored child \`${target.childId}\` — score ${target.score?.toFixed(3)} by ${target.how}${target.childTextSha256 === undefined ? "" : `, text \`${target.childTextSha256.slice(0, 12)}\``}`;
+    }
+    if (target.kind === "fragmentary") {
+      return `- Group ${group.groupId} (row ${group.representativeRowIndex}) → **quarantined**: best candidate \`${target.childId}\` scored ${target.score?.toFixed(3)} by ${target.how}, but ${target.reason}`;
+    }
+    if (target.kind === "ambiguous") {
+      return `- Group ${group.groupId} (row ${group.representativeRowIndex}) → **quarantined**: ${target.score?.toFixed(3)} against ${target.candidates?.join(", ")}`;
+    }
+    if (target.kind === "truncated") {
+      return `- Group ${group.groupId} (row ${group.representativeRowIndex}) → **quarantined**: candidate search hit its ${target.cap}-candidate cap`;
+    }
+    return `- Group ${group.groupId} (row ${group.representativeRowIndex}) → new child`;
+  });
+  const quarantineLines = pilot.plan.quarantineSample.map(
+    (row) => `- Row ${row.rowIndex} (hadith ${row.hadithNumber}) \`${row.rule}\`: ${row.detail}`,
+  );
   return [
     `# Sanadset S2 pilot — ${pilot.collection} (${pilot.runId})`,
     "",
@@ -110,9 +148,26 @@ export function renderPilotMarkdown(document: PilotReportDocument): string {
     `- Stored children compared: ${pilot.matn.storedChildrenCompared}`,
     `- Groups matched to a stored child: ${pilot.matn.matchedGroups}`,
     `- Groups quarantined as ambiguous: ${pilot.matn.ambiguousGroups}`,
+    `- Groups quarantined as fragments of a longer narration: ${pilot.matn.fragmentaryGroups}`,
     `- Groups written as new children: ${pilot.matn.newChildren}`,
-    `- Match rate (scope **${pilot.matn.matchRate.scope}**): ${percent(pilot.matn.matchRate.value)} (${pilot.matn.matchRate.matchedRows} of ${pilot.matn.matchRate.rows} rows)`,
+    `- Match rate (scope **${pilot.matn.matchRate.scope}**): ${percent(pilot.matn.matchRate.value)} (${pilot.matn.matchRate.matchedRows} of ${pilot.matn.matchRate.rows} rows with a claimed target; ${pilot.matn.matchRate.refusedRows} refused a target)`,
     `- Candidate searches that hit their cap: ${pilot.matn.truncatedSearches}`,
+    "",
+    "## Plan sample",
+    "",
+    pilot.plan.artifactPath === null
+      ? "- Plan artifact: not written."
+      : `- Plan artifact: \`${pilot.plan.artifactPath}\` (every group and every quarantine row)`,
+    `- Targets by kind: ${Object.entries(pilot.plan.byTarget)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([kind, count]) => `${kind} ${count}`)
+      .join(" · ")}`,
+    "",
+    ...planLines,
+    "",
+    `## Quarantine sample (${pilot.plan.quarantineSample.length} of ${pilot.quarantine.total})`,
+    "",
+    ...quarantineLines,
     "",
     "## Write outcome",
     "",

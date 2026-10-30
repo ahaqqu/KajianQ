@@ -110,6 +110,23 @@ describe("the pilot plan", () => {
     expect(plan.slice.prepared).toBe(1);
   });
 
+  it("pins the thresholds the plan was built with", async () => {
+    // The dry run writes these into the plan artifact; a refused target must be
+    // readable against the rule that refused it, not against today's constants.
+    const plan = await planFor([sourceRow()]);
+    expect(plan.thresholds).toEqual({
+      autoMatch: 0.9,
+      ambiguityMargin: 0.02,
+      containment: {
+        minTokens: 4,
+        minChars: 16,
+        minTokenCoverage: 0.8,
+        maxWindowRatio: 2.5,
+        maxNarrationCharRatio: 8,
+      },
+    });
+  });
+
   it("attaches the group to the same book's stored child", async () => {
     const plan = await planFor([sourceRow()], [child("bukhari-child", MATN_A)]);
     expect(plan.groups[0]?.target).toEqual({
@@ -119,7 +136,13 @@ describe("the pilot plan", () => {
       score: 1,
     });
     expect(plan.children.created).toHaveLength(0);
-    expect(plan.matchRate).toEqual({ scope: "v1-corpus", matchedRows: 1, rows: 1, value: 1 });
+    expect(plan.matchRate).toEqual({
+      scope: "v1-corpus",
+      matchedRows: 1,
+      rows: 1,
+      refusedRows: 0,
+      value: 1,
+    });
   });
 
   it("matches a Sanadset matn against a stored child that also carries the isnad", async () => {
@@ -134,7 +157,48 @@ describe("the pilot plan", () => {
     });
     expect(plan.children.matched).toBe(1);
     expect(plan.children.created).toHaveLength(0);
-    expect(plan.matchRate).toEqual({ scope: "v1-corpus", matchedRows: 1, rows: 1, value: 1 });
+    expect(plan.matchRate).toEqual({
+      scope: "v1-corpus",
+      matchedRows: 1,
+      rows: 1,
+      refusedRows: 0,
+      value: 1,
+    });
+  });
+
+  it("quarantines a matn that only occurs as a fragment of a much longer narration", async () => {
+    // The stored narration is an otherwise unrelated text that happens to quote
+    // the matn: containment is total, but the relation is a quotation, not the
+    // report. No chain and no child may be planned for the group.
+    const filler =
+      "قال حدثنا أخبرنا عن ابن عمر أن رسول الله صلى الله عليه وسلم ذكر حديثا طويلا في مجلس " +
+      "من مجالس العلم والذكر ثم سأله رجل عن معنى ذلك فبينه له بيانا شافيا ثم انصرف القوم";
+    const narration = fullNarration(`${MATN_A} ${filler} ${filler} ${filler} ${filler} ${filler}`);
+    const plan = await planFor([sourceRow()], [child("long-narration", narration)]);
+    const target = plan.groups[0]?.target;
+    expect(target).toMatchObject({
+      kind: "fragmentary",
+      childId: "long-narration",
+      how: "containment",
+    });
+    expect(target?.kind === "fragmentary" ? target.reason : "").toContain(
+      "the stored narration is",
+    );
+    expect(plan.children.fragmentary).toBe(1);
+    expect(plan.children.matched).toBe(0);
+    expect(plan.children.created).toHaveLength(0);
+    expect(plan.chains).toHaveLength(0);
+    expect(plan.quarantine.byRule).toEqual({ fragmentary_containment: 1 });
+    expect(plan.quarantine.rows[0]?.detail).toContain("long-narration");
+    expect(plan.quarantine.rows[0]?.detail).toContain("no target is claimed");
+    // D4: the refused row never had a target, so it cannot be a match-rate row.
+    expect(plan.matchRate).toEqual({
+      scope: "v1-corpus",
+      matchedRows: 0,
+      rows: 0,
+      refusedRows: 1,
+      value: 0,
+    });
   });
 
   it("quarantines a group whose candidate search hits its cap", async () => {
@@ -151,6 +215,14 @@ describe("the pilot plan", () => {
     expect(plan.children.created).toHaveLength(0);
     expect(plan.chains).toHaveLength(0);
     expect(plan.quarantine.byRule).toEqual({ truncated_candidate_search: 1 });
+    // A bounded search is a refused target: it is not a row that could have matched.
+    expect(plan.matchRate).toEqual({
+      scope: "v1-corpus",
+      matchedRows: 0,
+      rows: 0,
+      refusedRows: 1,
+      value: 0,
+    });
   });
 
   it("writes no chain and creates no child for a prepare-quarantined row", async () => {
@@ -191,7 +263,13 @@ describe("the pilot plan", () => {
     expect(plan.chains).toHaveLength(0);
     expect(plan.quarantine.byRule).toEqual({ ambiguous_best_match: 1 });
     expect(plan.quarantine.rows[0]?.detail).toContain("child-a");
-    expect(plan.matchRate.matchedRows).toBe(0);
+    expect(plan.matchRate).toEqual({
+      scope: "v1-corpus",
+      matchedRows: 0,
+      rows: 0,
+      refusedRows: 1,
+      value: 0,
+    });
   });
 
   it("records folded spelling variants on one name cluster", async () => {

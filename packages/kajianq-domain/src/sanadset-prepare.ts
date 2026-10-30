@@ -53,6 +53,7 @@ export type QuarantineRule =
   | "reference_only_matn"
   | "ambiguous_best_match"
   | "truncated_candidate_search"
+  | "fragmentary_containment"
   | "model_uncertain";
 
 export type QuarantinedRow = {
