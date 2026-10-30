@@ -7,10 +7,13 @@ import {
   postgresPool,
   postgresSqlRunner,
   type RagStore,
+  type StoreError,
 } from "@app/infra";
 import { createMemoryRagStore } from "./test-utils/memory-rag-store";
 import { relationOf, storeKeyOf } from "./filters";
 import { storeFilters } from "./chat-filter-policy";
+import { readChainEvidence } from "./chat-isnad-evidence";
+import { renderEvidenceChunk } from "./chat-assembler";
 
 /**
  * Chain/narrator **retrieval filters** on real Postgres, held to the in-memory
@@ -233,4 +236,44 @@ run("chain-grade and narrator retrieval filters (real Postgres, memory equal)", 
     expect([...(await both({}))].sort()).toEqual(["matched", "plain"]);
     expect(await both(chainFilters("chainGrade", ["mutawatir"]))).toEqual([]);
   });
+
+  /**
+   * The same fixture read as **chain evidence**: the per-passage read the citation
+   * sheet and the generator consume, over the real store and the double.
+   *
+   * The property: the rows a filter selected a passage by are not the rows the
+   * citation renders — the passage arrives whole, in store order, with its own
+   * grades. A store that let the filter shape the read would hand the reader the
+   * matched row alone.
+   */
+  const readEvidence = async (store: RagStore) => {
+    const { chunks } = await Effect.runPromise(
+      readChainEvidence({
+        chunks: [
+          {
+            id: store === memory ? memoryMatchedId : matchedChildId,
+            text: "raw",
+            metadata: { pfx: PREFIX, sourceType: "hadith", citation: "HR. Fixture no. 1" },
+          } as never,
+        ],
+        store: store as never,
+        bridge: <A>(effect: Effect.Effect<A, StoreError>) => Effect.runPromise(effect),
+      }),
+    );
+    const rendered = renderEvidenceChunk(chunks[0] as never);
+    // The double mints its own narrator ids; compare the parts the fixture shares.
+    return rendered.replaceAll(NARRATOR_A, "A").replaceAll(NARRATOR_B, "B");
+  };
+
+  it("renders both stored chains with their own grades, in store order", async () => {
+    const fromPostgres = await readEvidence(postgres);
+    const fromMemory = await readEvidence(memory);
+    expect(fromMemory).toBe(fromPostgres);
+    expect(fromPostgres).toContain("(Sahih — al-bukhari");
+    expect(fromPostgres).toContain("(Dhaif — al-daraqutni");
+    // Insertion order: the weak chain is second, never demoted or dropped.
+    expect(fromPostgres.indexOf("Sahih — al-bukhari")).toBeLessThan(
+      fromPostgres.indexOf("Dhaif — al-daraqutni"),
+    );
+  }, 60_000);
 });

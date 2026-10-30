@@ -52,8 +52,12 @@ export function CitationSheet({
           <span className="rounded-md border border-accent/30 bg-accent/10 px-2 py-1 font-mono text-[11px] uppercase tracking-wide text-accent-foreground dark:text-accent">
             {citation.label}
           </span>
-          {citation.grade !== undefined && <GradeBadge grade={citation.grade} />}
+          {(citation.chains === undefined || citation.chains.length === 0) &&
+            citation.grade !== undefined && <GradeBadge grade={citation.grade} />}
         </div>
+        {citation.chains !== undefined && citation.chains.length > 0 && (
+          <ChainList chains={citation.chains} locale={locale} />
+        )}
         <MonoLabel>{t(locale, "arabicOriginal")}</MonoLabel>
         <p
           dir="rtl"
@@ -96,6 +100,67 @@ export function CitationSheet({
         )}
       </div>
     </div>
+  );
+}
+
+/**
+ * The passage's transmission rows, one block per stored row in the record's own
+ * order: its grade badge (an ungraded row says so rather than borrowing another
+ * row's grade), the grader the trace attributed it to, and the ordered sanad in
+ * Arabic. Every row renders — the sheet never picks the strongest — so a passage
+ * whose chains disagree reads as conflicting evidence rather than one verdict.
+ */
+function ChainList({
+  chains,
+  locale,
+}: {
+  chains: NonNullable<ChatCitation["chains"]>;
+  locale: ReturnType<typeof useLocale>;
+}) {
+  return (
+    <ul data-testid="citation-chains" className="mb-4 space-y-2">
+      {chains.map((chain, index) => (
+        <li
+          data-testid="citation-chain"
+          key={`${chain.grade ?? "ungraded"}-${index}`}
+          className="rounded-lg border border-rule px-3 py-2"
+        >
+          <div className="flex flex-wrap items-center gap-2">
+            {chain.grade !== undefined ? (
+              <GradeBadge grade={chain.grade} />
+            ) : (
+              <span
+                data-testid="citation-chain-ungraded"
+                className="font-mono text-[11px] uppercase tracking-wide text-muted-foreground"
+              >
+                {t(locale, "citationChainUngraded")}
+              </span>
+            )}
+            {chain.grader !== undefined && (
+              <span data-testid="citation-grader" className="text-xs text-muted-foreground">
+                {t(locale, "citationGraderLabel")}: {chain.grader}
+              </span>
+            )}
+          </div>
+          <p
+            dir="rtl"
+            lang="ar"
+            data-testid="citation-sanad"
+            className="mt-1 text-right font-arabic text-lg leading-loose text-card-foreground"
+          >
+            {chain.narrators.map((narrator) => narrator.nameAr ?? narrator.id).join(" < ")}
+          </p>
+          {chain.moreMayExist === true && (
+            <p
+              data-testid="citation-chain-truncated"
+              className="mt-1 text-xs text-muted-foreground"
+            >
+              {t(locale, "citationChainTruncated")}
+            </p>
+          )}
+        </li>
+      ))}
+    </ul>
   );
 }
 

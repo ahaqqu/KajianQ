@@ -45,7 +45,7 @@ A commentary written to explain a matn. Ingestion must distinguish sharh from ma
 _Avoid_: commentary (ambiguous in English prose)
 
 **Grade**:
-A hadith's authenticity classification: `mutawatir | sahih | hasan | dhaif`. Dhaif material is always flagged to the user with a warning. v1 stores one headline grade per hadith; from v2 (ADR-0012) a Grade attaches per Isnad, because the same matn can be sahih via one chain and dhaif via another.
+A hadith's authenticity classification: `mutawatir | sahih | hasan | dhaif`. Dhaif material is always flagged to the user with a warning. v1 stores one headline grade per hadith; from v2 (ADR-0012) a Grade attaches per Isnad, because the same matn can be sahih via one chain and dhaif via another, and the Grade a reader sees is the Isnad's own, with its Grader (ADR-0066).
 _Avoid_: score, rating
 
 **Sahihayn**:
@@ -184,6 +184,26 @@ _Avoid_: rating, score (imply a numeric scale), narrator grade (the Grade is the
 **Isnad**:
 The ordered chain of narrators through which a hadith was transmitted. From v2 stored as structured rows (narrators + chains), not prose; grading applies to the Isnad, not the Matn (ADR-0012).
 _Avoid_: sanad (unqualified romanization drift), chain (unqualified)
+
+**Grader**:
+The hadith critic or source whose verdict a chain's Grade is: the name that accompanies the grade, never implied. A Grade never travels without its Grader — a row stating a grade but naming no grader is unreadable, and a read that meets one refuses rather than rendering an unattributable verdict.
+_Avoid_: source (that is the cited work), authority (vague)
+
+**Chain evidence**:
+The Isnads stored for a passage that reached retrieval context, read together with their narrator rows and recorded on the Trace: their stored order, each row's Grade and Grader, and the narrator spellings resolved by id. The citation sheet and the Trace panel render that recorded evidence — never a fresh read, and never a selected best row — so a passage whose chains disagree reads as disagreement; a list the read bounded is a prefix and says so.
+_Avoid_: chain metadata (implies a summary), sanad list (unqualified — a bounded list is a prefix)
+
+**Takhrij**:
+Naming, for a report, the collection and Isnad that carries it together with another collection's Isnad carrying the same report. Permitted only from the context's own chain evidence — each named record with its Grade and Grader — never from the model's memory of the collections.
+_Avoid_: sourcing (vague), cross-reference (implies a citation-number lookup)
+
+**Hasan li-ghayrihi**:
+A hasan Grade a report reaches through corroboration, when several weak Isnads of one Matn strengthen one another. Claimable only where the retrieved evidence itself shows more than one Isnad for that report; a single weak chain stays flagged dhaif and is never upgraded by the model's own judgement.
+_Avoid_: strengthened hadith (ambiguous), upgraded grade (that names a different rule)
+
+**Narrator reliability answer**:
+An answer about a narrator's standing that rests on the catalogue's Critic assessment rows — each verdict with its critic and its source — rather than on recalled biography; where the evidence carries no assessment, the answer says so instead of inventing one.
+_Avoid_: narrator grade (the Grade classifies the Isnad)
 
 **Narrator Graph**:
 The relational structure of hadith narrators (rawi) and the Isnads they appear in, built from Sanadset in v2 and traversed with recursive SQL over Postgres. Not a graph database and not GraphRAG.

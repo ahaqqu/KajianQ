@@ -65,6 +65,15 @@ Feature: Chat — ask, answer, citations, warnings, disclaimer
     When I ask a question whose dhaif answer puts the label in the canonical line's paragraph
     Then the dhaif warning renders exactly once beside the shared label
 
+  # #30: a hadith whose stored chains disagree keeps BOTH chains visible end to
+  # end — the citation sheet renders each sanad with its own grade and grader, and
+  # the Trace panel lists the chains the run consulted. Collapsing to one grade
+  # would hide the weak row entirely.
+  Scenario: A multi-chain hadith shows each sanad with its own grade
+    When I ask about a hadith whose chains disagree
+    Then the citation sheet shows every sanad with its own grade and grader
+    And the Trace lists the chains consulted with their sanads
+
   # #548: the model can wrap the canonical line in markup that wraps ONLY the
   # copy (`**<copy>**`, `- <copy>`, `> <copy>`). The delimiters are not answer
   # bytes, so the peel takes them with the copy: the card draws the line once

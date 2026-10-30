@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import type { ChatTraceChunk, ChatTraceReviewer } from "@app/contracts";
+import type { ChatTraceChain, ChatTraceChunk, ChatTraceReviewer } from "@app/contracts";
 import { t, type Locale, type MessageKey } from "../../lib/i18n";
 import { MonoLabel } from "../ui";
 import { FlagButton } from "./FeedbackControls";
@@ -94,6 +94,60 @@ export function ChunkRow({
         </span>
       )}
     </li>
+  );
+}
+
+/**
+ * The chains consulted: one row per child the run read transmission rows for,
+ * each naming the passage and every row it holds with that row's grade, grader and
+ * Arabic sanad. Rendered from the server-derived frame, in the record's order — the
+ * panel reports what was consulted, never a selected best chain.
+ */
+export function ChainsSection({
+  chains,
+  locale,
+}: {
+  chains: readonly ChatTraceChain[];
+  locale: Locale;
+}) {
+  return (
+    <div data-testid="trace-chains">
+      <MonoLabel>{t(locale, "traceChainsLabel")}</MonoLabel>
+      {chains.length === 0 ? (
+        <p data-testid="trace-no-chains" className="mt-1 text-sm text-muted-foreground">
+          {t(locale, "traceNoChains")}
+        </p>
+      ) : (
+        <ul className="mt-1 space-y-1">
+          {chains.map((child) => (
+            <li key={child.childId} data-testid="trace-chain-child" className="text-sm">
+              <span className="font-mono text-xs text-muted-foreground">
+                {t(locale, "traceChainChildLabel")}: {child.childId}
+              </span>
+              <ul className="mt-0.5 space-y-0.5">
+                {child.chains.map((chain, index) => (
+                  <li key={`${chain.grade ?? "ungraded"}-${index}`} data-testid="trace-chain-row">
+                    <span className="mr-2 font-mono text-[11px] uppercase tracking-wide text-card-foreground">
+                      {chain.grade ?? t(locale, "traceChainUngraded")}
+                    </span>
+                    {chain.grader !== undefined && (
+                      <span className="mr-2 text-xs text-muted-foreground">
+                        {t(locale, "traceChainGraderLabel")}: {chain.grader}
+                      </span>
+                    )}
+                    <span dir="rtl" lang="ar" className="font-arabic text-base">
+                      {chain.narrators
+                        .map((narrator) => narrator.nameAr ?? narrator.id)
+                        .join(" < ")}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   );
 }
 

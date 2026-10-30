@@ -56,6 +56,22 @@ const dhaifFixture = (slug: string, answer: string): string =>
     "event: done\ndata: {}\n\n",
   ].join("");
 
+/**
+ * A hadith whose stored chains disagree (#30, spec §9.5): the citation frame
+ * carries BOTH rows — sound through al-Bukhari, weak through al-Daraqutni — and the
+ * trace frame carries the chains-consulted block for the same child. A citation
+ * that flattened them to one grade could not render the weaker row at all.
+ */
+const CHAIN_ANSWER = "Hadits ini diriwayatkan [HR. Bukhari no. 1].";
+
+const CHAIN_FIXTURE = [
+  'event: meta\ndata: {"sessionId":"sess-e2e","messageId":"m-chain","traceId":"tr-chain"}\n\n',
+  `event: delta\ndata: ${CHAIN_ANSWER}\n\n`,
+  'event: citations\ndata: {"messageId":"m-chain","refusal":false,"dhaifWarning":false,"citations":[{"label":"HR. Bukhari no. 1","arabic":"حدثنا","machineTranslated":false,"grade":"sahih","source":"HR. Bukhari","chains":[{"narrators":[{"id":"n1","nameAr":"نافع"},{"id":"n2","nameAr":"ابن عمر"}],"grade":"sahih","grader":"al-bukhari"},{"narrators":[{"id":"n1","nameAr":"نافع"}],"grade":"dhaif","grader":"al-daraqutni"}]}]}\n\n',
+  'event: trace\ndata: {"messageId":"m-chain","sources":[{"id":"chunk-h1","source":"HR. Bukhari"}],"technical":{"intent":"factual","subQueries":["q"],"chunks":[{"id":"chunk-h1","source":"HR. Bukhari","score":0.03}],"models":["router-stub","generator-stub"],"chains":[{"childId":"chunk-h1","chains":[{"narrators":[{"id":"n1","nameAr":"نافع"},{"id":"n2","nameAr":"ابن عمر"}],"grade":"sahih","grader":"al-bukhari"},{"narrators":[{"id":"n1","nameAr":"نافع"}],"grade":"dhaif","grader":"al-daraqutni"}]}]}}\n\n',
+  "event: done\ndata: {}\n\n",
+].join("");
+
 const DHAIF_ANSWER = `Hadits tersebut diriwayatkan [HR. Malik no. 18].\n\n${DHAIF_WARNING}\n\n${DISCLAIMER}`;
 
 const DHAIF_FIXTURE = dhaifFixture("dhaif", DHAIF_ANSWER);
@@ -394,6 +410,42 @@ When(
     await page.getByTestId("send").click();
   },
 );
+
+When("I ask about a hadith whose chains disagree", async ({ page }) => {
+  await openChatWithFixtures(page, CHAIN_FIXTURE);
+  await page.getByTestId("composer").fill("Hadits tentang niat?");
+  await page.getByTestId("send").click();
+});
+
+Then("the citation sheet shows every sanad with its own grade and grader", async ({ page }) => {
+  const assistant = page.getByTestId("message-assistant").last();
+  await expect(assistant.getByTestId("citation-chip")).toHaveText("[HR. Bukhari no. 1]");
+  await page.getByTestId("citation-chip").last().click();
+  const sheet = page.getByTestId("citation-sheet");
+  // Both rows render — the weak chain is not hidden behind the sound one.
+  await expect(sheet.getByTestId("citation-chain")).toHaveCount(2);
+  await expect(sheet.getByTestId("grade-badge")).toHaveText(["sahih", "dhaif"]);
+  await expect(sheet.getByTestId("citation-grader")).toHaveText([
+    "penilai: al-bukhari",
+    "penilai: al-daraqutni",
+  ]);
+  await expect(sheet.getByTestId("citation-sanad").first()).toHaveText("نافع < ابن عمر");
+});
+
+Then("the Trace lists the chains consulted with their sanads", async ({ page }) => {
+  // The sheet is modal: the trace steps start from a closed sheet.
+  await page.keyboard.press("Escape");
+  await expect(page.getByTestId("citation-sheet")).toHaveCount(0);
+  // The panel is the message's sibling, not its descendant: the toggle sits below
+  // the feedback row.
+  await page.getByTestId("trace-toggle").last().click();
+  await page.getByTestId("trace-tech-toggle").last().click();
+  const chains = page.getByTestId("trace-chains");
+  await expect(chains).toBeVisible();
+  await expect(chains.getByTestId("trace-chain-row")).toHaveCount(2);
+  await expect(chains.getByTestId("trace-chain-row").first()).toContainText("al-bukhari");
+  await expect(chains.getByTestId("trace-chain-row").last()).toContainText("dhaif");
+});
 
 When("I ask a question whose dhaif answer wraps the canonical line in markup", async ({ page }) => {
   await openChatWithFixtures(page, DHAIF_WRAPPED_FIXTURE);
