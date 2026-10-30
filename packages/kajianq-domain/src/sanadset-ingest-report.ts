@@ -53,7 +53,7 @@ export type PilotFacts = {
     readonly foldedNames: number;
     readonly rawSurfaces: number;
     readonly foldedVariants: number;
-    readonly coverageRate: number;
+    readonly resolutionRate: number;
     readonly written: number;
     readonly variantsRecorded: number;
     readonly uncertainPairs: number;
@@ -128,8 +128,8 @@ export function buildPilotReport(options: BuildReportOptions): PilotReportDocume
       rows: plan.slice.rows,
       noSanad: plan.slice.noSanad,
       prepared: plan.slice.prepared,
-      quarantined: plan.quarantine.total,
-      quarantinedByRule: plan.quarantine.byRule,
+      quarantined: plan.slice.quarantined,
+      quarantinedByRule: plan.slice.quarantinedByRule,
     },
     narrator: {
       identityBasis: plan.narrators.identityBasis,
@@ -137,7 +137,7 @@ export function buildPilotReport(options: BuildReportOptions): PilotReportDocume
       foldedNames: plan.narrators.foldedNames,
       rawSurfaces: plan.narrators.rawSurfaces,
       foldedVariants: plan.narrators.foldedVariants,
-      coverageRate: plan.narrators.coverageRate,
+      resolutionRate: plan.narrators.coverageRate,
       written: outcome?.narratorsWritten ?? 0,
       variantsRecorded: plan.narrators.narrators.reduce(
         (total, narrator) => total + narrator.variants.length,
@@ -184,13 +184,13 @@ export function buildPilotReport(options: BuildReportOptions): PilotReportDocume
       narration: {
         mentions: facts.narrator.mentions,
         foldedNames: facts.narrator.foldedNames,
-        coverageRate: facts.narrator.coverageRate,
+        resolutionRate: facts.narrator.resolutionRate,
         identityBasis: facts.narrator.identityBasis,
         uncertainPairs: facts.narrator.uncertainPairs,
       },
       matchRate: facts.matn.matchRate,
       chains: facts.chains,
-      quarantineByRule: facts.slice.quarantinedByRule,
+      quarantineByRule: facts.quarantine.byRule,
       gate: facts.gate,
     },
   };

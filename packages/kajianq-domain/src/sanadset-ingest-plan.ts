@@ -96,7 +96,14 @@ export type ChainPlan = {
 
 export type IngestPlan = {
   readonly scope: PilotScope;
-  readonly slice: { readonly rows: number; readonly noSanad: number; readonly prepared: number };
+  readonly slice: {
+    readonly rows: number;
+    readonly noSanad: number;
+    readonly prepared: number;
+    /** Quarantined before the matn cascade: the prepare stage's own rules. */
+    readonly quarantined: number;
+    readonly quarantinedByRule: Readonly<Record<string, number>>;
+  };
   readonly groups: readonly GroupPlan[];
   readonly children: {
     /** Stored children the corpus read returned, before the collection filter. */
@@ -269,7 +276,13 @@ export async function buildSanadsetPlan(options: BuildPlanOptions): Promise<Inge
   const matchRateRows = written.length;
   return {
     scope,
-    slice: { rows: bookStats.rows, noSanad: bookStats.noSanad, prepared: scoped.length },
+    slice: {
+      rows: bookStats.rows,
+      noSanad: bookStats.noSanad,
+      prepared: scoped.length,
+      quarantined: scopedSource.length,
+      quarantinedByRule: countByRule(scopedSource),
+    },
     groups: plannedGroups,
     children: {
       read: options.children.length,
