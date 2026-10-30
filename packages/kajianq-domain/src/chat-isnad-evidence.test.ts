@@ -12,15 +12,15 @@ import type { Chunk } from "@app/rag-core";
 import type { StoreError } from "@app/infra";
 import {
   DEFAULT_CHAIN_EVIDENCE_CHILD_CAP,
-  citationBaseAddress,
   hasWeakChain,
   isnadEvidenceOf,
   readChainEvidence,
+  type ChainEvidenceStore,
+  citationBaseAddress,
   renderChainCitation,
   renderChainSegments,
   renderNarratorReliability,
-  type ChainEvidenceStore,
-} from "./chat-isnad-evidence";
+} from "./chat-isnad";
 import { renderEvidenceChunk } from "./chat-assembler";
 import { hasWeakGradeChunk } from "./chat-postprocess";
 import { chatSystemPrompt } from "./chat-prompts";

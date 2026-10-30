@@ -83,10 +83,8 @@ export const ISNAD_EVIDENCE_KEY = "isnad";
 const CHAIN_BEARING_SOURCE = "hadith";
 
 /** The label a row with no stored verdict renders under (evidence-block language). */
-export const UNGRADED_CHAIN_LABEL = "tanpa penilaian";
 
 /** The separator between the narrators of one chain, in transmission order. */
-export const SANAD_SEPARATOR = " < ";
 
 /** The metadata key naming the source type. */
 const SOURCE_TYPE_KEY = "sourceType";
@@ -173,72 +171,8 @@ function evidenceFor(chains: readonly Isnad[], narrators: readonly Narrator[]): 
 }
 
 /** The capitalised display form of a stored grade (`sahih` → `Sahih`). */
-function gradeLabel(grade: string): string {
+export function gradeLabel(grade: string): string {
   return grade.charAt(0).toUpperCase() + grade.slice(1);
-}
-
-/**
- * The citation's base address: the chunk's stored label with the flattened grade
- * parenthetical removed. With per-chain evidence present, the flattened value is
- * exactly the claim this ticket forbids — a passage whose chains disagree would
- * read as one grade — so the evidence block renders the chain's own attribution
- * instead. The address itself is untouched, so the citation gate still grounds it.
- */
-export function citationBaseAddress(citation: string): string {
-  return citation.replace(/\s*\([^()]*\)\s*$/, "").trim();
-}
-
-/**
- * One segment per chain, in stored order: `(Grade — grader; sanad: A < B)`, or
- * `(tanpa penilaian; sanad: …)` when no verdict is stored. Every chain is
- * rendered — a reader sees all of them, never the strongest — and an unresolved
- * narrator keeps the id it was stored under rather than vanishing from the chain.
- */
-export function renderChainSegments(evidence: IsnadEvidence): string[] {
-  const names = new Map(evidence.narrators.map((narrator) => [narrator.id, narrator.nameAr]));
-  return evidence.chains.map((chain) => {
-    const sequence = chain.narratorIds
-      .map((id) => names.get(id) ?? id)
-      .join(SANAD_SEPARATOR)
-      .trim();
-    const attribution =
-      chain.grade === null ? UNGRADED_CHAIN_LABEL : `${gradeLabel(chain.grade)} — ${chain.grader}`;
-    return `(${attribution}; sanad: ${sequence})`;
-  });
-}
-
-/**
- * The citation suffix the evidence block and the answer's own citations carry:
- * one parenthetical per stored chain, in stored order. Empty when the child has
- * no row (the address stands alone, exactly as v1 rendered an ungraded hadith).
- */
-export function renderChainCitation(evidence: IsnadEvidence): string {
-  const segments = renderChainSegments(evidence);
-  if (segments.length === 0) return "";
-  return `${segments.join(" ")}${evidence.moreMayExist ? ` ${MORE_CHAINS_MARKER}` : ""}`;
-}
-
-/** The marker a truncated chain list appends: the prefix is not the whole transmission. */
-export const MORE_CHAINS_MARKER = "(+ sanad lain tidak ditampilkan)";
-
-/**
- * The narrator-reliability line for the evidence block, or `""` when no narrator
- * carries a stored verdict. The line is what makes a reliability question
- * answerable from `narrators` rows: the critic, the critic's own verdict term and
- * where it was recorded, per narrator, so the answer can cite it.
- */
-export function renderNarratorReliability(evidence: IsnadEvidence): string {
-  const lines: string[] = [];
-  for (const narrator of evidence.narrators) {
-    const assessments = Object.entries(narrator.reliability).map(([critic, assessment]) => {
-      const source = assessment.sourceRef === undefined ? "" : ` — ${assessment.sourceRef}`;
-      const note = assessment.note === undefined ? "" : ` (${assessment.note})`;
-      return `${critic}: ${assessment.verdict}${source}${note}`;
-    });
-    if (assessments.length === 0) continue;
-    lines.push(`${narrator.nameAr ?? narrator.id} — ${assessments.join("; ")}`);
-  }
-  return lines.length === 0 ? "" : lines.join(" · ");
 }
 
 /**

@@ -6,7 +6,6 @@ import {
   type Retriever,
   type StoreError,
 } from "@app/rag-core";
-import type { KajianQFilters } from "./filters";
 import {
   CALLER_PRIORITY_K,
   DEFAULT_LABEL_LOOKUP_CAP,
@@ -27,6 +26,7 @@ import {
   rrfFuse,
   SEARCH_HITS_TRACE_LIMIT,
   storeFilters,
+  type KajianQFilters,
   type RetrieverStore,
   type TrackHit,
 } from "./chat-retriever-parts";

@@ -3,20 +3,18 @@ import { ChunkRefSchema, CostRecordSchema, StageSchema } from "./trace-primitive
 import { productRulesEventSchema } from "./trace-product-rules";
 import {
   callerPriorityEventSchema,
+  chainEvidenceEventSchema,
   rerankEventSchema,
   searchHitsEventSchema,
 } from "./trace-retriever";
-import { chainEvidenceEventSchema } from "./trace-chain-evidence";
 import { sourceRoutingEventSchema } from "./trace-source-routing";
 
 /**
  * Every recordable pipeline occurrence, keyed on `kind` with `detail` typed per
  * variant: an unknown `kind` or a malformed `detail` fails `v.parse` instead of
- * persisting an untyped record. The runner emits the deterministic stage-boundary
- * events; stages that call an LLM or suppress an answer append their own through
- * the run's trace sink — the single collection point. `intent.attributes` is the
- * one deliberately-opaque slot; everything else is typed. One union owns every
- * kind: `kind` is the only discriminator, so no reader branches on a module.
+ * persisting an untyped record. The runner emits the stage-boundary events; stages
+ * that call an LLM append their own through the run's trace sink. `kind` is the only
+ * discriminator, so no reader branches on a module.
  */
 export const TraceEventSchema = v.variant("kind", [
   v.object({
@@ -34,7 +32,7 @@ export const TraceEventSchema = v.variant("kind", [
     durationMs: v.optional(v.pipe(v.number(), v.minValue(0))),
     at: v.pipe(v.number(), v.integer()),
   }),
-  /** Smart Router stage 3's decision; owner `./trace-source-routing`. */
+  // Smart Router stage 3's decision; owner `./trace-source-routing`.
   sourceRoutingEventSchema,
   v.object({
     stage: v.literal("router"),
@@ -60,12 +58,10 @@ export const TraceEventSchema = v.variant("kind", [
     durationMs: v.optional(v.pipe(v.number(), v.minValue(0))),
     at: v.pipe(v.number(), v.integer()),
   }),
-  /** One raw per-sub-query × track search, beside the fused `retrieval` event;
-   * owner `./trace-retriever`. */
+  /** One raw per-sub-query × track search, beside the fused `retrieval` event. */
   searchHitsEventSchema,
   callerPriorityEventSchema, // owner: ./trace-retriever
-  /** The transmission rows retrieval read for the children in context; owner
-   * `./trace-chain-evidence`. */
+  /** The transmission rows retrieval read, owner `./trace-retriever`. */
   chainEvidenceEventSchema,
   v.object({
     stage: v.literal("assembler"),

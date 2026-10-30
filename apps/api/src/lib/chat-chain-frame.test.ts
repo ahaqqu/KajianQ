@@ -258,7 +258,7 @@ describe("narratorNamesOrEmpty — the display join degrades by omission", () =>
     const asked: (readonly string[])[] = [];
     const fetcher = narratorFetcher(
       {
-        getNarratorsByIds: (ids) => {
+        getNarratorsByIds: (ids: readonly string[]) => {
           asked.push(ids);
           return { pipe: () => ({}) } as never;
         },

@@ -12,7 +12,7 @@ import {
 import { createMemoryRagStore } from "./test-utils/memory-rag-store";
 import { relationOf, storeKeyOf } from "./filters";
 import { storeFilters } from "./chat-filter-policy";
-import { readChainEvidence } from "./chat-isnad-evidence";
+import { readChainEvidence } from "./chat-isnad";
 import { renderEvidenceChunk } from "./chat-assembler";
 
 /**

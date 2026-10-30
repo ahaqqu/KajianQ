@@ -109,12 +109,12 @@ describe("rag-store-postgres-query: a filter's derived case", () => {
 describe("rag-store-postgres-query: a filter's relation clause", () => {
   it("binds one value set per relation clause and no key parameter", () => {
     const grade = filterBindings({
-      chainGrade: { relation: "chains", on: "grade", values: ["sahih"] },
+      chainGrade: { relation: "chains", on: "grade", values: ["sound"] },
     });
     expect(grade.clauses).toEqual(["chain_grade"]);
     // No key is bound: the relation and the column are the allowlist's, not the
     // caller's, so a value set is the whole parameter list.
-    expect(grade.values).toEqual([["sahih"]]);
+    expect(grade.values).toEqual([["sound"]]);
 
     const narrator = filterBindings({
       narratorId: { relation: "chains", on: "narratorIds", values: ["n-1", "n-2"] },
@@ -136,11 +136,11 @@ describe("rag-store-postgres-query: a filter's relation clause", () => {
 
   it("keeps the slot arithmetic aligned when a relation clause follows a metadata one", () => {
     const { clauses, values } = filterBindings({
-      sourceType: ["hadith"],
-      chainGrade: { relation: "chains", on: "grade", values: ["dhaif"] },
+      sourceType: ["transmitted"],
+      chainGrade: { relation: "chains", on: "grade", values: ["weak"] },
     });
     expect(clauses).toEqual(["exact", "chain_grade"]);
-    expect(values).toEqual(["sourceType", ["hadith"], ["dhaif"]]);
+    expect(values).toEqual(["sourceType", ["transmitted"], ["weak"]]);
     const q = buildSimilarityQuery("primary", clauses);
     expect(q).toContain("metadata->>$3 = ANY($4::text[])");
     // $3/$4 are the metadata clause's two slots; the relation clause binds ONE,
@@ -155,8 +155,8 @@ describe("rag-store-postgres-query: a filter's relation clause", () => {
         chainGrade: {
           relation: "chains",
           on: "grade",
-          values: ["sahih"],
-          whenAbsent: { key: "collection", values: ["bukhari"] },
+          values: ["sound"],
+          whenAbsent: { key: "collection", values: ["fixture"] },
         } as never,
       }),
     ).toThrow(TypeError);

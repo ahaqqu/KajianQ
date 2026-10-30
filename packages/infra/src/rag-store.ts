@@ -153,15 +153,13 @@ export type MetadataFilterMatch = {
  * transmitted through, which carries its own classification and attribution.
  *
  * The relation and its columns are a **closed allowlist**, never built from input:
- * `on` names one of two relation columns and the adapter emits a fixed clause per
- * value, so no caller-supplied identifier reaches the SQL. `grade` matches a row
- * whose classification is one of the values; `narratorIds` matches a row whose
- * ordered sequence contains one of the narrator ids.
+ * the adapter emits a fixed clause per value, so no caller-supplied identifier
+ * reaches the SQL. `grade` matches a row classified by one of the values;
+ * `narratorIds` matches a row whose ordered sequence contains one of the ids.
  *
- * **A match selects the child, never one of its rows.** A child whose rows carry
- * `sahih` and `dhaif` matches a `grade: sahih` filter as a whole, so every consumer
- * presenting the evidence receives both rows — a filter may select evidence, it
- * may never drop the weaker half of what it selected.
+ * **A match selects the child, never one of its rows**: a child whose rows carry
+ * a sound and a weak row matches a `grade: sound` filter as a whole, so every
+ * consumer receives both rows — a filter may select evidence, never drop half.
  */
 export type RelationFilterMatch = {
   readonly relation: "chains";
@@ -169,10 +167,7 @@ export type RelationFilterMatch = {
   readonly values: readonly string[];
 };
 
-/**
- * One filter dimension's value: a single value, a set, a set with a derived case,
- * or a relation clause over the child's transmission rows.
- */
+/** One filter dimension's value: a value, a set, a derived case, or a relation clause. */
 export type MetadataFilterValue =
   | string
   | readonly string[]

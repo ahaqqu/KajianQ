@@ -194,15 +194,11 @@ export function createMemoryRagStore(): RagStore & {
     similaritySearch(track, embedding, opts) {
       return Effect.sync(() => {
         const vec = track === "primary" ? "embeddingPrimary" : "embeddingFallback";
+        const chainsOf = (childId: string) =>
+          [...narratorState.chains.values()].filter((chain) => chain.childId === childId);
         const rows = [...children.values()]
           .filter((c) => c[vec] !== null && c[vec] !== undefined)
-          .filter((c) =>
-            matchesMetadataFilters(
-              c.metadata ?? {},
-              opts.filters,
-              [...narratorState.chains.values()].filter((chain) => chain.childId === c.id),
-            ),
-          )
+          .filter((c) => matchesMetadataFilters(c.metadata ?? {}, opts.filters, chainsOf(c.id)))
           .map((c) => ({
             child: toReadChild(c),
             distance: 1 - cosine(embedding, (c[vec] ?? []) as readonly number[]),

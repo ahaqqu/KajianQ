@@ -13,7 +13,7 @@ import {
   isnadEvidenceOf,
   renderChainCitation,
   renderNarratorReliability,
-} from "./chat-isnad-evidence";
+} from "./chat-isnad";
 import type { KajianQFilters } from "./filters";
 
 /**

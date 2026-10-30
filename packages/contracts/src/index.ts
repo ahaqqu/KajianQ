@@ -125,7 +125,7 @@ export {
   type ChainEvidenceChild,
   type ChainEvidenceDetail,
   type ChainEvidenceRow,
-} from "./trace-chain-evidence";
+} from "./trace-retriever";
 export { describeIssue, issuePath, type ValidationIssue } from "./issue-path";
 export {
   CALLER_PRIORITY_K,
