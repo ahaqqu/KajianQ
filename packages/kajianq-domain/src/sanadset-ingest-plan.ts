@@ -39,11 +39,15 @@ import {
 export const PILOT_COLLECTIONS = ["bukhari"] as const;
 export type PilotCollection = (typeof PILOT_COLLECTIONS)[number];
 
-/** The slice's own book value and the v1 corpus collection key it reconciles against. */
+/**
+ * The slice's own book value and the corpus collection key it reconciles against.
+ * `key` names the pilot's slice; `collection` is the store's key for those children,
+ * which a fork may name differently and a test isolates per run.
+ */
 export type PilotScope = {
   readonly key: PilotCollection;
   readonly book: SliceBook;
-  readonly collection: PilotCollection;
+  readonly collection: string;
 };
 
 export const PILOT_SCOPE: PilotScope = {

@@ -8,7 +8,12 @@
 import { Effect } from "effect";
 import type { RagStore } from "@app/infra";
 import { readCollectionChildren } from "../sanadset-ingest-io";
-import { buildSanadsetPlan, PILOT_SCOPE, type IngestPlan } from "../sanadset-ingest-plan";
+import {
+  buildSanadsetPlan,
+  PILOT_SCOPE,
+  type IngestPlan,
+  type PilotScope,
+} from "../sanadset-ingest-plan";
 import { createPrepareAccumulator, SLICE_BOOKS, type SanadsetSourceRow } from "../sanadset-prepare";
 
 export const BUKHARI = SLICE_BOOKS[0];
@@ -87,7 +92,7 @@ export async function seedCorpusChild(
 export async function planFrom(
   store: RagStore,
   rows: readonly SanadsetSourceRow[],
-  options: { readonly scope?: typeof PILOT_SCOPE; readonly limit?: number } = {},
+  options: { readonly scope?: PilotScope; readonly limit?: number } = {},
 ): Promise<{ slice: ReturnType<typeof prepareRows>; plan: IngestPlan }> {
   const scope = options.scope ?? PILOT_SCOPE;
   const slice = prepareRows(rows);
