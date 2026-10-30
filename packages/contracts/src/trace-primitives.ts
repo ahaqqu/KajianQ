@@ -88,6 +88,9 @@ export type ChunkRef = v.InferOutput<typeof ChunkRefSchema>;
  */
 export const SEARCH_HITS_TRACE_LIMIT = 10;
 
+/** The most transmission rows the trace record carries per child. */
+export const CHAIN_EVIDENCE_TRACE_LIMIT = 8;
+
 /**
  * The most of the caller's own leading dense hits the caller-priority guarantee
  * may carry into the context, and the default the retriever applies. Small on

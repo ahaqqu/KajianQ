@@ -281,7 +281,7 @@ export function createKajianQRetriever(deps: KajianQRetrieverDeps): Retriever<Ka
             returned: [...inContext, ...neighbours.chunks],
             k: callerPriorityK,
             run,
-            ...chainSeamOf({
+            chains: chainSeamOf({
               store: deps.store,
               bridge: deps.bridge,
               childCap: deps.chainEvidenceChildCap,

@@ -1,5 +1,10 @@
 import * as v from "valibot";
-import { CALLER_PRIORITY_K, CostRecordSchema, SEARCH_HITS_TRACE_LIMIT } from "./trace-primitives";
+import {
+  CALLER_PRIORITY_K,
+  CHAIN_EVIDENCE_TRACE_LIMIT,
+  CostRecordSchema,
+  SEARCH_HITS_TRACE_LIMIT,
+} from "./trace-primitives";
 
 /**
  * The retriever's trace variants that do not fit in the union's own file: the
@@ -227,14 +232,6 @@ export const rerankEventSchema = v.object({
  * together, mirroring the schema's attribution constraint, so a reader can never
  * render an unattributed classification.
  */
-
-/**
- * The most rows one child's record carries — the bound the read applies per
- * child, so the event cannot persist a truncated list as if it were the whole
- * transmission. A child whose stored rows exceed it records the bound and the
- * prefix; the count is the honest signal that more exist.
- */
-export const CHAIN_EVIDENCE_TRACE_LIMIT = 8;
 
 /** One transmission row: the ordered sequence, its classification and the grader. */
 export const chainEvidenceRowSchema = v.pipe(

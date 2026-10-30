@@ -1,11 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 import { Effect } from "effect";
 import * as v from "valibot";
-import {
-  chainEvidenceDetailSchema,
-  type ChainEvidenceDetail,
-  type TraceEvent,
-} from "@app/contracts";
+import { TraceEventSchema, type ChainEvidenceDetail } from "@app/contracts";
 import type { NarratorChainRecord, NarratorIdsLookup, NarratorRecord } from "@app/infra";
 
 import type { Chunk } from "@app/rag-core";
@@ -291,11 +287,22 @@ describe("readChainEvidence — the stored transmission, never a selection", () 
         bridge,
       }),
     );
-    const parsed = v.safeParse(chainEvidenceDetailSchema, detail);
+    // Parsed through the union a reader parses: the variant is the contract, not
+    // a module the consumer names.
+    const parsed = v.safeParse(TraceEventSchema, {
+      stage: "retriever" as const,
+      kind: "chain_evidence" as const,
+      detail,
+      at: 1,
+    });
     expect(parsed.success).toBe(true);
     expect((detail as ChainEvidenceDetail).missingNarratorIds).toEqual(["n1", "n2"]);
     // The record a reader sees names the rows' ids even when no name resolved.
-    expect(parsed.success && parsed.output.children[0]?.chains[1]?.sourceRef).toBe("src");
+    if (parsed.success && parsed.output.kind === "chain_evidence") {
+      expect(parsed.output.detail.children[0]?.chains[1]?.sourceRef).toBe("src");
+    } else {
+      throw new Error("the evidence record must parse as a chain_evidence event");
+    }
   });
 });
 
