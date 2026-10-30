@@ -634,6 +634,31 @@ describe("rag-store-postgres adapter (fake runner)", () => {
     expect((err.cause as { code?: string }).code).toBe("23505");
   });
 
+  it("classifies a cardinality violation (21000) from one upsert as constraint, not transport", async () => {
+    // The payload the adapter binds names one (role, provider, model_id) twice, so the
+    // single ON CONFLICT DO UPDATE cannot affect that row a second time and the server
+    // rejects the transaction with 21000; the fake rejects it with the same shape.
+    const sql = makeFakeSql();
+    sql.transaction = () =>
+      Promise.reject(
+        Object.assign(new Error("ON CONFLICT DO UPDATE command cannot affect row a second time"), {
+          severity: "ERROR",
+          code: "21000",
+        }),
+      );
+    const store = createPostgresRagStore(sql);
+    const duplicate = { role: "generator", provider: "alpha", modelId: "m-chat", config: {} };
+    const err = await runFail(store.syncModelConfigs([duplicate, { ...duplicate }]));
+    expect(err.kind).toBe("constraint");
+    expect((err.cause as { code?: string }).code).toBe("21000");
+    // The bound JSONB payload really does carry the same key twice: that duplicate is
+    // the causality the 21000 encodes, not something the fake's rejection invents.
+    const payload = sql._calls.filter((c) => c.kind === "tag")[0]?.values[0];
+    const records = JSON.parse(String(payload)) as unknown[];
+    expect(records).toHaveLength(2);
+    expect(records[0]).toEqual(records[1]);
+  });
+
   it("classifies an auth failure (28P01) as config, not transport", async () => {
     const sql = makeBoomSql(() =>
       Object.assign(new Error("authentication failed"), {
@@ -692,14 +717,19 @@ describe("rag-store-postgres adapter (fake runner)", () => {
   it("does not SQLSTATE-classify non-Postgres errors that carry a string code (B1 guard)", async () => {
     // A Node-style ErrnoException carries `code: string` but no `severity`: it
     // is NOT a Postgres server error, so it falls to the closed transport default.
-    const sql = makeBoomSql(() =>
-      Object.assign(new Error("something went wrong"), {
-        code: "23505", // collides with unique_violation on purpose
-      }),
-    );
-    const store = createPostgresRagStore(sql);
-    const err = await runFail(store.insertDocParent({ sourceKey: "k", title: null, metadata: {} }));
-    expect(err.kind).toBe("transport");
+    // The codes collide with constraint-table entries on purpose.
+    for (const code of ["23505", "21000"]) {
+      const sql = makeBoomSql(() =>
+        Object.assign(new Error("something went wrong"), {
+          code,
+        }),
+      );
+      const store = createPostgresRagStore(sql);
+      const err = await runFail(
+        store.insertDocParent({ sourceKey: "k", title: null, metadata: {} }),
+      );
+      expect(err.kind).toBe("transport");
+    }
   });
 });
 

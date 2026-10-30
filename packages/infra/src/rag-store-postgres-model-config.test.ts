@@ -1,5 +1,6 @@
 // @requires-postgres
 import { Effect } from "effect";
+import { StoreError } from "@app/rag-core";
 import { afterAll, beforeAll, describe, expect, it } from "vite-plus/test";
 import { modelConfigDrift } from "./providers/model-config-mirror";
 import { createPostgresRagStore } from "./rag-store-postgres";
@@ -125,6 +126,23 @@ run("RagStore model-config mirror contract (real Postgres)", () => {
     await Effect.runPromise(store.syncModelConfigs([entry("m-chat")]));
     await Effect.runPromise(store.syncModelConfigs([]));
     expect(await rowsOf()).toEqual([]);
+  });
+
+  it("rejects a duplicate (role, provider, model_id) in one sync as constraint, writing nothing", async () => {
+    const kept = entry("m-chat");
+    await Effect.runPromise(store.syncModelConfigs([kept]));
+    // The same key twice in one payload: the upsert cannot affect one row a second
+    // time, so the server rejects the transaction with cardinality_violation (21000).
+    const failure = await Effect.runPromise(
+      store.syncModelConfigs([kept, entry("m-chat", "generator", 900)]).pipe(Effect.flip),
+    );
+    expect(failure).toBeInstanceOf(StoreError);
+    expect(failure.kind).toBe("constraint");
+    // The transaction rolled back: the mirror the failed sync started from is intact,
+    // with neither the duplicate nor the new payload half-applied.
+    const rows = await rowsOf();
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.config.priceMicroUsdPerMTok).toEqual({ in: 500, out: 3000 });
   });
 
   it("returns rows in the adapter's (role, provider, model) order", async () => {

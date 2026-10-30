@@ -132,13 +132,13 @@ describe("the in-memory model-config mirror", () => {
     const kept = entry("m-chat");
     await Effect.runPromise(store.syncModelConfigs([kept]));
     // The same key twice: the adapter's single ON CONFLICT DO UPDATE rejects the pair
-    // with SQLSTATE 21000 (classified `transport`), so the double must not keep the
-    // last entry and call it a sync.
+    // with SQLSTATE 21000 (cardinality_violation → `constraint`), so the double must
+    // not keep the last entry and call it a sync.
     const failure = await Effect.runPromise(
       store.syncModelConfigs([kept, entry("m-chat", "generator", 900)]).pipe(Effect.flip),
     );
     expect(failure).toBeInstanceOf(StoreError);
-    expect(failure.kind).toBe("transport");
+    expect(failure.kind).toBe("constraint");
     // The failed sync wrote nothing: the adapter's transaction rolls back, and a
     // duplicate must not half-apply a row set here either.
     const rows = await rowsOf(store);
