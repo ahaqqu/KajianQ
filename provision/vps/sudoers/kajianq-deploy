@@ -24,9 +24,12 @@
 # shared-box sweep from ahaqqu/homepage as this identity, and without the
 # diagnostics the sweep can only warn that the config is unverifiable.
 #
-# Both sets are temporary. When KajianQ's deploy switches to `vps-deploy
-# kajianq`, the four legacy commands are removed; this grant is then the helper
-# invocation and the diagnostics every app's grant carries.
+# Only the restart line is scheduled for removal. When KajianQ's deploy
+# switches to `vps-deploy kajianq`, the helper restarts kajianq-api.service
+# itself, so /usr/bin/systemctl restart kajianq-api.service goes. The cron
+# start stays because deploy.sh still fires the session-reclamation oneshot
+# after the swap, and the two read-only diagnostics stay for the doctor gate
+# every deploy ends with.
 #
 # Exact commands, absolute binary paths, no wildcards: wildcard arguments in
 # sudoers are the classic privilege-escalation footgun. What this grant does NOT
