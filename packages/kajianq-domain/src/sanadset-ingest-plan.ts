@@ -1,18 +1,12 @@
 /**
  * The S2 pilot plan: what one collection's slice writes, computed before anything
- * is written.
- *
- * The plan is the dry run's output and the write path's input, so the two cannot
- * disagree about what will happen. It applies the S1 rules unchanged — the
- * pre-registered thresholds, the book-scoped group book, the quarantine rules — and
- * adds the one decision the study left to S2: which stored child of the same
- * collection each matn group attaches to, or that it attaches to a new child. A
- * group whose target is ambiguous is quarantined whole, so the ambiguity is visible
- * in the report, not in a chain on the wrong narration.
- *
- * Nothing here reads the environment, the archive or the store: the caller supplies
- * the prepared slice and the collection's stored children, which is what lets the
- * dry run, the gated suite and the real run share one definition of the plan.
+ * is written. It is the dry run's output and the write path's input, so a run and
+ * the plan the operator approved cannot disagree. It applies the S1 rules and adds
+ * one decision: which stored child of the same collection a matn group attaches
+ * to, or that it attaches to a new child; a group whose target is ambiguous is
+ * quarantined whole. It reads neither the environment nor the store — the caller
+ * supplies the slice and the stored children — so the dry run and the gated suite
+ * share one definition of the plan.
  */
 
 import { runMatnCascade } from "./sanadset-cascade";
@@ -37,15 +31,13 @@ import {
 
 /** The one collection this pilot ingests; a full run grows this list, not the code path. */
 export const PILOT_COLLECTIONS = ["bukhari"] as const;
-export type PilotCollection = (typeof PILOT_COLLECTIONS)[number];
 
 /**
- * The slice's own book value and the corpus collection key it reconciles against.
- * `key` names the pilot's slice; `collection` is the store's key for those children,
- * which a fork may name differently and a test isolates per run.
+ * The slice's own book and the corpus collection key it reconciles against: `key`
+ * names the pilot's slice, `collection` the store's key for those children.
  */
 export type PilotScope = {
-  readonly key: PilotCollection;
+  readonly key: (typeof PILOT_COLLECTIONS)[number];
   readonly book: SliceBook;
   readonly collection: string;
 };
@@ -77,7 +69,6 @@ export type GroupPlan = {
   readonly target: MatnTarget;
 };
 
-/** A child this run creates: one matn group, under the pilot's parent for the collection. */
 export type NewChildPlan = {
   readonly ordinal: number;
   readonly groupId: number;
@@ -135,7 +126,6 @@ export type BuildPlanOptions = {
   readonly scope: PilotScope;
   /** The prepared slice, both books; the builder filters to the scope. */
   readonly rows: readonly PreparedRow[];
-  /** Prepare-stage quarantines, both books; the builder filters to the scope. */
   readonly sourceQuarantined: readonly QuarantinedRow[];
   readonly stats: PrepareStats;
   readonly children: readonly ExistingChildRow[];
