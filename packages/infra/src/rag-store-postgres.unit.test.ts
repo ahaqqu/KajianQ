@@ -634,6 +634,25 @@ describe("rag-store-postgres adapter (fake runner)", () => {
     expect((err.cause as { code?: string }).code).toBe("23505");
   });
 
+  it("classifies a cardinality violation (21000) from one upsert as constraint, not transport", async () => {
+    // A sync payload naming one (role, provider, model_id) twice: the single
+    // ON CONFLICT DO UPDATE cannot affect that row a second time, so the server
+    // rejects the transaction deterministically — the same payload fails identically.
+    const sql = makeFakeSql();
+    sql.transaction = () =>
+      Promise.reject(
+        Object.assign(new Error("ON CONFLICT DO UPDATE command cannot affect row a second time"), {
+          severity: "ERROR",
+          code: "21000",
+        }),
+      );
+    const store = createPostgresRagStore(sql);
+    const duplicate = { role: "generator", provider: "alpha", modelId: "m-chat", config: {} };
+    const err = await runFail(store.syncModelConfigs([duplicate, { ...duplicate }]));
+    expect(err.kind).toBe("constraint");
+    expect((err.cause as { code?: string }).code).toBe("21000");
+  });
+
   it("classifies an auth failure (28P01) as config, not transport", async () => {
     const sql = makeBoomSql(() =>
       Object.assign(new Error("authentication failed"), {
@@ -692,14 +711,19 @@ describe("rag-store-postgres adapter (fake runner)", () => {
   it("does not SQLSTATE-classify non-Postgres errors that carry a string code (B1 guard)", async () => {
     // A Node-style ErrnoException carries `code: string` but no `severity`: it
     // is NOT a Postgres server error, so it falls to the closed transport default.
-    const sql = makeBoomSql(() =>
-      Object.assign(new Error("something went wrong"), {
-        code: "23505", // collides with unique_violation on purpose
-      }),
-    );
-    const store = createPostgresRagStore(sql);
-    const err = await runFail(store.insertDocParent({ sourceKey: "k", title: null, metadata: {} }));
-    expect(err.kind).toBe("transport");
+    // The codes collide with constraint-table entries on purpose.
+    for (const code of ["23505", "21000"]) {
+      const sql = makeBoomSql(() =>
+        Object.assign(new Error("something went wrong"), {
+          code,
+        }),
+      );
+      const store = createPostgresRagStore(sql);
+      const err = await runFail(
+        store.insertDocParent({ sourceKey: "k", title: null, metadata: {} }),
+      );
+      expect(err.kind).toBe("transport");
+    }
   });
 });
 

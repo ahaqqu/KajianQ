@@ -72,6 +72,7 @@ const SQLSTATE_KINDS: Record<string, "config" | "constraint" | "not_found"> = {
   "42703": "config", // undefined_column (schema drifted)
   "42P01": "config", // undefined_table (schema drifted)
   // Constraint-class: deterministic data rejection — fix the data, no retry.
+  "21000": "constraint", // cardinality_violation (one upsert payload names a row key twice)
   "23505": "constraint", // unique_violation
   "23503": "constraint", // foreign_key_violation
   "23514": "constraint", // check_violation

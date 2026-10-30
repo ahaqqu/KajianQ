@@ -13,10 +13,11 @@ import { modelConfigKey, StoreError, type ModelConfigRecord, type RagStore } fro
  * transaction.
  *
  * Two entries sharing a `(role, provider, model_id)` key are refused, not collapsed:
- * the adapter's single `ON CONFLICT DO UPDATE` rejects that pair with SQLSTATE 21000,
- * which the driver's taxonomy classifies as `transport`. Last-wins here would accept
- * input the deployment cannot, the one way this double could be more forgiving than
- * the store it stands in for.
+ * the adapter's single `ON CONFLICT DO UPDATE` rejects that pair with SQLSTATE 21000
+ * (cardinality_violation), which the driver's taxonomy classifies as `constraint` — a
+ * deterministic rejection the data must fix, not a retryable one. Last-wins here would
+ * accept input the deployment cannot, the one way this double could be more forgiving
+ * than the store it stands in for.
  */
 export type MemoryModelConfigState = {
   rows: Map<string, ModelConfigRecord>;
@@ -46,7 +47,7 @@ export function memoryModelConfigMethods(state: MemoryModelConfigState): MemoryM
           if (seen.has(key)) {
             return Effect.fail(
               new StoreError({
-                kind: "transport",
+                kind: "constraint",
                 cause: new Error(
                   `model_configs sync: duplicate key ${key}: ` +
                     "ON CONFLICT DO UPDATE command cannot affect row a second time",
