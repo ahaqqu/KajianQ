@@ -5,14 +5,26 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { RagStore } from "@app/infra";
 import { hashFile } from "./sanadset-csv";
-import { readCollectionChildren } from "./sanadset-ingest-io";
-import { buildSanadsetPlan, PILOT_SCOPE } from "./sanadset-ingest-plan";
+import { PILOT_SCOPE } from "./sanadset-ingest-plan";
 import { assertPilotReportPath } from "./sanadset-ingest-report-write";
 import { runSanadsetIngest } from "./sanadset-ingest-run";
 import { executeIngestPlan } from "./sanadset-ingest-write";
 import { IngestGateRefusal, assertIngestGate } from "./sanadset-snapshot-gate";
-import { createPrepareAccumulator, SLICE_BOOKS, type SanadsetSourceRow } from "./sanadset-prepare";
+import {
+  BUKHARI,
+  ESCAPE_GATE,
+  MATN_A,
+  MATN_B,
+  MATN_C,
+  chainLiteral,
+  planFrom,
+  seedCorpusChild,
+  sourceRow,
+} from "./test-utils/sanadset-pilot-fixture";
 import { createMemoryRagStore } from "./test-utils/memory-rag-store";
+
+const TMP = mkdtempSync(join(tmpdir(), "sanadset-pilot-test-"));
+afterAll(() => rmSync(TMP, { recursive: true, force: true }));
 
 /**
  * Test intent, named before the assertions:
@@ -27,80 +39,6 @@ import { createMemoryRagStore } from "./test-utils/memory-rag-store";
  * - trap: the same name written under two identity keys must stay two narrators, and a
  *   later variant must extend one of them, not create a third.
  */
-
-const BUKHARI = SLICE_BOOKS[0];
-const MATN_A =
-  "إنما الأعمال بالنيات وإنما لكل امرئ ما نوى فمن كانت هجرته إلى الله ورسوله فهجرته إلى الله ورسوله";
-const MATN_B = "من حسن إسلام المرء تركه ما لا يعنيه";
-const MATN_C = "لا يؤمن أحدكم حتى يحب لأخيه ما يحب لنفسه";
-
-const TMP = mkdtempSync(join(tmpdir(), "sanadset-pilot-test-"));
-afterAll(() => rmSync(TMP, { recursive: true, force: true }));
-
-function chainLiteral(names: readonly string[]): string {
-  return `"${`[${names.map((name) => `'${name}'`).join(", ")}]`}"`;
-}
-
-function sourceRow(overrides: Partial<SanadsetSourceRow> = {}): SanadsetSourceRow {
-  return {
-    rowIndex: 0,
-    book: BUKHARI,
-    hadithNumber: "1",
-    hadith: "<SANAD>x</SANAD> <MATN>y</MATN>",
-    matn: MATN_A,
-    sanad: `['مالك بن أنس', 'نافع']`,
-    sanadLength: 2,
-    ...overrides,
-  };
-}
-
-function prepareRows(rows: readonly SanadsetSourceRow[]) {
-  const accumulator = createPrepareAccumulator();
-  for (const row of rows) accumulator.push(row);
-  return accumulator.finish();
-}
-
-async function seedCorpusChild(store: RagStore, textRaw: string, ord: number): Promise<string> {
-  const parentId = await Effect.runPromise(
-    store.insertDocParent({
-      sourceKey: ["hadith", "bukhari", "section", "1"].join("/"),
-      title: "Bukhari — book 1",
-      metadata: { sourceType: "hadith", collection: "bukhari" },
-    }),
-  );
-  const ids = await Effect.runPromise(
-    store.insertDocChildren([
-      {
-        parentId,
-        textRaw,
-        textAr: textRaw,
-        textId: null,
-        citation: { sourceType: "hadith", collection: "bukhari", hadithNo: String(ord) },
-        embeddingPrimary: null,
-        embeddingFallback: null,
-        ordinal: ord,
-        metadata: { sourceType: "hadith", collection: "bukhari", hadithNo: String(ord) },
-      },
-    ]),
-  );
-  return ids[0] as string;
-}
-
-async function planFrom(store: RagStore, rows: readonly SanadsetSourceRow[]) {
-  const slice = prepareRows(rows);
-  const children = await readCollectionChildren({ store, collection: "bukhari", limit: 100 });
-  return {
-    slice,
-    plan: await buildSanadsetPlan({
-      scope: PILOT_SCOPE,
-      rows: slice.prepared,
-      sourceQuarantined: slice.quarantined,
-      stats: slice.stats,
-      children: children.children,
-      childrenCapHit: children.capHit,
-    }),
-  };
-}
 
 describe("the pilot write path", () => {
   it("refuses a refused gate before writing and before opening the archive", async () => {
@@ -135,7 +73,7 @@ describe("the pilot write path", () => {
 
   it("writes narrators, book-scoped children and grade-less chains", async () => {
     const store = createMemoryRagStore();
-    const storedChild = await seedCorpusChild(store, MATN_A, 0);
+    const storedChild = await seedCorpusChild(store, MATN_A);
     const { plan } = await planFrom(store, [
       sourceRow({ rowIndex: 0 }),
       sourceRow({ rowIndex: 1, hadithNumber: "2", matn: MATN_B, sanadLength: 2 }),
@@ -203,7 +141,7 @@ describe("the pilot write path", () => {
 
   it("converges on a rerun and on a new run id: no duplicate narrator, child or chain", async () => {
     const store = createMemoryRagStore();
-    await seedCorpusChild(store, MATN_A, 0);
+    await seedCorpusChild(store, MATN_A);
     const rows = [
       sourceRow({ rowIndex: 0 }),
       sourceRow({ rowIndex: 1, hadithNumber: "2", matn: MATN_C, sanadLength: 2 }),
@@ -271,7 +209,7 @@ describe("the pilot write path", () => {
       csvPath,
       [
         "Hadith,Book,Num_hadith,Matn,Sanad,Sanad_Length",
-        `x,${BUKHARI},1,${MATN_A},${chainLiteral(["مالك بن أنس", "نافع"])},2`,
+        `x,${BUKHARI},1,${MATN_A},"${chainLiteral(["مالك بن أنس", "نافع"])}",2`,
       ].join("\n") + "\n",
       "utf8",
     );
@@ -308,8 +246,8 @@ describe("the pilot write path", () => {
       csvPath,
       [
         "Hadith,Book,Num_hadith,Matn,Sanad,Sanad_Length",
-        `x,${BUKHARI},1,${MATN_A},${chainLiteral(["مالك بن أنس", "نافع"])},2`,
-        `y,${BUKHARI},2,${MATN_B},${chainLiteral(["سالم", "عبد الله بن عمر"])},2`,
+        `x,${BUKHARI},1,${MATN_A},"${chainLiteral(["مالك بن أنس", "نافع"])}",2`,
+        `y,${BUKHARI},2,${MATN_B},"${chainLiteral(["سالم", "عبد الله بن عمر"])}",2`,
       ].join("\n") + "\n",
       "utf8",
     );
