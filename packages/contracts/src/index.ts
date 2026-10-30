@@ -35,10 +35,18 @@ export {
   type ChatSessionMessages,
 } from "./chat";
 export {
+  ChatChainNarratorSchema,
+  ChatChainSchema,
+  type ChatChain,
+  type ChatChainNarrator,
+} from "./chat-chain";
+export {
+  ChatTraceChainSchema,
   ChatTraceChunkSchema,
   ChatTraceFrameSchema,
   ChatTraceReviewerItemSchema,
   ChatTraceReviewerSchema,
+  type ChatTraceChain,
   type ChatTraceChunk,
   type ChatTraceFrame,
   type ChatTraceReviewer,

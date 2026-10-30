@@ -1,4 +1,5 @@
 import * as v from "valibot";
+import { ChatChainSchema } from "./chat-chain";
 import { sourceRoutingDetailSchema } from "./trace-source-routing";
 
 /**
@@ -63,6 +64,24 @@ export const ChatTraceReviewerSchema = v.object({
 export type ChatTraceReviewer = v.InferOutput<typeof ChatTraceReviewerSchema>;
 
 /**
+ * One consulted child's transmission rows, projected from the persisted
+ * `chain_evidence` event: the child the rows transmit, the rows themselves (every
+ * one the read returned, in its order), and whether the read bounded the list.
+ *
+ * The panel lists the chains **consulted**, not a selection: a child with no row
+ * is absent here rather than shown with an invented one, and the event's
+ * `consulted` count stays on the trace for a reader that needs to know the read
+ * covered more children than hold rows.
+ */
+export const ChatTraceChainSchema = v.object({
+  childId: v.pipe(v.string(), v.minLength(1)),
+  chains: v.array(ChatChainSchema),
+  moreMayExist: v.optional(v.boolean()),
+});
+
+export type ChatTraceChain = v.InferOutput<typeof ChatTraceChainSchema>;
+
+/**
  * The user-facing Trace payload: how an answer was built, in two layers, both
  * derived SERVER-SIDE from the answer's persisted trace (`answer_traces`) — the
  * client renders the frame, never reconstructing pipeline machinery. The top
@@ -111,6 +130,13 @@ export const ChatTraceFrameSchema = v.object({
     models: v.array(v.pipe(v.string(), v.minLength(1))),
     /** The reviewer pre-gate's verdict, when the persisted trace recorded one. */
     reviewer: v.optional(ChatTraceReviewerSchema),
+    /**
+     * The transmission rows retrieval consulted, grouped by child, from the
+     * trace's own `chain_evidence` event. Absent means the run recorded no such
+     * read; an empty list means the read ran and found no row — two different
+     * facts the panel distinguishes.
+     */
+    chains: v.optional(v.array(ChatTraceChainSchema)),
   }),
 });
 

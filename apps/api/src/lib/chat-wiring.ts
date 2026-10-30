@@ -22,7 +22,7 @@ import {
 export { authGuard } from "./auth";
 // Re-exported so the chat route keeps its import count within the agentic cap.
 export { answerFramesFor, rehydrateTranscript } from "./chat-citations";
-export { chunkFetcher, traceRefused } from "./chat-trace";
+export { chunkFetcher, narratorFetcher, traceRefused } from "./chat-trace";
 export {
   ChatConfigError,
   createRagStoreFromEnv,

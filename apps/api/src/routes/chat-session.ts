@@ -12,6 +12,7 @@ import {
   authGuard,
   buildStoreWiring,
   chunkFetcher,
+  narratorFetcher,
   rehydrateTranscript,
   wiringOr503,
 } from "../lib/chat-wiring";
@@ -108,6 +109,7 @@ export const chatSessionRoutes = newRouter().get(
       getTrace: async (traceId) =>
         (await runStore(fullStore.getAnswerTraceById(traceId))) as Trace | null,
       fetchChunks: chunkFetcher(fullStore, runStore),
+      fetchNarrators: narratorFetcher(fullStore, runStore),
       warn: (msg, fields) => logger.warn(msg, fields),
     });
     return c.json(payload);
