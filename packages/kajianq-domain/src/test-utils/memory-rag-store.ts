@@ -15,6 +15,7 @@ import {
   memoryAdminMethods,
   memoryAuthMethods,
   memoryChatMethods,
+  memoryCorpusDeletionMethods,
   memoryEvalMethods,
   memoryFeedbackMethods,
   memoryModelConfigMethods,
@@ -51,14 +52,14 @@ export function createMemoryRagStore(): RagStore & {
     outcome: unknown;
   }[];
   allFeedback: () => readonly (FeedbackInsert & { id: string })[];
-  /** The append-only admin access log, in append order (test introspection). */
   allAdminAccess: () => readonly MemoryAdminAccessRecord[];
-  /** The model-config mirror, sorted like the adapter's read (test introspection). */
   allModelConfigs: () => readonly ModelConfigRecord[];
-  /** Seed one narrator row (the seam has no ingestion writes yet). */
+  /** Seed one narrator row directly, as a corpus fixture would. */
   seedNarrator: (narrator: NarratorRecord) => void;
-  /** Seed one chain row; `seq` is its store-assigned insertion order in the neutral read. */
+  /** Seed one chain row; `seq` is its store-assigned insertion order. */
   seedChain: (chain: SeededChain) => void;
+  allNarrators: () => readonly NarratorRecord[];
+  allChains: () => readonly SeededChain[];
   cosineSearch: (
     track: "primary" | "fallback",
     query: readonly number[],
@@ -129,15 +130,12 @@ export function createMemoryRagStore(): RagStore & {
     rows: modelConfigRows,
     now: () => Date.now(),
   });
-  // The narrator/chain state is held above the method spread because the
-  // similarity search reads the same chains: a relation filter selects the child
-  // by the rows attached to it, so the double must answer from one state.
   const narratorState = {
     narrators: new Map<string, NarratorRecord>(),
     chains: new Map<string, SeededChain>(),
+    childExists: (id: string) => children.has(id),
   };
   const narratorMethods = memoryNarratorMethods(narratorState);
-
   const cosine = (a: readonly number[], b: readonly number[]): number => {
     let dot = 0;
     let na = 0;
@@ -149,11 +147,11 @@ export function createMemoryRagStore(): RagStore & {
     }
     return dot / (Math.sqrt(na) * Math.sqrt(nb) || 1);
   };
-
   const store: RagStore = {
     ...adminMethods,
     ...modelConfigMethods,
     ...narratorMethods,
+    ...memoryCorpusDeletionMethods(narratorState, children, childByPos),
     insertDocParent(input) {
       return Effect.sync(() => {
         seq += 1;
@@ -292,6 +290,8 @@ export function createMemoryRagStore(): RagStore & {
     allModelConfigs: modelConfigMethods.allModelConfigs,
     seedNarrator: narratorMethods.seedNarrator,
     seedChain: narratorMethods.seedChain,
+    allNarrators: narratorMethods.allNarrators,
+    allChains: narratorMethods.allChains,
     cosineSearch: (track, query, limit) =>
       Effect.runPromise(store.similaritySearch(track, query, { limit })),
   };

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 import { lshBandKeys, minhashSignature } from "./sanadset-blocking";
 import { buildMatnPairCandidates, type StudyPair } from "./sanadset-pairs";
 import { matnTrigrams } from "./sanadset-text";
+import { matnKeyOf } from "./sanadset-ingest-content";
 import type { PreparedRow } from "./sanadset-prepare";
 
 /**
@@ -30,6 +31,7 @@ function row(
     book,
     hadithNumber: String(rowIndex),
     rawMatn,
+    matnKey: matnKeyOf(rawMatn),
     normalizedMatn,
     trigrams,
     signature,

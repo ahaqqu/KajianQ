@@ -1,9 +1,18 @@
 import type { StoreError } from "@app/rag-core";
 import type { Effect } from "effect";
+import type { RagStoreNarratorWrites } from "./rag-store-narrator-write-seam";
+
+export type {
+  NarratorChainInsert,
+  NarratorUpsert,
+  RagStoreNarratorWrites,
+} from "./rag-store-narrator-write-seam";
+export { chainWriteProblem, narratorWriteProblem } from "./rag-store-narrator-write-seam";
 
 /**
  * Narrator/graph half of the `RagStore` seam: the read surface over the
- * narrator catalogue and the ordered narrator chains attached to a child chunk.
+ * narrator catalogue and the ordered narrator chains attached to a child chunk,
+ * plus the write surface that makes a re-run harmless (the `*Writes` half).
  *
  * The names here are **role names plus the domain columns the pack's rows carry**:
  * the engine stores and returns rows it never interprets, and the domain pack binds
@@ -123,7 +132,7 @@ export type ChainPage = {
   nextAfterId: string | null;
 };
 
-export interface RagStoreNarrators {
+export interface RagStoreNarrators extends RagStoreNarratorWrites {
   /**
    * Narrators whose canonical name **or** any recorded variant equals `name`, at
    * most `limit` rows, in `id` order. The match is exact and unnormalised: folding

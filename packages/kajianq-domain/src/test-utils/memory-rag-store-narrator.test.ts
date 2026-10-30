@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 import { Effect } from "effect";
+import { StoreError } from "@app/infra";
 import { NarratorShapeError } from "../narrator";
 import { createMemoryRagStore } from "./memory-rag-store";
 
@@ -199,5 +200,96 @@ describe("the memory double's chain reads", () => {
     expect(
       await Effect.runPromise(store.listChainsByCollection("collection-a", { limit: 0 })),
     ).toEqual({ rows: [], nextAfterId: null });
+  });
+});
+
+describe("the memory double's chain writes", () => {
+  async function storeWithWritableChild() {
+    const store = createMemoryRagStore();
+    const parentId = await Effect.runPromise(
+      store.insertDocParent({ sourceKey: "p", title: "p", metadata: {} }),
+    );
+    const ids = await Effect.runPromise(
+      store.insertDocChildren([
+        {
+          parentId,
+          textRaw: "t",
+          textAr: "t",
+          textId: null,
+          citation: {},
+          embeddingPrimary: null,
+          embeddingFallback: null,
+          ordinal: 0,
+          metadata: {},
+        },
+      ]),
+    );
+    const narratorId = await Effect.runPromise(
+      store.upsertNarrator({ identityKey: "identity:one", canonicalNameAr: "نافع" }),
+    );
+    return { store, childId: ids[0] as string, narratorId: narratorId.id };
+  }
+
+  it("refuses a chain whose child does not exist, as the foreign key does", async () => {
+    const { store, narratorId } = await storeWithWritableChild();
+    const error = await Effect.runPromise(
+      Effect.flip(
+        store.insertNarratorChains([
+          {
+            childId: "missing-child",
+            collection: "c",
+            narratorIds: [narratorId],
+            grade: null,
+            grader: null,
+            sourceRef: "s:1",
+          },
+        ]),
+      ),
+    );
+    expect(error).toBeInstanceOf(StoreError);
+    expect((error as StoreError).kind).toBe("constraint");
+    expect(store.allChains()).toHaveLength(0);
+  });
+
+  it("refuses a grade outside CONTEXT.md's four, as the CHECK does", async () => {
+    const { store, childId, narratorId } = await storeWithWritableChild();
+    const error = await Effect.runPromise(
+      Effect.flip(
+        store.insertNarratorChains([
+          {
+            childId,
+            collection: "c",
+            narratorIds: [narratorId],
+            grade: "rank-a",
+            grader: "grader-a",
+            sourceRef: "s:1",
+          },
+        ]),
+      ),
+    );
+    expect(error).toBeInstanceOf(StoreError);
+    expect((error as StoreError).kind).toBe("constraint");
+    expect(store.allChains()).toHaveLength(0);
+  });
+
+  it("refuses a batch that repeats a source address, as one statement would", async () => {
+    const { store, childId, narratorId } = await storeWithWritableChild();
+    const row = {
+      childId,
+      collection: "c",
+      narratorIds: [narratorId],
+      grade: null,
+      grader: null,
+      sourceRef: "s:1",
+    };
+    const error = await Effect.runPromise(
+      Effect.flip(store.insertNarratorChains([row, { ...row }])),
+    );
+    expect(error).toBeInstanceOf(StoreError);
+    expect((error as StoreError).kind).toBe("constraint");
+    expect(store.allChains()).toHaveLength(0);
+
+    await Effect.runPromise(store.insertNarratorChains([row]));
+    expect(store.allChains()).toHaveLength(1);
   });
 });

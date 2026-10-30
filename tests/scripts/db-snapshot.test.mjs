@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 import {
+  SNAPSHOT_TABLES,
   carriesPersonalData,
   isCorpusTable,
   isPersonalDataTable,
@@ -86,6 +87,18 @@ describe("createSnapshotStore", () => {
 });
 
 describe("corpus vs ledger classification", () => {
+  it("records the narrator evidence a v2 ingest writes in the manifest", () => {
+    // A post-ingest manifest is the pilot's evidence; a missing count would hide
+    // the rows the run added even though the dump carried them.
+    for (const table of ["narrators", "narrator_chains"]) {
+      expect(SNAPSHOT_TABLES, table).toContain(table);
+    }
+    // Derived evidence, not the source corpus: a reconciling rerun may move it,
+    // so it is reported but not drift-checked.
+    expect(isCorpusTable("narrators")).toBe(false);
+    expect(isCorpusTable("narrator_chains")).toBe(false);
+  });
+
   it("treats the corpus and its schema identity as strict", () => {
     for (const table of ["doc_parents", "doc_children", "aligned_pairs", "schema_migrations"]) {
       expect(isCorpusTable(table), table).toBe(true);

@@ -16,11 +16,20 @@ const TABLE_COUNTS_SQL =
   "'SELECT count(*) AS c FROM ' || quote_ident(relname), false, true, '')))[1]::text " +
   "FROM pg_stat_user_tables ORDER BY relname";
 
-/** Tables whose exact row counts are recorded in a snapshot manifest. */
-const SNAPSHOTABLE = [
+/**
+ * Tables whose exact row counts are recorded in a snapshot manifest.
+ *
+ * `narrators` and `narrator_chains` are the derived transmission evidence a v2
+ * ingest writes; the whole-database dump always carried them, but without the
+ * counts here the manifest cannot show what an ingest added, which is the
+ * evidence a post-ingest snapshot is taken for.
+ */
+export const SNAPSHOT_TABLES = [
   "doc_parents",
   "doc_children",
   "aligned_pairs",
+  "narrators",
+  "narrator_chains",
   "eval_runs",
   "eval_results",
   "answer_traces",
@@ -33,17 +42,19 @@ const SNAPSHOTABLE = [
 ];
 
 /**
- * The subset of `SNAPSHOTABLE` that must match a manifest exactly on `verify`.
+ * The subset of `SNAPSHOT_TABLES` that must match a manifest exactly on `verify`.
  *
  * These are the corpus and its schema identity. The remaining tables are
  * append-only ledger rows that legitimately grow the moment any chat or smoke
  * run touches the store, so a snapshot taken before that traffic would
- * otherwise look corrupt.
+ * otherwise look corrupt. The narrator tables are derived rather than the
+ * source corpus: an ingest may reconcile its own rows between two snapshots, so
+ * their drift is reported in the manifest but not treated as corruption.
  */
 const CORPUS_TABLES = ["doc_parents", "doc_children", "aligned_pairs", "schema_migrations"];
 
 /**
- * The subset of `SNAPSHOTABLE` that carries personal data (ADR-0043 decision 5).
+ * The subset of `SNAPSHOT_TABLES` that carries personal data (ADR-0043 decision 5).
  *
  * Named here so the CLI can say — in the manifest and in the create banner —
  * whether an archive carries personal data, rather than leaving a reader to
@@ -110,7 +121,7 @@ export function tableCounts(url) {
   const counts = {};
   for (const line of sql(url, TABLE_COUNTS_SQL).split("\n")) {
     const [name, n] = line.split("|");
-    if (name && SNAPSHOTABLE.includes(name)) counts[name] = Number(n);
+    if (name && SNAPSHOT_TABLES.includes(name)) counts[name] = Number(n);
   }
   return counts;
 }

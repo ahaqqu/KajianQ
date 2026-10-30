@@ -3,6 +3,7 @@ import { createCallBudget, ModelCallCeilingError } from "./sanadset-budget";
 import { lshBandKeys, minhashSignature } from "./sanadset-blocking";
 import { runMatnCascade } from "./sanadset-cascade";
 import { measureCrossBookJoins } from "./sanadset-cascade-cross-book";
+import { matnKeyOf } from "./sanadset-ingest-content";
 import type { PreparedRow } from "./sanadset-prepare";
 
 /**
@@ -35,6 +36,7 @@ function prepared(
     book,
     hadithNumber: String(rowIndex),
     rawMatn,
+    matnKey: matnKeyOf(rawMatn),
     normalizedMatn: normalized ?? `norm-${rowIndex}`,
     trigrams,
     signature,

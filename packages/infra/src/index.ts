@@ -82,10 +82,14 @@ export {
 export { type RagStoreCorpus } from "./rag-store-corpus-seam";
 export {
   canonicalNarratorId,
+  chainWriteProblem,
+  narratorWriteProblem,
   type ChainPage,
+  type NarratorChainInsert,
   type NarratorChainRecord,
   type NarratorIdsLookup,
   type NarratorRecord,
+  type NarratorUpsert,
   type RagStoreNarrators,
 } from "./rag-store-narrator-seam";
 export {

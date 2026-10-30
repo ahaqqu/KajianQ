@@ -21,7 +21,7 @@ import { sqlEffect, type SqlRunner } from "./rag-store-postgres-errors";
  */
 
 /** A narrator row with the driver's snake_case column names. */
-type NarratorRow = {
+export type NarratorRow = {
   id: string;
   canonical_name_ar: string;
   name_variants: string[] | null;
@@ -44,7 +44,7 @@ type ChainRow = {
   source_ref: string | null;
 };
 
-function rowToNarrator(row: NarratorRow): NarratorRecord {
+export function rowToNarrator(row: NarratorRow): NarratorRecord {
   return {
     id: row.id,
     canonicalNameAr: row.canonical_name_ar,
