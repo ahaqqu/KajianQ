@@ -187,7 +187,14 @@ export { CALLER_PRIORITY_ORIGIN } from "./chat-caller-priority";
 export { hierarchyBonus, rrfFuse, RRF_K, HIERARCHY_BONUS } from "./chat-fusion";
 // The store-facing half of stage 3: the exhaustive dimension map, the loud
 // unexpressible-dimension failure, and the per-dimension relaxation order.
-export { FILTER_DIMENSIONS, ROUTABLE_SOURCES, type RoutableSource } from "./filters";
+export {
+  FILTER_DIMENSIONS,
+  ROUTABLE_SOURCES,
+  relationOf,
+  storeKeyOf,
+  type FilterBinding,
+  type RoutableSource,
+} from "./filters";
 export {
   FilterNotExpressibleError,
   RELAXATION_ORDER,

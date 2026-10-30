@@ -147,20 +147,63 @@ export type MetadataFilterMatch = {
   whenAbsent?: { key: string; values: readonly string[] };
 };
 
-/** One filter dimension's value: a single value, a set, or a set with a derived case. */
-export type MetadataFilterValue = string | readonly string[] | MetadataFilterMatch;
+/**
+ * One filter matched against the **transmission rows attached to a child** rather
+ * than the child's own metadata: the ordered narrator sequence a passage was
+ * transmitted through, which carries its own classification and attribution.
+ *
+ * The relation and its columns are a **closed allowlist**, never built from input:
+ * `on` names one of two relation columns and the adapter emits a fixed clause per
+ * value, so no caller-supplied identifier reaches the SQL. `grade` matches a row
+ * whose classification is one of the values; `narratorIds` matches a row whose
+ * ordered sequence contains one of the narrator ids.
+ *
+ * **A match selects the child, never one of its rows.** A child whose rows carry
+ * `sahih` and `dhaif` matches a `grade: sahih` filter as a whole, so every consumer
+ * presenting the evidence receives both rows — a filter may select evidence, it
+ * may never drop the weaker half of what it selected.
+ */
+export type RelationFilterMatch = {
+  readonly relation: "chains";
+  readonly on: "grade" | "narratorIds";
+  readonly values: readonly string[];
+};
 
 /**
- * Read one filter value into its match shape: a single value becomes a one-element
- * set, a set is copied, and a match passes through unchanged. The seam's one reader
- * for the union's three spellings, so the adapter, the in-memory double and the
- * retriever's tests cannot disagree about how a value arrives.
+ * One filter dimension's value: a single value, a set, a set with a derived case,
+ * or a relation clause over the child's transmission rows.
+ */
+export type MetadataFilterValue =
+  | string
+  | readonly string[]
+  | MetadataFilterMatch
+  | RelationFilterMatch;
+
+/** Whether a filter value is a relation clause, which binds its own columns. */
+export function isRelationFilter(value: MetadataFilterValue): value is RelationFilterMatch {
+  return typeof value === "object" && value !== null && "relation" in value;
+}
+
+/**
+ * Read one filter value into its metadata match shape: a single value becomes a
+ * one-element set, a set is copied, and a match passes through unchanged. The
+ * seam's one reader for the metadata spellings, so the adapter, the in-memory
+ * double and the retriever's tests cannot disagree about how a value arrives.
+ *
+ * A relation clause is refused: it binds different columns and a different
+ * clause, so reading it as a metadata match would ask the child row for a key it
+ * never carries — a filter that matches nothing instead of the rows it named.
  */
 export function filterMatchOf(value: MetadataFilterValue): MetadataFilterMatch {
   if (typeof value === "string") return { values: [value] };
   // `Array.isArray` does not narrow a `readonly string[]` in the false branch, so
   // the non-array branch restates the seam's own type rather than guessing one.
   if (Array.isArray(value)) return { values: [...(value as string[])] };
+  if (isRelationFilter(value)) {
+    throw new TypeError(
+      `relation filter ${JSON.stringify(value.relation)} is not a metadata match`,
+    );
+  }
   return value as MetadataFilterMatch;
 }
 

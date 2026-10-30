@@ -55,21 +55,76 @@ export type KajianQFilters = {
   sourceType?: readonly RoutableSource[];
   /** The grades a hadith may carry. */
   grade?: readonly Grade[];
+  /**
+   * The per-chain grades a hadith's transmission rows may carry (CONTEXT.md
+   * "Isnad"). A child matches when **any** of its chains carries one of the
+   * grades; the filter selects the child, never one of its chains, so every
+   * consumer presenting the evidence receives every row — a `sahih` filter on a
+   * child that also carries a dhaif chain still surfaces that dhaif chain.
+   */
+  chainGrade?: readonly Grade[];
+  /**
+   * The narrator ids a hadith's transmission rows must include. Identity, not a
+   * name spelling: the catalogue's resolved ids, supplied by a caller that
+   * resolved a name through the store's own name read.
+   */
+  narratorId?: readonly string[];
 };
 
 /**
- * Every filter dimension and the `doc_children.metadata` key it binds to.
+ * How one filter dimension reaches the store.
+ *
+ * - `metadata` — a `doc_children.metadata` key, bound as
+ *   `metadata->>key = ANY(values)`.
+ * - `chainGrade` / `narratorId` — a **relation** clause over the transmission
+ *   rows attached to the child, which the store expresses as a fixed `EXISTS`
+ *   clause on its allowlisted column. These carry no metadata key at all, so
+ *   their record key is the dimension's own name: a relation dimension can never
+ *   collide with a metadata key (`grade` is a metadata key; `chainGrade` is not).
+ */
+export type FilterBinding =
+  | { readonly on: "metadata"; readonly key: string }
+  | { readonly on: "chainGrade" }
+  | { readonly on: "narratorId" };
+
+/**
+ * Every filter dimension and how it reaches the store.
  *
  * **Exhaustive on purpose.** This is the one place a dimension is declared
  * *and* mapped, so a dimension added to {@link KajianQFilters} and forgotten
  * here is a typecheck failure rather than a filter that silently never reaches
- * the store. It is also pinned to the metadata keys ingestion actually writes
+ * the store. The metadata keys are pinned to the keys ingestion actually writes
  * by a test beside this module: a dimension added without data fails there
  * rather than matching nothing. The keys are the corpus's own spellings
  * (`sourceType`), not the spec's prose spellings (`source_type`); the spec
- * names the concept, the stored key is what the SQL binds.
+ * names the concept, the stored key is what the SQL binds. A relation dimension
+ * is pinned to the row the seam's chain read returns instead, in the same test.
  */
-export const FILTER_DIMENSIONS: Record<keyof KajianQFilters, string> = {
-  sourceType: "sourceType",
-  grade: "grade",
+export const FILTER_DIMENSIONS: Record<keyof KajianQFilters, FilterBinding> = {
+  sourceType: { on: "metadata", key: "sourceType" },
+  grade: { on: "metadata", key: "grade" },
+  chainGrade: { on: "chainGrade" },
+  narratorId: { on: "narratorId" },
 };
+
+/**
+ * The record key one dimension binds — the metadata key it maps to, or the
+ * dimension's own name for a relation clause. The relaxation trace is written in
+ * this key space, so `intended − dropped` reconstructs the record a search ran.
+ */
+export function storeKeyOf(dimension: keyof KajianQFilters): string {
+  const binding = FILTER_DIMENSIONS[dimension];
+  return binding.on === "metadata" ? binding.key : dimension;
+}
+
+/**
+ * The relation column a store-record key stands for, or `null` when the key is a
+ * metadata key. The one place the record's key space is read back into the
+ * store's clause grammar, so a relation dimension cannot be bound as a metadata
+ * key by a caller that never learned the difference.
+ */
+export function relationOf(recordKey: string): "grade" | "narratorIds" | null {
+  if (recordKey === storeKeyOf("chainGrade")) return "grade";
+  if (recordKey === storeKeyOf("narratorId")) return "narratorIds";
+  return null;
+}
