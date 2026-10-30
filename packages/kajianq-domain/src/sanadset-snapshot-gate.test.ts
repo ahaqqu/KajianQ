@@ -16,7 +16,7 @@ import {
  *   carrying the verifier's own reasons;
  * - trap: the test escape must not claim a label. It allows the write but records no
  *   label, so a report cannot read as snapshot-backed evidence it did not have;
- * - trap: a dry run must not spend a verification (the operator would pay a 127 MB
+ * - trap: a dry run must not spend a verification (the operator would pay a large
  *   download for a run that writes nothing) and must not record a label it never
  *   checked;
  * - trap: the refusal must travel as a typed error carrying the reasons, so a caller

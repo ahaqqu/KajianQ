@@ -28,6 +28,7 @@ export function postgresCorpusMethods(
   | "listDocChildrenByParentSourceKey"
   | "findDocChildrenByMetadata"
   | "listDocChildNeighboursByChildIds"
+  | "deleteCorpusRows"
 > {
   return {
     insertDocParent(input) {
@@ -102,6 +103,47 @@ export function postgresCorpusMethods(
     similaritySearch(track, embedding, opts) {
       return postgresSimilaritySearch(sql, track, embedding, opts);
     },
+
+    /**
+     * Both deletes in one transaction, chain sweep first: an explicit addressed
+     * chain set is removed and counted, then the child sweep's cascade catches
+     * whatever a stale child still held. Unknown ids and addresses delete nothing.
+     */
+    deleteCorpusRows(input) {
+      if (input.childIds.length === 0 && input.chains.length === 0) {
+        return Effect.succeed({ childrenDeleted: 0, chainsDeleted: 0 });
+      }
+      return sqlEffect(sql, async () => {
+        const statements: unknown[] = [];
+        const counted: ("chains" | "children")[] = [];
+        if (input.chains.length > 0) {
+          statements.push(sql`
+            DELETE FROM narrator_chains c
+            USING unnest(${input.chains.map((row) => row.collection)}::text[],
+                        ${input.chains.map((row) => row.sourceRef)}::text[])
+                  AS d(collection, source_ref)
+            WHERE c.collection = d.collection AND c.source_ref = d.source_ref
+            RETURNING c.id
+          `);
+          counted.push("chains");
+        }
+        if (input.childIds.length > 0) {
+          statements.push(
+            sql`DELETE FROM doc_children WHERE id = ANY(${input.childIds}::uuid[]) RETURNING id`,
+          );
+          counted.push("children");
+        }
+        const results = (await sql.transaction(statements)) as { id: string }[][];
+        let chainsDeleted = 0;
+        let childrenDeleted = 0;
+        results.forEach((rows, index) => {
+          if (counted[index] === "chains") chainsDeleted = rows.length;
+          else childrenDeleted = rows.length;
+        });
+        return { childrenDeleted, chainsDeleted };
+      });
+    },
+
     // The by-id read behind the structured citation payload; the
     // implementation shares the similarity module's row machinery.
     ...postgresChildMethods(sql),

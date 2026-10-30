@@ -184,7 +184,7 @@ try {
     childrenLimit: integerFlag(parsed.values, "children-limit"),
   };
 } catch (error) {
-  fail(error instanceof Error ? error.message : String(error));
+  fail(pilot.describeIngestError(error));
 }
 
 const databaseUrl = process.env.DATABASE_URL;
@@ -203,7 +203,7 @@ try {
     verify: verifySnapshot,
   });
 } catch (error) {
-  fail(error instanceof Error ? error.message : String(error));
+  fail(pilot.describeIngestError(error));
 }
 if (!gate.allowed) {
   fail(`refusing to write: no verified pre-ingest snapshot\n${gate.reasons.join("\n")}`);
@@ -238,7 +238,7 @@ try {
     ...(config.childrenLimit === undefined ? {} : { childReadLimit: config.childrenLimit }),
   });
 } catch (error) {
-  fail(error instanceof Error ? error.message : String(error));
+  fail(pilot.describeIngestError(error));
 }
 
 const facts = run.document.pilot;
@@ -258,11 +258,17 @@ log("info", "ingest complete", {
   matchedGroups: facts.matn.matchedGroups,
   ambiguousGroups: facts.matn.ambiguousGroups,
   newChildren: facts.matn.newChildren,
-  createdChildren: facts.matn.createdChildren,
+  childrenCreated: facts.write.children.created,
+  childrenUpdated: facts.write.children.updated,
+  childrenUnchanged: facts.write.children.unchanged,
+  childrenDeleted: facts.write.children.deleted,
   matchRate: Number(facts.matn.matchRate.value.toFixed(4)),
   chainsPlanned: facts.chains.planned,
-  chainsWritten: facts.chains.written,
-  narratorsWritten: facts.narrator.written,
+  chainsCreated: facts.write.chains.created,
+  chainsUpdated: facts.write.chains.updated,
+  chainsUnchanged: facts.write.chains.unchanged,
+  chainsDeleted: facts.write.chains.deleted,
+  nameClustersUpserted: facts.narrator.upserted,
   modelCalls: facts.cost.modelCalls,
   costMicroUsd: facts.cost.costMicroUsd,
 });

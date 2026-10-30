@@ -3,10 +3,10 @@
  * is written. It is the dry run's output and the write path's input, so a run and
  * the plan the operator approved cannot disagree. It applies the S1 rules and adds
  * one decision: which stored child of the same collection a matn group attaches
- * to, or that it attaches to a new child; a group whose target is ambiguous is
- * quarantined whole. It reads neither the environment nor the store — the caller
- * supplies the slice and the stored children — so the dry run and the gated suite
- * share one definition of the plan.
+ * to, or that it attaches to a new child; a group whose target is ambiguous or
+ * whose candidate search was capped is quarantined whole. It reads neither the
+ * environment nor the store — the caller supplies the slice and the stored
+ * children — so the dry run and the gated suite share one definition of the plan.
  */
 
 import { runMatnCascade } from "./sanadset-cascade";
@@ -15,130 +15,19 @@ import {
   S1_AUTO_MATCH_THRESHOLD,
   type MatnDecision,
 } from "./sanadset-cascade-types";
-import { planNarrators, type NarratorPlanResult } from "./sanadset-ingest-catalogue";
+import { planNarrators } from "./sanadset-ingest-catalogue";
+import { createChildMatchIndex } from "./sanadset-ingest-match";
 import {
-  createChildMatchIndex,
-  type ExistingChildRow,
-  type MatnTarget,
-} from "./sanadset-ingest-match";
-import {
-  SLICE_BOOKS,
-  type PreparedRow,
-  type PrepareStats,
+  chainSourceRef,
+  type BuildPlanOptions,
+  type ChainPlan,
+  type GroupPlan,
+  type IngestPlan,
+  type NewChildPlan,
   type QuarantinedRow,
-  type SliceBook,
-} from "./sanadset-prepare";
+} from "./sanadset-ingest-plan-types";
 
-/** The one collection this pilot ingests; a full run grows this list, not the code path. */
-export const PILOT_COLLECTIONS = ["bukhari"] as const;
-
-/**
- * The slice's own book and the corpus collection key it reconciles against: `key`
- * names the pilot's slice, `collection` the store's key for those children.
- */
-export type PilotScope = {
-  readonly key: (typeof PILOT_COLLECTIONS)[number];
-  readonly book: SliceBook;
-  readonly collection: string;
-};
-
-export const PILOT_SCOPE: PilotScope = {
-  key: "bukhari",
-  book: SLICE_BOOKS[0],
-  collection: "bukhari",
-};
-
-/** Resolve `--collection`; the pilot's scope is one collection and names it on refusal. */
-export function resolvePilotCollection(raw: string): PilotScope {
-  if ((PILOT_COLLECTIONS as readonly string[]).includes(raw)) return PILOT_SCOPE;
-  throw new Error(
-    `--collection must be one of ${PILOT_COLLECTIONS.join(", ")}, got "${raw}" — ` +
-      "the pilot ingests one collection; a full run is a separate dispatch",
-  );
-}
-
-/** One matn group and where its chains will land. */
-export type GroupPlan = {
-  readonly groupId: number;
-  readonly representativeRowIndex: number;
-  readonly hadithNumber: string;
-  readonly rawMatn: string;
-  readonly foldedMatn: string;
-  /** Prepared rows whose chain attaches to this group's target, in source order. */
-  readonly memberRows: readonly number[];
-  readonly target: MatnTarget;
-};
-
-export type NewChildPlan = {
-  readonly ordinal: number;
-  readonly groupId: number;
-  readonly textRaw: string;
-  readonly hadithNumber: string;
-  readonly representativeRowIndex: number;
-};
-
-/** One chain write: a source row's ordered folded names, attached to its group's child. */
-export type ChainPlan = {
-  readonly rowIndex: number;
-  readonly groupId: number;
-  readonly foldedChain: readonly string[];
-  readonly sourceRef: string;
-};
-
-export type IngestPlan = {
-  readonly scope: PilotScope;
-  readonly slice: {
-    readonly rows: number;
-    readonly noSanad: number;
-    readonly prepared: number;
-    /** Quarantined before the matn cascade: the prepare stage's own rules. */
-    readonly quarantined: number;
-    readonly quarantinedByRule: Readonly<Record<string, number>>;
-  };
-  readonly groups: readonly GroupPlan[];
-  readonly children: {
-    /** Stored children the corpus read returned, before the collection filter. */
-    readonly read: number;
-    /** Stored children of this collection the matcher compared against. */
-    readonly compared: number;
-    readonly matched: number;
-    readonly ambiguous: number;
-    readonly created: readonly NewChildPlan[];
-    /** Groups whose trigram search hit the candidate cap: bounded recall, reported. */
-    readonly truncatedSearches: number;
-  };
-  readonly chains: readonly ChainPlan[];
-  readonly narrators: NarratorPlanResult;
-  readonly quarantine: {
-    readonly total: number;
-    readonly byRule: Readonly<Record<string, number>>;
-    readonly rows: readonly QuarantinedRow[];
-  };
-  readonly matchRate: {
-    readonly scope: "v1-corpus";
-    readonly matchedRows: number;
-    readonly rows: number;
-    readonly value: number;
-  };
-};
-
-export type BuildPlanOptions = {
-  readonly scope: PilotScope;
-  /** The prepared slice, both books; the builder filters to the scope. */
-  readonly rows: readonly PreparedRow[];
-  readonly sourceQuarantined: readonly QuarantinedRow[];
-  readonly stats: PrepareStats;
-  readonly children: readonly ExistingChildRow[];
-  /** True when the corpus read hit its limit: the plan refuses rather than guess. */
-  readonly childrenCapHit: boolean;
-  readonly autoThreshold?: number;
-  readonly ambiguityMargin?: number;
-};
-
-/** The source row's address in the archive: the chain's natural key, stable across runs. */
-export function chainSourceRef(rowIndex: number): string {
-  return `sanadset:row:${rowIndex}`;
-}
+export * from "./sanadset-ingest-plan-types";
 
 function countByRule(rows: readonly QuarantinedRow[]): Record<string, number> {
   const byRule: Record<string, number> = {};
@@ -165,7 +54,7 @@ export async function buildSanadsetPlan(options: BuildPlanOptions): Promise<Inge
   const decisions = new Map<number, MatnDecision>();
   for (const decision of cascade.decisions) decisions.set(decision.rowIndex, decision);
   const rowByIndex = new Map(scoped.map((row) => [row.rowIndex, row]));
-  const written: PreparedRow[] = [];
+  const written: typeof scoped = [];
   for (const row of scoped) {
     const decision = decisions.get(row.rowIndex);
     if (decision === undefined)
@@ -188,6 +77,7 @@ export async function buildSanadsetPlan(options: BuildPlanOptions): Promise<Inge
       hadithNumber: representative.hadithNumber,
       rawMatn: representative.rawMatn,
       foldedMatn: representative.normalizedMatn,
+      matnKey: representative.matnKey,
       memberRows: [],
       target: matchIndex.match(representative),
     });
@@ -195,24 +85,41 @@ export async function buildSanadsetPlan(options: BuildPlanOptions): Promise<Inge
   const targetByGroup = new Map(groups.map((group) => [group.groupId, group.target]));
 
   // A group the matcher refused to place is quarantined whole: every row's chain is
-  // held back, and the reason names the two children that tied.
-  const ambiguousRows: QuarantinedRow[] = [];
+  // held back, and the reason names the two children that tied (or the cap that cut
+  // the search short) so a reader can tell which refusal held it.
+  const refusedRows: QuarantinedRow[] = [];
   const writtenRows = written.filter((row) => {
     const groupId = decisions.get(row.rowIndex)?.groupId;
     const target =
       groupId === null || groupId === undefined ? undefined : targetByGroup.get(groupId);
-    if (target === undefined || target.kind !== "ambiguous") return true;
-    ambiguousRows.push({
-      rowIndex: row.rowIndex,
-      book: row.book,
-      hadithNumber: row.hadithNumber,
-      rule: "ambiguous_best_match",
-      detail:
-        `matn group ${groupId} scored ${target.score.toFixed(3)} against two children ` +
-        `(${target.candidates.join(", ")}); no arbitrary target is chosen`,
-      sanadLength: null,
-    });
-    return false;
+    if (target === undefined) return true;
+    if (target.kind === "ambiguous") {
+      refusedRows.push({
+        rowIndex: row.rowIndex,
+        book: row.book,
+        hadithNumber: row.hadithNumber,
+        rule: "ambiguous_best_match",
+        detail:
+          `matn group ${groupId} scored ${target.score.toFixed(3)} against two children ` +
+          `(${target.candidates.join(", ")}); no arbitrary target is chosen`,
+        sanadLength: null,
+      });
+      return false;
+    }
+    if (target.kind === "truncated") {
+      refusedRows.push({
+        rowIndex: row.rowIndex,
+        book: row.book,
+        hadithNumber: row.hadithNumber,
+        rule: "truncated_candidate_search",
+        detail:
+          `matn group ${groupId} hit the ${target.cap}-candidate search cap; the target set ` +
+          "was bounded, so no target is claimed",
+        sanadLength: null,
+      });
+      return false;
+    }
+    return true;
   });
 
   const membersByGroup = new Map<number, number[]>();
@@ -228,19 +135,30 @@ export async function buildSanadsetPlan(options: BuildPlanOptions): Promise<Inge
     memberRows: membersByGroup.get(group.groupId) ?? [],
   }));
 
-  // The ordinal is the group's cascade position, not its position among new children:
-  // a group that later matches a stored child must not shift later children's ordinals,
-  // which are the store's upsert key (parent, ordinal).
+  // Children are keyed by the digest of their immutable raw text, never by their
+  // cascade position: a group that later matches a stored child, or a reordered
+  // plan, must not point a stored row at another narration's derived fields.
   const created: NewChildPlan[] = [];
-  for (const [ordinal, group] of plannedGroups.entries()) {
+  for (const group of plannedGroups) {
     if (group.target.kind !== "new" || group.memberRows.length === 0) continue;
     created.push({
-      ordinal,
+      matnKey: group.matnKey,
       groupId: group.groupId,
       textRaw: group.rawMatn,
       hadithNumber: group.hadithNumber,
       representativeRowIndex: group.representativeRowIndex,
     });
+  }
+  const seenKeys = new Map<string, number>();
+  for (const child of created) {
+    const previous = seenKeys.get(child.matnKey);
+    if (previous !== undefined) {
+      throw new Error(
+        `matn groups ${previous} and ${child.groupId} carry the same raw matn; ` +
+          "one child cannot be keyed by two groups",
+      );
+    }
+    seenKeys.set(child.matnKey, child.groupId);
   }
 
   const chains: ChainPlan[] = writtenRows.map((row) => {
@@ -257,7 +175,7 @@ export async function buildSanadsetPlan(options: BuildPlanOptions): Promise<Inge
   });
 
   const scopedSource = options.sourceQuarantined.filter((row) => row.book === scope.book);
-  const quarantineRows = [...scopedSource, ...cascade.quarantined, ...ambiguousRows];
+  const quarantineRows = [...scopedSource, ...cascade.quarantined, ...refusedRows];
   const existingTargetGroups = plannedGroups.filter(
     (group) => group.target.kind === "existing" && group.memberRows.length > 0,
   );

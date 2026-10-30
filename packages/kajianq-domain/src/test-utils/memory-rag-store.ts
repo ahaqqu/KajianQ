@@ -15,6 +15,7 @@ import {
   memoryAdminMethods,
   memoryAuthMethods,
   memoryChatMethods,
+  memoryCorpusDeletionMethods,
   memoryEvalMethods,
   memoryFeedbackMethods,
   memoryModelConfigMethods,
@@ -129,14 +130,12 @@ export function createMemoryRagStore(): RagStore & {
     rows: modelConfigRows,
     now: () => Date.now(),
   });
-  // Held above the method spread: similarity search reads the same chains, so a
-  // relation filter and the graph reads must answer from one state.
   const narratorState = {
     narrators: new Map<string, NarratorRecord>(),
     chains: new Map<string, SeededChain>(),
+    childExists: (id: string) => children.has(id),
   };
   const narratorMethods = memoryNarratorMethods(narratorState);
-
   const cosine = (a: readonly number[], b: readonly number[]): number => {
     let dot = 0;
     let na = 0;
@@ -148,11 +147,11 @@ export function createMemoryRagStore(): RagStore & {
     }
     return dot / (Math.sqrt(na) * Math.sqrt(nb) || 1);
   };
-
   const store: RagStore = {
     ...adminMethods,
     ...modelConfigMethods,
     ...narratorMethods,
+    ...memoryCorpusDeletionMethods(narratorState, children, childByPos),
     insertDocParent(input) {
       return Effect.sync(() => {
         seq += 1;

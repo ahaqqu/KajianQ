@@ -165,6 +165,10 @@ _Avoid_: report tag, flag type, feedback reason (unqualified)
 A resolved transmitter (rawi) in an Isnad: one row in the narrator catalogue, carrying the canonical Arabic spelling plus every recorded variant. Two narrators may share a name; identity is settled by resolution, never by the name string, and a narrator is never merged on name alone.
 _Avoid_: source (ambiguous with a cited work), transmitter (unqualified), chain link
 
+**Name cluster**:
+A folded-name group written to the narrator catalogue as a provisional row while identity is unresolved: every raw spelling that folds to the same text is one cluster, so two people who share a spelling share the row. The row's metadata records its basis (`folded-name`), the folded name, its raw spellings and its mention count as provenance; a Name cluster is not a Narrator and no read may present it as an identified transmitter.
+_Avoid_: narrator (unqualified — that is the resolved person), alias, dedupe
+
 **Kunya**:
 The teknonymic name element a narrator is known by, typically "father of …" (e.g. Abu Hurayra), stored as the source states it. It is neither the canonical name nor a spelling variant of it; null when the source records none.
 _Avoid_: nickname (vague), laqab (a different name element)

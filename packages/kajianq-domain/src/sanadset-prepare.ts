@@ -10,6 +10,7 @@
 
 import { lshBandKeys, minhashSignature } from "./sanadset-blocking";
 import { parseSanadList } from "./sanadset-csv";
+import { matnKeyOf } from "./sanadset-ingest-content";
 import { hasNestedSanad, hasUnbalancedTags, isNoSanad } from "./sanadset-tags";
 import {
   foldNarratorName,
@@ -51,6 +52,7 @@ export type QuarantineRule =
   | "empty_matn"
   | "reference_only_matn"
   | "ambiguous_best_match"
+  | "truncated_candidate_search"
   | "model_uncertain";
 
 export type QuarantinedRow = {
@@ -67,6 +69,8 @@ export type PreparedRow = {
   readonly book: SliceBook;
   readonly hadithNumber: string;
   readonly rawMatn: string;
+  /** Content identity of {@link rawMatn}: the child write key across runs. */
+  readonly matnKey: string;
   readonly normalizedMatn: string;
   readonly trigrams: readonly string[];
   readonly signature: readonly number[];
@@ -241,6 +245,7 @@ export function createPrepareAccumulator(): PrepareAccumulator {
       book,
       hadithNumber: row.hadithNumber,
       rawMatn: row.matn,
+      matnKey: matnKeyOf(row.matn),
       normalizedMatn,
       trigrams,
       signature,

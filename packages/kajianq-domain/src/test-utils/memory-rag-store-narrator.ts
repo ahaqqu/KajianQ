@@ -10,6 +10,7 @@ import {
   type NarratorUpsert,
   type RagStore,
 } from "@app/infra";
+import { GRADES } from "../filters";
 import { assertGradeAttribution } from "../narrator";
 
 /**
@@ -18,22 +19,20 @@ import { assertGradeAttribution } from "../narrator";
  * concern-split the Postgres adapter uses (`rag-store-postgres-narrator.ts`,
  * `-narrator-write.ts`).
  *
- * The double exists so unit tests can exercise the seam without a server, so it
- * must answer exactly what the adapter's SQL answers. Its ordering rules mirror
- * the adapter's comments: rows by `id` (the collation-free order both
- * implementations can guarantee), chains for a child by the seeded insertion
- * sequence, a collection page by the `id` cursor. Id spelling is the only thing
- * canonicalised (a seeded narrator and a lookup's ids both use the adapter's
- * canonical form), and a seeded chain must carry the grade/grader pairing the
- * database's CHECK enforces.
+ * The double exists so unit tests can exercise the seam without a server, so its
+ * write path reproduces every rule the adapter's SQL enforces before a row lands:
+ * the seam's own pre-flight predicates, the child foreign key, the grade
+ * vocabulary, and the unique `(collection, sourceRef)` key (including a batch that
+ * repeats an address, which Postgres refuses inside one statement). What it does
+ * not reproduce is the database's collation, locking and error text; the reads
+ * below pin the ordering rules both implementations can guarantee. Seeding is a
+ * fixture shortcut rather than a write path, so `seedChain` validates only the
+ * grade/grader pairing and may address a child the fixture never inserted.
  *
- * The write half keeps the same fidelity: it calls the seam's own pre-flight
- * predicates, so a row the adapter would refuse as a `constraint` error is
- * refused here too, and it maintains the same two natural-key maps the database's
- * unique indexes implement — `identity_key` for narrators, `(collection,
- * sourceRef)` for chains. A seeded row with a source address registers that
- * address, so a later upsert of it updates the seeded row exactly as it would in
- * PostgreSQL.
+ * The write half keeps the same two natural-key maps the database's unique indexes
+ * implement — `identity_key` for narrators, `(collection, sourceRef)` for chains.
+ * A seeded row with a source address registers that address, so a later upsert of
+ * it updates the seeded row exactly as it would in PostgreSQL.
  */
 
 /** One seeded chain: the seam record plus the store-assigned insertion sequence. */
@@ -47,6 +46,8 @@ export type MemoryNarratorState = {
   narratorKeys?: Map<string, string>;
   /** `collection\u0000sourceRef` -> chain id, the map `narrator_chains_source_ref_idx` encodes. */
   chainKeys?: Map<string, string>;
+  /** The child rows the store holds; the database's `narrator_chains_child_id_fkey`. */
+  childExists?: (id: string) => boolean;
 };
 
 /** The seam's reads and writes plus the seed/introspection helpers a test needs. */
@@ -160,9 +161,32 @@ export function memoryNarratorMethods(state: MemoryNarratorState): MemoryNarrato
     },
 
     insertNarratorChains(rows: readonly NarratorChainInsert[]) {
+      const batchKeys = new Set<string>();
       for (const row of rows) {
         const problem = chainWriteProblem(row);
         if (problem !== null) return reject(problem);
+        if (state.childExists !== undefined && !state.childExists(row.childId)) {
+          return reject(
+            `chain '${row.sourceRef ?? "(no address)"}' names child ${row.childId} that does not exist`,
+          );
+        }
+        const grade = row.grade ?? null;
+        if (grade !== null && !(GRADES as readonly string[]).includes(grade)) {
+          return reject(
+            `chain '${row.sourceRef ?? "(no address)"}' carries grade '${grade}' outside the vocabulary`,
+          );
+        }
+        const key = chainKey(row.collection, row.sourceRef);
+        if (key === null) continue;
+        // Postgres refuses a statement that touches one conflict target twice; the
+        // double returns the same constraint failure instead of silently updating
+        // the row twice.
+        if (batchKeys.has(key)) {
+          return reject(
+            `chain batch repeats the source address '${row.sourceRef}' in one collection`,
+          );
+        }
+        batchKeys.add(key);
       }
       const ids: string[] = [];
       for (const row of rows) {

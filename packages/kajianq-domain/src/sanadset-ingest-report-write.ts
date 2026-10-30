@@ -15,6 +15,7 @@ import {
   writeArtifactFiles,
 } from "./sanadset-artifacts";
 import type { PilotReportDocument } from "./sanadset-ingest-report";
+import type { WriteCounts } from "./sanadset-ingest-reconcile";
 
 /** The default report path: the per-user cache, run-scoped, outside the checkout. */
 export function defaultPilotReportPath(homeDir: string, runId: string): string {
@@ -43,12 +44,21 @@ export function writePilotReport(document: PilotReportDocument, path: string): r
 
 const percent = (value: number): string => `${(value * 100).toFixed(2)}%`;
 
+/** One row set's counts, labelled so a rerun cannot read as a first run. */
+function countsLine(label: string, counts: WriteCounts): string {
+  return (
+    `- ${label}: ${counts.created} created · ${counts.updated} updated · ` +
+    `${counts.unchanged} unchanged · ${counts.deleted} deleted`
+  );
+}
+
 /** A human digest of the same document: what the operator reads before a real run. */
 export function renderPilotMarkdown(document: PilotReportDocument): string {
   const { pilot } = document;
-  const rules = Object.entries(pilot.slice.quarantinedByRule)
+  const rules = Object.entries(pilot.quarantine.byRule)
     .sort(([left], [right]) => left.localeCompare(right))
     .map(([rule, count]) => `  - \`${rule}\`: ${count}`);
+  const afterSlice = pilot.quarantine.total - pilot.slice.quarantined;
   return [
     `# Sanadset S2 pilot — ${pilot.collection} (${pilot.runId})`,
     "",
@@ -79,17 +89,19 @@ export function renderPilotMarkdown(document: PilotReportDocument): string {
     `- Rows in slice: ${pilot.slice.rows}`,
     `- No-sanad rows (skipped): ${pilot.slice.noSanad}`,
     `- Prepared: ${pilot.slice.prepared}`,
-    `- Quarantined: ${pilot.slice.quarantined}`,
+    `- Quarantine total: ${pilot.quarantine.total}`,
+    `- Quarantined before the matn cascade: ${pilot.slice.quarantined}`,
+    `- Held back after the cascade or by a refused target: ${afterSlice}`,
     ...(rules.length === 0 ? [] : ["", "By rule:", ...rules]),
     "",
-    "## Narrator resolution (deterministic, name-level)",
+    "## Narrator resolution (deterministic name clusters)",
     "",
-    `- Identity basis: \`${pilot.narrator.identityBasis}\` — a folded name is a cluster, not a person`,
+    `- Identity basis: \`${pilot.narrator.identityBasis}\` — a folded name is a Name cluster, not a resolved Narrator`,
     `- Mentions: ${pilot.narrator.mentions}`,
     `- Folded names: ${pilot.narrator.foldedNames} (from ${pilot.narrator.rawSurfaces} raw surfaces)`,
     `- Recorded variants: ${pilot.narrator.variantsRecorded}`,
     `- Name-level resolution rate (non-singleton mentions): ${percent(pilot.narrator.resolutionRate)}`,
-    `- Narrator rows written: ${pilot.narrator.written}`,
+    `- Name-cluster rows upserted: ${pilot.narrator.upserted}`,
     `- Uncertain name pairs reported, not merged: ${pilot.narrator.uncertainPairs}`,
     "",
     "## Matn reconciliation (book-scoped)",
@@ -99,14 +111,19 @@ export function renderPilotMarkdown(document: PilotReportDocument): string {
     `- Groups matched to a stored child: ${pilot.matn.matchedGroups}`,
     `- Groups quarantined as ambiguous: ${pilot.matn.ambiguousGroups}`,
     `- Groups written as new children: ${pilot.matn.newChildren}`,
-    `- Children created: ${pilot.matn.createdChildren}`,
     `- Match rate (scope **${pilot.matn.matchRate.scope}**): ${percent(pilot.matn.matchRate.value)} (${pilot.matn.matchRate.matchedRows} of ${pilot.matn.matchRate.rows} rows)`,
-    `- Trigram searches that hit the candidate cap: ${pilot.matn.truncatedSearches}`,
+    `- Candidate searches that hit their cap: ${pilot.matn.truncatedSearches}`,
+    "",
+    "## Write outcome",
+    "",
+    ...(pilot.dryRun
+      ? [
+          `- Dry run: nothing written; the plan would create ${pilot.matn.newChildren} children and write ${pilot.chains.planned} chains.`,
+        ]
+      : [countsLine("Children", pilot.write.children), countsLine("Chains", pilot.write.chains)]),
     "",
     "## Chains",
-    `- Rows held back after the slice (cascade or ambiguous target): ${pilot.quarantine.total - pilot.slice.quarantined}`,
     `- Chains planned: ${pilot.chains.planned}`,
-    `- Chains written: ${pilot.chains.written}`,
     `- Model calls: ${pilot.cost.modelCalls} · cost: $${(pilot.cost.costMicroUsd / 1_000_000).toFixed(4)}`,
     "",
     "## Limits",

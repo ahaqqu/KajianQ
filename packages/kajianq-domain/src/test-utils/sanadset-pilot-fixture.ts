@@ -14,14 +14,28 @@ import {
   type IngestPlan,
   type PilotScope,
 } from "../sanadset-ingest-plan";
-import { createPrepareAccumulator, SLICE_BOOKS, type SanadsetSourceRow } from "../sanadset-prepare";
+import { createPrepareAccumulator, type SanadsetSourceRow } from "../sanadset-prepare";
 
-export const BUKHARI = SLICE_BOOKS[0];
+export const BUKHARI = PILOT_SCOPE.book;
 
 export const MATN_A =
   "إنما الأعمال بالنيات وإنما لكل امرئ ما نوى فمن كانت هجرته إلى الله ورسوله فهجرته إلى الله ورسوله";
 export const MATN_B = "من حسن إسلام المرء تركه ما لا يعنيه";
 export const MATN_C = "لا يؤمن أحدكم حتى يحب لأخيه ما يحب لنفسه";
+
+/**
+ * The shape a v1 corpus child stores: the API edition's whole narration, isnad
+ * prose followed by the matn. A fixture that seeds only the matn would hide the
+ * unit mismatch the matcher exists to bridge.
+ */
+export function fullNarration(
+  matn: string,
+  names: readonly string[] = ["مالك بن أنس", "نافع", "عبد الله بن عمر"],
+): string {
+  const [first, ...rest] = names;
+  const link = rest.length === 0 ? "" : ` قال أخبرنا ${rest.join(" عن ")}`;
+  return `حدثنا ${first ?? ""}${link} أن رسول الله صلى الله عليه وسلم قال: ${matn}`;
+}
 
 /** The gate a disposable-database test uses: allowed, and honest about having no label. */
 export const ESCAPE_GATE = {

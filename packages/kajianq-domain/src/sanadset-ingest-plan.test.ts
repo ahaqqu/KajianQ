@@ -1,8 +1,14 @@
 import { describe, expect, it } from "vite-plus/test";
-import { buildSanadsetPlan, PILOT_SCOPE, type IngestPlan } from "./sanadset-ingest-plan";
+import {
+  buildSanadsetPlan,
+  PILOT_SCOPE,
+  resolvePilotCollection,
+  type IngestPlan,
+} from "./sanadset-ingest-plan";
 import type { ExistingChildRow } from "./sanadset-ingest-match";
 import { createPrepareAccumulator, SLICE_BOOKS, type SanadsetSourceRow } from "./sanadset-prepare";
 import { jaccard, matnTrigrams, normalizeMatnText } from "./sanadset-text";
+import { fullNarration } from "./test-utils/sanadset-pilot-fixture";
 
 /**
  * Test intent, named before the assertions:
@@ -22,8 +28,13 @@ import { jaccard, matnTrigrams, normalizeMatnText } from "./sanadset-text";
  *   re-run could write a different corpus from the same archive.
  */
 
-const BUKHARI = SLICE_BOOKS[0];
-const MUSLIM = SLICE_BOOKS[1];
+const BUKHARI = PILOT_SCOPE.book;
+function otherBook(): (typeof SLICE_BOOKS)[number] {
+  const other = SLICE_BOOKS.find((book) => book !== PILOT_SCOPE.book);
+  if (other === undefined) throw new Error("the slice no longer carries the other book");
+  return other;
+}
+const MUSLIM = otherBook();
 
 const MATN_A =
   "إنما الأعمال بالنيات وإنما لكل امرئ ما نوى فمن كانت هجرته إلى الله ورسوله فهجرته إلى الله ورسوله";
@@ -73,6 +84,16 @@ function child(id: string, textRaw: string, collection = "bukhari"): ExistingChi
 }
 
 describe("the pilot plan", () => {
+  it("pins the book/collection pair by value, not by the slice array's order", () => {
+    // A reorder of SLICE_BOOKS must not retarget the pilot: the literal is the
+    // contract, and the collection key beside it names the corpus rows it reads.
+    expect(PILOT_SCOPE.book).toBe("صحيح البخاري");
+    expect(PILOT_SCOPE.collection).toBe("bukhari");
+    expect(PILOT_SCOPE.key).toBe("bukhari");
+    expect(SLICE_BOOKS).toContain(PILOT_SCOPE.book);
+    expect(resolvePilotCollection("bukhari")).toEqual(PILOT_SCOPE);
+  });
+
   it("never targets another book's child, even on an identical matn", async () => {
     const rows = [
       sourceRow({ rowIndex: 0 }),
@@ -99,6 +120,37 @@ describe("the pilot plan", () => {
     });
     expect(plan.children.created).toHaveLength(0);
     expect(plan.matchRate).toEqual({ scope: "v1-corpus", matchedRows: 1, rows: 1, value: 1 });
+  });
+
+  it("matches a Sanadset matn against a stored child that also carries the isnad", async () => {
+    // The v1 corpus stores the API edition's whole narration; a matn-only
+    // comparison reads 0.34 and calls the report new. The matn must be found
+    // inside the stored narration instead.
+    const plan = await planFor([sourceRow()], [child("v1-child", fullNarration(MATN_A))]);
+    expect(plan.groups[0]?.target).toMatchObject({
+      kind: "existing",
+      childId: "v1-child",
+      how: "containment",
+    });
+    expect(plan.children.matched).toBe(1);
+    expect(plan.children.created).toHaveLength(0);
+    expect(plan.matchRate).toEqual({ scope: "v1-corpus", matchedRows: 1, rows: 1, value: 1 });
+  });
+
+  it("quarantines a group whose candidate search hits its cap", async () => {
+    // Every stored narration carries the same rare token, so the candidate union
+    // is capped before the true target can be guaranteed present: bounded recall
+    // must quarantine, not pick whatever survived the cap.
+    const rare = "زززززز";
+    const children = Array.from({ length: 1100 }, (_, index) =>
+      child(`child-${index}`, fullNarration(`${MATN_A} ${rare} ${index}`)),
+    );
+    const plan = await planFor([sourceRow({ matn: `${MATN_A} ${rare}` })], children);
+    expect(plan.groups[0]?.target).toEqual({ kind: "truncated", candidates: 1024, cap: 1024 });
+    expect(plan.children.truncatedSearches).toBe(1);
+    expect(plan.children.created).toHaveLength(0);
+    expect(plan.chains).toHaveLength(0);
+    expect(plan.quarantine.byRule).toEqual({ truncated_candidate_search: 1 });
   });
 
   it("writes no chain and creates no child for a prepare-quarantined row", async () => {
@@ -207,7 +259,7 @@ describe("the pilot plan", () => {
     ]);
   });
 
-  it("keeps the cascade's group order as the child ordinal, gaps included", async () => {
+  it("keys new children by matn content while keeping the cascade's group order", async () => {
     const rows = [
       sourceRow({ rowIndex: 0, hadithNumber: "1" }),
       sourceRow({ rowIndex: 1, hadithNumber: "2", matn: MATN_B }),
@@ -216,9 +268,12 @@ describe("the pilot plan", () => {
     const plan = await planFor(rows, [child("child-b", MATN_B)]);
     expect(plan.groups.map((group) => group.groupId)).toEqual([0, 1, 2]);
     const created = plan.children.created;
-    // The middle group matched a stored child; the others keep their cascade position.
-    expect(created.map((entry) => entry.ordinal)).toEqual([0, 2]);
+    // The middle group matched a stored child; the others are new, in group order.
     expect(created.map((entry) => entry.groupId)).toEqual([0, 2]);
+    // The write key is the content digest, not the position: a reorder cannot
+    // reuse one narration's row for another's derived fields.
+    expect(created.every((entry) => /^[0-9a-f]{64}$/.test(entry.matnKey))).toBe(true);
+    expect(new Set(created.map((entry) => entry.matnKey)).size).toBe(created.length);
   });
 
   it("builds the same plan twice from the same input", async () => {

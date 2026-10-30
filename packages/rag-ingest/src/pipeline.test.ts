@@ -182,6 +182,9 @@ function fakeStore() {
     insertNarratorChains() {
       return Effect.fail(new StoreError({ kind: "config", cause: new Error("not a graph store") }));
     },
+    deleteCorpusRows() {
+      return Effect.succeed({ childrenDeleted: 0, chainsDeleted: 0 });
+    },
   };
   return {
     store,

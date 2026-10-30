@@ -103,4 +103,25 @@ export interface RagStoreCorpus {
     anchorChildIds: readonly string[],
     opts: { radius: number; limit: number },
   ): Effect.Effect<readonly DocChildById[], StoreError>;
+
+  /**
+   * Delete rows one ingestion owns, in one transaction: children by id and chains
+   * by their `(collection, sourceRef)` address. This is the deletion half of a
+   * re-runnable ingest's convergence — the set a newer plan no longer contains —
+   * so the two deletes commit together and a failed call leaves both sets intact.
+   *
+   * Ids and addresses are opaque to the store and must be non-blank; an unknown id
+   * or address simply deletes nothing. Deleting a child cascades its chains (the
+   * schema's foreign key), which is why the chain sweep runs first: the returned
+   * `chainsDeleted` counts the addressed rows, not the cascade.
+   */
+  deleteCorpusRows(
+    input: CorpusDeletion,
+  ): Effect.Effect<{ childrenDeleted: number; chainsDeleted: number }, StoreError>;
 }
+
+/** One owned-row deletion: child ids and addressed chains, removed atomically. */
+export type CorpusDeletion = {
+  readonly childIds: readonly string[];
+  readonly chains: readonly { readonly collection: string; readonly sourceRef: string }[];
+};

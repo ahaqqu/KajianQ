@@ -3,7 +3,6 @@ import { Effect } from "effect";
 import { mkdtempSync, rmSync, writeFileSync, existsSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { RagStore } from "@app/infra";
 import { hashFile } from "./sanadset-csv";
 import { PILOT_SCOPE } from "./sanadset-ingest-plan";
 import { assertPilotReportPath } from "./sanadset-ingest-report-write";
@@ -12,11 +11,11 @@ import { executeIngestPlan } from "./sanadset-ingest-write";
 import { IngestGateRefusal, assertIngestGate } from "./sanadset-snapshot-gate";
 import {
   BUKHARI,
-  ESCAPE_GATE,
   MATN_A,
   MATN_B,
   MATN_C,
   chainLiteral,
+  fullNarration,
   planFrom,
   seedCorpusChild,
   sourceRow,
@@ -91,9 +90,9 @@ describe("the pilot write path", () => {
     });
     expect(outcome).toEqual({
       parentId: expect.any(String),
-      childrenCreated: 1,
-      chainsWritten: 2,
-      narratorsWritten: plan.narrators.narrators.length,
+      children: { created: 1, updated: 0, unchanged: 0, deleted: 0 },
+      chains: { created: 2, updated: 0, unchanged: 0, deleted: 0 },
+      narratorsUpserted: plan.narrators.narrators.length,
     });
 
     const chains = store.allChains();
@@ -122,6 +121,17 @@ describe("the pilot write path", () => {
     expect(chains.find((chain) => chain.sourceRef === "sanadset:row:1")?.childId).toBe(
       created[0]?.id,
     );
+    // A folded-name cluster states its provisional basis in the row's metadata;
+    // no consumer can mistake it for a resolved narrator.
+    const malik = store
+      .allNarrators()
+      .find((narrator) => narrator.metadata["foldedName"] === "مالك بن انس");
+    expect(malik?.metadata).toMatchObject({
+      identityBasis: "folded-name",
+      nameCluster: true,
+      mentions: expect.any(Number),
+      rawSpellings: expect.any(Number),
+    });
   });
 
   it("does not write a chain for a quarantined row", async () => {
@@ -150,6 +160,7 @@ describe("the pilot write path", () => {
 
     const first = await planFrom(store, rows);
     const firstOutcome = await executeIngestPlan({ store, plan: first.plan, gate });
+    expect(firstOutcome.children).toEqual({ created: 1, updated: 0, unchanged: 0, deleted: 0 });
     const narratorsAfterFirst = store.allNarrators().length;
     const chainsAfterFirst = store.allChains().length;
     const childrenAfterFirst = await Effect.runPromise(
@@ -161,8 +172,10 @@ describe("the pilot write path", () => {
     const second = await planFrom(store, rows);
     expect(JSON.stringify(second.plan)).toBe(JSON.stringify(first.plan));
     const secondOutcome = await executeIngestPlan({ store, plan: second.plan, gate });
-    expect(secondOutcome.childrenCreated).toBe(firstOutcome.childrenCreated);
-    expect(secondOutcome.chainsWritten).toBe(firstOutcome.chainsWritten);
+    // A rerun upserts but gains nothing: created/written must read as zero, and
+    // the unchanged counts are what prove the plan still matches the store.
+    expect(secondOutcome.children).toEqual({ created: 0, updated: 0, unchanged: 1, deleted: 0 });
+    expect(secondOutcome.chains).toEqual({ created: 0, updated: 0, unchanged: 2, deleted: 0 });
     expect(store.allNarrators()).toHaveLength(narratorsAfterFirst);
     expect(store.allChains()).toHaveLength(chainsAfterFirst);
     const childrenAfterSecond = await Effect.runPromise(
@@ -171,6 +184,145 @@ describe("the pilot write path", () => {
     expect(childrenAfterSecond.map((child) => child.id)).toEqual(
       childrenAfterFirst.map((child) => child.id),
     );
+  });
+
+  it("removes a stale child and moves its chain when the corpus now holds the target", async () => {
+    const store = createMemoryRagStore();
+    const gate = { allowed: true, mode: "test-escape" as const, label: null, reasons: [] };
+    const rows = [
+      sourceRow({ rowIndex: 0 }),
+      sourceRow({ rowIndex: 1, hadithNumber: "2", matn: MATN_B, sanadLength: 2 }),
+    ];
+    await executeIngestPlan({ store, plan: (await planFrom(store, rows)).plan, gate });
+    const firstChildren = await Effect.runPromise(
+      store.listDocChildrenByParentSourceKey("sanadset/bukhari", { limit: 10 }),
+    );
+    expect(firstChildren).toHaveLength(2);
+
+    // A v1 child for group B appears after the first run: the next plan targets it,
+    // and the pilot child written for B must not survive with zero chains.
+    const corpusB = await seedCorpusChild(store, fullNarration(MATN_B), { ordinal: 5 });
+    const second = await planFrom(store, rows);
+    expect(second.plan.children.created.map((child) => child.groupId)).toEqual([0]);
+    const outcome = await executeIngestPlan({ store, plan: second.plan, gate });
+    expect(outcome.children).toEqual({ created: 0, updated: 0, unchanged: 1, deleted: 1 });
+    expect(outcome.chains).toEqual({ created: 0, updated: 1, unchanged: 1, deleted: 0 });
+
+    const children = await Effect.runPromise(
+      store.listDocChildrenByParentSourceKey("sanadset/bukhari", { limit: 10 }),
+    );
+    expect(children.map((child) => child.textRaw)).toEqual([MATN_A]);
+    expect(store.allChains()).toHaveLength(2);
+    expect(store.allChains().find((chain) => chain.sourceRef === "sanadset:row:1")?.childId).toBe(
+      corpusB,
+    );
+  });
+
+  it("removes the chain and child of a group a newer archive quarantines", async () => {
+    const store = createMemoryRagStore();
+    const gate = { allowed: true, mode: "test-escape" as const, label: null, reasons: [] };
+    const firstRows = [
+      sourceRow({ rowIndex: 0 }),
+      sourceRow({ rowIndex: 1, hadithNumber: "2", matn: MATN_B, sanadLength: 2 }),
+    ];
+    await executeIngestPlan({ store, plan: (await planFrom(store, firstRows)).plan, gate });
+
+    const secondRows = [
+      sourceRow({ rowIndex: 0 }),
+      sourceRow({ rowIndex: 1, hadithNumber: "2", matn: MATN_B, sanadLength: 40 }),
+    ];
+    const second = await planFrom(store, secondRows);
+    expect(second.plan.quarantine.byRule).toEqual({ implausible_chain_length: 1 });
+    expect(second.plan.chains.map((chain) => chain.sourceRef)).toEqual(["sanadset:row:0"]);
+    const outcome = await executeIngestPlan({ store, plan: second.plan, gate });
+    expect(outcome.children).toEqual({ created: 0, updated: 0, unchanged: 1, deleted: 1 });
+    expect(outcome.chains).toEqual({ created: 0, updated: 0, unchanged: 1, deleted: 1 });
+
+    expect(store.allChains().map((chain) => chain.sourceRef)).toEqual(["sanadset:row:0"]);
+    const children = await Effect.runPromise(
+      store.listDocChildrenByParentSourceKey("sanadset/bukhari", { limit: 10 }),
+    );
+    expect(children.map((child) => child.textRaw)).toEqual([MATN_A]);
+  });
+
+  it("keeps every immutable raw text paired with its own citation after a reorder", async () => {
+    const store = createMemoryRagStore();
+    const gate = { allowed: true, mode: "test-escape" as const, label: null, reasons: [] };
+    const firstRows = [
+      sourceRow({ rowIndex: 0, hadithNumber: "1" }),
+      sourceRow({ rowIndex: 1, hadithNumber: "2", matn: MATN_B, sanadLength: 2 }),
+    ];
+    await executeIngestPlan({ store, plan: (await planFrom(store, firstRows)).plan, gate });
+
+    // The same two narrations, swapped in the archive: a plan keyed by position
+    // would pair MATN_A's raw text with MATN_B's citation and chain.
+    const swapped = [
+      sourceRow({ rowIndex: 0, hadithNumber: "2", matn: MATN_B, sanadLength: 2 }),
+      sourceRow({ rowIndex: 1, hadithNumber: "1", matn: MATN_A, sanadLength: 2 }),
+    ];
+    const second = await planFrom(store, swapped);
+    const outcome = await executeIngestPlan({ store, plan: second.plan, gate });
+    expect(outcome.children).toEqual({ created: 0, updated: 2, unchanged: 0, deleted: 0 });
+
+    const children = await Effect.runPromise(
+      store.listDocChildrenByParentSourceKey("sanadset/bukhari", { limit: 10 }),
+    );
+    expect(children).toHaveLength(2);
+    for (const child of children) expect(child.textRaw).toBe(child.textAr);
+    const chainFor = (sourceRef: string) =>
+      store.allChains().find((chain) => chain.sourceRef === sourceRef)?.childId;
+    expect(children.find((child) => child.id === chainFor("sanadset:row:0"))?.textRaw).toBe(MATN_B);
+    expect(children.find((child) => child.id === chainFor("sanadset:row:1"))?.textRaw).toBe(MATN_A);
+  });
+
+  it("replaces a child whose matn changed in a re-pinned archive instead of rewriting its raw text", async () => {
+    const store = createMemoryRagStore();
+    const writeCsv = async (name: string, matn: string) => {
+      const path = join(TMP, name);
+      writeFileSync(
+        path,
+        [
+          "Hadith,Book,Num_hadith,Matn,Sanad,Sanad_Length",
+          `x,${BUKHARI},1,${matn},"${chainLiteral(["مالك بن أنس", "نافع"])}",2`,
+        ].join("\n") + "\n",
+        "utf8",
+      );
+      return { path, sha256: (await hashFile(path)).sha256 };
+    };
+    const first = await writeCsv("archive-a.csv", MATN_A);
+    const second = await writeCsv("archive-b.csv", MATN_B);
+    const gate = { allowed: true, mode: "test-escape" as const, label: null, reasons: [] };
+    const runOnce = async (archive: { path: string; sha256: string }, runId: string) =>
+      runSanadsetIngest({
+        csvPath: archive.path,
+        expectedSha256: archive.sha256,
+        scope: PILOT_SCOPE,
+        store,
+        gate,
+        dryRun: false,
+        command: "test changed archive",
+        homeDir: TMP,
+        reportPath: join(TMP, `${runId}.json`),
+        runId,
+      });
+
+    await runOnce(first, "s2-bukhari-archive-a");
+    const before = await Effect.runPromise(
+      store.listDocChildrenByParentSourceKey("sanadset/bukhari", { limit: 10 }),
+    );
+    expect(before.map((child) => child.textRaw)).toEqual([MATN_A]);
+
+    const rerun = await runOnce(second, "s2-bukhari-archive-b");
+    expect(rerun.outcome?.children).toEqual({ created: 1, updated: 0, unchanged: 0, deleted: 1 });
+    expect(rerun.outcome?.chains).toEqual({ created: 0, updated: 1, unchanged: 0, deleted: 0 });
+    const after = await Effect.runPromise(
+      store.listDocChildrenByParentSourceKey("sanadset/bukhari", { limit: 10 }),
+    );
+    expect(after.map((child) => child.textRaw)).toEqual([MATN_B]);
+    expect(after[0]?.textAr).toBe(MATN_B);
+    expect(after[0]?.id).not.toBe(before[0]?.id);
+    const chain = store.allChains().find((row) => row.sourceRef === "sanadset:row:0");
+    expect(chain?.childId).toBe(after[0]?.id);
   });
 
   it("keeps two narrators that share a name apart and extends one with a variant", async () => {
@@ -233,8 +385,9 @@ describe("the pilot write path", () => {
     expect(run.document.pilot.schemaVersion).toBe(1);
     expect(run.document.pilot.dryRun).toBe(true);
     expect(run.document.pilot.chains.planned).toBe(1);
-    expect(run.document.pilot.chains.written).toBe(0);
-    expect(run.document.pilot.matn.createdChildren).toBe(0);
+    expect(run.document.pilot.write.chains.created).toBe(0);
+    expect(run.document.pilot.matn.newChildren).toBe(1);
+    expect(run.document.pilot.write.children.created).toBe(0);
     expect(run.document.pilot.cost).toEqual({ modelCalls: 0, costMicroUsd: 0 });
     expect(existsSync(join(TMP, "dry-run-report.json"))).toBe(true);
     expect(readFileSync(join(TMP, "dry-run-report.md"), "utf8")).toContain("Dry run");
@@ -271,14 +424,14 @@ describe("the pilot write path", () => {
     const first = await runOnce("s2-bukhari-run-one");
     const narratorRows = store.allNarrators().length;
     const chainRows = store.allChains().length;
-    expect(first.outcome?.childrenCreated).toBe(2);
+    expect(first.outcome?.children).toEqual({ created: 2, updated: 0, unchanged: 0, deleted: 0 });
     expect(chainRows).toBe(2);
     expect(narratorRows).toBe(4);
 
     const second = await runOnce("s2-bukhari-run-two");
     expect(second.runId).toBe("s2-bukhari-run-two");
     expect(second.plan.chains).toHaveLength(2);
-    expect(second.outcome?.chainsWritten).toBe(2);
+    expect(second.outcome?.chains).toEqual({ created: 0, updated: 0, unchanged: 2, deleted: 0 });
     expect(store.allNarrators()).toHaveLength(narratorRows);
     expect(store.allChains()).toHaveLength(chainRows);
     const children = await Effect.runPromise(
@@ -291,7 +444,9 @@ describe("the pilot write path", () => {
       report: { childrenWritten: number; runId: string };
     };
     expect(document.report.runId).toBe("s2-bukhari-run-two");
-    expect(document.report.childrenWritten).toBe(2);
+    // A rerun inserts no child, so the report's childrenWritten is zero even
+    // though both children exist and were upserted.
+    expect(document.report.childrenWritten).toBe(0);
   });
 
   it("refuses a report path inside a checkout before the run starts", () => {

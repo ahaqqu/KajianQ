@@ -9,6 +9,7 @@ export { memoryEvalMethods } from "./memory-rag-store-eval";
 export { memoryFeedbackMethods } from "./memory-rag-store-feedback";
 export { memoryAuthMethods } from "./memory-rag-store-auth";
 export { memoryChatMethods } from "./memory-rag-store-chat";
+export { memoryCorpusDeletionMethods } from "./memory-rag-store-corpus-delete";
 export { memoryModelConfigMethods } from "./memory-rag-store-model-config";
 export {
   memoryNarratorMethods,

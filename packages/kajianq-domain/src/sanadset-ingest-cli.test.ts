@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vite-plus/test";
 import { spawnSync } from "node:child_process";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { hashFile } from "./sanadset-csv";
 
 /**
  * The ingest CLI's brake tests, spawned rather than imported.
@@ -9,7 +12,7 @@ import { fileURLToPath } from "node:url";
  * Test intent, named before the assertions:
  * - trap: the archive must not be opened before the gate decides. Every refusal test
  *   points the CLI at a missing CSV and asserts the refusal message with no ENOENT —
- *   a gate that runs after the 1.4 GB read would spend minutes before refusing;
+ *   a gate that runs after a large archive read would spend that read before refusing;
  * - trap: the label's *existence* is not verification. A label with no object store is
  *   asserted to refuse with the verifier's own reason, not to proceed because a label
  *   was supplied;
@@ -134,5 +137,32 @@ describe("the ingest CLI", () => {
     expect(result.stdout).toContain("gate resolved");
     expect(result.stdout).toContain('"mode":"dry-run"');
     expect(result.stderr).toContain("ENOENT");
+  });
+
+  it("names a store failure's kind and cause instead of an empty message", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "sanadset-cli-store-"));
+    try {
+      const csv = join(dir, "sanadset.csv");
+      writeFileSync(
+        csv,
+        [
+          "Hadith,Book,Num_hadith,Matn,Sanad,Sanad_Length",
+          `x,صحيح البخاري,1,إنما الأعمال بالنيات,"['مالك بن أنس', 'نافع']",2`,
+        ].join("\n") + "\n",
+        "utf8",
+      );
+      const { sha256 } = await hashFile(csv);
+      // The gate is escaped and the archive is valid: the first store call fails,
+      // and the operator must see why — a blank message hides a pending migration.
+      const result = runCli(
+        ["--collection", "bukhari", "--test-allow-no-snapshot", "--csv", csv, "--sha256", sha256],
+        { DATABASE_URL: FAKE_DATABASE_URL },
+      );
+      expect(result.status).not.toBe(0);
+      expect(result.stderr).toMatch(/StoreError \((transport|config|timeout)\)/);
+      expect(result.stderr).not.toContain('"message":""');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

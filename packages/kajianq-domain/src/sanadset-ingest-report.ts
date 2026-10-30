@@ -1,7 +1,8 @@
 /**
  * The pilot's report: the `IngestionReport` contract plus the facts the §9.4 report
  * owes — match rate with its scope, narrator coverage with its basis, quarantine by
- * rule, and a cost of exactly zero (this path makes no model call).
+ * rule, the write counts a rerun actually produced, and a cost of exactly zero (this
+ * path makes no model call).
  *
  * The document is built for a dry run too, so the plan the operator reads and the run
  * that follows cannot drift apart; `sanadset-ingest-report-write.ts` owns the file I/O.
@@ -10,13 +11,15 @@
 import type { IngestionReport } from "@app/contracts";
 import type { UncertainNamePair } from "./sanadset-ingest-catalogue";
 import type { IngestPlan } from "./sanadset-ingest-plan";
+import type { WriteCounts } from "./sanadset-ingest-reconcile";
 
-/** The counts the write path produced (or zeroed for a dry run). */
+/** What the write path did (all zero on a dry run): upserts plus reconciliation deletes. */
 export type WriteFacts = {
   readonly parentId: string | null;
-  readonly childrenCreated: number;
-  readonly chainsWritten: number;
-  readonly narratorsWritten: number;
+  readonly children: WriteCounts;
+  readonly chains: WriteCounts;
+  /** Name-cluster rows upserted; the catalogue is not reconciled. */
+  readonly narratorsUpserted: number;
 };
 
 export type PilotSourceFacts = {
@@ -54,7 +57,7 @@ export type PilotFacts = {
     readonly rawSurfaces: number;
     readonly foldedVariants: number;
     readonly resolutionRate: number;
-    readonly written: number;
+    readonly upserted: number;
     readonly variantsRecorded: number;
     readonly uncertainPairs: number;
     readonly uncertainByStratum: Readonly<Record<string, number>>;
@@ -64,7 +67,6 @@ export type PilotFacts = {
     readonly matchedGroups: number;
     readonly ambiguousGroups: number;
     readonly newChildren: number;
-    readonly createdChildren: number;
     readonly storedChildrenCompared: number;
     readonly truncatedSearches: number;
     readonly matchRate: {
@@ -74,7 +76,12 @@ export type PilotFacts = {
       readonly value: number;
     };
   };
-  readonly chains: { readonly planned: number; readonly written: number };
+  readonly chains: { readonly planned: number };
+  /** The rows this run created, updated, left unchanged and deleted. */
+  readonly write: {
+    readonly children: WriteCounts;
+    readonly chains: WriteCounts;
+  };
   readonly quarantine: {
     readonly total: number;
     readonly byRule: Readonly<Record<string, number>>;
@@ -104,18 +111,26 @@ export type BuildReportOptions = {
   readonly finishedAt: number;
 };
 
+const ZERO_COUNTS: WriteCounts = { created: 0, updated: 0, unchanged: 0, deleted: 0 };
+
 /** The report's own limits: every one is a scope a reader could otherwise over-read. */
 export const PILOT_LIMITS: readonly string[] = [
   "The match rate is measured against one collection's stored children, not the full corpus.",
-  "Narrator rows are name clusters on the deterministic fold, not resolved identities: two people who share a spelling are one row, and the pairs the fold could not settle are reported unmerged.",
+  "Narrator rows are Name clusters on the deterministic fold, not resolved Narrators: two people who share a spelling are one row, and the pairs the fold could not settle are reported unmerged.",
   "No model call is made, so the band is not adjudicated and each band-unresolved matn becomes its own child.",
   "New children carry NULL embeddings and stay lexically retrievable; embedding them is a later, paid run.",
-  "A matn group that ties between two stored children is quarantined whole and its chains are not written.",
+  "A matn group that ties between two stored children, or whose candidate search hit its cap, is quarantined whole and its chains are not written.",
+  "A rerun reconciles only this pilot's own rows — children under its parent document and chains carrying its source prefix. Narrator rows stay in the catalogue once written.",
 ];
 
 export function buildPilotReport(options: BuildReportOptions): PilotReportDocument {
   const { plan, outcome, source, gate } = options;
-  const written = outcome?.chainsWritten ?? 0;
+  const write: WriteFacts = outcome ?? {
+    parentId: null,
+    children: ZERO_COUNTS,
+    chains: ZERO_COUNTS,
+    narratorsUpserted: 0,
+  };
   const facts: PilotFacts = {
     schemaVersion: 1,
     runId: options.runId,
@@ -138,7 +153,7 @@ export function buildPilotReport(options: BuildReportOptions): PilotReportDocume
       rawSurfaces: plan.narrators.rawSurfaces,
       foldedVariants: plan.narrators.foldedVariants,
       resolutionRate: plan.narrators.coverageRate,
-      written: outcome?.narratorsWritten ?? 0,
+      upserted: write.narratorsUpserted,
       variantsRecorded: plan.narrators.narrators.reduce(
         (total, narrator) => total + narrator.variants.length,
         0,
@@ -151,7 +166,6 @@ export function buildPilotReport(options: BuildReportOptions): PilotReportDocume
       matchedGroups: plan.children.matched,
       ambiguousGroups: plan.children.ambiguous,
       newChildren: plan.children.created.length,
-      createdChildren: outcome?.childrenCreated ?? 0,
       storedChildrenCompared: plan.children.compared,
       truncatedSearches: plan.children.truncatedSearches,
       matchRate: {
@@ -161,7 +175,8 @@ export function buildPilotReport(options: BuildReportOptions): PilotReportDocume
         value: plan.matchRate.value,
       },
     },
-    chains: { planned: plan.chains.length, written },
+    chains: { planned: plan.chains.length },
+    write: { children: write.children, chains: write.chains },
     quarantine: { total: plan.quarantine.total, byRule: plan.quarantine.byRule },
     gate,
     cost: { modelCalls: 0, costMicroUsd: 0 },
@@ -173,8 +188,8 @@ export function buildPilotReport(options: BuildReportOptions): PilotReportDocume
     sourceKey: `sanadset:${plan.scope.collection}:${source.sha256.slice(0, 12)}`,
     startedAt: options.startedAt,
     finishedAt: options.finishedAt,
-    parentsWritten: outcome?.parentId === null || outcome?.parentId === undefined ? 0 : 1,
-    childrenWritten: outcome?.childrenCreated ?? 0,
+    parentsWritten: write.parentId === null ? 0 : 1,
+    childrenWritten: write.children.created,
     quarantined: plan.quarantine.total,
     costMicroUsd: 0,
     llmCalls: [],
@@ -189,7 +204,7 @@ export function buildPilotReport(options: BuildReportOptions): PilotReportDocume
         uncertainPairs: facts.narrator.uncertainPairs,
       },
       matchRate: facts.matn.matchRate,
-      chains: facts.chains,
+      chains: { planned: facts.chains.planned, written: facts.write.chains.created },
       quarantineByRule: facts.quarantine.byRule,
       gate: facts.gate,
     },

@@ -5,6 +5,8 @@
 
 export * from "./sanadset-snapshot-gate";
 export * from "./sanadset-ingest-catalogue";
+export * from "./sanadset-ingest-content";
+export * from "./sanadset-ingest-error";
 export * from "./sanadset-ingest-match";
 export * from "./sanadset-ingest-plan";
 export * from "./sanadset-ingest-write";
