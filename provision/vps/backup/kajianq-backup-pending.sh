@@ -2,7 +2,7 @@
 # provision/vps/backup/kajianq-backup-pending.sh — mark a backup run as started
 # before the job body can run.
 #
-# Installed by provision/vps/apply.sh at /usr/local/sbin/kajianq-backup-pending
+# Installed by the host configuration in ahaqqu/vps at /usr/local/sbin/kajianq-backup-pending
 # and run from kajianq-backup.service's ExecStartPre, so a unit that starts
 # writes it before the job body runs: a moved `bun`, an absent deployed bundle,
 # or a broken ExecStart leaves this marker instead of the previous success. The
@@ -24,8 +24,8 @@
 # The record is written atomically (a same-directory temp file renamed into
 # place) at 0644 inside the root-owned record directory: the unprivileged
 # deploy identity reads a whole record and cannot write one. The directory
-# itself is provisioned by apply.sh and re-ensured by the job; this script does
-# not create or widen it.
+# itself is provisioned by the host configuration and re-ensured by the job;
+# this script does not create or widen it.
 #
 # Usage: kajianq-backup-pending.sh [record-file]
 

@@ -7,7 +7,6 @@ import {
   readFileSync,
   rmSync,
   statSync,
-  symlinkSync,
   utimesSync,
   writeFileSync,
 } from "node:fs";
@@ -16,8 +15,6 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 import { describe, expect, it } from "vite-plus/test";
-import { createApi } from "../../apps/api/src/app";
-import { ADMIN_API_PREFIX, ADMIN_LOGIN_PATH } from "../../apps/api/src/lib/admin-paths";
 import {
   BACKUP_KEEP_DAILY,
   LABEL_RE,
@@ -139,44 +136,6 @@ writeFileSync(
   );
   program("psql", "process.exit(0);\n");
   return { dir, marker, cleanup: () => rmSync(dir, { recursive: true, force: true }) };
-}
-
-/** The text of a bash function, exactly as the script ships it. */
-function bashFunction(rel, name) {
-  const text = readFileSync(resolve(process.cwd(), rel), "utf8");
-  const start = text.indexOf(`${name}() {`);
-  if (start === -1) throw new Error(`${rel} does not define ${name}()`);
-  const end = text.indexOf("\n}\n", start);
-  if (end === -1) throw new Error(`${name}() in ${rel} is not closed at column 0`);
-  return text.slice(start, end + 2);
-}
-
-/**
- * apply.sh's install_config() as shipped, driven against a fixture pair. The test's own user
- * and group stand in for root:root, because no test runs as root — and owner/group are part of
- * what the function compares, so they have to match on both sides of the fixture.
- */
-function configInstallFixture() {
-  const dir = mkdtempSync(join(tmpdir(), "kajianq-config-"));
-  const owner = spawnSync("id", ["-un"], { encoding: "utf8" }).stdout.trim();
-  const group = spawnSync("id", ["-gn"], { encoding: "utf8" }).stdout.trim();
-  const src = join(dir, "kajianq-backup.service");
-  const dst = join(dir, "installed.service");
-  writeFileSync(src, "[Unit]\nDescription=fixture\n");
-  const shim = `${bashFunction("provision/vps/apply.sh", "install_config")}
-log() { printf 'log: %s\\n' "$*"; }
-install_config "$@"`;
-  return {
-    dir,
-    src,
-    dst,
-    run: (env = {}) =>
-      spawnSync("/bin/bash", ["-c", shim, "probe", src, dst, owner, group, "644"], {
-        encoding: "utf8",
-        env: { ...process.env, DRY_RUN: "0", ...env },
-      }),
-    cleanup: () => rmSync(dir, { recursive: true, force: true }),
-  };
 }
 
 /** The record the backup job writes, as key=value lines the bash preflight reads. */
@@ -430,7 +389,8 @@ function deployEnv({
 
 /**
  * The marker kajianq-backup.service's ExecStartPre writes, executed from the repository script
- * apply.sh installs at /usr/local/sbin/kajianq-backup-pending. A test cannot start a unit, so
+ * the host configuration installs at /usr/local/sbin/kajianq-backup-pending. A test cannot
+ * start a unit, so
  * this is the unit's half of the pre-body contract: the record the preflight reads is the record
  * the unit's own marker produced.
  *
@@ -1319,36 +1279,8 @@ describe("env handling", () => {
   });
 });
 
-describe("provisioning config as code stays true to the ADR", () => {
+describe("deploy and backup policy stays true to the ADR", () => {
   const read = (rel) => readFileSync(resolve(process.cwd(), rel), "utf8");
-
-  /** Every file under a directory, recursively — for whole-tree scans. */
-  const walkFiles = (dir) =>
-    readdirSync(dir).flatMap((name) => {
-      const path = join(dir, name);
-      return statSync(path).isDirectory() ? walkFiles(path) : [path];
-    });
-  /** Drop comment lines before asserting directives, since a file may explain why a
-   * directive is NOT used and a substring assertion would read that explanation as the
-   * directive itself. */
-  const directives = (rel) =>
-    read(rel)
-      .split("\n")
-      .filter((line) => !/^\s*#/.test(line))
-      .join("\n");
-
-  it("the proxy access log records the client IP and nothing about the visitor beyond it", () => {
-    const conf = directives("provision/vps/nginx/kajianq.conf");
-    // The log format must carry $remote_addr (the IP is the declared data category in the
-    // Art. 30 record)…
-    expect(conf).toMatch(/log_format kajianq_access[^;]*\$remote_addr/);
-    // …and must NOT widen it with device, navigation, or identity identifiers.
-    expect(conf).not.toMatch(/\$http_user_agent/);
-    expect(conf).not.toMatch(/\$http_referer/);
-    // $remote_user is only ever populated by HTTP basic auth, which this server block never
-    // enables — a username is not a declared data category, so the format must not carry it.
-    expect(conf).not.toMatch(/\$remote_user/);
-  });
 
   it("restic never receives the repository on argv — credentials stay out of the process table", () => {
     // restic reads RESTIC_REPOSITORY from the environment; an `-r` flag would put a repository
@@ -1384,68 +1316,11 @@ describe("provisioning config as code stays true to the ADR", () => {
     }
   });
 
-  it("the backup schedule is config-as-code, installed and enabled by apply.sh", () => {
-    // The retention policy is only real if the timer runs: the units must be shipped files.
-    const service = directives("provision/vps/systemd/kajianq-backup.service");
-    // Optional (`-`) on purpose: a required file that is missing fails the unit before the
-    // first ExecStartPre, so the pending marker would be absent exactly when the missing file is
-    // the failure. The job refuses the run itself instead, and the record carries status=1.
-    expect(service).toContain("EnvironmentFile=-/etc/kajianq/backup.env");
-    // ExecStart names a DEPLOYED artifact, not a path in the repository checkout: a unit
-    // running code the deploy never updated can be wired to stale code, so assert the static
-    // path and that NO placeholder token remains.
-    expect(service).toMatch(/ExecStart=\/usr\/bin\/bun run \/srv\/kajianq\/api\/backup\.js/);
-    expect(service).not.toMatch(/__KAJIANQ_/);
-    expect(service).toMatch(/Type=oneshot/);
-    // Credentials in the unit text would be world-readable in the journal.
-    expect(service).not.toMatch(/RESTIC_|PGDATABASE_URL/);
-    const timer = directives("provision/vps/systemd/kajianq-backup.timer");
-    expect(timer).toMatch(/OnCalendar=.+/);
-    expect(timer).toMatch(/Persistent=true/);
-    expect(timer).toMatch(/WantedBy=timers.target/);
-    const apply = readFileSync(resolve(process.cwd(), "provision/vps/apply.sh"), "utf8");
-    expect(apply).toMatch(/kajianq-backup\.service/);
-    expect(apply).toMatch(/kajianq-backup\.timer/);
-    expect(apply).toMatch(/enable --now kajianq-backup\.timer/);
-  });
-
-  it("bounds a hung backup, so an interrupted start marker cannot last forever (mutation: no TimeoutStartSec)", () => {
-    // Type=oneshot has no start timeout by default: a wedged run would keep the timer (and the
-    // start marker) in place forever. The bound is what lets systemd kill it and a later run
-    // replace the marker with a completed record.
-    const service = directives("provision/vps/systemd/kajianq-backup.service");
-    expect(service).toMatch(/^TimeoutStartSec=2h$/m);
-  });
-
-  it("every unit running with ProtectHome= executes a binary outside the home directories", () => {
-    // ProtectHome hides /home and /root from the unit, so an ExecStart naming a
-    // home-directory install fails for a binary that exists. Assert the property over the
-    // shipped units rather than the prose that warns about it: a new unit that hides home and
-    // then runs the runtime from one reddens here.
-    const services = walkFiles("provision/vps/systemd").filter((f) => f.endsWith(".service"));
-    expect(services.length).toBeGreaterThan(0);
-    let guarded = 0;
-    for (const file of services) {
-      const unit = directives(file);
-      if (!/^ProtectHome=(yes|true|read-only|tmpfs)$/m.test(unit)) continue;
-      guarded++;
-      const exec = /^ExecStart=(\S+)/m.exec(unit)?.[1];
-      expect(exec, `${file}: ProtectHome= set without an absolute ExecStart`).toBeTruthy();
-      expect(exec, `${file}: ProtectHome hides ${exec}`).not.toMatch(/^\/(home|root)(\/|$)/);
-    }
-    expect(guarded, "no unit sets ProtectHome= — the assertion would be vacuous").toBeGreaterThan(
-      0,
-    );
-  });
-
-  it("the provisioning SQL creates the role and database apply.sh deliberately does not", () => {
-    // apply.sh installs the Postgres posture but creates no role or database, so the SQL the
-    // operator pastes from the setup doc is the artifact that provisions them: assert its
-    // statements, not the sentences around them. A block that lost LOGIN, the bound password
-    // or OWNER would leave the API unable to start, and nothing else in CI would notice.
-    expect(directives("provision/vps/apply.sh")).not.toMatch(
-      /CREATE ROLE|createuser|CREATE DATABASE|createdb/,
-    );
+  it("the setup doc's SQL creates the role and database the applier does not", () => {
+    // The host configuration installs the Postgres posture but creates no role or database, so
+    // the SQL the operator pastes from the setup doc is the artifact that provisions them:
+    // assert its statements, not the sentences around them. A block that lost LOGIN, the bound
+    // password or OWNER would leave the API unable to start, and nothing else in CI would notice.
     const setup = read("docs/VPS-SETUP.md");
     const sql = [...setup.matchAll(/```bash\n([\s\S]*?)```/g)]
       .map((m) => m[1])
@@ -1458,137 +1333,6 @@ describe("provisioning config as code stays true to the ADR", () => {
     expect(statements).toMatch(/psql -v pw="\$DB_PW"/);
     expect(statements).toMatch(/CREATE ROLE kajianq LOGIN PASSWORD :'pw'/);
     expect(statements).toMatch(/CREATE DATABASE kajianq OWNER kajianq/);
-  });
-
-  it("render() substitutes every placeholder a shipped config may carry", () => {
-    // Derived, not enumerated: every `__KAJIANQ_*__` token appearing in a shipped config
-    // (anything under provision/vps/ except apply.sh itself) must have a matching sed entry in
-    // apply.sh's render(), so a new placeholder fails this test until it is wired.
-    const SRC = "provision/vps";
-    const apply = readFileSync(resolve(process.cwd(), `${SRC}/apply.sh`), "utf8");
-    const renderBody = /render\(\) \{[\s\S]*?\n\}/.exec(apply)?.[0];
-    expect(renderBody, "apply.sh must define render()").toBeTruthy();
-
-    const substituted = new Set(
-      [...renderBody.matchAll(/__KAJIANQ_([A-Z_]+)__\|/g)].map((m) => m[1]),
-    );
-    expect(substituted.size).toBeGreaterThanOrEqual(4);
-
-    const shipped = walkFiles(resolve(process.cwd(), SRC))
-      .filter((path) => !path.endsWith("apply.sh"))
-      .map((path) => readFileSync(path, "utf8"))
-      .join("\n");
-    // matchAll, not a single exec: a line may carry MORE than one token, and taking only the
-    // first per line would let a second one through unsubstituted.
-    const declared = new Set([...shipped.matchAll(/__KAJIANQ_([A-Z_]+)__/g)].map((m) => m[1]));
-    expect(declared.size).toBeGreaterThanOrEqual(4);
-
-    for (const name of declared) {
-      expect(
-        substituted.has(name),
-        `render() in apply.sh does not substitute __KAJIANQ_${name}__, so a config shipping it installs the literal token`,
-      ).toBe(true);
-    }
-  });
-
-  it("render() refuses to install a config that still carries a placeholder token", () => {
-    // The substitution list is one mechanism; this is the backstop that makes a future omission
-    // loud at apply time, and it must abort the whole apply rather than half-apply a config.
-    const apply = readFileSync(resolve(process.cwd(), "provision/vps/apply.sh"), "utf8");
-    const renderBody = /render\(\) \{[\s\S]*?\n\}/.exec(apply)?.[0];
-    expect(renderBody).toMatch(/grep -qE '__KAJIANQ_\[A-Z_\]\+__'/);
-    expect(renderBody).toMatch(/exit 1/);
-    // It must run BEFORE the install, or the broken file is already in place when it fires.
-    expect(renderBody.search(/grep -qE '__KAJIANQ_\[A-Z_\]\+__'/)).toBeLessThan(
-      renderBody.indexOf("install_config"),
-    );
-  });
-
-  it("apply.sh refuses to source an env file that is not root-owned 0600-or-tighter", () => {
-    // The env file is executed with root privileges; a writable one is local privilege escalation.
-    const apply = readFileSync(resolve(process.cwd(), "provision/vps/apply.sh"), "utf8");
-    expect(apply).toMatch(/stat -c '%U:%G' "\$\{ENV_FILE\}"/);
-    expect(apply).toMatch(/!= "root:root"/);
-    expect(apply).toMatch(/& 077\)\)" -ne 0/);
-    // The check must precede the source.
-    expect(apply.indexOf("root:root")).toBeLessThan(apply.indexOf('. "${ENV_FILE}"'));
-  });
-
-  it("the proxy establishes CF-Connecting-IP from $remote_addr, so the rate limiter cannot be spoofed", () => {
-    // apps/api/src/lib/middleware.ts reads CF-Connecting-IP: if nginx passed the client's own
-    // header through, a caller could mint a fresh limiter key per request.
-    const conf = directives("provision/vps/nginx/kajianq.conf");
-    expect(conf).toMatch(/proxy_set_header CF-Connecting-IP\s+\$remote_addr/);
-  });
-
-  /** The first path segment of every route the mounted API registers, wildcards excluded. */
-  const apiNamespaces = (api) => {
-    const namespaces = new Set();
-    for (const { path } of api.routes) {
-      if (typeof path !== "string") continue;
-      const first = path.split("/")[1];
-      if (first !== undefined && first !== "" && first !== "*") namespaces.add(`/${first}`);
-    }
-    return namespaces;
-  };
-
-  it("an API top-level path cannot ship without its proxy location", () => {
-    // A new top-level API namespace is a DEPLOY change, not only a code change: nginx proxies
-    // only paths it has a location for, and every other path falls into `location /` and
-    // answers index.html with a 200 (a closed surface then looks absent, and the client's JSON
-    // parse fails instead of the API answering). The namespace set is DERIVED from the mounted
-    // app's route table — the registration sites themselves, constants included — so adding
-    // /foo/ to the API reddens here until the config carries `location /foo/`.
-    const namespaces = apiNamespaces(createApi());
-    // The admin surface is mounted under `/v1` (ADR-0064), so it introduces no
-    // top-level namespace of its own: the proxy's existing `/v1/` location carries it.
-    expect([...namespaces].sort()).toEqual(["/docs", "/openapi.json", "/v1"]);
-
-    const conf = directives("provision/vps/nginx/kajianq.conf");
-    const blocks = new Map();
-    for (const match of conf.matchAll(/^[ \t]*location\s+(=\s*)?(\/[^\s{]*)\s*\{/gm)) {
-      const key = match[2].replace(/\/+$/, "") || "/";
-      blocks.set(key, match.index ?? 0);
-    }
-    for (const namespace of namespaces) {
-      const at = blocks.get(namespace);
-      expect(at, `${namespace} needs its own proxy location in kajianq.conf`).toBeTypeOf("number");
-      // A flat block (no nested braces in this file): from its `location` line to the first `}`.
-      const block = conf.slice(at, conf.indexOf("}", at));
-      expect(block, namespace).toMatch(/proxy_pass\s+__KAJIANQ_API_UPSTREAM__/);
-      expect(block, namespace).toMatch(/proxy_set_header\s+Host\s+\$host/);
-      expect(block, namespace).toMatch(/proxy_set_header\s+CF-Connecting-IP\s+\$remote_addr/);
-    }
-    // …and the fallback is the SPA, never an API namespace: that is what makes the
-    // "unknown /v1/admin path is a JSON 404" claim hold on the box rather than only in Hono.
-    const fallback = conf.slice(blocks.get("/") ?? 0);
-    expect(fallback).toMatch(/try_files\s+\$uri\s+\$uri\/\s+\/index\.html/);
-  });
-
-  it("a top-level API path registered through a constant is derived, not scraped from literals", () => {
-    // Mutation check for the derivation above. A route registered at a constant has no
-    // quoted path literal in its module, so a scan of routes/*.ts would miss the
-    // namespace while the route exists. A fake app whose route is registered at a
-    // constant must still be caught.
-    const OPERATOR_PATH = "/operator/v1/traces";
-    // A route table shaped like Hono's: the derivation reads registration sites, so it is the
-    // constant's value that must surface, never a scan of this test's own literals.
-    const fake = { routes: [{ method: "GET", path: OPERATOR_PATH, handler: () => {} }] };
-    expect([...apiNamespaces(fake)]).toEqual(["/operator"]);
-    // …and the real app's admin routes are all inside `/v1`, so the constant-registered
-    // login route adds no top-level namespace and the expected set above is complete.
-    expect(createApi().routes.map((route) => route.path)).toContain(ADMIN_LOGIN_PATH);
-    expect(ADMIN_LOGIN_PATH.startsWith(`${ADMIN_API_PREFIX}/`)).toBe(true);
-  });
-
-  it("the admin API rides the template's existing /v1 location, and no route claims the legacy /admin namespace", () => {
-    // Every admin route is registered under `/v1` (asserted above), so the template's
-    // existing `/v1/` location is the admin API's transport and needs no move of its own.
-    // The installed config also carries an `/admin/` location from the earlier surface;
-    // no registered route answers there, so it is not a second API namespace.
-    const conf = read("provision/vps/nginx/kajianq.conf");
-    expect(conf).toMatch(/location \/v1\/ \{/);
-    expect(createApi().routes.every((route) => !route.path.startsWith("/admin/"))).toBe(true);
   });
 
   it("the setup doc probes the admin API through the already-proxied /v1 prefix", () => {
@@ -1610,114 +1354,6 @@ describe("provisioning config as code stays true to the ADR", () => {
     const adminSection = setup.slice(adminStart, setup.indexOf("### Verify retention", adminStart));
     expect(adminSection).toMatch(/ALLOWED_ORIGINS/);
     expect(adminSection).toContain("admin.login_origin_refused");
-  });
-
-  it("HTTP only redirects and logs nothing, so the IP-bearing log is confined to the TLS server block", () => {
-    const conf = directives("provision/vps/nginx/kajianq.conf");
-    const plain = conf.slice(conf.indexOf("listen 80"));
-    expect(plain).toMatch(/access_log off/);
-    expect(plain).not.toContain("kajianq_access");
-  });
-
-  it("every shipped config uses placeholders, never a real hostname or certificate path", () => {
-    for (const file of [
-      "provision/vps/nginx/kajianq.conf",
-      "provision/vps/systemd/kajianq-api.service",
-      "provision/vps/systemd/kajianq-backup.service",
-      "provision/vps/postgres/99-kajianq.conf",
-    ]) {
-      const text = read(file);
-      // Hostnames/IPs/certs are placeholders the apply script substitutes.
-      expect(text, file).not.toMatch(/https?:\/\/[a-z0-9.-]+\.(com|net|org|dev|id)/);
-      expect(text, file).not.toMatch(/\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/);
-    }
-  });
-
-  it("the proxy logrotate policy enforces the ADR's 14-day window with a size cap", () => {
-    const conf = directives("provision/vps/logrotate/kajianq-proxy");
-    // rotate 13 + daily: current day + 13 rotated = 14 calendar days, the value the ADR and
-    // the Art. 30 record declare (a `rotate 14` would keep a 15th day).
-    expect(conf).toMatch(/rotate 13\b/);
-    expect(conf).not.toMatch(/rotate 14\b/);
-    expect(conf).toMatch(/daily/);
-    expect(conf).toMatch(/maxsize/);
-    // nginx reopens its logs on SIGUSR1; copytruncate would be the wrong tool.
-    expect(conf).toContain("kill -USR1");
-    expect(conf).not.toContain("copytruncate");
-    // The error log is IP-bearing too, so it must be in the same stanza.
-    expect(conf).toContain("/var/log/nginx/kajianq.error.log");
-  });
-
-  it("the Postgres logrotate policy rotates and truncates in place, since Postgres never reopens", () => {
-    const conf = directives("provision/vps/logrotate/kajianq-postgres");
-    // Same arithmetic as the proxy stanza: 14 calendar days in total.
-    expect(conf).toMatch(/rotate 13\b/);
-    expect(conf).not.toMatch(/rotate 14\b/);
-    expect(conf).toContain("copytruncate");
-    expect(conf).toContain("/var/log/postgresql/*.log");
-  });
-
-  it("Postgres never logs statement text, so a chat question cannot land in an ops log", () => {
-    const conf = directives("provision/vps/postgres/99-kajianq.conf");
-    expect(conf).toMatch(/log_statement = 'none'/);
-    expect(conf).toMatch(/listen_addresses = 'localhost'/);
-  });
-
-  it("the API journald cap is bounded in both bytes and time", () => {
-    const conf = directives("provision/vps/journald/kajianq.conf");
-    expect(conf).toMatch(/SystemMaxUse=\d+[MG]/);
-    expect(conf).toMatch(/MaxRetentionSec=14d/);
-    expect(conf).toMatch(/Storage=persistent/);
-  });
-
-  it("the API systemd unit reads its credentials from a file, never from the unit text", () => {
-    const unit = directives("provision/vps/systemd/kajianq-api.service");
-    expect(unit).toContain("EnvironmentFile=/etc/kajianq/api.env");
-    // A DATABASE_URL inline in the unit would be readable in the process table and the journal.
-    expect(unit).not.toMatch(/DATABASE_URL=/);
-    expect(unit).toContain("NoNewPrivileges=yes");
-  });
-
-  it("the served entry the unit runs is the Bun one, with no Cloudflare runtime left", () => {
-    // ExecStart must name the Bun entry point built from apps/api/src/boot.ts, not a Worker
-    // artifact (ADR-0044 decision 1).
-    const unit = directives("provision/vps/systemd/kajianq-api.service");
-    expect(unit).toMatch(/ExecStart=\/usr\/bin\/bun run \/srv\/kajianq\/api\/index\.js/);
-    expect(unit).toContain("User=kajianq");
-    // A workerd / alchemy deployment path is gone, so nothing in the unit may reference it.
-    expect(unit).not.toMatch(/workerd|alchemy|wrangler/i);
-  });
-
-  it("the SIGTERM drain ceiling matches the code's drain deadline, not systemd's 90 s default", () => {
-    // The drain (boot.ts waits for in-flight SSE answers up to DRAIN_TIMEOUT_MS) is only real if
-    // the unit lets it run: TimeoutStopSec must equal the code's deadline — smaller SIGKILLs a
-    // healthy drain, larger waits past the stream nginx has already cut.
-    const unit = directives("provision/vps/systemd/kajianq-api.service");
-    expect(unit).toContain("TimeoutStopSec=300s");
-    expect(unit).toContain("KillMode=mixed");
-    const server = readFileSync(resolve(process.cwd(), "apps/api/src/lib/server.ts"), "utf8");
-    expect(server).toMatch(/DRAIN_TIMEOUT_MS = 300_000/);
-    const nginx = directives("provision/vps/nginx/kajianq.conf");
-    expect(nginx).toContain("proxy_read_timeout 300s");
-  });
-
-  it("the session reclaim runs as its own timer at ADR-0017's 03:17 slot", () => {
-    // The reclamation must be independently observable, not an in-process interval.
-    const service = directives("provision/vps/systemd/kajianq-cron.service");
-    expect(service).toMatch(/Type=oneshot/);
-    expect(service).toContain("EnvironmentFile=/etc/kajianq/api.env");
-    expect(service).toMatch(/ExecStart=\/usr\/bin\/bun run \/srv\/kajianq\/api\/cleanup\.js/);
-    expect(service).toContain("User=kajianq");
-    // Credentials in the unit text would be world-readable in the journal.
-    expect(service).not.toMatch(/DATABASE_URL=/);
-    const timer = directives("provision/vps/systemd/kajianq-cron.timer");
-    expect(timer).toMatch(/OnCalendar=\*-\*-\* 03:17:00/);
-    expect(timer).toMatch(/Persistent=true/);
-    expect(timer).toContain("Unit=kajianq-cron.service");
-    expect(timer).toMatch(/WantedBy=timers.target/);
-    const apply = readFileSync(resolve(process.cwd(), "provision/vps/apply.sh"), "utf8");
-    expect(apply).toMatch(/kajianq-cron\.service/);
-    expect(apply).toMatch(/systemctl enable kajianq-cron\.timer/);
   });
 
   it("the deploy script ships only placeholders and takes the box name from an env file", () => {
@@ -1762,155 +1398,6 @@ describe("provisioning config as code stays true to the ADR", () => {
     expect(script).toMatch(/<!doctype html/);
   });
 
-  it("apply.sh installs the backup unit through the write-if-changed helper", () => {
-    // The deploy reads this unit's mtime, so a plain `install` here — which re-stamps a file
-    // even when the bytes are identical — is the regression that marks an exercised unit as
-    // never exercised and fails the next deploy.
-    const apply = read("provision/vps/apply.sh");
-    // The unit is one row of apply.sh's artifact table; the install dispatcher
-    // routes that row's `config` kind through install_config.
-    expect(apply).toMatch(
-      /^backup-unit\|config\|systemd\/kajianq-backup\.service\|\/etc\/systemd\/system\/kajianq-backup\.service\|root\|root\|644$/m,
-    );
-    expect(apply).toMatch(/install_artifact backup-unit/);
-    expect(apply).toMatch(
-      /config\) install_config "\$\{src\}" "\$\{dst\}" "\$\{owner\}" "\$\{group\}" "\$\{mode\}"/,
-    );
-    expect(apply).not.toMatch(
-      /install -o root -g root -m 0644 "\$\{SRC\}\/systemd\/kajianq-backup\.service"/,
-    );
-    // Not just that unit: no raw `install` may write a file anywhere in the script, since
-    // every config it places has an mtime a future check could read and `install` re-stamps an
-    // identical file. Pinning one spelling would only catch one spelling — `-m0644`,
-    // `--mode=0644`, `--owner=root --group=root`, `install -m 0644 -o root -g root` all slip
-    // past a substring match — so the rule is an allowlist over the INVOCATIONS: the raw
-    // invocations that exist are the `install -d` directory creations (directories hold no
-    // content), the helper's own write, and the visudo-gated sudoers grant, which is staged at
-    // 0440 and moved into place by a parse-gated `mv`. A new invocation anywhere reddens here,
-    // whatever its flags.
-    const invocations = apply
-      .split("\n")
-      .map((line) => line.trim())
-      .filter((line) => /^(run )?install\b/.test(line))
-      .map((line) => line.replace(/\s+/g, " "));
-    expect(invocations.length).toBeGreaterThanOrEqual(6);
-    const allowed = [
-      /^(run )?install -d /,
-      /^install -o "\$\{owner\}" -g "\$\{group\}" -m "\$\{mode\}"/,
-    ];
-    for (const invocation of invocations) {
-      expect(
-        allowed.some((pattern) => pattern.test(invocation)),
-        `raw install in apply.sh — route it through install_config: ${invocation}`,
-      ).toBe(true);
-    }
-  });
-
-  it("threads the table's owner, group and mode through render and the sudoers install", () => {
-    // The table is the one place a row's ownership and mode are decided. A helper
-    // that hard-codes them would install one thing and have the drift check demand
-    // another the moment a row changes.
-    const apply = read("provision/vps/apply.sh");
-    expect(apply).toMatch(
-      /render\) render "\$\{src\}" "\$\{dst\}" "\$\{owner\}" "\$\{group\}" "\$\{mode\}"/,
-    );
-    expect(apply).toMatch(
-      /sudoers\) install_sudoers "\$\{src\}" "\$\{dst\}" "\$\{owner\}" "\$\{group\}" "\$\{mode\}"/,
-    );
-    const renderBody = /render\(\) \{[\s\S]*?\n\}/.exec(apply)?.[0];
-    expect(renderBody, "apply.sh must define render()").toBeTruthy();
-    expect(renderBody).toMatch(
-      /install_config "\$\{tmp\}" "\$\{dst\}" "\$\{owner\}" "\$\{group\}" "\$\{mode\}"/,
-    );
-    const sudoersBody = /install_sudoers\(\) \{[\s\S]*?\n\}/.exec(apply)?.[0];
-    expect(sudoersBody, "apply.sh must define install_sudoers()").toBeTruthy();
-    expect(sudoersBody).not.toMatch(/0440|root -g root/);
-    expect(sudoersBody).toMatch(
-      /install -o "\$\{owner\}" -g "\$\{group\}" -m "\$\{mode\}" "\$\{tmp\}" "\$\{dst\}\.new"/,
-    );
-  });
-
-  it("an unchanged config keeps its mtime, so a re-apply cannot fake a changed definition", () => {
-    // The falsification of the fix, run against apply.sh's own install_config(): pin the
-    // installed copy's mtime to a known instant, re-run, and require it to be untouched. A
-    // changed definition, a wrong mode or a symlinked destination must still be written.
-    const fx = configInstallFixture();
-    try {
-      const installedAt = 1_000_000_000;
-      expect(fx.run().status).toBe(0);
-      expect(readFileSync(fx.dst, "utf8")).toBe(readFileSync(fx.src, "utf8"));
-      expect(statSync(fx.dst).mode & 0o777).toBe(0o644);
-
-      utimesSync(fx.dst, installedAt, installedAt);
-      const unchanged = fx.run();
-      expect(unchanged.status).toBe(0);
-      expect(unchanged.stdout).toContain("unchanged");
-      expect(Math.round(statSync(fx.dst).mtimeMs / 1000)).toBe(installedAt);
-
-      writeFileSync(fx.src, "[Unit]\nDescription=fixture changed\n");
-      expect(fx.run().status).toBe(0);
-      expect(readFileSync(fx.dst, "utf8")).toBe(readFileSync(fx.src, "utf8"));
-      expect(Math.round(statSync(fx.dst).mtimeMs / 1000)).toBeGreaterThan(installedAt);
-
-      chmodSync(fx.dst, 0o600);
-      expect(fx.run().status).toBe(0);
-      expect(statSync(fx.dst).mode & 0o777).toBe(0o644);
-
-      const elsewhere = join(fx.dir, "elsewhere");
-      writeFileSync(elsewhere, readFileSync(fx.src));
-      rmSync(fx.dst);
-      symlinkSync(elsewhere, fx.dst);
-      expect(fx.run().status).toBe(0);
-      expect(statSync(fx.dst).isSymbolicLink()).toBe(false);
-      expect(readFileSync(fx.dst, "utf8")).toBe(readFileSync(fx.src, "utf8"));
-
-      utimesSync(fx.dst, installedAt, installedAt);
-      writeFileSync(fx.src, "[Unit]\nDescription=dry run\n");
-      const dry = fx.run({ DRY_RUN: "1" });
-      expect(dry.status).toBe(0);
-      expect(dry.stdout).toContain("would: install");
-      expect(readFileSync(fx.dst, "utf8")).not.toContain("dry run");
-      expect(Math.round(statSync(fx.dst).mtimeMs / 1000)).toBe(installedAt);
-    } finally {
-      fx.cleanup();
-    }
-  });
-
-  it("a re-apply over unchanged unit content leaves the deploy green; a changed definition does not", () => {
-    // End to end across both scripts: install (apply.sh), the record a completed run leaves,
-    // re-apply over unchanged content, then read the deploy's assertion. Only a changed definition
-    // may make that red.
-    const cfg = configInstallFixture();
-    const prov = provenanceFixture();
-    try {
-      const installedAt = 2000;
-      const lastRun = 3000;
-      expect(cfg.run().status).toBe(0);
-      utimesSync(cfg.dst, installedAt, installedAt);
-      prov.writeRecord({ completed: lastRun });
-      const before = prov.run({ unitFile: cfg.dst });
-      expect(before.status).toBe(0);
-      expect(before.stdout).toContain("backup unit healthy");
-
-      // The re-apply the ticket was about: identical bytes, so nothing is written and the check
-      // keeps reading the same mtime.
-      expect(cfg.run().stdout).toContain("unchanged");
-      const afterReapply = prov.run({ unitFile: cfg.dst });
-      expect(afterReapply.status).toBe(0);
-      expect(afterReapply.stdout).toContain("backup unit healthy");
-
-      // A genuinely changed definition is written, so the unit must run again before it passes.
-      writeFileSync(cfg.src, "[Unit]\nDescription=fixture changed\n");
-      expect(cfg.run().status).toBe(0);
-      const afterChange = prov.run({ unitFile: cfg.dst });
-      expect(afterChange.status).toBe(1);
-      expect(afterChange.stderr).toContain("BEFORE its current definition was installed");
-    } finally {
-      cfg.cleanup();
-      prov.cleanup();
-    }
-  });
-
   it("passes on a record written before a reboot (mutation: the reboot clears systemd's run state)", () => {
     // The reboot case: the job wrote its record, then the box rebooted. systemd's
     // ExecMainExitTimestamp is empty and only the persistent timer stamp survived. The record
@@ -1947,9 +1434,9 @@ describe("provisioning config as code stays true to the ADR", () => {
       const setup = read("docs/VPS-SETUP.md");
       // Pin the whole documented command as one block, not each part anywhere in the doc: the
       // restore section also names --env-file, so a per-part toContain stays green after the
-      // bootstrap loses that line. The order (apply.sh before this run) matters too: apply.sh
-      // installs the unit, so a record written first is stale and cannot be cleared by the
-      // pre-record deployed bundle.
+      // bootstrap loses that line. The order matters too: the host configuration installs the
+      // unit, so a record written first is stale and cannot be cleared by the pre-record
+      // deployed bundle.
       expect(setup).toContain("> cd /srv/kajianq-src");
       expect(setup).toContain(
         "sudo bun provision/vps/backup/kajianq-backup.mjs \\\n" +
@@ -1957,7 +1444,7 @@ describe("provisioning config as code stays true to the ADR", () => {
           ">   --label bootstrap \\\n" +
           ">   --record /var/lib/kajianq/backup-provenance",
       );
-      expect(setup).toContain("pull → `apply.sh` → bootstrap → deploy");
+      expect(setup).toContain("host configuration applied → bootstrap → deploy");
 
       const boot = backup.run();
       expect(boot.status, boot.stderr).toBe(0);
@@ -2017,9 +1504,9 @@ describe("provisioning config as code stays true to the ADR", () => {
       expect(stale.stderr).toContain("BEFORE its current definition was installed");
       expect(stale.stderr).toContain("never been exercised as installed");
       expect(stale.stderr).toContain("as root");
-      // On a transition box the stale record predates the unit that apply.sh just installed, and
-      // `systemctl start` still runs the pre-record bundle; the refusal must point at the checkout
-      // bootstrap instead of ending at that dead end.
+      // On a transition box the stale record predates the unit the host configuration just
+      // installed, and `systemctl start` still runs the pre-record bundle; the refusal must
+      // point at the checkout bootstrap instead of ending at that dead end.
       expect(stale.stderr).toContain("bootstrap from the checkout");
     } finally {
       fx.cleanup();
@@ -2048,24 +1535,11 @@ describe("provisioning config as code stays true to the ADR", () => {
     }
   });
 
-  it("refuses a unit run that dies before the job body (mutation: no ExecStartPre marker)", () => {
-    // The unit's start sequence, as installed: ExecStartPre marks the record pending before
-    // ExecStart can fail (a moved bun, an absent deployed bundle, a broken ExecStart), and the
-    // job body never runs to replace the marker. The fixture seeds the previous success first —
-    // exactly the state a pre-body death leaves current if nothing marks the run.
-    const service = directives("provision/vps/systemd/kajianq-backup.service");
-    const marker = /^ExecStartPre=(.+)$/m.exec(service)?.[1];
-    expect(marker, "the unit must mark a run pending before ExecStart").toBe(
-      "/usr/local/sbin/kajianq-backup-pending",
-    );
-    // apply.sh installs the repository script at that path, so executing it here is executing
-    // what the unit executes. The install is outside the deploy tree: /srv/kajianq is
-    // deploy-owned and replaced with --delete, so a marker there could be rewritten by the
-    // identity the record binds.
-    expect(read("provision/vps/apply.sh")).toMatch(
-      /^backup-marker\|config\|backup\/kajianq-backup-pending\.sh\|\/usr\/local\/sbin\/kajianq-backup-pending\|root\|root\|755$/m,
-    );
-
+  it("refuses a run that dies before the job body (mutation: no pre-body marker)", () => {
+    // The unit's ExecStartPre marks the record pending before ExecStart can fail (a moved bun,
+    // an absent deployed bundle, a broken ExecStart), and the job body never runs to replace
+    // the marker. The fixture seeds the previous success first — exactly the state a pre-body
+    // death leaves current if nothing marks the run.
     const fx = provenanceFixture();
     try {
       fx.writeRecord();
@@ -2264,9 +1738,6 @@ describe("provisioning config as code stays true to the ADR", () => {
     // and the previous success stays current. With the marker in place the job starts, refuses
     // the run itself (naming the missing configuration), and records status=1 — the preflight
     // then refuses with the recorded cause, not only with the pending marker.
-    const service = directives("provision/vps/systemd/kajianq-backup.service");
-    expect(service).toContain("EnvironmentFile=-/etc/kajianq/backup.env");
-
     const backup = backupRunFixture();
     const prov = provenanceFixture();
     try {
@@ -2371,7 +1842,6 @@ describe("provisioning config as code stays true to the ADR", () => {
     const backup = read("provision/vps/backup/kajianq-backup.mjs");
     const provenance = read("provision/vps/backup/provenance.mjs");
     const check = read("provision/vps/deploy/backup-provenance.sh");
-    const apply = read("provision/vps/apply.sh");
     // The writer and the reader must name the same path, and it must not sit under the deploy
     // root: /srv/kajianq belongs to the helper's swap, so a root-owned record there could be
     // renamed away, and the whole tree is replaced on every deploy.
@@ -2382,9 +1852,8 @@ describe("provisioning config as code stays true to the ADR", () => {
     expect(backup).toMatch(
       /import \{ RECORD_PATH, recordBody, writeRecordFile \} from "\.\/provenance\.mjs"/,
     );
-    // apply.sh provisions the directory root-owned and traversable; the job writes the file
-    // 0644, so the deploy identity can read a proof it cannot write.
-    expect(apply).toMatch(/install -d -o root -g root -m 0755 \/var\/lib\/kajianq/);
+    // The job writes the file 0644, so the deploy identity can read a proof it cannot write;
+    // the root-owned 0755 directory is the host configuration's half of that contract.
     expect(provenance).toMatch(/writeFileSync\(tmp, body, \{ mode: 0o644 \}\)/);
     // The unit's pre-body marker must write THAT record: a marker at another path would leave
     // the preflight reading the previous success, and one under the deploy root could be
@@ -2441,17 +1910,6 @@ describe("provisioning config as code stays true to the ADR", () => {
     }
   });
 
-  it("apply.sh clears the backup unit's stale failure state after installing it", () => {
-    // The failure is attached to the unit NAME, so without reset-failed `systemctl status`
-    // reports a failure the unit does not have; the deploy's gate does not depend on the reset.
-    const apply = read("provision/vps/apply.sh");
-    expect(apply).toMatch(/systemctl reset-failed kajianq-backup\.service/);
-    // Order matters: the reset is meaningless before the new unit is in place.
-    expect(apply.indexOf("reset-failed kajianq-backup.service")).toBeGreaterThan(
-      apply.indexOf("systemd/kajianq-backup.service"),
-    );
-  });
-
   it("the backup job ships as a deployed artifact, not from the repository checkout", () => {
     // The unit must run a DEPLOYED artifact, not a path in the repository checkout: production
     // otherwise ran whatever revision sat in that checkout, which the deploy never updated.
@@ -2461,14 +1919,6 @@ describe("provisioning config as code stays true to the ADR", () => {
       /bun build "\$\{REPO_DIR\}\/provision\/vps\/backup\/kajianq-backup\.mjs" --target=bun/,
     );
     expect(script).toMatch(/--outfile "\$\{STAGE\}\/api\/backup\.js"/);
-    // The shipped unit must point at that artifact and at nothing else.
-    const service = directives("provision/vps/systemd/kajianq-backup.service");
-    expect(service).toMatch(/ExecStart=\/usr\/bin\/bun run \/srv\/kajianq\/api\/backup\.js/);
-    // No checkout path may remain anywhere in the unit.
-    expect(service).not.toMatch(/kajianq-src/);
-    // apply.sh installs it verbatim — no render() call, since there is nothing to substitute.
-    const apply = read("provision/vps/apply.sh");
-    expect(apply).not.toMatch(/render "\$\{SRC\}\/systemd\/kajianq-backup\.service"/);
   });
 
   it("the backup script's provenance probe cannot abort a run", () => {
@@ -2494,14 +1944,12 @@ describe("provisioning config as code stays true to the ADR", () => {
     expect(example).toMatch(/KAJIANQ_PUBLIC_URL=/);
   });
 
-  it("the deploy's privileged calls are covered by the bridge grant", () => {
+  it("the deploy's privileged calls are the helper and the cron proof, nothing else", () => {
     // The deploy's privileged half is sudo over ssh, where a missing grant fails as "a password
-    // is required" — naming neither the rule nor the command. The grant is the bridge between
-    // two deploy paths: it authorizes the shared helper the deploy now runs and the legacy
-    // commands a deploy in flight still uses. So every sudo'd command must be granted; an
-    // unused entry is expected and pinned as part of the bridge, not a licence to accumulate.
+    // is required" — naming neither the rule nor the command. The grant lives with the host
+    // configuration in ahaqqu/vps, so this test pins the set of commands deploy.sh may ask for:
+    // a new privileged call must land in that repository's grant before it lands here.
     const script = read("provision/vps/deploy/deploy.sh");
-    const grant = read("provision/vps/sudoers/kajianq-deploy");
 
     // Extract the sudo'd argv from the script's remote commands. The `sudo ` may follow a shell
     // quote, so quotes and whitespace are normalized first, `${SYSTEMCTL}` is resolved to the
@@ -2516,43 +1964,14 @@ describe("provisioning config as code stays true to the ADR", () => {
         /sudo\s+(?:-n\s+)?((?:\/usr\/local\/sbin\/vps-deploy|\/usr\/bin\/systemctl)\s+[^\n;|&]+)/g,
       ),
     ].map((m) => m[1].trim());
-    expect(used).toContain("/usr/local/sbin/vps-deploy kajianq");
-    expect(used).toContain("/usr/bin/systemctl start kajianq-cron.service");
-    // The helper owns the restart and its health wait; a raw restart here would fight the
-    // contract's rollback.
-    expect(resolved).not.toMatch(/sudo\s+(?:-n\s+)?\/usr\/bin\/systemctl\s+restart/);
-
-    // The grant's command list: whitespace is collapsed first (entries follow `\` line
-    // continuations), then the entries are split on the comma boundaries sudoers uses.
-    const grantBody = grant
-      .slice(grant.indexOf("NOPASSWD:"))
-      .replace(/\\\s*\n/g, " ")
-      .replace(/\s+/g, " ");
-    const granted = grantBody
-      .replace(/^.*?NOPASSWD:\s*/, "")
-      .split(",")
-      .map((command) => command.trim());
-
-    for (const command of used) {
-      expect(granted, `deploy runs \`sudo ${command}\` but the bridge grant omits it`).toContain(
-        command,
-      );
-    }
-    // The bridge keeps both halves: the helper (deploy, rollback and the four bounded verbs)
-    // and the four legacy commands the deploy path used before the swap. The vps repository's
-    // follow-up retires the legacy half and this list with it.
-    expect(granted).toEqual([
-      "/usr/local/sbin/vps-deploy kajianq",
-      "/usr/local/sbin/vps-deploy kajianq --rollback",
-      "/usr/local/sbin/vps-deploy kajianq start",
-      "/usr/local/sbin/vps-deploy kajianq stop",
-      "/usr/local/sbin/vps-deploy kajianq restart",
-      "/usr/local/sbin/vps-deploy kajianq status",
-      "/usr/bin/systemctl restart kajianq-api.service",
+    expect([...new Set(used)].sort()).toEqual([
       "/usr/bin/systemctl start kajianq-cron.service",
-      "/usr/sbin/nginx -t",
-      "/usr/bin/certbot certificates",
+      "/usr/local/sbin/vps-deploy kajianq",
     ]);
+    // The helper owns the restart and its health wait; a raw restart here would fight the
+    // contract's rollback, and the diagnostics belong to the doctor the identity runs.
+    expect(resolved).not.toMatch(/sudo\s+(?:-n\s+)?\/usr\/bin\/systemctl\s+restart/);
+    expect(resolved).not.toMatch(/sudo[^\n]*(nginx -t|certbot certificates)/);
   });
 
   it("ships one tar artifact and asks the helper to swap it, never writing the target", () => {
@@ -2581,137 +2000,6 @@ describe("provisioning config as code stays true to the ADR", () => {
     expect(script).not.toMatch(/mkdir -p[^\n]*DEPLOY_ROOT/);
     expect(script).not.toMatch(/sudo[^\n]*restart kajianq-api\.service/);
     expect(script).not.toMatch(/is-active --quiet/);
-  });
-
-  it("the deploy grant is scoped: no wildcards, no shell, one identity, absolute paths", () => {
-    // visudo -cf proves the file PARSES, not that it is narrow — a wildcard command parses
-    // perfectly — so the scope has to be asserted here.
-    const grant = read("provision/vps/sudoers/kajianq-deploy");
-    const rules = grant
-      .split("\n")
-      .filter((l) => l.trim() && !l.trim().startsWith("#"))
-      .join("\n");
-
-    expect(rules).not.toMatch(/\*/);
-    expect(rules).not.toMatch(/\?|\[[^\]]/);
-    // No shell, and no ALL-command form: ALL would make the exact-command scoping decorative.
-    expect(rules).not.toMatch(/NOPASSWD:\s*ALL/);
-    for (const shell of ["bash", "sh ", "sudo", "env "]) {
-      expect(rules).not.toMatch(new RegExp(`/usr/bin/${shell.trim()}`));
-    }
-    // Absolute binary paths only: sudoers matches the command string exactly.
-    expect(rules).toMatch(/\/usr\/local\/sbin\/vps-deploy kajianq/);
-    expect(rules).toMatch(/\/usr\/bin\/systemctl restart kajianq-api\.service/);
-    expect(rules).toMatch(/\/usr\/bin\/systemctl start kajianq-cron\.service/);
-    // The read-only check must not be granted: unit state is world-readable.
-    expect(rules).not.toMatch(/is-active/);
-  });
-
-  it("apply.sh installs the deploy grant only behind visudo, and the account name cannot drift", () => {
-    // Three places must agree on the deploy identity: the account apply.sh creates, the sudoers
-    // grant, and CI's VPS_USER — a drift produces the same unnamed "password is required" failure.
-    const apply = read("provision/vps/apply.sh");
-    const grant = read("provision/vps/sudoers/kajianq-deploy");
-
-    expect(apply).toMatch(/DEPLOY_USER="kajianq-deploy"/);
-    expect(grant).toMatch(/^kajianq-deploy ALL=\(root\)/m);
-    // The install is gated on the parse: a malformed sudoers.d file can lock sudo out of the
-    // box, so visudo must run BEFORE the mv into place. Anchor on the real invocation, not a
-    // comment that merely mentions visudo.
-    const visudoCall = /^\s*if ! visudo -cf\b/m.exec(apply);
-    expect(visudoCall, "apply.sh must gate the sudoers install on visudo -cf").not.toBeNull();
-    expect(apply.indexOf(visudoCall[0])).toBeLessThan(apply.indexOf('mv -f "${dst}.new"'));
-    // A failed parse must abort the apply, not fall through to the install.
-    expect(apply).toMatch(/if ! visudo -cf[^]*?exit 1/);
-    // Staged with a dot in the name: sudoers(5) ignores dot-named files.
-    expect(apply).toMatch(/\$\{dst\}\.new/);
-    // The grant must not be left world- or group-readable: the table's row is
-    // 440 and install_sudoers installs exactly the row's owner, group and mode.
-    expect(apply).toMatch(
-      /^deploy-grant\|sudoers\|sudoers\/kajianq-deploy\|\/etc\/sudoers\.d\/kajianq-deploy\|root\|root\|440$/m,
-    );
-    expect(apply).toMatch(/install -o "\$\{owner\}" -g "\$\{group\}" -m "\$\{mode\}" "\$\{tmp\}"/);
-    expect(apply).not.toMatch(/install -o root -g root -m 0440/);
-    // The drift assert runs against the shipped file, not a substituted value.
-    expect(apply).toMatch(/grep -q "\^\$\{DEPLOY_USER\} ALL=\(root\)"/);
-  });
-
-  it("the frozen legacy installer leaves the deployed tree owned by the deploy identity", () => {
-    // apply.sh is still the drift baseline until the host-configuration retirement PR. Its chown
-    // is why the old rsync path could write the tree before the helper's first swap; the helper
-    // replaces the target with a root-owned tree, so this test pins only the baseline, not the
-    // live deploy.
-    const apply = read("provision/vps/apply.sh");
-    expect(apply).toMatch(/install -d -o "\$\{DEPLOY_USER\}" -g "\$\{DEPLOY_USER\}" -m 0755/);
-    expect(apply).toMatch(
-      /chown -R "\$\{DEPLOY_USER\}:\$\{DEPLOY_USER\}" \/srv\/kajianq\/api \/srv\/kajianq\/web/,
-    );
-    // The service account must NOT gain write access as the cheaper fix: the API process never
-    // writes to this tree, so that would widen the serving identity for no requirement.
-    expect(apply).not.toMatch(/install -d -o kajianq -g kajianq -m 2755/);
-  });
-
-  it("the deploy key installation never comes from the repository and never overwrites", () => {
-    // The repository is public, so a key can only arrive through --deploy-pubkey at provisioning
-    // time; appending (not overwriting) keeps the prod key pair from evicting staging's.
-    const apply = read("provision/vps/apply.sh");
-    expect(apply).toMatch(/--deploy-pubkey/);
-    expect(apply).not.toMatch(/authorized_keys.*<<<.*id_(ed25519|rsa)/);
-    expect(apply).toMatch(/grep -qxF "\$\{key\}" "\$\{deploy_home\}\/\.ssh\/authorized_keys"/);
-    expect(apply).toMatch(/install -d -o "\$\{DEPLOY_USER\}" -g "\$\{DEPLOY_USER\}" -m 0700/);
-  });
-
-  it("apply.sh never installs the deploy grant for a name the grant does not name", () => {
-    // Negative control for the parity assert: a real comparison, not a constant that passes.
-    const grant = read("provision/vps/sudoers/kajianq-deploy");
-    const apply = read("provision/vps/apply.sh");
-    const deployUser = /DEPLOY_USER="([^"]+)"/.exec(apply)?.[1];
-    expect(deployUser).toBe("kajianq-deploy");
-    expect(grant).toMatch(new RegExp(`^${deployUser} ALL=\\(root\\)`, "m"));
-    // A different name must NOT satisfy the same assertion, or the test above would pass on any grant.
-    expect(grant).not.toMatch(/^some-other-user ALL=\(root\)/m);
-  });
-
-  it("the api.env example carries every key the serving composition root reads, as placeholders", () => {
-    // The example must list exactly the keys apps/api/src/lib/server.ts copies onto the request
-    // bindings — PASSTHROUGH_KEYS and the separately-bound ADMIN_KEYS (the two sets drift only
-    // together) — set KAJIANQ_WEB_ROOT to the deployed path (the default 503s every SPA route
-    // while health stays green), and hold placeholders only — the loopback 127.0.0.1 is exempt
-    // as the Postgres listener's own address.
-    const example = read("provision/vps/api.env.example");
-    const server = readFileSync(resolve(process.cwd(), "apps/api/src/lib/server.ts"), "utf8");
-    /** The string keys of one `const NAME = [ … ] as const;` block. The admin key list is a
-     * one-element array on a single line, which the old line-anchored scrape never matched —
-     * so ADMIN_PASSWORD was asserted nowhere and a fresh box had no documented way to enable
-     * the surface. */
-    const keysOf = (name) => {
-      const block = new RegExp(`const ${name} = \\[([\\s\\S]*?)\\] as const;`).exec(server)?.[1];
-      expect(block, `${name} must be declared in server.ts`).toBeDefined();
-      return [...block.matchAll(/"([A-Z_0-9]+)"/g)].map((match) => match[1]);
-    };
-    const keys = [...keysOf("PASSTHROUGH_KEYS"), ...keysOf("ADMIN_KEYS")];
-    expect(keys.length).toBeGreaterThanOrEqual(8);
-    expect(keys).toContain("ADMIN_PASSWORD");
-    for (const key of keys) {
-      expect(example, key).toMatch(new RegExp(`^${key}=`, "m"));
-    }
-    // The recorded posture ships the surface OFF: an empty assignment is the documented
-    // "disabled" value, and a placeholder credential would ship an enabled surface instead.
-    expect(example).toMatch(/^ADMIN_PASSWORD=\s*$/m);
-    // The template must ship the recorded `staging` label so a re-arm reddens here rather than
-    // on a rebuilt box (ADR-0044 decision 2). Asserted on the parsed value — systemd strips
-    // whitespace and takes the last assignment — and on there being one assignment.
-    const assignments = example.match(/^\s*APP_ENV\s*=/gm) ?? [];
-    expect(assignments).toHaveLength(1);
-    expect(parseEnvFile(example).APP_ENV).toBe("staging");
-    expect(example).toMatch(/^KAJIANQ_WEB_ROOT=\/srv\/kajianq\/web$/m);
-    const noLoopback = example.replace(/127\.0\.0\.1/g, "<loopback>");
-    expect(noLoopback).not.toMatch(/\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/);
-    expect(example).not.toMatch(/postgres:\/\/(?!kajianq:CHANGE_ME)/);
-    // Real secrets never enter the repo: every provider key line is a placeholder.
-    for (const key of ["GEMINI_PAID_API_KEY", "DEEPSEEK_API_KEY"]) {
-      expect(example).toMatch(new RegExp(`^${key}=CHANGE_ME$`, "m"));
-    }
   });
 
   it("a markdown link gate exists and is wired into CI", () => {

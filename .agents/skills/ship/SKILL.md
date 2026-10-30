@@ -22,10 +22,12 @@ for anything below that drifts.
 
 - [`docs/VPS-OPERATIONS.md`](../../../docs/VPS-OPERATIONS.md) §1 (deploy path), §2
   (Postgres, migrations, snapshots, backups), §3 (monitoring).
-- [`docs/VPS-SETUP.md`](../../../docs/VPS-SETUP.md) —
-  provisioning, the deploy identity's key move, retention verification.
+- [`docs/VPS-SETUP.md`](../../../docs/VPS-SETUP.md) — the box baseline, the
+  deploy identity's key move, and retention verification. Host configuration
+  itself lives in [ahaqqu/vps](https://github.com/ahaqqu/vps).
 - `provision/vps/deploy/deploy.sh` — the deploy path itself (preflight → build →
-  ship → restart → smoke); `.github/workflows/deploy-vps.yml` — its CI trigger.
+  upload → helper swap → cron proof → smoke → doctor); `.github/workflows/deploy-vps.yml`
+  — its CI trigger.
 - `.github/workflows/staging.yml` — the post-deploy validation jobs.
 - `docs/ARCHITECTURE.md` §8 (security scanning), §11 (availability), §12
   (reliability), §16 (tooling).
@@ -42,7 +44,7 @@ post-deploy smoke (health, an anonymous-session mint, the SPA HTML check).
 push/merge outside paths-ignore
   └─ Staging workflow
        ├─ deploy            → deploy-vps.yml → provision/vps/deploy/deploy.sh
-       │                       preflight → build → rsync → restart → smoke (public URL)
+       │                       preflight → build → upload → helper swap → smoke (public URL)
        └─ post deploy checks → Golden Set smoke → ZAP · Schemathesis (independent gates)
 ```
 
@@ -54,7 +56,7 @@ provision/vps/deploy/deploy.sh --env /etc/kajianq/deploy.env
 gh workflow run "Deploy to VPS" -f environment=prod
 ```
 
-`--dry-run` prints actions without writing; `--no-smoke` skips step 4. A prod
+`--dry-run` prints actions without writing; `--no-smoke` skips the smoke step. A prod
 dispatch waits at the `prod` environment's required-reviewer gate — that
 approval **is** the recorded sign-off.
 
@@ -84,12 +86,15 @@ The deploy depends on things that live on the box, not in the repo. If one is
 missing, the deploy fails **after** shipping the tree, so the previous code keeps
 running:
 
-- **The deploy identity and its two-command grant.** `kajianq-deploy` with
-  `/etc/sudoers.d/kajianq-deploy` (restart `kajianq-api.service`, start
-  `kajianq-cron.service`). Installed by `provision/vps/apply.sh` and pinned by
-  `tests/scripts/vps-hardening.test.mjs`, which fails the build if the deploy's
-  `sudo` calls and the grant stop agreeing. The read-only `is-active` check needs
-  no grant.
+- **The deploy identity and its grant.** `kajianq-deploy` with
+  `/etc/sudoers.d/kajianq-deploy` (the `vps-deploy kajianq` helper with
+  deploy/rollback and the four bounded service verbs, the cron proof
+  `systemctl start kajianq-cron.service`, and the doctor diagnostics `nginx -t`
+  and `certbot certificates`). The grant lives in
+  [ahaqqu/vps](https://github.com/ahaqqu/vps) under `kajianq/` and is installed
+  by that repository's applier; `tests/scripts/vps-hardening.test.mjs` pins the
+  privileged calls `deploy.sh` may make, so a new one must land in the grant
+  first.
 - **`vars.VPS_USER` naming that account**, on the `staging` and `prod`
   environments — each carries its own copy, and no repository-level copy is kept:
   a shadowed copy is a silent fallback for a scope that loses its own
@@ -152,7 +157,7 @@ recovery commands for a box built from the pre-fix template.
 
 ## Phase 7 — Smoke tests
 
-The deploy script smokes the public URL through the proxy and TLS as its step 4:
+The deploy script smokes the public URL through the proxy and TLS as its smoke step:
 `GET /v1/health`, `POST /v1/auth/anonymous` (must contain `"token"`), and
 `GET /chat` with `accept: text/html` (must be `<!doctype html>` — the check that
 pins the shipped SPA, which a missing `KAJIANQ_WEB_ROOT` or a regressed
@@ -170,9 +175,9 @@ If a smoke fails, go to Phase 8.
 
 ## Phase 8 — Rollback
 
-**There is no instant rollback: the deploy is an `rsync --delete` of a
-content-hashed build — a stale file on the box is a stale file, not a
-rollback.** The recorded rollback is git:
+**The recorded rollback is git.** The deploy ships one content-hashed artifact
+and the helper swaps the whole tree, so `git revert` plus a redeploy restores
+the previous build; a manual helper rollback is not the recorded path.
 
 ```bash
 git revert <bad-commit>          # on main, via a PR

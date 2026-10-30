@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
 # provision/vps/deploy/deploy.sh — the VPS deploy path: preflight → build →
-# upload → helper swap → smoke (ADR-0044).
+# upload → helper swap → cron proof → smoke → doctor (ADR-0044).
 #
 # This is the deployer's own home, deliberately OUTSIDE apps/ (issue #181's
 # deployer-separation criterion): app code holds no hosting or deploy logic,
-# provisioning stays under provision/vps/, CI gates stay in .github/workflows/,
+# host configuration lives in ahaqqu/vps, CI gates stay in .github/workflows/,
 # and the deploy path lives here with the workflow that calls it. A single
 # decision, recorded in ADR-0044 decision 3.
 #
-# Three preflights that change no installed state run before anything is built
-# or uploaded, because a red after the helper swap would leave a new tree live
-# and the smoke and doctor skipped — an unverified deployment already serving:
+# Two read-only preflights run before anything is built or uploaded, because a
+# red after the helper swap would leave a new tree live and the smoke and doctor
+# skipped — an unverified deployment already serving:
 #
 #   1. the database is current. `bun run db:status:all:json` reads the shared
 #      schema_migrations ledger (engine, domain and product sets), and any
@@ -18,17 +18,11 @@
 #      and the exact `db:up:*` command. Migrations are an operator action, and
 #      the smoke cannot see a stale schema, so a deploy that did not check it
 #      could report healthy on a box where every admin route already 503s.
-#   2. the provisioned files on the box match this checkout. Provisioning is an
-#      operator action (apply.sh, as root), so a merged change to a unit, script
-#      or config is inert until it is applied; this gate refuses to call such a
-#      box healthy and names the file to apply. It also checks the nginx
-#      sites-enabled link, which decides which block the box actually serves.
-#   3. the backup job's durable record proves it ran as installed.
+#   2. the backup job's durable record proves it ran as installed.
 #
-# None changes installed state (the drift check writes one short-lived temp file
-# under /tmp to compare a rendered config), so a red costs an ssh round trip and
-# nothing else. The migration check is read-only and also runs under --dry-run:
-# a dry run that skipped it would describe a deploy the real path refuses.
+# Neither changes installed state, so a red costs an ssh round trip and nothing
+# else. The migration check is read-only and also runs under --dry-run: a dry
+# run that skipped it would describe a deploy the real path refuses.
 #
 # A deploy never applies a migration. It refuses while one is pending, so the
 # operator order MIGRATE, THEN RESTART (docs/VPS-OPERATIONS.md §2.3) is enforced
@@ -72,16 +66,12 @@
 # login: its authorization is the shared `vps-deploy kajianq` helper (deploy,
 # rollback and the four bounded service verbs), the cron proof
 # (`systemctl start kajianq-cron.service`) and two read-only diagnostics for the
-# §5 doctor gate. The legacy `systemctl restart kajianq-api.service` stays
-# bridge-only until the host-config cleanup removes it. The contract and the
-# grant live in the host-configuration repository (ahaqqu/vps,
-# kajianq/deploy.conf and kajianq/sudoers/kajianq-deploy), which its root
-# applier installs; this repository's
-# provision/vps/sudoers/kajianq-deploy is the drift baseline and must keep the
-# same bytes. The identity uploads the artifact into /srv/vps-incoming as a
-# member of the upload group; the helper, not the identity, writes the deployed
-# tree. The name is fixed rather than configurable so the account, the grant,
-# and CI's VPS_USER cannot drift apart silently.
+# §5 doctor gate. The contract and the grant live in the host-configuration
+# repository (ahaqqu/vps under kajianq/), which its root applier installs; this
+# repository carries no copy to keep in sync. The identity uploads the artifact
+# into /srv/vps-incoming as a member of the upload group; the helper, not the
+# identity, writes the deployed tree. The name is fixed rather than configurable
+# so the account, the grant, and CI's VPS_USER cannot drift apart silently.
 #
 # The helper's app name and incoming path are fixed by that contract:
 # /srv/vps-incoming/kajianq.tar.gz, uploaded by kajianq-deploy and swapped by
@@ -100,8 +90,7 @@
 # leaves nginx or a neighbour unhealthy turns THIS build red instead of
 # surfacing later as a mystery on the other side. The sweep is one copy on the
 # box, run over ssh — no GitHub credential, no temp file on the box — and needs
-# the two read-only diagnostics in the bridge grant (nginx -t, certbot
-# certificates); until the box has converged to that grant, the sweep's nginx
+# the two read-only diagnostics in the grant (nginx -t, certbot certificates); until the box has converged to that grant, the sweep's nginx
 # check degrades to a warning rather than failing every deploy.
 #
 # Exit non-zero on the first failure: a half-shipped tree that reports success
@@ -217,36 +206,7 @@ else
         bash "${REPO_DIR}/provision/vps/deploy/migration-check.sh"
 fi
 
-# --- 0b. preflight: the box runs the provisioning this checkout describes -----
-# Provisioning is an operator action — only apply.sh, run as root on the box,
-# places a unit, script or config — so a merged change under provision/vps/ can
-# sit inert while a deploy reports healthy. This gate closes that: it compares
-# every artifact apply.sh places (enumerated from apply.sh's own table via
-# `--list-artifacts`, never a list copied here) with the checkout, and refuses
-# the deploy, naming each file, when the box is stale.
-#
-# It runs before the provenance preflight below because that gate reads a
-# durable record a stale unit can satisfy: a backup unit installed before its
-# current definition still has a record saying a run exited 0, and the record
-# cannot tell the difference. Reading the record is only meaningful once the
-# installed unit is the one this checkout describes.
-#
-# Changes no installed state on the box (stat, hash, compare; the rendered-config
-# comparison writes one short-lived temp file under /tmp), so a red here costs an
-# ssh round trip and leaves the box on its previous revision — the same reason
-# the provenance preflight below also runs before the build.
-log "preflight: provisioned artifacts match the checkout"
-DRIFT_MANIFEST_B64="$(bash "${REPO_DIR}/provision/vps/deploy/provision-drift.sh" \
-    --emit-manifest "${REPO_DIR}" | base64 -w0)"
-if [ "${DRY_RUN}" -eq 1 ]; then
-    log "would: compare the installed provisioned artifacts against the checkout"
-else
-    ssh "${SSH_OPTS[@]}" "${SSH_TARGET}" bash -s -- \
-        --check --manifest-base64 "${DRIFT_MANIFEST_B64}" \
-        <"${REPO_DIR}/provision/vps/deploy/provision-drift.sh"
-fi
-
-# --- 0c. preflight: the backup unit's provenance ----------------------------
+# --- 1. preflight: the backup unit's provenance -----------------------------
 # The assertion is "kajianq-backup.service has a completed backup recorded since
 # its current definition was installed": the job's durable provenance record says
 # the last completed run exited 0 AND completed after that install. Its logic, and
@@ -263,7 +223,7 @@ log "preflight: the backup unit's provenance"
 run ssh "${SSH_OPTS[@]}" "${SSH_TARGET}" bash -s \
     <"${REPO_DIR}/provision/vps/deploy/backup-provenance.sh"
 
-# --- 1. build ---------------------------------------------------------------
+# --- 2. build ---------------------------------------------------------------
 # Three artifacts, all bundled for Bun so the box needs no node_modules:
 #   api/index.js   the serving entry  (apps/api/src/boot.ts)
 #   api/cleanup.js the cron entry     (apps/api/src/cleanup.ts)
@@ -322,7 +282,7 @@ run tar -czf "${STAGE}/kajianq.tar.gz" -C "${STAGE}" api web
 # than depend on the operator's umask.
 run chmod 0644 "${STAGE}/kajianq.tar.gz"
 
-# --- 2. upload --------------------------------------------------------------
+# --- 3. upload --------------------------------------------------------------
 # One artifact into the upload directory, never into the live tree: the helper
 # verifies it (owner, size caps, relative regular entries), unpacks it root-owned
 # and swaps the whole tree. A half-written file in the target is the failure the
@@ -335,7 +295,7 @@ fi
 run rsync -a --partial -e "ssh ${SSH_OPTS[*]}" \
     "${STAGE}/kajianq.tar.gz" "${SSH_TARGET}:/srv/vps-incoming/kajianq.tar.gz"
 
-# --- 3. swap, restart and health-check through the helper --------------------
+# --- 4. swap, restart and health-check through the helper --------------------
 # The helper is the only writer of the live tree: it verifies the artifact
 # against the root-only contract (/etc/vps/deploy/kajianq.conf), unpacks it into
 # a root-owned staging tree, moves the current target aside, swaps the new tree
@@ -344,7 +304,7 @@ run rsync -a --partial -e "ssh ${SSH_OPTS[*]}" \
 # owns the command, its wait and its rollback.
 #
 # Root grant: the deploy identity may run `vps-deploy kajianq` only through the
-# bridge grant installed from ahaqqu/vps (kajianq/sudoers/kajianq-deploy) —
+# grant installed from ahaqqu/vps (kajianq/sudoers/kajianq-deploy) —
 # never a raw systemctl restart. Until that grant is installed the helper call
 # fails as "a password is required", which is why the vps contract and grant are
 # a prerequisite of this path, not an optional follow-up.
@@ -353,7 +313,7 @@ run ssh "${SSH_OPTS[@]}" "${SSH_TARGET}" 'sudo -n /usr/local/sbin/vps-deploy kaj
 
 # Prove the cron entry still executes end to end (its failure mode — a rotated
 # env var, a missing key — is otherwise invisible until 03:17). The helper never
-# touches the cron unit; the bridge grant keeps the legacy start command.
+# touches the cron unit; the grant carries the start command.
 #
 # Absolute binary path: sudoers matches the command string and argv exactly, so
 # a bare `systemctl` resolved through PATH would not match the grant — and
@@ -367,7 +327,7 @@ run ssh "${SSH_OPTS[@]}" "${SSH_TARGET}" "sudo ${SYSTEMCTL} start kajianq-cron.s
 # double the daily dump), so its health is read from its own run record — in the
 # preflight above, not here: nothing below changes what that record says.
 
-# --- 4. smoke ---------------------------------------------------------------
+# --- 5. smoke ---------------------------------------------------------------
 # The `ship` skill's pre-prod validation: a health check and an anonymous
 # session mint against the PUBLIC URL, through the real proxy and TLS. Not
 # against the loopback port — that would skip the proxy, which is where a TLS,
@@ -397,7 +357,7 @@ if [ "${RUN_SMOKE}" -eq 1 ]; then
         grep -qi '<!doctype html'
 fi
 
-# --- 5. doctor (the shared-box gate) ----------------------------------------
+# --- 6. doctor (the shared-box gate) ----------------------------------------
 # The box is shared (manifest: the private ahaqqu/homepage repo): a kajianq
 # change that invalidates nginx or starves a neighbour must turn this deploy
 # red, not surface later as a mystery on the other app. The sweep is ONE COPY
@@ -406,10 +366,10 @@ fi
 # vendored duplicate to drift, nothing fetched, no credential. It checks
 # nginx -t, sites-enabled hygiene, failed units, every app's listeners and
 # units, cert expiry. Runs as the deploy identity, which may do so because
-# the bridge grant carries the two read-only diagnostics it needs.
+# the grant carries the two read-only diagnostics it needs.
 # Until homepage has deployed once since the ops-dir bootstrap the file may
 # be absent — a warning, not a failure. Until the box has converged to the
-# bridge grant, the sweep's nginx check degrades to a warning instead of
+# grant, the sweep's nginx check degrades to a warning instead of
 # failing every deploy. Blocking on purpose: a deploy that cannot prove the
 # box healthy has not deployed.
 log "running the shared-box doctor (cross-app gate)"

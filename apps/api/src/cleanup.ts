@@ -5,7 +5,8 @@
  *   bun run apps/api/src/cleanup.ts
  *
  * ADR-0017's nightly reclamation (`cleanupExpiredSessions`) is a systemd timer
- * invoking this entry (`provision/vps/systemd/kajianq-cron.{service,timer}`).
+ * invoking this entry (`kajianq-cron.{service,timer}` in the host
+ * configuration's `kajianq` manifest).
  * A dedicated process rather than an in-process interval keeps the schedule
  * independently observable (`systemctl status kajianq-cron`) and reclaims even
  * when the serving process is unhealthy — the two jobs have different failure

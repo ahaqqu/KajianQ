@@ -248,10 +248,11 @@ before implementation. All API routes are under `/v1/`; breaking changes get a
 new version, never an in-place break.
 
 **The deployer is a separate concern, by decision (ADR-0044 decision 3).**
-`apps/*` carries app code and build scripts; the preflight → build → ship →
-restart → smoke path lives in [`provision/vps/deploy/deploy.sh`](../provision/vps/deploy/deploy.sh)
-with its CI trigger in `.github/workflows/deploy-vps.yml`; provisioning is under
-`provision/vps/`; CI gates are in `.github/workflows/`. A fork can change or
+`apps/*` carries app code and build scripts; the preflight → build → upload →
+helper swap → smoke path lives in [`provision/vps/deploy/deploy.sh`](../provision/vps/deploy/deploy.sh)
+with its CI trigger in `.github/workflows/deploy-vps.yml`; host configuration
+lives in [ahaqqu/vps](https://github.com/ahaqqu/vps) (ADR-0065); CI gates are in
+`.github/workflows/`. A fork can change or
 replace the deploy path without touching a line of application code — which is
 what makes "app code" mean something. Before the move, `apps/api/alchemy.run.ts`
 and six `alchemy:*` scripts made every hosting decision an app-file edit.
@@ -279,8 +280,8 @@ so swapping the RagStore adapter swaps the backend.
   │   ├── rate/                   # @app/rate — RateLimiter adapters
   │   ├── hardening/              # @app/hardening — security headers, ASSETS serving
 │   └── kajianq-domain/         # THE domain pack: all Islamic-domain logic (+ concept-graph migrations)
-├── provision/vps/              # the deployer + host config-as-code (ADR-0044 decision 3): apply.sh,
-│                               # nginx/postgres/logrotate/journald/systemd, deploy/, backup/
+├── provision/vps/              # the deployer + the app's backup scripts (ADR-0044 decision 3):
+│                               # deploy/, backup/; host config lives in ahaqqu/vps
 ├── scripts/                    # check-boundary, agentic-limits, openapi-check…
 ├── .github/workflows/          # CI gates + the deploy trigger (deploy-vps.yml)
 ├── docs/ARCHITECTURE.md        # ← this file (stable "why")

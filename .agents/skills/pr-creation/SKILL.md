@@ -44,12 +44,12 @@ A PR that touches both must state the split explicitly (e.g. engine change in `r
 
 **Layer separation (use these as the PR description's change sections):**
 
-| Layer              | What belongs here                                                                                                                                 | Where it lives                                                                              |
-| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
-| Supporting code    | Contracts, schemas, shared types, scripts, migrations, tooling config — code that other layers import but that does not execute on a request path | `packages/contracts`, `scripts/`, `migrations/`, root config                                |
-| Backend processing | Engine logic that runs when a request or batch is processed: pipeline stages, retrieval, generation, ingestion, eval, cost/trace accounting       | `packages/rag-core`, `rag-ingest`, `eval`, `kajianq-domain`, `apps/api` route/service logic |
-| Backend runtime    | Deploy/dev/lifecycle tooling: VPS provisioning and the deploy script, migrations runner, CI workflows, secret binding and host preconditions      | `provision/vps/`, `.github/workflows/`, deploy scripts                                      |
-| Frontend           | UI, client state, i18n, PWA — plain TypeScript, never `effect`                                                                                    | `apps/web`                                                                                  |
+| Layer              | What belongs here                                                                                                                                                     | Where it lives                                                                              |
+| ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| Supporting code    | Contracts, schemas, shared types, scripts, migrations, tooling config — code that other layers import but that does not execute on a request path                     | `packages/contracts`, `scripts/`, `migrations/`, root config                                |
+| Backend processing | Engine logic that runs when a request or batch is processed: pipeline stages, retrieval, generation, ingestion, eval, cost/trace accounting                           | `packages/rag-core`, `rag-ingest`, `eval`, `kajianq-domain`, `apps/api` route/service logic |
+| Backend runtime    | Deploy/dev/lifecycle tooling: the VPS deploy script, host-configuration changes in ahaqqu/vps, migrations runner, CI workflows, secret binding and host preconditions | `provision/vps/`, `.github/workflows/`, deploy scripts                                      |
+| Frontend           | UI, client state, i18n, PWA — plain TypeScript, never `effect`                                                                                                        | `apps/web`                                                                                  |
 
 Report each layer the PR touches in its own description section (`None` for the rest) so a reviewer can check engine purity, trace discipline, and bundle budget per layer instead of untangling one mixed diff.
 

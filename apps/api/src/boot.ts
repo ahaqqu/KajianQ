@@ -4,8 +4,8 @@
  *
  *   bun run apps/api/src/boot.ts
  *
- * This is what `provision/vps/systemd/kajianq-api.service` executes on the
- * VPS: a plain Bun server behind nginx.
+ * This is what the host configuration's `kajianq-api.service` (ahaqqu/vps)
+ * executes on the VPS: a plain Bun server behind nginx.
  * Configuration comes from the environment, which systemd supplies through
  * `EnvironmentFile=/etc/kajianq/api.env` — no secret is ever an argv value.
  *

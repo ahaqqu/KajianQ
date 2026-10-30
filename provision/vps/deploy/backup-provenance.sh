@@ -44,9 +44,9 @@
 # one.
 #
 # systemd's failed state is deliberately NOT read as a second signal: it
-# describes the current boot. A reboot clears it (and `apply.sh` clears it with
-# `reset-failed` on a re-install), so a unit that failed before a reboot reads
-# as healthy afterwards — the opposite of the durability this check exists for.
+# describes the current boot. A reboot clears it, so a unit that failed before a
+# reboot reads as healthy afterwards — the opposite of the durability this check
+# exists for.
 #
 # What the record proves is the pair: the last completed run exited 0, and it
 # completed AFTER this unit's current definition was installed. A record older
@@ -56,16 +56,12 @@
 # writer, the first record comes from the checkout bootstrap, not the unit
 # (docs/VPS-SETUP.md).
 #
-# The install side keeps that mtime meaningful: apply.sh writes a config only
-# when the installed file differs, so a re-apply over unchanged content does not
-# re-stamp the unit and cannot mark an exercised unit as unproven.
-#
-# The marker script is itself a provisioned artifact, and the deploy runs its
-# provisioned-artifact preflight (provision-drift.sh) before this check: a
-# missing, non-executable or stale /usr/local/sbin/kajianq-backup-pending is
-# refused there, naming the file, so a post-install deletion of the marker
-# cannot leave this check reading an older success. This check does not repeat
-# that assertion.
+# The host-configuration applier writes the unit only when its installed
+# definition differs, so re-applying unchanged content does not re-stamp the
+# unit and cannot mark an exercised unit as unproven. The marker script the
+# unit's ExecStartPre runs (/usr/local/sbin/kajianq-backup-pending) is installed
+# by the same applier; when the unit itself is missing, the refusal names the
+# host-configuration repository so the operator applies it there.
 
 set -euo pipefail
 
@@ -83,7 +79,7 @@ refuse() {
 }
 
 if [ ! -f "${UNIT_FILE}" ]; then
-    refuse "${UNIT_FILE} is not installed — provision/vps/apply.sh has not placed it on this box"
+    refuse "${UNIT_FILE} is not installed — the host configuration in ahaqqu/vps has not placed it on this box"
 fi
 
 # Absent record: the backup has never completed on this box. The same refusal
@@ -93,7 +89,7 @@ if [ ! -f "${RECORD_FILE}" ]; then
         "${UNIT} has never run — the encrypted backup is unproven" \
         "a human with root must prove it: sudo systemctl start ${UNIT}" \
         "if that answers 'Unit ${UNIT} not found', systemd has not loaded" \
-        "the unit at all: sudo systemctl daemon-reload, and re-run provision/vps/apply.sh" \
+        "the unit at all: sudo systemctl daemon-reload, and apply the kajianq manifest in ahaqqu/vps" \
         "if the installed bundle predates the writer, bootstrap from the checkout: docs/VPS-SETUP.md §8"
 fi
 

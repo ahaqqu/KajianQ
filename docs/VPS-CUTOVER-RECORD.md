@@ -5,6 +5,10 @@ migration was carried out, with the decisive output and the evidence row it maps
 to. Written live, in execution order — not a plan. Where a step failed and was
 retried, the failure is recorded too.
 
+**Historical record.** The `provision/vps/apply.sh` commands below were the
+install path when this ran; host configuration now lives in
+[ahaqqu/vps](https://github.com/ahaqqu/vps) and this file is not rewritten.
+
 **Read this as evidence, not as a manual.** The migration it records is
 executed and the source it migrated off (Cloudflare Workers + Neon) is
 decommissioned, so there is nothing left here to follow — it is the proof that
