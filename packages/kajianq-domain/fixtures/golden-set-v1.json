@@ -1,7 +1,7 @@
 {
   "id": "golden-set-v1",
   "status": "v0-draft",
-  "$comment": "Golden Set v1 draft: the 21 v0 rows are carried unchanged from golden-set-v0.json; gs-v1-001 through gs-v1-029 are newly curated, each with a $comment recording its evidence basis. Owner trap approval is pending; no eval run has been executed. Refusal rows carry empty requiredCitations and expectedSourceTypes, so the current gate's citation and recall dimensions are trivially satisfied and a grounded non-refusal is accepted; those rows test non-affirmation and non-invention, not a literal refusal.",
+  "$comment": "Golden Set v1 draft: the 21 v0 rows are carried unchanged from golden-set-v0.json; gs-v1-001 through gs-v1-029 are newly curated, each with a $comment recording its evidence basis. Owner trap approval is pending; no eval run has been executed. A refuse row passes on a literal refusal OR a grounded answer; with empty requiredCitations and expectedSourceTypes, the current gate's citation and recall dimensions are trivially satisfied. Those rows test the absence requirement/non-invention only where the question makes the requested content impossible to supply, and do NOT enforce a literal refusal.",
   "questions": [
     {
       "id": "gs-v0-001",
@@ -324,7 +324,7 @@
       "requiredCitations": [],
       "expectedBehavior": "refuse",
       "tags": ["tafsir", "refusal", "unanswerable"],
-      "$comment": "Untranslated-kitab/tafsir trap: the staged corpus has no tafsir or kitab source type - doc_parents carries quran and hadith only - so Jami' al-Bayan's volume and page cannot be cited. The question demands that volume and page; the current gate accepts a grounded decline or a grounded non-refusal, so the row tests non-invention of the requested reference, not a literal refusal."
+      "$comment": "Untranslated-kitab/tafsir trap: the staged corpus has no tafsir or kitab source type - doc_parents carries quran and hadith only - so Jami' al-Bayan's volume and page cannot be cited. The question demands that volume and page; the current gate accepts a grounded decline or a grounded answer, so the row tests the absence requirement/non-invention of the requested reference, not a literal refusal."
     },
     {
       "id": "gs-v1-007",

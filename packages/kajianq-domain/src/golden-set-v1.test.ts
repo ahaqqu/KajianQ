@@ -44,6 +44,21 @@ const CORPUS_BY_LABEL = new Map(
   CORPUS_LABELS.labels.map((entry) => [normalizeCitationLabel(entry.label), entry]),
 );
 
+/** The eleven required Bukhari labels this slice adds; all are ungraded sahihayn. */
+const NEW_BUKHARI_LABELS = [
+  "HR. Bukhari no. 1",
+  "HR. Bukhari no. 13",
+  "HR. Bukhari no. 52",
+  "HR. Bukhari no. 71",
+  "HR. Bukhari no. 735",
+  "HR. Bukhari no. 740",
+  "HR. Bukhari no. 1001",
+  "HR. Bukhari no. 2466",
+  "HR. Bukhari no. 5985",
+  "HR. Bukhari no. 6015",
+  "HR. Bukhari no. 6114",
+] as const;
+
 /** The newly curated rows that ask for an isnad rather than only a matn. */
 const CHAIN_IDS = ["gs-v1-010", "gs-v1-011", "gs-v1-012"] as const;
 
@@ -57,7 +72,8 @@ const HELD_OUT_LABELS = new Set(
     .flatMap((question) => [
       ...question.requiredCitations,
       ...(question.citationAlternatives ?? []),
-    ]),
+    ])
+    .map((citation) => normalizeCitationLabel(citation)),
 );
 
 /** Every trap and source class, pinned by row membership rather than by count. */
@@ -234,24 +250,33 @@ describe("golden-set-v1 corpus registration and gate shape", () => {
     expect(missing).toEqual([]);
   });
 
+  it("pins the ungraded sahihayn grade of every new Bukhari label", () => {
+    expect(NEW_BUKHARI_LABELS).toHaveLength(11);
+    for (const label of NEW_BUKHARI_LABELS) {
+      const entry = CORPUS_BY_LABEL.get(normalizeCitationLabel(label));
+      expect(entry, label).toBeDefined();
+      expect(entry?.grade, label).toBeNull();
+    }
+  });
+
   it("keeps new rows off the labels a held-out smoke row requires", () => {
     expect(HELD_OUT_LABELS.size).toBeGreaterThan(0);
     const reused = FIXTURE.questions
       .filter((question) => question.id.startsWith("gs-v1-"))
       .flatMap((question) =>
         question.requiredCitations
-          .filter((citation) => HELD_OUT_LABELS.has(citation))
+          .filter((citation) => HELD_OUT_LABELS.has(normalizeCitationLabel(citation)))
           .map((citation) => `${question.id}: ${citation}`),
       );
     expect(reused).toEqual([]);
   });
 
   it("pins the trivially-satisfied citation shape of every refusal row", () => {
-    // The current acceptance rule also accepts a grounded non-refusal for a
-    // `refuse` row. Empty required citations and expected source types make
-    // citation validity and both recall dimensions 1, so these rows test
-    // non-affirmation and non-invention, not a literal refusal. Changing that
-    // acceptance rule is an engine decision, out of scope for this data slice.
+    // A `refuse` row passes on a literal refusal OR a grounded answer; the row
+    // tests the absence requirement/non-invention only where the question makes
+    // the requested content impossible to supply, and does NOT enforce a literal
+    // refusal. Changing that acceptance rule is an engine decision, out of scope
+    // for this data slice.
     const refusals = FIXTURE.questions.filter((question) => question.expectedBehavior === "refuse");
     expect(refusals.length).toBeGreaterThan(0);
     for (const row of refusals) {

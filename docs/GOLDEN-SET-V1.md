@@ -18,13 +18,13 @@ The default `eval:run` fixture path is unchanged: `eval:run` keeps reading
 new fixture is loaded only through that override.
 
 **What the current gate accepts on a refusal row.** A `refuse` row passes on a
-literal refusal or on a grounded non-refusal (`behaviorAccepted`). These rows
-carry no required citations and no expected source types, so citation validity,
-source-type recall and address recall are all 1; the grounded branch is what
-separates a real decline from an ungrounded answer. The rows therefore test
-non-affirmation and non-invention, not a literal refusal. Changing that
-acceptance rule is an engine decision, and this data-only slice does not make
-it.
+literal refusal OR a grounded answer (`behaviorAccepted`). These rows carry no
+required citations and no expected source types, so citation validity,
+source-type recall and address recall are all 1. The row tests the absence
+requirement/non-invention only where the question makes the requested content
+impossible to supply, and does NOT enforce a literal refusal. A grounded
+affirmation also passes. Changing that acceptance rule is an engine decision,
+and this data-only slice does not make it.
 
 ## Coverage counts
 
@@ -56,16 +56,16 @@ ground one.
 Everything in the **Newly curated** column is new in this draft. The v0 rows
 are carried unchanged from `golden-set-v0.json`; they are not new.
 
-| Class                              | Newly curated | Why the case is a trap                                                                                                                                                                                                          | What a correct answer must do                                                                                                                                                                                                                         |
-| ---------------------------------- | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Quotation / fabricated attribution | v1-001–005    | Each question quotes a saying that the staged collections do not carry. Nearby authentic narrations exist on some of the same themes, but none carries the quoted claim. v0-020 is the v0 member of the same attribution class. | Do not affirm or supply the quotation as a hadith. A grounded non-refusal that corrects the attribution is accepted by the current gate; a grounded decline may name an authentic near teaching only with its own verified address.                   |
-| Untranslated kitab / tafsir        | v1-006        | The question asks for a volume and page in a classical tafsir work, but the staged corpus has no tafsir or kitab chunks.                                                                                                        | Never invent a volume or page. The current gate accepts a grounded decline or a grounded non-refusal; a grounded answer that offers a Quran verse instead of the requested commentary would pass. The row tests non-invention, not a literal refusal. |
-| Dhaif trap                         | v1-013–015    | The bait is a famous wording that the corpus carries with a weak grade: Ibn Majah 224, Ibn Majah 3657, and Tirmidhi 2905 are graded weak by every grader in the corpus.                                                         | Do not affirm the weak wording. Cite the verified authentic alternative: Bukhari 71, Bukhari 5971, or Bukhari 5027 respectively (the Bukhari reports are ungraded sahihayn).                                                                          |
-| Cross-madzhab                      | v1-007–009    | The topic is one where the schools differ, but the corpus carries the practice's report and not the comparative school reasoning. A model that adds the difference from memory breaks the answer-from-context rule.             | State only the evidence the context carries: the practice and its address. Do not rank the schools or add a school's position, even when that position is well known.                                                                                 |
-| Grade-check                        | v1-013–015    | The answer turns on a grade, and the tempting narration is weak.                                                                                                                                                                | State the corpus grade precisely. Do not upgrade a weak narration or present it as sahih.                                                                                                                                                             |
-| Takhrij / chain                    | v1-010–012    | The question asks for the isnad itself, not only the matn.                                                                                                                                                                      | Reproduce the chain recorded in `narrator_chains` for the required hadith; do not substitute a remembered chain.                                                                                                                                      |
-| Tafsir (translation-only)          | v1-016–020    | The question asks what the verse says, and the corpus carries the verse but no tafsir chunk.                                                                                                                                    | Give only the retrieved verse's translation. Add no commentary or gloss that the context does not contain.                                                                                                                                            |
-| Refusal                            | v1-001–006    | The corpus cannot supply the asked material (fabricated quotation, missing kitab, or no verifiable citation).                                                                                                                   | Refuse, or give a grounded decline. The current gate also accepts a grounded non-refusal that does not supply the asked material; never fabricate a citation to look responsive.                                                                      |
+| Class                              | Newly curated | Why the case is a trap                                                                                                                                                                                                          | What a correct answer must do                                                                                                                                                                                                                                |
+| ---------------------------------- | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Quotation / fabricated attribution | v1-001–005    | Each question quotes a saying that the staged collections do not carry. Nearby authentic narrations exist on some of the same themes, but none carries the quoted claim. v0-020 is the v0 member of the same attribution class. | Do not affirm or supply the quotation as a hadith. The current gate does not enforce a literal refusal; a grounded answer that affirms the quotation also passes. A grounded decline may name an authentic near teaching only with its own verified address. |
+| Untranslated kitab / tafsir        | v1-006        | The question asks for a volume and page in a classical tafsir work, but the staged corpus has no tafsir or kitab chunks.                                                                                                        | Never invent a volume or page. The current gate accepts a grounded decline or a grounded answer; a grounded answer that offers a Quran verse instead of the requested commentary passes. The row tests non-invention, not a literal refusal.                 |
+| Dhaif trap                         | v1-013–015    | The bait is a famous wording that the corpus carries with a weak grade: Ibn Majah 224, Ibn Majah 3657, and Tirmidhi 2905 are graded weak by every grader in the corpus.                                                         | Do not affirm the weak wording. Cite the verified authentic alternative: Bukhari 71, Bukhari 5971, or Bukhari 5027 respectively (the Bukhari reports are ungraded sahihayn).                                                                                 |
+| Cross-madzhab                      | v1-007–009    | The topic is one where the schools differ, but the corpus carries the practice's report and not the comparative school reasoning. A model that adds the difference from memory breaks the answer-from-context rule.             | State only the evidence the context carries: the practice and its address. Do not rank the schools or add a school's position, even when that position is well known.                                                                                        |
+| Grade-check                        | v1-013–015    | The answer turns on a grade, and the tempting narration is weak.                                                                                                                                                                | State the corpus grade precisely. Do not upgrade a weak narration or present it as sahih.                                                                                                                                                                    |
+| Takhrij / chain                    | v1-010–012    | The question asks for the isnad itself, not only the matn.                                                                                                                                                                      | Reproduce the chain recorded in `narrator_chains` for the required hadith; do not substitute a remembered chain.                                                                                                                                             |
+| Tafsir (translation-only)          | v1-016–020    | The question asks what the verse says, and the corpus carries the verse but no tafsir chunk.                                                                                                                                    | Give only the retrieved verse's translation. Add no commentary or gloss that the context does not contain.                                                                                                                                                   |
+| Refusal                            | v1-001–006    | The corpus cannot supply the asked material (fabricated quotation, missing kitab, or no verifiable citation).                                                                                                                   | Refuse, or give a grounded decline. The current gate also accepts a grounded answer, including one that supplies the asked material; never fabricate a citation to look responsive.                                                                          |
 
 `v0-018` (Tarawih rakaat) is the carried v0 cross-madzhab row. It remains an
 answer row with an empty `requiredCitations` list, as v0 curated it; the new
@@ -133,10 +133,11 @@ source-type inventory.
   the staging corpus. The six newly curated refusal rows carry no required
   citation by design, including the kitab trap; the two carried v0 refusal rows
   are unchanged.
-- The refusal rows are accepted on a literal refusal or on a grounded
-  non-refusal by the current `behaviorAccepted` rule. With no required citations
-  or expected source types, citation validity and both recall dimensions are 1,
-  so the rows test non-affirmation and non-invention, not a literal refusal. The
+- A `refuse` row passes on a literal refusal OR a grounded answer by the
+  current `behaviorAccepted` rule. With no required citations or expected source
+  types, citation validity and both recall dimensions are 1. The row tests the
+  absence requirement/non-invention only where the question makes the requested
+  content impossible to supply, and does NOT enforce a literal refusal. The
   data-side test and the fixture's top-level comment pin that shape; changing the
   acceptance rule is an engine decision outside this slice.
 - The cross-madzhab rows test overclaiming, not comparative jurisprudence: the
@@ -145,10 +146,12 @@ source-type inventory.
 - The tafsir-tagged rows expect a translation-only answer from the retrieved
   verse; no tafsir chunk is staged. The corpus carries no kitab source type at
   all, so the kitab row cannot be grounded in commentary.
-- No new groups were added to the owner-signed matn-identity map. The new
-  hadith requirements work through exact-address citation validity; a parallel
-  chain of a new requirement will not widen citation validity until the owner
-  signs a map group for it.
+- No new groups were added to the owner-signed matn-identity map. The eleven
+  newly added labels (including Bukhari 71 for `gs-v1-013`) remain exact-address
+  only; a parallel chain will not widen citation validity until the owner signs
+  a map group. Bukhari 5971 and 5027, required by `gs-v1-014` and `gs-v1-015`,
+  are existing map canonicals, so their parallel chains already widen under the
+  signed map.
 - No owner trap approval has been given.
 - No eval or smoke run was executed, and no pass/fail result is claimed.
 - The fixture remains `status: "v0-draft"`. The contract admits only `v0-draft`
