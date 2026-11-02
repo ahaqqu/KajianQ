@@ -25,10 +25,7 @@ import {
   DEFAULT_REFUSALS,
   QUOTE_EQUIVALENCES,
   SCOPE_EXPANSION_ORIGIN,
-  addressesNamedBy,
-  citationCandidatesIn,
   curatedIdentityResolvers,
-  normalizeCitationLabel,
 } from "@app/kajianq-domain";
 
 /** The generator's refusal text in each answer language (domain-owned). */
@@ -59,24 +56,10 @@ export const LOOKUP_ORIGIN = CITATION_LOOKUP_ORIGIN;
 export const CALLER_PRIORITY_LABEL = CALLER_PRIORITY_ORIGIN;
 
 /**
- * The citation grammar the scorer normalizes labels with. It is the
- * DOMAIN's own functions — the same ones the deterministic citation gate
- * (`validateCitations`) and the citations-frame derivation use — injected here
- * by the composition root, so the engine package stays domain-agnostic while
- * the scorer and the gate cannot disagree about what a citation is.
- *
- * `addressesNamedBy` is the naming declaration the scorer compares a required
- * citation against the answer's evidence with: the question requires
- * `QS. 2:255`, the answer cites the grounded range `QS. 2:255-256`, and the
- * two are the same evidence once the range's addresses are read from the
- * grammar that declares them. The engine learns no domain vocabulary — it
- * asks the injected grammar what a label names.
+ * The citation grammar the scorer normalizes labels with, re-exported from the
+ * shared composition module so every eval CLI injects the same one.
  */
-export const CITATION_GRAMMAR = {
-  normalizeLabel: normalizeCitationLabel,
-  labelsInText: citationCandidatesIn,
-  addressesNamedBy,
-};
+export { CITATION_GRAMMAR } from "./citation-grammar.mjs";
 
 /**
  * The citation-identity resolvers the scorer reads, loaded by the DOMAIN pack from

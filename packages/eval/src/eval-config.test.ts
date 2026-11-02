@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import { EvalConfigError, loadEvalRunConfig } from "./eval-config";
+import { EvalConfigError, loadEvalProbeConfig, loadEvalRunConfig } from "./eval-config";
 
 /** A minimal valid binder; tests spread overrides over it. */
 const VALID = {
@@ -68,5 +68,42 @@ describe("loadEvalRunConfig (thermo-review B2/A1/A2)", () => {
   it("passes a run label through when set", () => {
     const cfg = loadEvalRunConfig({ ...VALID, EVAL_RUN_LABEL: "nightly" });
     expect(cfg.runLabel).toBe("nightly");
+  });
+});
+
+describe("loadEvalProbeConfig — the independent probe run needs no ledger", () => {
+  it("requires only the chat target and supplies the default fixture path", () => {
+    const cfg = loadEvalProbeConfig({
+      EVAL_API_BASE_URL: "https://api.example.com",
+      EVAL_API_TOKEN: "tok",
+    });
+    expect(cfg.apiBaseUrl).toBe("https://api.example.com");
+    expect(cfg.apiToken).toBe("tok");
+    expect(cfg.probePath).toBe("packages/kajianq-domain/fixtures/independent-probes-v1.json");
+  });
+
+  it("does not require DATABASE_URL: the probe run persists nothing", () => {
+    expect(() =>
+      loadEvalProbeConfig({ EVAL_API_BASE_URL: "https://api.example.com", EVAL_API_TOKEN: "tok" }),
+    ).not.toThrow();
+  });
+
+  it("uses EVAL_PROBE_FIXTURE_PATH when set", () => {
+    const cfg = loadEvalProbeConfig({
+      EVAL_API_BASE_URL: "https://api.example.com",
+      EVAL_API_TOKEN: "tok",
+      EVAL_PROBE_FIXTURE_PATH: "/tmp/probes.json",
+    });
+    expect(cfg.probePath).toBe("/tmp/probes.json");
+  });
+
+  it("fails naming the missing or malformed chat target", () => {
+    expect(() => loadEvalProbeConfig({})).toThrow(/EVAL_API_BASE_URL is not set/);
+    expect(() => loadEvalProbeConfig({ EVAL_API_BASE_URL: "https://x.dev" })).toThrow(
+      /EVAL_API_TOKEN is not set/,
+    );
+    expect(() =>
+      loadEvalProbeConfig({ EVAL_API_BASE_URL: "ftp://x.dev", EVAL_API_TOKEN: "tok" }),
+    ).toThrow(/http\(s\) URL/);
   });
 });

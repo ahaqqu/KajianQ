@@ -11,6 +11,27 @@
 
 export { GoldenSetLoadError, assertV0Shape, loadGoldenSetJson, parseGoldenSet } from "./golden-set";
 export {
+  IndependentProbeLoadError,
+  IndependentProbeFixtureSchema,
+  IndependentProbeSchema,
+  contentCheckPasses,
+  failedProbeOutcome,
+  foldProbeText,
+  formatProbeRun,
+  loadIndependentProbesJson,
+  parseIndependentProbes,
+  probeExitPolicy,
+  runProbes,
+  scoreProbe,
+  type IndependentContentCheck,
+  type IndependentProbe,
+  type IndependentProbeFixture,
+  type ProbeAnswer,
+  type ProbeAsk,
+  type ProbeContentOutcome,
+  type ProbeOutcome,
+} from "./independent-probes";
+export {
   formatSmokePlan,
   selectSmokeSubset,
   SmokeSubsetError,
@@ -29,6 +50,7 @@ export {
   sourceTypeRecall,
 } from "./scorers";
 export { Budget, BudgetExceededError, budgetCapFromEnv } from "./budget";
+export { answerCitationLabels, answerMetricsSummary, answerStats } from "./answer-metrics";
 export { CitationAlternativesScopeError, requireAlternativesScope } from "./citation-alternatives";
 export { CitationGrammarError, requireCitationGrammar } from "./citation-grammar";
 export {
@@ -36,7 +58,14 @@ export {
   requireCitationIdentity,
   resolveIdentity,
 } from "./citation-identity";
-export { EvalConfigError, loadEvalRunConfig, type EvalRunConfig } from "./eval-config";
+export {
+  EvalConfigError,
+  INDEPENDENT_PROBES_DEFAULT_PATH,
+  loadEvalProbeConfig,
+  loadEvalRunConfig,
+  type EvalProbeConfig,
+  type EvalRunConfig,
+} from "./eval-config";
 export {
   ChatTransportError,
   consumeSseToText,

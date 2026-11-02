@@ -209,6 +209,9 @@ export function printSummary(
   const addressMeasured = scored.filter(hasAddressRecall);
   const quoteMeasured = scored.filter((x) => x.quoteFidelity !== undefined);
   const identitySatisfied = evalpkg.identitySatisfiedSummary(scored);
+  // The same derivation the persisted report uses, so the printed size figures and
+  // the stored ones cannot disagree.
+  const answerMetrics = evalpkg.answerMetricsSummary(scored);
   const addressMisses = addressMeasured
     .filter((x) => x.citationAddressRecall < 1)
     .map((x) => x.questionId);
@@ -232,6 +235,10 @@ export function printSummary(
         : []),
       `  mean citation validity: ${mean(scored.map((x) => x.citationValidity))?.toFixed(3) ?? "n/a"}`,
       `  mean quote fidelity: ${mean(quoteMeasured.map((x) => x.quoteFidelity))?.toFixed(3) ?? "n/a"} (${quoteMeasured.length} of ${scored.length} answers measured)`,
+      // Descriptive only, never a gate: the scored answers' own size and citation
+      // count. `n/a` is "no answer was measured", never a measured zero.
+      `  answer length (chars): mean ${answerMetrics.meanAnswerChars?.toFixed(1) ?? "n/a"}, max ${answerMetrics.maxAnswerChars ?? "n/a"}`,
+      `  citations per answer: mean ${answerMetrics.meanCitationsPerAnswer?.toFixed(3) ?? "n/a"}, max ${answerMetrics.maxCitationsPerAnswer ?? "n/a"}`,
       `  cost: ${(costMicroUsd / 1e6).toFixed(6)} USD  budget exceeded: ${result.budgetExceeded}`,
       ...expansionLines(scored),
       ...failureLines(failed, questions),

@@ -164,6 +164,22 @@ export type EvalRunReport = {
    */
   quoteFidelityMeasured?: number | undefined;
   /**
+   * Mean and maximum answer length in Unicode code points over the scored answers that
+   * carry the measurement (null when none did). Descriptive, never gating: no field here
+   * moves a question's pass or the run's exit policy. A row persisted before the metric
+   * existed is excluded from both, never counted as zero. Absent on reports written
+   * before the fields existed.
+   */
+  meanAnswerChars?: number | null | undefined;
+  maxAnswerChars?: number | null | undefined;
+  /**
+   * Mean and maximum distinct citations per answer over the scored answers that carry
+   * the measurement (null when none did), under the same exclusion contract as the
+   * answer-length figures. Descriptive, never gating.
+   */
+  meanCitationsPerAnswer?: number | null | undefined;
+  maxCitationsPerAnswer?: number | null | undefined;
+  /**
    * REPORTED, NEVER GATING: how many scored rows would pass if a signed identity —
    * the same report, or a curated same-ruling relation — satisfied the citation
    * and address requirements. The gate's `passed` and the run's `passed` never read
@@ -210,6 +226,10 @@ const EvalRunReportInputSchema = v.object({
   meanCitationValidity: v.nullable(v.pipe(v.number(), v.minValue(0), v.maxValue(1))),
   meanQuoteFidelity: v.optional(v.nullable(v.pipe(v.number(), v.minValue(0), v.maxValue(1)))),
   quoteFidelityMeasured: v.optional(v.pipe(v.number(), v.integer(), v.minValue(0))),
+  meanAnswerChars: v.optional(v.nullable(v.pipe(v.number(), v.minValue(0)))),
+  maxAnswerChars: v.optional(v.nullable(v.pipe(v.number(), v.integer(), v.minValue(0)))),
+  meanCitationsPerAnswer: v.optional(v.nullable(v.pipe(v.number(), v.minValue(0)))),
+  maxCitationsPerAnswer: v.optional(v.nullable(v.pipe(v.number(), v.integer(), v.minValue(0)))),
   identitySatisfiedPassed: v.optional(v.pipe(v.number(), v.integer(), v.minValue(0))),
   meanIdentitySatisfiedCitationAddressRecall: v.optional(
     v.nullable(v.pipe(v.number(), v.minValue(0), v.maxValue(1))),
@@ -252,6 +272,14 @@ export const EvalRunReportSchema = v.pipe(
       : {}),
     ...(input.quoteFidelityMeasured !== undefined
       ? { quoteFidelityMeasured: input.quoteFidelityMeasured }
+      : {}),
+    ...(input.meanAnswerChars !== undefined ? { meanAnswerChars: input.meanAnswerChars } : {}),
+    ...(input.maxAnswerChars !== undefined ? { maxAnswerChars: input.maxAnswerChars } : {}),
+    ...(input.meanCitationsPerAnswer !== undefined
+      ? { meanCitationsPerAnswer: input.meanCitationsPerAnswer }
+      : {}),
+    ...(input.maxCitationsPerAnswer !== undefined
+      ? { maxCitationsPerAnswer: input.maxCitationsPerAnswer }
       : {}),
     ...(input.identitySatisfiedPassed !== undefined
       ? { identitySatisfiedPassed: input.identitySatisfiedPassed }
