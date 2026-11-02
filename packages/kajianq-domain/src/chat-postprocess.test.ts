@@ -6,11 +6,11 @@ import {
   applyProductRules,
   dhaifChainWarning,
   dhaifWarning,
-  hasWeakGradeChunk,
   hasWeakWarning,
   ulamaDisclaimer,
 } from "./chat-postprocess";
 import { chatSystemPrompt } from "./chat-prompts";
+import { citedWeakGradeScope } from "./chat-weak-warning";
 import type { KajianQFilters } from "./filters";
 import { routedQuery } from "./test-utils/routed-query";
 
@@ -43,11 +43,29 @@ const context = (
   ],
 });
 
-const chunk = (metadata: Record<string, unknown> = {}): Chunk => ({
-  id: "c1",
+const chunk = (metadata: Record<string, unknown> = {}, id = "c1"): Chunk => ({
+  id,
   text: "evidence",
   metadata: { citation: "QS. 2:255", ...metadata },
 });
+
+/**
+ * A weak-grade hadith the draft can cite, and the draft body that cites it. The
+ * rule's trigger is the citation, not retrieval — a fixture that retrieves the
+ * hadith without citing it pins the false-positive shape instead.
+ */
+const WEAK_CITATION = "HR. Tirmidhi no. 2878 (Dhaif)";
+const STRONG_CITATION = "HR. Bukhari no. 5010 (Sahih)";
+const weakChunk = (metadata: Record<string, unknown> = {}, id = "c-weak"): Chunk =>
+  chunk({ sourceType: "hadith", grade: "dhaif", citation: WEAK_CITATION, ...metadata }, id);
+const citingWeak = (body: string): string => `${body} [${WEAK_CITATION}]`;
+
+/** A passage whose own grade is sound but whose transmission carries a weak row. */
+const WEAK_ROW = {
+  chains: [{ narratorIds: ["n1"], grade: "dhaif", grader: "al-daraqutni" }],
+  narrators: [],
+  moreMayExist: false,
+};
 
 describe("applyProductRules", () => {
   it("appends the ulama disclaimer when the answer omits it", () => {
@@ -56,10 +74,10 @@ describe("applyProductRules", () => {
     expect(applied).toContain("ulama_disclaimer");
   });
 
-  it("appends the dhaif warning when the context carries a weak-grade hadith", () => {
+  it("appends the dhaif warning when the answer cites a weak-grade hadith", () => {
     const { draft, applied } = applyProductRules(
-      { text: "Jawaban." },
-      context([chunk({ sourceType: "hadith", grade: "dhaif" })]),
+      { text: citingWeak("Jawaban.") },
+      context([weakChunk()]),
       "id",
     );
     expect(draft.text).toContain(dhaifWarning("id"));
@@ -70,14 +88,15 @@ describe("applyProductRules", () => {
     // The sheet beside this card renders sahih and dhaif for the same passage:
     // the card's copy must name the weak sanad, not tell the reader the cited
     // hadith is graded weak as a whole.
-    const weakRow = {
-      chains: [{ narratorIds: ["n1"], grade: "dhaif", grader: "al-daraqutni" }],
-      narrators: [],
-      moreMayExist: false,
-    };
+    const cited = chunk({
+      sourceType: "hadith",
+      grade: "sahih",
+      citation: STRONG_CITATION,
+      isnad: WEAK_ROW,
+    });
     const { draft, applied } = applyProductRules(
-      { text: "Jawaban." },
-      context([chunk({ sourceType: "hadith", grade: "sahih", isnad: weakRow })]),
+      { text: `Jawaban. [${STRONG_CITATION}]` },
+      context([cited]),
       "id",
     );
     expect(applied).toContain("dhaif_warning");
@@ -86,15 +105,14 @@ describe("applyProductRules", () => {
     // The peel and the citations frame's flag read the same predicate, so the
     // chain-scoped copy must be recognised as the product's warning.
     expect(hasWeakWarning(draft.text)).toBe(true);
-    expect(
-      hasWeakGradeChunk([chunk({ sourceType: "hadith", grade: "sahih", isnad: weakRow })]),
-    ).toBe(true);
+    // A draft citing this passage fires on the chain, not on its sound grade.
+    expect(citedWeakGradeScope(`Jawaban. [${STRONG_CITATION}]`, [cited])).toBe("chain");
   });
 
   it("appends the canonical warning over the model's own informal weakness note (#278)", () => {
     const { applied, draft } = applyProductRules(
-      { text: "Hadits ini dhaif, jadi tidak dapat dijadikan dalil utama." },
-      context([chunk({ grade: "dhaif" })]),
+      { text: citingWeak("Hadits ini dhaif, jadi tidak dapat dijadikan dalil utama.") },
+      context([weakChunk()]),
       "id",
     );
     expect(applied).toContain("dhaif_warning");
@@ -104,8 +122,8 @@ describe("applyProductRules", () => {
   it("still appends the warning when the answer merely contains the substring 'lemah'", () => {
     // Suppression requires the product's warning copy, not a shared substring.
     const { applied, draft } = applyProductRules(
-      { text: "Angin malam ini terasa lemah, tetapi jawabannya tetap ini." },
-      context([chunk({ sourceType: "hadith", grade: "dhaif" })]),
+      { text: citingWeak("Angin malam ini terasa lemah, tetapi jawabannya tetap ini.") },
+      context([weakChunk()]),
       "id",
     );
     expect(applied).toContain("dhaif_warning");
@@ -114,8 +132,8 @@ describe("applyProductRules", () => {
 
   it("still appends the warning when the answer contains a word embedding 'lemah'", () => {
     const { applied } = applyProductRules(
-      { text: "Kondisi itu dapat memalemahkan semangat." },
-      context([chunk({ sourceType: "hadith", grade: "dhaif" })]),
+      { text: citingWeak("Kondisi itu dapat memalemahkan semangat.") },
+      context([weakChunk()]),
       "id",
     );
     expect(applied).toContain("dhaif_warning");
@@ -125,8 +143,8 @@ describe("applyProductRules", () => {
     // Suppression anchors to the product-owned warning copy, not to a proximity
     // window around the ordinary word "lemah".
     const { applied, draft } = applyProductRules(
-      { text: "Riwayat ini lemah, sehingga tidak bisa dijadikan dalil." },
-      context([chunk({ sourceType: "hadith", grade: "dhaif" })]),
+      { text: citingWeak("Riwayat ini lemah, sehingga tidak bisa dijadikan dalil.") },
+      context([weakChunk()]),
       "id",
     );
     expect(applied).toContain("dhaif_warning");
@@ -137,8 +155,12 @@ describe("applyProductRules", () => {
     // The copy's grade phrases are part of the COPY, not independent triggers: a
     // sentence using them without the warning statement still gains the line.
     const { applied, draft } = applyProductRules(
-      { text: "Hadits ini berderajat lemah, sehingga tidak dapat dijadikan dalil utama." },
-      context([chunk({ sourceType: "hadith", grade: "dhaif" })]),
+      {
+        text: citingWeak(
+          "Hadits ini berderajat lemah, sehingga tidak dapat dijadikan dalil utama.",
+        ),
+      },
+      context([weakChunk()]),
       "id",
     );
     expect(applied).toContain("dhaif_warning");
@@ -148,8 +170,8 @@ describe("applyProductRules", () => {
   it("does not duplicate the canonical warning the answer already carries", () => {
     // The rule's own copy present in the text is not appended a second time.
     const { applied, draft } = applyProductRules(
-      { text: `Jawaban.\n\n${dhaifWarning("id")}` },
-      context([chunk({ sourceType: "hadith", grade: "dhaif" })]),
+      { text: `${citingWeak("Jawaban.")}\n\n${dhaifWarning("id")}` },
+      context([weakChunk()]),
       "id",
     );
     expect(applied).not.toContain("dhaif_warning");
@@ -160,8 +182,8 @@ describe("applyProductRules", () => {
     // A bilingual answer that carries the EN copy suppresses the EN rule text
     // too: the predicate is "the warning is present", not "the ID one is".
     const { applied } = applyProductRules(
-      { text: `Answer.\n\n${dhaifWarning("en")}` },
-      context([chunk({ sourceType: "hadith", grade: "dhaif" })]),
+      { text: `Answer. [${WEAK_CITATION}]\n\n${dhaifWarning("en")}` },
+      context([weakChunk()]),
       "en",
     );
     expect(applied).not.toContain("dhaif_warning");
@@ -222,8 +244,8 @@ describe("applyProductRules", () => {
 
   it("emits English rule text for an English answer", () => {
     const { draft } = applyProductRules(
-      { text: "Answer." },
-      context([chunk({ grade: "dhaif" })], true),
+      { text: `Answer. [${WEAK_CITATION}]` },
+      context([weakChunk()], true),
       "en",
     );
     expect(draft.text).toContain(ulamaDisclaimer("en"));
@@ -239,13 +261,13 @@ describe("applyProductRules", () => {
 
   it("applies all three rules at once, in one deterministic order", () => {
     const { draft, applied } = applyProductRules(
-      { text: "Jawaban." },
-      context([chunk({ grade: "dhaif" })], true),
+      { text: citingWeak("Jawaban.") },
+      context([weakChunk()], true),
       "id",
     );
     expect(applied).toEqual(["dhaif_warning", "machine_translation_label", "ulama_disclaimer"]);
     const lines = draft.text.split("\n\n");
-    expect(lines[0]).toBe("Jawaban.");
+    expect(lines[0]).toBe(citingWeak("Jawaban."));
     expect(lines[1]).toContain(dhaifWarning("id"));
     expect(lines[2]).toContain(MACHINE_TRANSLATION_LABEL);
     expect(lines[3]).toContain(ulamaDisclaimer("id"));
@@ -578,12 +600,18 @@ describe("the ulama disclaimer — one canonical close, whatever the draft says"
   });
 });
 
-describe("hasWeakGradeChunk", () => {
-  it("is true only for the weak grade", () => {
-    expect(hasWeakGradeChunk([chunk({ grade: "dhaif" })])).toBe(true);
-    expect(hasWeakGradeChunk([chunk({ grade: "sahih" })])).toBe(false);
-    expect(hasWeakGradeChunk([chunk({})])).toBe(false);
-    expect(hasWeakGradeChunk([])).toBe(false);
+describe("citedWeakGradeScope — the trigger's grade predicate", () => {
+  it("is the cited passage's weak grade, never a sound or absent one", () => {
+    // The scope vocabulary is the copy's: a passage graded weak is the whole
+    // hadith's claim, so it outranks — and is distinct from — a weak row. A
+    // sound or ungraded passage fires nothing, and an empty evidence set has no
+    // citation to read.
+    expect(citedWeakGradeScope("Jawaban [QS. 2:255].", [chunk({ grade: "dhaif" })])).toBe(
+      "passage",
+    );
+    expect(citedWeakGradeScope("Jawaban [QS. 2:255].", [chunk({ grade: "sahih" })])).toBeNull();
+    expect(citedWeakGradeScope("Jawaban [QS. 2:255].", [chunk({})])).toBeNull();
+    expect(citedWeakGradeScope("Jawaban [QS. 2:255].", [])).toBeNull();
   });
 });
 
@@ -610,13 +638,155 @@ describe("hasWeakWarning — the one predicate the frame and the postprocess sha
 
   it("never matches a sound hadith's context (the rule cannot warn on sahih)", () => {
     // The other half of the invariant: warning on a sound answer still requires
-    // `hasWeakGradeChunk`, so an edit to either side cannot make "sound" warn.
+    // a cited weak passage, so an edit to either side cannot make "sound" warn.
+    const sound = chunk({ sourceType: "hadith", grade: "sahih", citation: STRONG_CITATION });
     const { applied } = applyProductRules(
-      { text: "Jawaban dengan [HR. Bukhari no. 5010 (Sahih)]." },
-      context([chunk({ sourceType: "hadith", grade: "sahih" })]),
+      { text: `Jawaban dengan [${STRONG_CITATION}].` },
+      context([sound]),
       "id",
     );
     expect(applied).not.toContain("dhaif_warning");
+  });
+});
+
+describe("the weak-evidence trigger reads the draft's citations, never the retrieved set", () => {
+  // The false-positive shape the rule exists to avoid: a Quran-only answer whose
+  // context happens to hold a weak hadith. The warning's copy says "the cited
+  // hadith", so firing here tells the reader something false about the answer's
+  // evidence — and the trace looks clean while it does.
+  const QURAN = chunk({ sourceType: "quran", citation: "QS. 4:103" }, "c-quran");
+
+  it("appends no warning for a Quran-only draft beside a retrieved weak hadith", () => {
+    const { applied, draft } = applyProductRules(
+      { text: "Ayatnya adalah [QS. 4:103]." },
+      context([QURAN, weakChunk({}, "c-uncited-weak")]),
+      "id",
+    );
+    expect(applied).not.toContain("dhaif_warning");
+    expect(hasWeakWarning(draft.text)).toBe(false);
+    expect(draft.text).not.toContain(dhaifWarning("id"));
+    expect(draft.text).not.toContain(dhaifChainWarning("id"));
+  });
+
+  it("appends no warning when the answer cites only a strong hadith and a weak one was retrieved", () => {
+    const strong = chunk({ sourceType: "hadith", grade: "sahih", citation: STRONG_CITATION });
+    const { applied, draft } = applyProductRules(
+      { text: `Jawaban memakai [${STRONG_CITATION}] saja.` },
+      context([strong, weakChunk()]),
+      "id",
+    );
+    expect(applied).not.toContain("dhaif_warning");
+    expect(hasWeakWarning(draft.text)).toBe(false);
+  });
+
+  it("appends no warning when only the retrieved passage carries the weak chain", () => {
+    // The chain half of the trigger is cited-only too, or the chain copy would
+    // leak onto an answer that never mentions the passage.
+    const uncited = chunk({
+      sourceType: "hadith",
+      grade: "sahih",
+      citation: STRONG_CITATION,
+      isnad: WEAK_ROW,
+    });
+    const cited = chunk({ sourceType: "hadith", grade: "sahih", citation: "HR. Bukhari no. 7000" });
+    const { applied } = applyProductRules(
+      { text: "Jawaban memakai [HR. Bukhari no. 7000]." },
+      context([uncited, cited]),
+      "id",
+    );
+    expect(applied).not.toContain("dhaif_warning");
+  });
+
+  it("warns when a cited weak hadith is mixed with a cited strong one", () => {
+    const strong = chunk({ sourceType: "hadith", grade: "sahih", citation: STRONG_CITATION });
+    const { applied, draft } = applyProductRules(
+      { text: `Jawaban memakai [${STRONG_CITATION}] dan [${WEAK_CITATION}].` },
+      context([strong, weakChunk()]),
+      "id",
+    );
+    expect(applied).toContain("dhaif_warning");
+    expect(draft.text).toContain(dhaifWarning("id"));
+  });
+
+  it("flags the cited weak hadith when an uncited weak one sits beside it", () => {
+    // Two weak hadiths retrieved, one cited: the warning must fire for the cited
+    // one and stay a single card. The rule's evidence set, not its wording, is
+    // where the cited-only scope lives.
+    const strong = chunk(
+      { sourceType: "hadith", grade: "sahih", citation: STRONG_CITATION },
+      "c-strong",
+    );
+    const citedWeak = weakChunk({}, "c-cited-weak");
+    const uncitedWeak = weakChunk({ citation: "HR. Tirmidhi no. 3364 (Dhaif)" }, "c-uncited-weak");
+    const chunks = [uncitedWeak, citedWeak, strong];
+    const draftText = `Jawaban memakai [${STRONG_CITATION}] dan [${WEAK_CITATION}].`;
+
+    // The trigger reads the cited weak passage and the cited strong one — never
+    // the uncited weak passage, even though retrieval placed it in the context:
+    // handed only the uncited passage the draft does not cite it, and handed only
+    // the cited one it fires.
+    expect(citedWeakGradeScope(draftText, [uncitedWeak])).toBeNull();
+    expect(citedWeakGradeScope(draftText, [citedWeak])).toBe("passage");
+
+    const { applied, draft } = applyProductRules({ text: draftText }, context(chunks), "id");
+    expect(applied).toContain("dhaif_warning");
+    expect(draft.text.split(dhaifWarning("id")).length - 1).toBe(1);
+    expect(citedWeakGradeScope(draftText, chunks)).toBe("passage");
+  });
+
+  it("does not warn for an uncited weak hadith whose number prefixes the cited one", () => {
+    // The address boundary: Tirmidhi 287 (dhaif) and 2878 (sahih) were both
+    // retrieved, and the draft cites only 2878. `287` is the head of `2878`, but
+    // a digit glued to the address continues it — it is a different address, so
+    // the weak 287 is not cited and the warning would be the same false claim
+    // about "the cited hadith" this rule exists to avoid.
+    const weak287 = chunk(
+      { sourceType: "hadith", grade: "dhaif", citation: "HR. Tirmidhi no. 287 (Dhaif)" },
+      "c-287",
+    );
+    const strong2878 = chunk(
+      { sourceType: "hadith", grade: "sahih", citation: "HR. Tirmidhi no. 2878 (Sahih)" },
+      "c-2878",
+    );
+    const draftText = "Jawaban memakai [HR. Tirmidhi no. 2878].";
+
+    expect(citedWeakGradeScope(draftText, [weak287, strong2878])).toBeNull();
+
+    const { applied, draft } = applyProductRules(
+      { text: draftText },
+      context([weak287, strong2878]),
+      "id",
+    );
+    expect(applied).not.toContain("dhaif_warning");
+    expect(hasWeakWarning(draft.text)).toBe(false);
+  });
+
+  it("records dhaif_warning exactly when the delivered text carries the warning", () => {
+    // The trace event is the operator's record of the rule; it may not claim a
+    // warning the delivered text does not carry, nor stay silent about one it
+    // wrote. (A draft that already carries the copy records `[]` by design —
+    // `applied` is a record of change — so every case here starts without it.)
+    const scenarios = [
+      { name: "cited weak passage", draft: citingWeak("Jawaban."), chunks: [weakChunk()] },
+      {
+        name: "Quran only, weak retrieved",
+        draft: "Jawaban [QS. 2:255].",
+        chunks: [chunk(), weakChunk()],
+      },
+      {
+        name: "cited strong, weak retrieved",
+        draft: `Jawaban [${STRONG_CITATION}].`,
+        chunks: [chunk({ grade: "sahih", citation: STRONG_CITATION }), weakChunk()],
+      },
+    ];
+    for (const scenario of scenarios) {
+      const { applied, draft } = applyProductRules(
+        { text: scenario.draft },
+        context(scenario.chunks),
+        "id",
+      );
+      expect(applied.includes("dhaif_warning"), scenario.name).toBe(hasWeakWarning(draft.text));
+    }
   });
 });
 
@@ -641,6 +811,14 @@ describe("chatSystemPrompt — the grounding rules the model receives", () => {
     expect(prompt).toMatch(/Arabic text/i);
     expect(prompt).toMatch(/same language as the user's question/);
     expect(prompt).not.toMatch(/not a fatwa/i);
+  });
+
+  it("scopes the grade-flag rule to the CITED hadith in both languages", () => {
+    // The model's own warning must not describe a retrieved hadith the answer
+    // never quotes: the copy it is asked for says "the cited hadith", so the
+    // instruction has to name the citation in both languages.
+    expect(chatSystemPrompt("id")).toMatch(/hadits yang dikutip ATAU salah satu sanadnya/i);
+    expect(chatSystemPrompt("en")).toMatch(/a cited hadith OR any of its chains/i);
   });
 
   it("forbids naming a citation that is not in the context (the fabrication rule)", () => {

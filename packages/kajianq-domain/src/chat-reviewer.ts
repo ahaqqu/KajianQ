@@ -125,7 +125,7 @@ export function createKajianQReviewer(deps: KajianQReviewerDeps): Reviewer<Kajia
             // Exhaustive on purpose: a new delivery must fail the typecheck here.
             switch (decision.delivery) {
               case "rules":
-                return withRules(draft, context, run);
+                return withRules(draft, context, run, grounded);
               case "draft":
                 return { text: draft.text };
               case "product_refusal":
@@ -136,7 +136,7 @@ export function createKajianQReviewer(deps: KajianQReviewerDeps): Reviewer<Kajia
           }
 
           if (deps.provider === null || deps.skipLlm === true) {
-            return withRules(draft, context, run);
+            return withRules(draft, context, run, grounded);
           }
 
           // The pre-gate sits between the free deterministic validator and the
@@ -153,7 +153,7 @@ export function createKajianQReviewer(deps: KajianQReviewerDeps): Reviewer<Kajia
               ...(deps.pregateThreshold !== undefined ? { threshold: deps.pregateThreshold } : {}),
             });
             if (pregate.kind === "skip") {
-              return withRules(draft, context, run);
+              return withRules(draft, context, run, grounded);
             }
           }
 
@@ -198,7 +198,7 @@ export function createKajianQReviewer(deps: KajianQReviewerDeps): Reviewer<Kajia
             });
             return { text: refusal("reviewer") };
           }
-          return withRules(draft, context, run);
+          return withRules(draft, context, run, grounded);
         }),
       ),
   };
@@ -217,11 +217,11 @@ export function createKajianQReviewer(deps: KajianQReviewerDeps): Reviewer<Kajia
    * `review` event at all, so a rule running there would otherwise be
    * invisible.
    *
-   * Three shapes do NOT reach here, and none is decorated: a pure refusal (a
-   * warning on it would be invented from the assembled context rather than the
-   * text), an asserting refusal draft, and the gate's own ungrounded-citation
-   * refusal — the product's own refusal ships for those. A HYBRID does: it
-   * answers from the evidence and then declines.
+   * Three shapes do NOT reach here, and none is decorated: a pure refusal (the
+   * rule's evidence is the draft's citations, and a refusal cites nothing, so a
+   * warning on it would be invented), an asserting refusal draft, and the
+   * gate's own ungrounded-citation refusal — the product's own refusal ships
+   * for those. A HYBRID does: it answers from the evidence and then declines.
    *
    * The recording is deliberately keyed on `applyProductRules !== false` (the
    * same condition that gates the call), so the event means "the rules ran",
@@ -235,9 +235,13 @@ export function createKajianQReviewer(deps: KajianQReviewerDeps): Reviewer<Kajia
     draft: Draft,
     context: AssembledContext<KajianQFilters>,
     run: RunContextService,
+    grounded: readonly string[],
   ): Draft {
     if (deps.applyProductRules === false) return draft;
-    const result = applyProductRules(draft, context, deps.language ?? "id");
+    // The rules read the deterministic gate's own grounded labels, computed once
+    // at the top of this stage: the rule's evidence set and the `grounded` list
+    // the trace records are one value, never two calls that happen to agree.
+    const result = applyProductRules(draft, context, deps.language ?? "id", grounded);
     run.record({
       stage: "reviewer",
       kind: "product_rules",

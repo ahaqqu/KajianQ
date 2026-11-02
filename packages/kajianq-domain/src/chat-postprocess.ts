@@ -2,16 +2,15 @@ import type { AssembledContext, Draft } from "@app/rag-core";
 import type { KajianQFilters } from "./filters";
 import { MACHINE_TRANSLATION_LABEL } from "./chat-assembler";
 import {
+  citedWeakGradeScope,
   dhaifChainWarning,
   dhaifWarning,
   hasWeakWarning,
-  weakGradeScope,
 } from "./chat-weak-warning";
 
 export {
   dhaifChainWarning,
   dhaifWarning,
-  hasWeakGradeChunk,
   hasWeakWarning,
   type WeakGradeScope,
 } from "./chat-weak-warning";
@@ -22,8 +21,13 @@ export {
  * answer *cannot* be trusted to satisfy on its own, because the model may
  * simply forget them:
  *
- * - **Dhaif warning** — a retrieved hadith graded weak is always flagged
- *   visibly, whether or not the model remembered to mention it.
+ * - **Dhaif warning** — when the answer cites a hadith that is graded weak, or
+ *   whose transmission carries a weak row, the warning is always flagged
+ *   visibly, whether or not the model remembered to mention it. The trigger is
+ *   the draft's citations, never every retrieved chunk: the copy says "the cited
+ *   hadith", and a weak hadith retrieval merely returned for context is not
+ *   evidence the answer states — warning about it would be a false claim about
+ *   the answer.
  * - **Machine-translation label** — when the answer quotes a translated
  *   passage, the label travels with it (ADR-0006).
  * - **Ulama disclaimer** — an answer the rules decorate closes with the
@@ -217,19 +221,27 @@ function withoutDisclaimer(text: string): string {
  * Three shapes do NOT reach here, and none is decorated. A PURE refusal — the
  * sentence citing nothing and adding nothing of its own beyond its framing
  * (`isRefusalOnly`) — is already the honest answer, and decorating it would
- * bury the reason the user got one; a warning on it would also be invented, its
- * trigger being the assembled context rather than the text. An ASSERTING
- * refusal draft — the sentence riding a text that cites nothing and is not a
- * decline — takes the reviewer stage's backstop instead: the product's own
- * refusal text ships in place of the draft's words, so there is no text of the
- * model's to decorate and no rule to invent a trigger for. The deterministic
- * gate's own `ungrounded_citation` refusal (the refusal decision's first row)
- * replaces the draft for the same reason.
+ * bury the reason the user got one; a warning on it would also be invented, the
+ * rule's evidence being the draft's citations and a refusal citing nothing. An
+ * ASSERTING refusal draft — the sentence riding a text that cites nothing and
+ * is not a decline — takes the reviewer stage's backstop instead: the product's
+ * own refusal text ships in place of the draft's words, so there is no text of
+ * the model's to decorate and no rule to invent a trigger for. The
+ * deterministic gate's own `ungrounded_citation` refusal (the refusal decision's
+ * first row) replaces the draft for the same reason.
+ *
+ * `grounded` is the citation gate's grounded labels for this draft when the
+ * caller already ran it — the reviewer stage does, before every exit that
+ * reaches this function. Passing it here keeps the rule and the trace reading
+ * one value: the rule's evidence set is the gate's, not a second derivation that
+ * could drift from it. A direct caller that omits it gets the same set from the
+ * same `validateCitations` call inside the trigger.
  */
 export function applyProductRules(
   draft: Draft,
   context: AssembledContext<KajianQFilters>,
   language: "id" | "en",
+  grounded?: readonly string[],
 ): ProductRulesResult {
   const applied: string[] = [];
   // The disclaimer's wording is the rule's. Clearing the units that equal a template
@@ -239,10 +251,16 @@ export function applyProductRules(
   const body = withoutDisclaimer(draft.text);
   const parts: string[] = body === "" ? [] : [body];
 
-  const weak = weakGradeScope(context.chunks);
+  // The rule's evidence is what the delivered draft cites, not what retrieval
+  // handed the model: a weak hadith the answer never names is not the "cited
+  // hadith" the copy describes. The gate's grounded set is passed in when the
+  // caller has it, so the rule reads the same citations the trace recorded.
+  const weak = citedWeakGradeScope(draft.text, context.chunks, grounded);
   if (weak !== null && !hasWeakWarning(body)) {
     // The copy names the trigger: a weak row on one sanad is not the same claim
     // as a passage graded weak, and the sheet beside this card may render both.
+    // A copy the draft already carries is the model's own text and is left as
+    // written; only the rule's appended copy is recorded as applied.
     parts.push(weak === "passage" ? dhaifWarning(language) : dhaifChainWarning(language));
     applied.push("dhaif_warning");
   }

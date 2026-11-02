@@ -253,7 +253,6 @@ export {
   applyProductRules,
   dhaifWarning,
   ulamaDisclaimer,
-  hasWeakGradeChunk,
   hasWeakWarning,
   type ProductRulesResult,
 } from "./chat-postprocess";

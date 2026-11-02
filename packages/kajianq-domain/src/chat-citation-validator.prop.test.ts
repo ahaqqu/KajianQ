@@ -4,6 +4,7 @@ import type { Chunk } from "@app/rag-core";
 import {
   addressesNamedBy,
   citationCandidatesIn,
+  citationMatchText,
   declaresAddressList,
   groundingLabelsFor,
   normalizeCitationLabel,
@@ -711,12 +712,12 @@ describe("citationCandidatesIn — adjacent citations (#526)", () => {
      * One boundary harder: with no closing quote between the first citation and
      * the joiner, the joiner's own head decides whether the number word stops or
      * a letter continues it. A continuing letter merges the marker into a
-     * different address, which must REFUSE; a stopped one leaves the marker to be
-     * scanned, which must NAME it. Either way a fabricated second address is
-     * never passed silently, and the grounded first label is never dropped. The
-     * joiner ends on a non-word part, so the second marker has the boundary its
-     * grammar's start requires — a marker glued to a word character is the
-     * recorded boundary pinned in the unit test.
+     * different address, which must REFUSE — and the absorbed head must not be
+     * reported as a whole address the answer wrote; a stopped one leaves the
+     * marker to be scanned, which must NAME it. Either way a fabricated second
+     * address is never passed silently. The joiner ends on a non-word part, so
+     * the second marker has the boundary its grammar's start requires — a marker
+     * glued to a word character is the recorded boundary pinned in the unit test.
      */
     const EDGE = [
       "”",
@@ -743,8 +744,13 @@ describe("citationCandidatesIn — adjacent citations (#526)", () => {
         const joiner = `${parts.join("")}${edge}`;
         const text = `参阅“${FIRST}${joiner}${second}”`;
         const { grounded, ungrounded } = validateCitations(text, [chunk(FIRST)]);
-        // The grounded label is a literal substring of the draft: never dropped.
-        expect(grounded, joiner).toContain(FIRST);
+        // The grounded label is the address the draft actually wrote: a joiner
+        // whose head continues the address word (`HR`, `42`, `和`) merges the
+        // first label into a different address, so the unmerged label is not a
+        // grounded address — the boundary the grammar's address word declares,
+        // read through the gate's own comparison form.
+        const continuesAddress = /[\p{L}\p{Nd}]/u.test(citationMatchText(joiner).charAt(0));
+        expect(grounded.includes(FIRST), joiner).toBe(!continuesAddress);
         // Refused or named — a fabricated second address may be merged into a
         // different address or read on its own, but it is never silently passed.
         expect(

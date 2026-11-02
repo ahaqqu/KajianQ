@@ -22,7 +22,7 @@ import {
   renderNarratorReliability,
 } from "./chat-isnad";
 import { renderEvidenceChunk } from "./chat-assembler";
-import { hasWeakGradeChunk } from "./chat-postprocess";
+import { citedWeakGradeScope } from "./chat-weak-warning";
 import { chatSystemPrompt } from "./chat-prompts";
 
 /**
@@ -169,7 +169,9 @@ describe("readChainEvidence — the stored transmission, never a selection", () 
     // And the deterministic weak-evidence rule fires on the chain, so an answer
     // that quoted this passage is flagged even though its flat grade is sound.
     expect(hasWeakChain(isnadEvidenceOf(chunks[0]!)!)).toBe(true);
-    expect(hasWeakGradeChunk(chunks)).toBe(true);
+    // The rule's trigger reads the draft's citations: a draft citing this
+    // passage fires on the chain although the flattened grade is sound.
+    expect(citedWeakGradeScope("Jawaban [HR. Bukhari no. 1].", chunks)).toBe("chain");
   });
 
   it("says an ungraded row is ungraded rather than borrowing the neighbour's grade", async () => {
