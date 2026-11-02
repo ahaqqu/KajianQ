@@ -51,7 +51,9 @@ export const feedbackRoutes = newRouter().post(
     const { fullStore, runStore } = resolved.wiring;
 
     const bodyParse = await parseFeedbackRequest(c.req.raw, logger);
-    if (!bodyParse.success) return c.json({ error: bodyParse.error }, 400);
+    // The rejection carries its own status (400/413/415), so the route cannot map
+    // the same code differently.
+    if (!bodyParse.success) return c.json({ error: bodyParse.error }, bodyParse.status);
     const req = bodyParse.output;
 
     const unauthorized = await authGuard(c, fullStore);

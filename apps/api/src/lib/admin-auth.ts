@@ -251,17 +251,10 @@ export async function adminGuard(
 }
 
 /**
- * The login POST's declared media type: `application/json`, with an optional
- * `charset` parameter. A missing header or any other declared type is refused as
- * the same miss as a wrong credential, so the media type is part of the login
- * boundary rather than a hint the body parser ignores.
+ * The admin login's declared-type rule, re-exported beside the admin surface that
+ * uses it; the one implementation is `media-type.ts`.
  */
-export function isJsonContentType(value: string | undefined): boolean {
-  if (value === undefined) return false;
-  const [mediaType, ...parameters] = value.split(";").map((part) => part.trim());
-  if (mediaType?.toLowerCase() !== "application/json") return false;
-  return parameters.every((parameter) => parameter === "" || /^charset=[^;\s]+$/i.test(parameter));
-}
+export { isJsonContentType } from "./media-type";
 
 /** The one unauthorized answer the admin surface gives. */
 export function adminUnauthorized(c: Context<ApiEnv>): Response {
