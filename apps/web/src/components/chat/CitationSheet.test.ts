@@ -29,11 +29,11 @@ const BASE: ChatCitation = {
   source: "HR. Bukhari",
 };
 
-function renderSheet(citation: ChatCitation) {
+function renderSheet(citation: ChatCitation, locale: "id" | "en" = "id") {
   render(
     createElement(
       LocaleCtx.Provider,
-      { value: "id" },
+      { value: locale },
       createElement(CitationSheet, { citation, onClose: () => {} }),
     ),
   );
@@ -129,6 +129,50 @@ describe("CitationSheet — per-chain transmission evidence", () => {
 
     expect(texts("citation-chain-truncated")).toEqual(["sanad lain tidak ditampilkan"]);
     expect(screen.getByTestId("citation-sanad").textContent).toBe("n1");
+  });
+});
+
+/**
+ * The numbering edition (ADR-0067): a hadith number is only checkable when the
+ * reader knows which edition produced it. The caption names the corpus edition
+ * (derived from sunnah.com) and says other printed editions may differ; it is
+ * scoped to hadith citations, because a Quran or kitab address carries no
+ * hadith number to qualify.
+ */
+describe("CitationSheet — the hadith numbering-edition caption", () => {
+  it("names the corpus edition and the differing printed editions in Indonesian", () => {
+    renderSheet(BASE);
+    const caption = screen.getByTestId("citation-edition");
+    expect(caption.textContent).toContain("fawazahmed0/hadith-api");
+    expect(caption.textContent).toContain("sunnah.com");
+    expect(caption.textContent).toContain("edisi cetak lain");
+    // The caveat is the caption's load-bearing claim: another printed edition
+    // may number the same hadith differently.
+    expect(caption.textContent).toMatch(/nomor yang berbeda/);
+  });
+
+  it("renders the English copy under the English locale", () => {
+    renderSheet(BASE, "en");
+    const caption = screen.getByTestId("citation-edition");
+    expect(caption.textContent).toContain("corpus edition");
+    expect(caption.textContent).toContain("other printed editions");
+    expect(caption.textContent).toContain("number them differently");
+  });
+
+  it("shows no hadith-numbering caption on a non-hadith citation", () => {
+    // A numbering caveat on a verse would be a provenance claim about a number
+    // the citation does not carry.
+    renderSheet({ ...BASE, label: "QS. 2:255", source: "Al-Baqarah" });
+    expect(screen.queryByTestId("citation-edition")).toBeNull();
+  });
+
+  it("keeps the caption beside the per-chain evidence it qualifies", () => {
+    renderSheet({
+      ...BASE,
+      chains: [{ narrators: [{ id: "n1", nameAr: "نافع" }], grade: "sahih", grader: "al-bukhari" }],
+    });
+    expect(screen.getByTestId("citation-edition")).toBeTruthy();
+    expect(screen.getByTestId("citation-chain")).toBeTruthy();
   });
 });
 

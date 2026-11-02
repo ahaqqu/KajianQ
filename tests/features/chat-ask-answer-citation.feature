@@ -74,6 +74,14 @@ Feature: Chat — ask, answer, citations, warnings, disclaimer
     Then the citation sheet shows every sanad with its own grade and grader
     And the Trace lists the chains consulted with their sanads
 
+  # A hadith number is only checkable when the reader knows which edition
+  # produced it, so the sheet names the corpus edition and says printed editions
+  # may number the same hadith differently.
+  Scenario: A hadith citation names the numbering edition its number follows
+    When I ask about a hadith whose chains disagree
+    Then the citation sheet shows every sanad with its own grade and grader
+    And the sheet names the corpus edition its hadith numbers follow
+
   # #548: the model can wrap the canonical line in markup that wraps ONLY the
   # copy (`**<copy>**`, `- <copy>`, `> <copy>`). The delimiters are not answer
   # bytes, so the peel takes them with the copy: the card draws the line once

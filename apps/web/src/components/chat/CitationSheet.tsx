@@ -105,6 +105,14 @@ export function CitationSheet({
             </span>
           </MonoLabel>
         )}
+        {isHadithCitation(citation) && (
+          <p
+            data-testid="citation-edition"
+            className="mt-3 text-xs leading-relaxed text-muted-foreground"
+          >
+            {t(locale, "citationEditionNote")}
+          </p>
+        )}
         {children !== undefined && (
           <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-rule pt-3">
             {children}
@@ -113,6 +121,16 @@ export function CitationSheet({
       </div>
     </div>
   );
+}
+
+/**
+ * Whether the citation addresses a hadith. Its printed number depends on the
+ * edition, so the edition caption is scoped to it: a Quran or kitab citation
+ * carries no hadith number to qualify. Labels are the canonical `HR.`/`QS.`
+ * markers the server normalises.
+ */
+function isHadithCitation(citation: ChatCitation): boolean {
+  return citation.label.startsWith("HR.");
 }
 
 /**

@@ -432,6 +432,15 @@ Then("the citation sheet shows every sanad with its own grade and grader", async
   await expect(sheet.getByTestId("citation-sanad").first()).toHaveText("نافع < ابن عمر");
 });
 
+Then("the sheet names the corpus edition its hadith numbers follow", async ({ page }) => {
+  const caption = page.getByTestId("citation-sheet").getByTestId("citation-edition");
+  await expect(caption).toBeVisible();
+  await expect(caption).toContainText("fawazahmed0/hadith-api");
+  await expect(caption).toContainText("sunnah.com");
+  await expect(caption).toContainText("edisi cetak lain");
+  await expect(caption).toContainText("nomor yang berbeda");
+});
+
 Then("the Trace lists the chains consulted with their sanads", async ({ page }) => {
   // The sheet is modal: the trace steps start from a closed sheet.
   await page.keyboard.press("Escape");
