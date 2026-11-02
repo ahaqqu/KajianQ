@@ -73,8 +73,8 @@ package names the domain's labels.
 
 No newly curated row reuses the known v0 retrieval-gap address (Bukhari 191);
 the new chain rows use Bukhari 1, 52, and 735. The v0 rows that already carry
-the gap address are carried unchanged and remain held out of the deployed
-sample.
+the gap address are carried unchanged, and `gs-v0-003` remains in the smoke's
+held-out list.
 
 ## Database verification
 
