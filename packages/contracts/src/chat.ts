@@ -96,10 +96,11 @@ export function isStorableText(text: string): boolean {
 /**
  * The `message` field: the user's question, and storable text (see
  * `isStorableText`). The bounds run first, so an over-length body reports the
- * length issue first and `minLength`/`maxLength` stay in the published schema —
- * but `v.pipe` does not stop at a failed action, so the pattern runs on every
- * body that reaches the schema, over-length ones included: one linear match
- * over a string `JSON.parse` already produced.
+ * length issue first; `minLength` publishes its bound as an action, while
+ * `maxLength` is published by the `v.metadata` below, because `v.check`
+ * publishes nothing — but `v.pipe` does not stop at a failed action, so the
+ * pattern runs on every body that reaches the schema, over-length ones
+ * included: one linear match over a string `JSON.parse` already produced.
  *
  * The ceiling is a code-point check, never `v.maxLength`: that action counts
  * UTF-16 code units, the wrong unit for the published bound, so it would refuse
