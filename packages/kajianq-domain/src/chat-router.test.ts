@@ -3,7 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 import type { TraceEvent } from "@app/contracts";
 import { RunContext, StageError, type CostRecord } from "@app/rag-core";
 import { createKajianQRouter, type RouterProvider } from "./chat-router";
-import { ROUTER_SYSTEM_PROMPT } from "./chat-router-output";
+import { ROUTER_FOLLOW_UP_RULE, ROUTER_SYSTEM_PROMPT } from "./chat-router-prompt";
 import type { KajianQFilters } from "./filters";
 import { GRADES, MADZHABS, TEXT_LAYERS } from "./filters";
 import { INTENTS, PRINCIPLE_TAGS, SUBJECT_AREAS, SUB_QUERY_ROLES } from "./taxonomy";
@@ -28,8 +28,16 @@ type Captured = {
   options: Record<string, unknown>;
 };
 
-function harness(replyText: string): {
-  route: (query: { text: string; filters?: KajianQFilters }) => Promise<unknown>;
+type RouterQuery = {
+  text: string;
+  filters?: KajianQFilters;
+  history?: readonly { role: string; content: string }[];
+};
+
+/** A reply, or a function of the call the provider receives — so a case can prove
+ * the *prompt* carried what the reading depends on, not just a canned string. */
+function harness(reply: string | ((spec: Captured) => string)): {
+  route: (query: RouterQuery) => Promise<unknown>;
   captured: Captured[];
   events: TraceEvent[];
 } {
@@ -38,7 +46,10 @@ function harness(replyText: string): {
   const provider: RouterProvider = {
     generate: (spec) => {
       captured.push(spec);
-      return Effect.succeed({ text: replyText, cost: COST });
+      return Effect.succeed({
+        text: typeof reply === "function" ? reply(spec) : reply,
+        cost: COST,
+      });
     },
   };
   const router = createKajianQRouter(provider);
@@ -397,5 +408,182 @@ describe("createKajianQRouter", () => {
     ]) {
       expect(ROUTER_SYSTEM_PROMPT, `prompt is missing "${value}"`).toContain(value);
     }
+  });
+
+  /**
+   * Follow-up routing. The failure these pin: a short question that names its
+   * topic only by reference was routed from its own words alone, so retrieval
+   * missed the topic the previous turn established and the generator's citation
+   * of it was refused as ungrounded. The prior turns must travel with the call,
+   * and the window must be bounded and recorded.
+   */
+
+  it("sends a single-turn question the unchanged prompt and records no window", async () => {
+    const h = harness(REPLY);
+    const routed = (await h.route({ text: "Apa hukum riba?" })) as {
+      attributes: Record<string, unknown>;
+    };
+
+    // Byte for byte the call a single-turn question always made: the base prompt,
+    // then the question. The follow-up rule is appended only when there are
+    // earlier turns, so this path is not re-opened by the multi-turn change.
+    expect(h.captured[0]?.turns).toEqual([
+      { role: "system", content: ROUTER_SYSTEM_PROMPT },
+      { role: "user", content: "Apa hukum riba?" },
+    ]);
+    // Absent means "no prior turns", so a single-turn trace keeps the shape it
+    // always had.
+    expect(routed.attributes["historyTurns"]).toBeUndefined();
+  });
+
+  it("carries the session's prior turns on a follow-up call and records the window", async () => {
+    const h = harness(REPLY);
+    const routed = (await h.route({
+      text: "Apa dalilnya?",
+      history: [
+        { role: "user", content: "Apa itu Ayat Kursi?" },
+        { role: "assistant", content: "Ayat Kursi adalah QS. 2:255." },
+      ],
+    })) as { attributes: Record<string, unknown> };
+
+    const turns = h.captured[0]?.turns ?? [];
+    // Oldest first, between the system prompt and the caller's verbatim question.
+    expect(turns.slice(1, -1)).toEqual([
+      { role: "user", content: "Apa itu Ayat Kursi?" },
+      { role: "assistant", content: "Ayat Kursi adalah QS. 2:255." },
+    ]);
+    expect(turns[0]?.content).toBe(`${ROUTER_SYSTEM_PROMPT}\n${ROUTER_FOLLOW_UP_RULE}`);
+    expect(turns.at(-1)).toEqual({ role: "user", content: "Apa dalilnya?" });
+    // The window the call actually carried is trace content (the runner stamps
+    // `attributes` onto the `intent` event), so a follow-up answer's evidence is
+    // auditable: how many prior turns the router carried, and which sub-queries it ran.
+    expect(routed.attributes["historyTurns"]).toBe(2);
+  });
+
+  it("bounds the history a caller can push into the router prompt", async () => {
+    const h = harness(REPLY);
+    const history = Array.from({ length: 10 }, (_, index) => ({
+      role: index % 2 === 0 ? "user" : "assistant",
+      content: `turn ${index}`,
+    }));
+    const routed = (await h.route({ text: "Apa dalilnya?", history })) as {
+      attributes: Record<string, unknown>;
+    };
+
+    // The tail is the useful part for an anaphor, and the bound is what keeps the
+    // call's input independent of how long the session has run.
+    expect(h.captured[0]?.turns.slice(1, -1).map((t) => t.content)).toEqual([
+      "turn 6",
+      "turn 7",
+      "turn 8",
+      "turn 9",
+    ]);
+    expect(routed.attributes["historyTurns"]).toBe(4);
+  });
+
+  it("resolves a short anaphoric follow-up into sub-queries about the prior topic", async () => {
+    // The reading a real router gives when the prompt carries the earlier turn:
+    // the topic is taken from what it was told, not from the follow-up's words.
+    const reply = (spec: Captured): string => {
+      const prior = spec.turns
+        .slice(1, -1)
+        .filter((t) => t.role === "user")
+        .at(-1)?.content;
+      return JSON.stringify({
+        intent: "factual",
+        category: "hadith",
+        subQueries:
+          prior === undefined
+            ? ["Apa dalilnya?"]
+            : [{ text: "dalil tentang ayat kursi", role: "sanad" }],
+      });
+    };
+    const followUp = {
+      text: "Apa dalilnya?",
+      history: [
+        { role: "user", content: "Apa itu Ayat Kursi?" },
+        { role: "assistant", content: "Ayat Kursi adalah QS. 2:255." },
+      ],
+    };
+    const withHistory = harness(reply);
+    const routed = (await withHistory.route(followUp)) as {
+      subQueries: { text: string; role?: string; origin?: string }[];
+    };
+
+    // The retrieval set carries the prior topic — what the follow-up refers to —
+    // and the caller's verbatim follow-up still leads the set as its own factual
+    // entry: history resolves the sub-queries, it never rewrites `sourceText`.
+    expect(routed.subQueries.map((sub) => sub.text)).toContain("dalil tentang ayat kursi");
+    expect(routed.subQueries[0]).toEqual({
+      text: "Apa dalilnya?",
+      role: "factual",
+      origin: "rule",
+    });
+
+    // Control: the same provider and question with no history. Nothing in the
+    // call names a prior topic, so the reading repeats the follow-up's own words
+    // and the fired `sanad` template can only embed those words too — a route
+    // whose retrieval text names only the follow-up's own words.
+    const withoutHistory = harness(reply);
+    const single = (await withoutHistory.route({ text: followUp.text })) as {
+      subQueries: { text: string }[];
+    };
+    const singleTexts = single.subQueries.map((sub) => sub.text);
+    expect(singleTexts.some((text) => text.includes("ayat kursi"))).toBe(false);
+    expect(singleTexts).toContain("Apa dalilnya?");
+  });
+
+  it("keeps a self-contained short question's own topic when prior turns ride the call", async () => {
+    // The rule's other arm: the question stands on its own, so the earlier turns
+    // are context the model is told to ignore. The stage never folds a prior turn
+    // into a sub-query itself, so nothing from them reaches the retrieval set.
+    const h = harness(
+      JSON.stringify({
+        intent: "ruling",
+        category: "fikih",
+        subQueries: [{ text: "hukum riba dalam muamalah", role: "factual" }],
+      }),
+    );
+    const routed = (await h.route({
+      text: "Apa hukum riba?",
+      history: [
+        { role: "user", content: "Apa itu Ayat Kursi?" },
+        { role: "assistant", content: "Ayat Kursi adalah QS. 2:255." },
+      ],
+    })) as { subQueries: { text: string; role?: string; origin?: string }[] };
+
+    // Both arms ride the call, so the model is told which one applies.
+    expect(h.captured[0]?.turns[0]?.content).toContain(
+      "If the question is understandable on its own, ignore the earlier turns",
+    );
+    const texts = routed.subQueries.map((sub) => sub.text);
+    // The question's own topic is a retrieval angle — and the earlier topic is not.
+    expect(texts).toContain("hukum riba dalam muamalah");
+    expect(texts).toContain("Apa hukum riba?");
+    expect(texts.some((text) => text.includes("ayat kursi"))).toBe(false);
+  });
+
+  it("records the window when the reply is unusable, and asks nothing for a content-free text", async () => {
+    const history = [
+      { role: "user", content: "Apa itu Ayat Kursi?" },
+      { role: "assistant", content: "Ayat Kursi adalah QS. 2:255." },
+    ];
+
+    const unusable = harness("I cannot answer that.");
+    const routed = (await unusable.route({ text: "Apa dalilnya?", history })) as {
+      attributes: Record<string, unknown>;
+    };
+    // The call still happened and still cost money, so the fallback route records
+    // that it was given prior turns even though it could not use the reply.
+    expect(routed.attributes).toMatchObject({ fallback: true, historyTurns: 2 });
+
+    // A content-free text is gated before any call: there is no model turn to
+    // carry history into, so the window is not part of that route.
+    const gated = harness("I cannot answer that.");
+    const empty = (await gated.route({ text: "!!", history })) as {
+      attributes: Record<string, unknown>;
+    };
+    expect(gated.captured).toEqual([]);
+    expect(empty.attributes).toEqual({ fallback: true, contentFree: true });
   });
 });

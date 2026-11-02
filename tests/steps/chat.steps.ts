@@ -28,6 +28,19 @@ const ANSWER_FIXTURE = [
   "event: done\ndata: {}\n\n",
 ].join("");
 
+/**
+ * The same-session follow-up's answer: the prior turn's topic retrieved again, so
+ * the citation stays grounded and the page renders a chip rather than a refusal.
+ */
+const FOLLOW_UP_ANSWER_FIXTURE = [
+  'event: meta\ndata: {"sessionId":"sess-e2e","messageId":"m-follow-up","traceId":"tr-follow-up"}\n\n',
+  "event: delta\ndata: Dalilnya adalah ayat kursi, ",
+  "event: delta\ndata: [QS. 2:255].\n\n",
+  'event: citations\ndata: {"messageId":"m-follow-up","refusal":false,"dhaifWarning":false,"citations":[{"label":"QS. 2:255","arabic":"اللَّهُ لَا إِلَٰهَ إِلَّا هُوَ","translation":"Allah, tidak ada tuhan selain Dia.","machineTranslated":true,"source":"Al-Baqarah"}]}\n\n',
+  'event: trace\ndata: {"messageId":"m-follow-up","sources":[{"id":"chunk-1","source":"Al-Baqarah"}],"technical":{"intent":"factual","subQueries":["Apa dalilnya?","dalil ayat kursi"],"chunks":[{"id":"chunk-1","source":"Al-Baqarah","score":0.03125}],"models":["router-stub","generator-stub"]}}\n\n',
+  "event: done\ndata: {}\n\n",
+].join("");
+
 const DHAIF_WARNING =
   "[Peringatan] Hadits yang dikutip berderajat lemah (dhaif); tidak dapat dijadikan dalil utama.";
 
@@ -287,27 +300,44 @@ let clampedDraft = "";
  */
 let heldTranscriptRoute: import("@playwright/test").Route | null = null;
 
-/** Intercept auth + chat endpoints with fixtures, then open the app.
- *
- * `rehydrateStatus` mirrors the rehydration endpoint's documented answer for the
- * scenario's stored session id: 200 with a transcript, or the 404 the API answers
- * for a session it does not have — unknown, foreign, or unrepresentable.
- *
- * `holdReconnect` answers the first rehydration request with a 500 so the query
- * has no data and is therefore stale, then holds the reconnect refetch until the
- * scenario releases it.
- *
- * `transcriptAfterChatPost` is the transcript the endpoint serves once a turn
- * has been posted — the state a fresh request sees and the page's cached
- * transcript does not.
- */
+/** The fixture streams one chat scenario serves, and how its endpoints answer. */
+type ChatFixtures = {
+  /** The SSE stream the first chat POST answers with. */
+  answerFixture: string;
+  /** The transcript the rehydration endpoint serves when `rehydrateStatus` is 200. */
+  transcriptFixture?: Record<string, unknown>;
+  /**
+   * The rehydration endpoint's documented answer for the scenario's stored
+   * session id: 200 with a transcript, or the 404 the API answers for a session
+   * it does not have — unknown, foreign, or unrepresentable.
+   */
+  rehydrateStatus?: number;
+  /**
+   * Answers the first rehydration request with a 500 so the query has no data and
+   * is therefore stale, then holds the reconnect refetch until the scenario
+   * releases it.
+   */
+  holdReconnect?: boolean;
+  /**
+   * The transcript the endpoint serves once a turn has been posted — the state a
+   * fresh request sees and the page's cached transcript does not.
+   */
+  transcriptAfterChatPost?: Record<string, unknown>;
+  /** The stream a second chat POST answers with, when the scenario asks again. */
+  followUpAnswerFixture?: string;
+};
+
+/** Intercept auth + chat endpoints with fixtures, then open the app. */
 async function openChatWithFixtures(
   page: import("@playwright/test").Page,
-  answerFixture: string,
-  transcriptFixture: Record<string, unknown> = TRANSCRIPT_FIXTURE,
-  rehydrateStatus = 200,
-  holdReconnect = false,
-  transcriptAfterChatPost?: Record<string, unknown>,
+  {
+    answerFixture,
+    transcriptFixture = TRANSCRIPT_FIXTURE,
+    rehydrateStatus = 200,
+    holdReconnect = false,
+    transcriptAfterChatPost,
+    followUpAnswerFixture,
+  }: ChatFixtures,
 ): Promise<void> {
   chatPosts = 0;
   chatPostBodies = [];
@@ -341,7 +371,7 @@ async function openChatWithFixtures(
     await route.fulfill({
       status: 200,
       headers: { "content-type": "text/event-stream" },
-      body: answerFixture,
+      body: chatPosts === 1 ? answerFixture : (followUpAnswerFixture ?? answerFixture),
     });
   });
   // Seed the token before the app boots: the per-IP rate limiter counts every
@@ -355,13 +385,47 @@ async function openChatWithFixtures(
 }
 
 When("I open the chat and ask about ayat kursi", async ({ page }) => {
-  await openChatWithFixtures(page, ANSWER_FIXTURE);
+  await openChatWithFixtures(page, { answerFixture: ANSWER_FIXTURE });
   await page.getByTestId("composer").fill("Apa itu ayat kursi?");
   await page.getByTestId("send").click();
 });
 
+When("I open the chat and ask about ayat kursi awaiting a follow-up", async ({ page }) => {
+  // The follow-up's own stream is served for the second POST, so the page renders
+  // the same-session answer instead of replaying the first fixture.
+  await openChatWithFixtures(page, {
+    answerFixture: ANSWER_FIXTURE,
+    followUpAnswerFixture: FOLLOW_UP_ANSWER_FIXTURE,
+  });
+  await page.getByTestId("composer").fill("Apa itu ayat kursi?");
+  await page.getByTestId("send").click();
+  // The composer takes the next question once the first turn has settled.
+  await expect(page.getByTestId("message-assistant").first()).toContainText("Allah Mahahidup");
+});
+
+When("I ask a follow-up about that answer", async ({ page }) => {
+  await page.getByTestId("composer").fill("Apa dalilnya?");
+  await page.getByTestId("send").click();
+});
+
+Then("the follow-up is sent in the same session", async () => {
+  expect(chatPostBodies).toHaveLength(2);
+  const body = JSON.parse(chatPostBodies[1] ?? "{}") as { sessionId?: string; message?: string };
+  // The session id the first meta frame minted — not a fresh session. That is what
+  // lets the server load the prior turns the follow-up's retrieval resolves.
+  expect(body.sessionId).toBe("sess-e2e");
+  expect(body.message).toBe("Apa dalilnya?");
+});
+
+Then("the follow-up answer renders with a citation chip", async ({ page }) => {
+  const assistant = page.getByTestId("message-assistant").last();
+  await expect(assistant).toContainText("Dalilnya adalah ayat kursi");
+  // A grounded answer, not the refusal card: the citation chip is present.
+  await expect(assistant.getByTestId("citation-chip")).toHaveText("[QS. 2:255]");
+});
+
 When("I ask a question whose answer carries a dhaif hadith", async ({ page }) => {
-  await openChatWithFixtures(page, DHAIF_FIXTURE);
+  await openChatWithFixtures(page, { answerFixture: DHAIF_FIXTURE });
   await page.getByTestId("composer").fill("Hadits tentang amalan tertentu?");
   await page.getByTestId("send").click();
 });
@@ -369,7 +433,7 @@ When("I ask a question whose answer carries a dhaif hadith", async ({ page }) =>
 When(
   "I ask a question whose dhaif answer ends with the machine-translation label",
   async ({ page }) => {
-    await openChatWithFixtures(page, DHAIF_MT_FIXTURE);
+    await openChatWithFixtures(page, { answerFixture: DHAIF_MT_FIXTURE });
     await page.getByTestId("composer").fill("Hadits tentang amalan tertentu?");
     await page.getByTestId("send").click();
   },
@@ -378,7 +442,7 @@ When(
 When(
   "I ask a question whose dhaif answer repeats the canonical line in its last paragraph",
   async ({ page }) => {
-    await openChatWithFixtures(page, DHAIF_REPEAT_FIXTURE);
+    await openChatWithFixtures(page, { answerFixture: DHAIF_REPEAT_FIXTURE });
     await page.getByTestId("composer").fill("Hadits tentang amalan tertentu?");
     await page.getByTestId("send").click();
   },
@@ -387,7 +451,7 @@ When(
 When(
   "I ask a question whose dhaif answer repeats the canonical line space-separated",
   async ({ page }) => {
-    await openChatWithFixtures(page, DHAIF_SPACE_REPEAT_FIXTURE);
+    await openChatWithFixtures(page, { answerFixture: DHAIF_SPACE_REPEAT_FIXTURE });
     await page.getByTestId("composer").fill("Hadits tentang amalan tertentu?");
     await page.getByTestId("send").click();
   },
@@ -396,7 +460,7 @@ When(
 When(
   "I ask a question whose dhaif answer carries the canonical line mid-answer",
   async ({ page }) => {
-    await openChatWithFixtures(page, DHAIF_MID_FIXTURE);
+    await openChatWithFixtures(page, { answerFixture: DHAIF_MID_FIXTURE });
     await page.getByTestId("composer").fill("Hadits tentang amalan tertentu?");
     await page.getByTestId("send").click();
   },
@@ -405,14 +469,14 @@ When(
 When(
   "I ask a question whose dhaif answer puts the label in the canonical line's paragraph",
   async ({ page }) => {
-    await openChatWithFixtures(page, DHAIF_LABEL_SHARED_FIXTURE);
+    await openChatWithFixtures(page, { answerFixture: DHAIF_LABEL_SHARED_FIXTURE });
     await page.getByTestId("composer").fill("Hadits tentang amalan tertentu?");
     await page.getByTestId("send").click();
   },
 );
 
 When("I ask about a hadith whose chains disagree", async ({ page }) => {
-  await openChatWithFixtures(page, CHAIN_FIXTURE);
+  await openChatWithFixtures(page, { answerFixture: CHAIN_FIXTURE });
   await page.getByTestId("composer").fill("Hadits tentang niat?");
   await page.getByTestId("send").click();
 });
@@ -457,7 +521,7 @@ Then("the Trace lists the chains consulted with their sanads", async ({ page }) 
 });
 
 When("I ask a question whose dhaif answer wraps the canonical line in markup", async ({ page }) => {
-  await openChatWithFixtures(page, DHAIF_WRAPPED_FIXTURE);
+  await openChatWithFixtures(page, { answerFixture: DHAIF_WRAPPED_FIXTURE });
   await page.getByTestId("composer").fill("Hadits tentang amalan tertentu?");
   await page.getByTestId("send").click();
 });
@@ -465,26 +529,26 @@ When("I ask a question whose dhaif answer wraps the canonical line in markup", a
 When(
   "I ask a question whose dhaif answer interleaves the canonical line with the disclaimer",
   async ({ page }) => {
-    await openChatWithFixtures(page, DHAIF_INTERLEAVE_FIXTURE);
+    await openChatWithFixtures(page, { answerFixture: DHAIF_INTERLEAVE_FIXTURE });
     await page.getByTestId("composer").fill("Hadits tentang amalan tertentu?");
     await page.getByTestId("send").click();
   },
 );
 
 When("I ask a question whose answer contains markdown", async ({ page }) => {
-  await openChatWithFixtures(page, MD_FIXTURE);
+  await openChatWithFixtures(page, { answerFixture: MD_FIXTURE });
   await page.getByTestId("composer").fill("Apa itu ayat kursi?");
   await page.getByTestId("send").click();
 });
 
 When("I ask something the corpus cannot answer", async ({ page }) => {
-  await openChatWithFixtures(page, REFUSAL_FIXTURE);
+  await openChatWithFixtures(page, { answerFixture: REFUSAL_FIXTURE });
   await page.getByTestId("composer").fill("Pertanyaan di luar cakupan?");
   await page.getByTestId("send").click();
 });
 
 When("I send a message that is not a question", async ({ page }) => {
-  await openChatWithFixtures(page, DECLINE_FIXTURE);
+  await openChatWithFixtures(page, { answerFixture: DECLINE_FIXTURE });
   // The composer sends the content-free shape verbatim: the client does not
   // judge it, the server's route gate does.
   await page.getByTestId("composer").fill("\u200b\u200d\u200b");
@@ -492,7 +556,7 @@ When("I send a message that is not a question", async ({ page }) => {
 });
 
 When("I ask a question whose answer answers in part and then refuses", async ({ page }) => {
-  await openChatWithFixtures(page, HYBRID_FIXTURE);
+  await openChatWithFixtures(page, { answerFixture: HYBRID_FIXTURE });
   await page.getByTestId("composer").fill("Apa itu ayat kursi, dan kapan Kiamat?");
   await page.getByTestId("send").click();
 });
@@ -505,7 +569,10 @@ When("I open a chat whose stored transcript was capped", async ({ page }) => {
     localStorage.setItem("kajianq.consent", "store");
     localStorage.setItem("kajianq.chat.sessionId", "sess-e2e");
   });
-  await openChatWithFixtures(page, ANSWER_FIXTURE, { ...TRANSCRIPT_FIXTURE, truncated: true });
+  await openChatWithFixtures(page, {
+    answerFixture: ANSWER_FIXTURE,
+    transcriptFixture: { ...TRANSCRIPT_FIXTURE, truncated: true },
+  });
 });
 
 Then("the transcript says older messages are not shown", async ({ page }) => {
@@ -523,7 +590,7 @@ When("I open a chat whose stored session id is malformed", async ({ page }) => {
     localStorage.setItem("kajianq.consent", "store");
     localStorage.setItem("kajianq.chat.sessionId", "en");
   });
-  await openChatWithFixtures(page, ANSWER_FIXTURE, TRANSCRIPT_FIXTURE, 404);
+  await openChatWithFixtures(page, { answerFixture: ANSWER_FIXTURE, rehydrateStatus: 404 });
 });
 
 Then("the app starts a fresh chat without an error", async ({ page }) => {
@@ -559,7 +626,7 @@ When(
       localStorage.setItem("kajianq.consent", "store");
       localStorage.setItem("kajianq.chat.sessionId", "sess-e2e");
     });
-    await openChatWithFixtures(page, ANSWER_FIXTURE, undefined, 200, true);
+    await openChatWithFixtures(page, { answerFixture: ANSWER_FIXTURE, holdReconnect: true });
     await expect(page.getByTestId("chat-error")).toBeVisible();
   },
 );
@@ -611,14 +678,10 @@ When(
       localStorage.setItem("kajianq.consent", "store");
       localStorage.setItem("kajianq.chat.sessionId", "sess-e2e");
     });
-    await openChatWithFixtures(
-      page,
-      ANSWER_FIXTURE,
-      undefined,
-      200,
-      false,
-      TURNED_TRANSCRIPT_FIXTURE,
-    );
+    await openChatWithFixtures(page, {
+      answerFixture: ANSWER_FIXTURE,
+      transcriptAfterChatPost: TURNED_TRANSCRIPT_FIXTURE,
+    });
     await page.getByTestId("composer").fill("Apa itu ayat kursi?");
     await page.getByTestId("send").click();
     await expect(page.getByTestId("message-assistant").last()).toContainText(
@@ -644,7 +707,7 @@ Then("the completed answer is still in the transcript", async ({ page }) => {
 });
 
 When("I open the chat and paste a message longer than the ceiling", async ({ page }) => {
-  await openChatWithFixtures(page, ANSWER_FIXTURE);
+  await openChatWithFixtures(page, { answerFixture: ANSWER_FIXTURE });
   // A programmatic fill, not typing: the ceiling has to hold for a pasted value
   // too, which the textarea's maxLength attribute alone does not guarantee.
   await page.getByTestId("composer").fill("a".repeat(QA_PROBE_LENGTH));

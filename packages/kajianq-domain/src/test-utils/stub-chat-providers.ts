@@ -29,9 +29,22 @@ function cost(modelId: string, microUsd: number) {
 
 export type StubChatProviderOverrides = {
   routerText?: string;
+  /**
+   * The router's reply as a function of the turns it was sent. A test that needs
+   * the reading to depend on what the prompt carried — a follow-up resolved from
+   * the prior turns — supplies this instead of `routerText`; `routerText` wins
+   * only when this is absent.
+   */
+  routerReply?: (turns: readonly { role: string; content: string }[]) => string;
   answerText?: string;
   /** Explicit delta sequence (overrides `answerText` chunking). */
   streamDeltas?: readonly string[];
+  /**
+   * One embedding vector per text, as a function of the text. Absent = the one
+   * fixed vector every routed sub-query shared; supplied = the retrieval really
+   * depends on the query text, so a test can assert which sub-query found a row.
+   */
+  embedFor?: (text: string) => readonly number[];
   /**
    * Scripted readings, one per generator call, in call order. Supplying it
    * means the test expects exactly these readings: a call past the script fails
@@ -123,6 +136,7 @@ export function createStubChatProviders(overrides: StubChatProviderOverrides = {
     return reading;
   };
   const deltasFor = (): readonly string[] => overrides.streamDeltas ?? [nextReading()];
+  const embedFor = overrides.embedFor;
   const generatorCalls: StubGeneratorCall[] = [];
   const generatorFails = overrides.generatorFails === true;
   const generatorProvider: GeneratorProvider = {
@@ -151,9 +165,10 @@ export function createStubChatProviders(overrides: StubChatProviderOverrides = {
   };
   return {
     routerProvider: {
-      generate: () =>
+      generate: (spec) =>
         Effect.succeed({
           text:
+            overrides.routerReply?.(spec.turns) ??
             overrides.routerText ??
             JSON.stringify({
               intent: "factual",
@@ -177,9 +192,13 @@ export function createStubChatProviders(overrides: StubChatProviderOverrides = {
         }),
     },
     embedder: {
-      embed: () =>
+      embed: (spec) =>
         Effect.succeed({
-          vectors: [[1, 0, 0]],
+          // The fixed vector is the default so every existing case keeps the one
+          // shared search; `embedFor` makes the vector a function of the text so a
+          // case can prove which sub-query reached which row.
+          vectors:
+            embedFor === undefined ? [[1, 0, 0]] : spec.texts.map((text) => [...embedFor(text)]),
           cost: { ...cost("stub-embedder", 0), ...overrides.embedCost },
         }),
     },

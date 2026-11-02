@@ -14,6 +14,7 @@ import {
 } from "@app/kajianq-domain";
 import { createMemoryRagStore } from "@app/kajianq-domain/test-utils/memory-rag-store";
 import { createStubChatProviders } from "@app/kajianq-domain/test-utils/stub-chat-providers";
+import { withDistanceFloor } from "@app/kajianq-domain/test-utils/distance-floor";
 
 /** Every pipeline-seam call, in order; the no-spend tests assert this stays empty. */
 const spendCalls: string[] = [];
@@ -764,6 +765,204 @@ describe("POST /v1/chat", () => {
     );
     expect(messages.length).toBe(4);
     expect(messages.map((m) => m.role)).toEqual(["user", "assistant", "user", "assistant"]);
+  }, 15000);
+
+  /**
+   * The same-session follow-up end to end. The first turn establishes a topic
+   * and cites its hadith; the second turn names that hadith only by reference.
+   * The invariant: the follow-up's retrieval carries the prior topic, so the
+   * citation is grounded in evidence THIS run fetched — and the citation gate is
+   * unchanged, because the same draft is still refused when no prior turn
+   * carries the topic.
+   */
+  const FOLLOW_UP_TOPIC = "menuntut ilmu";
+  const FOLLOW_UP_CITATION = "HR. Bukhari no. 52 (Sahih)";
+  const FOLLOW_UP_DRAFT = `Menuntut ilmu itu kewajiban bagi setiap muslim [${FOLLOW_UP_CITATION}].`;
+
+  /** Seed the hadith the first turn establishes and the follow-up refers to. */
+  async function seedFollowUpHadith(store: ReturnType<typeof createMemoryRagStore>): Promise<void> {
+    const parentId = await runStoreEffect<string>(
+      store.insertDocParent({
+        sourceKey: "hadith/bukhari",
+        title: "Sahih al-Bukhari",
+        metadata: {},
+      }),
+    );
+    await runStoreEffect<string>(
+      store.insertDocChild({
+        parentId,
+        textRaw: "طَلَبُ الْعِلْمِ فَرِيضَةٌ",
+        textAr: "طَلَبُ الْعِلْمِ فَرِيضَةٌ",
+        textId: "Menuntut ilmu itu kewajiban.",
+        citation: { sourceType: "hadith" },
+        metadata: {
+          sourceType: "hadith",
+          collection: "bukhari",
+          hadithNo: "52",
+          grade: "sahih",
+          citation: FOLLOW_UP_CITATION,
+        },
+        embeddingPrimary: [1, 0, 0],
+        embeddingFallback: [1, 0, 0],
+        ordinal: 0,
+      } as never),
+    );
+  }
+
+  /**
+   * The reading a real router gives when the prior turns ride the call: a
+   * follow-up whose own words name no topic is decomposed from the topic of the
+   * turn it refers back to. Every call's turns are recorded so a case can assert
+   * which session's history reached the prompt.
+   */
+  function followUpRouter(
+    seen: { role: string; content: string }[][],
+  ): (turns: readonly { role: string; content: string }[]) => string {
+    return (turns) => {
+      seen.push(turns.map((turn) => ({ ...turn })));
+      const history = turns
+        .slice(1, -1)
+        .map((turn) => turn.content)
+        .join("\n");
+      const current = turns.at(-1)?.content ?? "";
+      const topicKnown = history.includes(FOLLOW_UP_TOPIC) || current.includes(FOLLOW_UP_TOPIC);
+      return JSON.stringify({
+        intent: "factual",
+        category: "hadith",
+        subQueries: [
+          topicKnown
+            ? { text: `hadis ${FOLLOW_UP_TOPIC}`, role: "sanad" }
+            : { text: "Jelaskan hadits itu.", role: "sanad" },
+        ],
+      });
+    };
+  }
+
+  /** The retrieval this case asserts: the topic-bearing query reaches the hadith
+   * and the follow-up's bare words do not. The memory stand-in returns every
+   * seeded row to every search, so the window is declared (distance floor). */
+  const followUpEmbedFor = (text: string): readonly number[] =>
+    text.includes(FOLLOW_UP_TOPIC) ? [1, 0, 0] : [0, 1, 0];
+
+  it("answers a same-session follow-up from the prior turn's topic with a grounded citation", async () => {
+    const { store, token } = await wiredStore();
+    await seedFollowUpHadith(store);
+    currentStore = withDistanceFloor(store, 0.5);
+    const routerCalls: { role: string; content: string }[][] = [];
+    currentOverrides = {
+      answerText: FOLLOW_UP_DRAFT,
+      embedFor: followUpEmbedFor,
+      routerReply: followUpRouter(routerCalls),
+    };
+
+    const first = await postChat(token, { message: "Sebutkan hadis tentang menuntut ilmu!" });
+    expect(first.status).toBe(200);
+    expect(first.answer).toContain(FOLLOW_UP_CITATION);
+
+    const second = await postChat(token, {
+      message: "Jelaskan hadits itu.",
+      sessionId: first.meta.sessionId,
+    });
+    expect(second.status).toBe(200);
+
+    // A grounded follow-up answer: the draft ships unchanged, and the citation
+    // frame agrees the citation is grounded.
+    expect(second.answer).toContain(FOLLOW_UP_CITATION);
+    const frame = JSON.parse(
+      second.frames.find((f) => f.event === "citations")?.data ?? "null",
+    ) as { refusal: boolean; citations: { label: string }[] };
+    expect(frame.refusal).toBe(false);
+    expect(
+      frame.citations.some((citation) => citation.label.startsWith("HR. Bukhari no. 52")),
+    ).toBe(true);
+
+    // The follow-up's router call carried the session's prior pair, oldest first.
+    expect(routerCalls[1]?.map((turn) => turn.role)).toEqual([
+      "system",
+      "user",
+      "assistant",
+      "user",
+    ]);
+    expect(routerCalls[1]?.[1]?.content).toContain(FOLLOW_UP_TOPIC);
+
+    // The trace proves the evidence path: the window the call carried, the
+    // resolved retrieval sub-query, and no ungrounded refusal.
+    const trace = store.allTraces().get(second.meta.messageId) as
+      | { events: { kind: string; detail?: Record<string, unknown> }[] }
+      | undefined;
+    const intent = trace?.events.find((event) => event.kind === "intent");
+    expect((intent?.detail?.["attributes"] as Record<string, unknown>)?.["historyTurns"]).toBe(2);
+    const subQueries = trace?.events
+      .filter((event) => event.kind === "subquery")
+      .map((event) => String(event.detail?.["text"] ?? ""));
+    expect(subQueries).toContain(`hadis ${FOLLOW_UP_TOPIC}`);
+    expect(
+      trace?.events.some(
+        (event) => event.kind === "refusal" && event.detail?.["trigger"] === "ungrounded_citation",
+      ),
+    ).toBe(false);
+  }, 15000);
+
+  it("still refuses the anaphoric follow-up when no prior turn carries the topic", async () => {
+    const { store, token } = await wiredStore();
+    await seedFollowUpHadith(store);
+    currentStore = withDistanceFloor(store, 0.5);
+    currentOverrides = {
+      answerText: FOLLOW_UP_DRAFT,
+      embedFor: followUpEmbedFor,
+      routerReply: followUpRouter([]),
+    };
+
+    // A fresh session: the same question and the same draft, with no prior turn
+    // to resolve the reference. The gate refuses exactly as it did before the
+    // change — the fix adds retrieval evidence, it never licenses the earlier
+    // answer's citation.
+    const followUp = await postChat(token, { message: "Jelaskan hadits itu." });
+    expect(followUp.status).toBe(200);
+    expect(followUp.answer).not.toContain(FOLLOW_UP_CITATION);
+    expect(followUp.answer).toBe("tidak menemukan dalil yang memadai");
+    const trace = store.allTraces().get(followUp.meta.messageId) as
+      | { events: { kind: string; detail?: Record<string, unknown> }[] }
+      | undefined;
+    expect(trace?.events.find((event) => event.kind === "refusal")?.detail?.["trigger"]).toBe(
+      "ungrounded_citation",
+    );
+  }, 15000);
+
+  it("keeps each session's follow-up history on that session", async () => {
+    const { store, token } = await wiredStore();
+    await seedFollowUpHadith(store);
+    currentStore = withDistanceFloor(store, 0.5);
+    const routerCalls: { role: string; content: string }[][] = [];
+    currentOverrides = {
+      answerText: FOLLOW_UP_DRAFT,
+      embedFor: followUpEmbedFor,
+      routerReply: followUpRouter(routerCalls),
+    };
+
+    const a = await postChat(token, { message: "Sebutkan hadis tentang menuntut ilmu!" });
+    const b = await postChat(token, { message: "Apa hukum riba?" });
+    expect(a.status).toBe(200);
+    expect(b.status).toBe(200);
+    const aFollowUp = await postChat(token, {
+      message: "Jelaskan hadits itu.",
+      sessionId: a.meta.sessionId,
+    });
+    const bFollowUp = await postChat(token, {
+      message: "Jelaskan hadits itu.",
+      sessionId: b.meta.sessionId,
+    });
+    expect(aFollowUp.status).toBe(200);
+    expect(bFollowUp.status).toBe(200);
+
+    // Call order is A1, B1, A2, B2. Each follow-up carries its own session's
+    // turns and nothing from the other session — history is session-scoped.
+    const prompt = (index: number) =>
+      routerCalls[index]?.map((turn) => turn.content).join("\n") ?? "";
+    expect(prompt(2)).toContain(FOLLOW_UP_TOPIC);
+    expect(prompt(2)).not.toContain("riba");
+    expect(prompt(3)).toContain("riba");
+    expect(prompt(3)).not.toContain(FOLLOW_UP_TOPIC);
   }, 15000);
 
   /**
