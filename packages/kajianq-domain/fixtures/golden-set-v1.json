@@ -1,7 +1,7 @@
 {
   "id": "golden-set-v1",
   "status": "v0-draft",
-  "$comment": "Golden Set v1 draft: the 21 v0 rows are carried unchanged from golden-set-v0.json; gs-v1-001 through gs-v1-029 are newly curated, each with a $comment recording its evidence basis. Each newly curated answer row names its required report unambiguously. A refuse row passes on a literal refusal OR a grounded answer; with empty requiredCitations and expectedSourceTypes, the current gate's citation and recall dimensions are trivially satisfied. Those rows test the absence requirement/non-invention only where the question makes the requested content impossible to supply, and do NOT enforce a literal refusal.",
+  "$comment": "Golden Set v1 draft: the 21 v0 rows are carried unchanged from golden-set-v0.json; gs-v1-001 through gs-v1-029 are newly curated, each with a $comment recording its evidence basis. A refuse row passes on a literal refusal OR a grounded answer; with empty requiredCitations and expectedSourceTypes, the current gate's citation and recall dimensions are trivially satisfied. Those rows test the absence requirement/non-invention only where the question makes the requested content impossible to supply, and do NOT enforce a literal refusal.",
   "questions": [
     {
       "id": "gs-v0-001",
