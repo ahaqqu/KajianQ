@@ -217,11 +217,11 @@ export function createKajianQReviewer(deps: KajianQReviewerDeps): Reviewer<Kajia
    * `review` event at all, so a rule running there would otherwise be
    * invisible.
    *
-   * Three shapes do NOT reach here, and none is decorated: a pure refusal (a
-   * warning on it would be invented from the assembled context rather than the
-   * text), an asserting refusal draft, and the gate's own ungrounded-citation
-   * refusal — the product's own refusal ships for those. A HYBRID does: it
-   * answers from the evidence and then declines.
+   * Three shapes do NOT reach here, and none is decorated: a pure refusal (the
+   * rule's evidence is the draft's citations, and a refusal cites nothing, so a
+   * warning on it would be invented), an asserting refusal draft, and the
+   * gate's own ungrounded-citation refusal — the product's own refusal ships
+   * for those. A HYBRID does: it answers from the evidence and then declines.
    *
    * The recording is deliberately keyed on `applyProductRules !== false` (the
    * same condition that gates the call), so the event means "the rules ran",

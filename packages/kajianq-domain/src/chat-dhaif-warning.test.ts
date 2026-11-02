@@ -2,7 +2,12 @@ import { Effect } from "effect";
 import { describe, expect, it } from "vite-plus/test";
 import { DEFAULT_REFUSALS, refusalTextFor } from "./chat-reviewer";
 import { REFUSAL_FLOORS, refusalFloorText } from "./chat-refusal";
-import { dhaifWarning, hasWeakWarning, ulamaDisclaimer } from "./chat-postprocess";
+import {
+  dhaifChainWarning,
+  dhaifWarning,
+  hasWeakWarning,
+  ulamaDisclaimer,
+} from "./chat-postprocess";
 import { MACHINE_TRANSLATION_LABEL } from "./chat-assembler";
 import { runChatPipeline } from "./chat-pipeline";
 import { createMemoryRagStore } from "./test-utils/memory-rag-store";
@@ -11,17 +16,21 @@ import { createStubChatProviders } from "./test-utils/stub-chat-providers";
 /**
  * INTEGRATION TEST — the dhaif warning on the path the WIRING runs.
  *
- * The trust invariant: **an answer whose assembled context carries a
- * dhaif-graded chunk carries the deterministic dhaif warning — every time,
- * without depending on the model** (spec §2.2 "Grade flag — Always"; the
- * control exists so a weak-grade citation cannot read as primary proof).
+ * The trust invariant: **the deterministic dhaif warning describes the hadith
+ * the delivered answer cites.** An answer that cites a dhaif-graded hadith
+ * carries the warning — every time, without depending on the model (spec §2.2
+ * "Grade flag — Always"; the control exists so a weak-grade citation cannot read
+ * as primary proof). An answer that cites no weak hadith carries none, even when
+ * retrieval returned one for context: the copy says "the cited hadith", and a
+ * per-retrieved-chunk trigger tells the reader something false about the
+ * answer's evidence.
  *
  * Asserted through the real composition — store rows → `createKajianQRetriever`
  * → `createKajianQAssembler` → generator → reviewer, driven by
  * `runChatPipeline` (the same `buildChatStages` wiring production uses,
- * ADR-0021) — so a narrowing of the reviewer's context, a lost metadata key, or
- * a suppression predicate that accepts a grade mention instead of the product's
- * copy reddens here.
+ * ADR-0021) — so a narrowing of the reviewer's context, a lost metadata key, a
+ * draft whose citations the rule cannot see, or a suppression predicate that
+ * accepts a grade mention instead of the product's copy reddens here.
  */
 
 const ARABIC = "إِنَّ اللَّهَ لَا يَخْفَىٰ عَلَيْهِ شَيْءٌ";
@@ -79,8 +88,8 @@ async function seedChild(
 ): Promise<string> {
   const parentId = await Effect.runPromise(
     store.insertDocParent({
-      sourceKey: `hadith/${String(metadata["collection"])}`,
-      title: "Jami' at-Tirmidhi",
+      sourceKey: `${String(metadata["sourceType"] ?? "hadith")}/${String(metadata["collection"] ?? "quran")}`,
+      title: metadata["sourceType"] === "quran" ? "Al-Qur'an" : "Jami' at-Tirmidhi",
       metadata: {},
     }),
   );
@@ -90,7 +99,7 @@ async function seedChild(
       textRaw: ARABIC,
       textAr: ARABIC,
       textId,
-      citation: { sourceType: "hadith" },
+      citation: { sourceType: metadata["sourceType"] ?? "hadith" },
       embeddingPrimary: PRIMARY_VEC,
       embeddingFallback: PRIMARY_VEC,
       ordinal,
@@ -152,8 +161,18 @@ async function answerFor(
   );
 }
 
+/** The Quran-only draft: it names one verse and no hadith at all. */
+const QURAN_CITATION = "QS. 4:103";
+const QURAN_METADATA = {
+  citation: QURAN_CITATION,
+  surah: 4,
+  ayah: 103,
+  sourceType: "quran",
+};
+const QURAN_ONLY_DRAFT = `Ayatnya adalah [${QURAN_CITATION}].`;
+
 describe("#278 — the dhaif warning as the wiring runs it", () => {
-  it("carries the canonical warning when the assembled context holds a dhaif chunk", async () => {
+  it("carries the canonical warning when the answer cites the retrieved dhaif chunk", async () => {
     const store = createMemoryRagStore();
     const dhaifId = await seedChild(store, DHAIF_METADATA, 0);
     await seedChild(store, SAHIH_METADATA, 1);
@@ -213,47 +232,85 @@ describe("#278 — the dhaif warning as the wiring runs it", () => {
     expect(text).not.toContain(dhaifWarning("id"));
   });
 
-  it("carries the warning when the dhaif chunk is assembled but never cited (the narrowing guard)", async () => {
-    // Several dhaif-graded chunks in the assembled evidence and a draft that
-    // quotes none of them: this reddens if a change narrows what the reviewer
-    // sees — to the cited chunks, to chunks with a text layer, or to any capped
-    // slice that drops the grade.
+  it("carries no warning for a Quran-only draft beside retrieved weak hadith", async () => {
+    // The false-positive shape: a Quran-only answer whose assembled context
+    // happens to hold weak hadith. The trace below proves the weak chunks really
+    // were retrieved, so the absence is the cited-only trigger, not an empty
+    // context — this reddens the moment the rule reads every retrieved chunk
+    // again.
     const store = createMemoryRagStore();
-    await seedChild(store, DHAIF_METADATA, 0);
-    await seedChild(
-      store,
-      { ...DHAIF_METADATA, citation: "HR. Tirmidhi no. 3364 (Dhaif)", hadithNo: "3364" },
-      1,
-    );
-    await seedChild(
-      store,
-      {
-        ...DHAIF_METADATA,
-        citation: "HR. Ibn Majah no. 4299 (Dhaif)",
-        hadithNo: "4299",
-        collection: "ibnmajah",
-      },
-      2,
-    );
-    await seedChild(store, SAHIH_METADATA, 3);
+    const weakIds = [
+      await seedChild(store, DHAIF_METADATA, 0),
+      await seedChild(
+        store,
+        { ...DHAIF_METADATA, citation: "HR. Tirmidhi no. 3364 (Dhaif)", hadithNo: "3364" },
+        1,
+      ),
+      await seedChild(
+        store,
+        {
+          ...DHAIF_METADATA,
+          citation: "HR. Ibn Majah no. 1403 (Dhaif)",
+          hadithNo: "1403",
+          collection: "ibnmajah",
+        },
+        2,
+      ),
+    ];
+    await seedChild(store, QURAN_METADATA, 3);
+
+    const answer = await answerFor(store, QURAN_ONLY_DRAFT);
+    const text = (answer as { text: string }).text;
+    const events = eventsOf(answer);
+
+    const retrieval = events.find((e) => e.kind === "retrieval");
+    const retrieved = ((retrieval?.detail["chunks"] ?? []) as { id: string }[]).map((c) => c.id);
+    for (const weakId of weakIds) expect(retrieved).toContain(weakId);
+
+    expect(text).toContain(QURAN_CITATION);
+    expect(text).not.toContain(dhaifWarning("id"));
+    expect(text).not.toContain(dhaifChainWarning("id"));
+    expect(hasWeakWarning(text)).toBe(false);
+    // The trace is honest about what it did: the rule ran, appended no warning,
+    // and did not claim one.
+    const rules = productRulesEvents(answer);
+    expect(rules).toHaveLength(1);
+    expect(rules[0]?.detail["applied"]).not.toContain("dhaif_warning");
+  });
+
+  it("carries no warning when the answer cites only a strong hadith and a weak one was retrieved", async () => {
+    // The other half of the issue's requirement: a cited strong hadith is not a
+    // reason to warn about a weak one the answer never mentions.
+    const store = createMemoryRagStore();
+    await seedChild(store, SAHIH_METADATA, 0);
+    const weakId = await seedChild(store, DHAIF_METADATA, 1);
 
     const answer = await answerFor(store, `Jawaban memakai [${SAHIH_CITATION}] saja.`);
     const text = (answer as { text: string }).text;
-    expect(text).not.toContain("Dhaif");
-    expect(text).toContain(dhaifWarning("id"));
-  });
+    const events = eventsOf(answer);
 
-  it("carries no warning when the retrieved set holds no dhaif chunk (the narrowing regression)", async () => {
-    // The same draft with the weak-grade chunk absent from the retrieved set:
-    // nothing may warn, because the control reads the assembled context, not the
-    // answer's words — this half reddens if a change warns on sound hadith.
-    const store = createMemoryRagStore();
-    await seedChild(store, SAHIH_METADATA, 0);
+    const retrieval = events.find((e) => e.kind === "retrieval");
+    const ids = ((retrieval?.detail["chunks"] ?? []) as { id: string }[]).map((c) => c.id);
+    expect(ids).toContain(weakId);
 
-    const answer = await answerFor(store, DHAIF_LABEL_DRAFT);
-    const text = (answer as { text: string }).text;
     expect(text).not.toContain(dhaifWarning("id"));
     expect(hasWeakWarning(text)).toBe(false);
+    expect(productRulesEvents(answer)[0]?.detail["applied"]).not.toContain("dhaif_warning");
+  });
+
+  it("carries the warning when the answer cites a weak hadith beside a strong one, once", async () => {
+    const store = createMemoryRagStore();
+    await seedChild(store, SAHIH_METADATA, 0);
+    await seedChild(store, DHAIF_METADATA, 1);
+
+    const answer = await answerFor(
+      store,
+      `Jawaban memakai [${SAHIH_CITATION}] dan [${DHAIF_CITATION}].`,
+    );
+    const text = (answer as { text: string }).text;
+    expect(text).toContain(dhaifWarning("id"));
+    expect(text.split(dhaifWarning("id")).length - 1).toBe(1);
+    expect(productRulesEvents(answer)[0]?.detail["applied"]).toContain("dhaif_warning");
   });
 
   it("carries no warning for a sound-only context that mentions no grade at all", async () => {
@@ -428,9 +485,9 @@ describe("#285 — the product_rules event on the wiring's delivery paths", () =
     expect(productRulesEvents(answer)).toHaveLength(0);
     expect((answer as { text: string }).text).not.toContain(ulamaDisclaimer("id"));
     // No warning is invented for a text that cites nothing, even though this
-    // run's ASSEMBLED context carries a dhaif chunk: the rule's trigger reads
-    // the context, so this reddens if the exemption stops being keyed to the
-    // earned refusal shape.
+    // run's assembled context carries a dhaif chunk: the refusal exemption is
+    // what keeps the rule off it, and the cited-only trigger would not fire for
+    // it either — both halves must hold.
     expect((answer as { text: string }).text).not.toContain(dhaifWarning("id"));
     expect(hasWeakWarning((answer as { text: string }).text)).toBe(false);
   });
@@ -501,10 +558,10 @@ describe("#439 — a hybrid refusal still runs the Always rules", () => {
     expect(hasWeakWarning(text)).toBe(true);
   });
 
-  it("keeps the rule's context trigger on the hybrid path (an assembled but uncited dhaif chunk still warns)", async () => {
+  it("carries no warning on the hybrid path when the retrieved weak hadith is never cited", async () => {
     // The hybrid cites only a SOUND hadith while the assembled context also holds
-    // a dhaif chunk: the rule reads the assembled context, not the draft's
-    // citations.
+    // a dhaif chunk: the rule reads the draft's citations, so the uncited weak
+    // passage is not the "cited hadith" the copy describes.
     const store = createMemoryRagStore();
     await seedChild(store, SAHIH_METADATA, 0);
     await seedChild(store, DHAIF_METADATA, 1);
@@ -515,7 +572,25 @@ describe("#439 — a hybrid refusal still runs the Always rules", () => {
 
     const answer = await answerVia(store, draft, { reviewerDecider: SKIPPING_DECIDER });
     const text = (answer as { text: string }).text;
+    expect(text).not.toContain(dhaifWarning("id"));
+    expect(hasWeakWarning(text)).toBe(false);
+  });
+
+  it("still carries the warning on the hybrid path when the HYBRID TEXT cites the weak hadith", async () => {
+    // The Always control the cited-only scope must not cost: a hybrid that quotes
+    // the weak hadith and then declines is decorated with the warning, because
+    // the text that ships cites it.
+    const store = createMemoryRagStore();
+    await seedChild(store, DHAIF_METADATA, 0);
+    const draft = [
+      `Dalilnya hadits ini [${DHAIF_CITATION}].`,
+      `Untuk bagian lain dari pertanyaan ini saya ${DEFAULT_REFUSALS.id}.`,
+    ].join("\n\n");
+
+    const answer = await answerVia(store, draft, { reviewerDecider: SKIPPING_DECIDER });
+    const text = (answer as { text: string }).text;
     expect(text).toContain(dhaifWarning("id"));
+    expect(productRulesEvents(answer)[0]?.detail["applied"]).toContain("dhaif_warning");
   });
 });
 
@@ -528,10 +603,10 @@ describe("#439 — a hybrid refusal still runs the Always rules", () => {
  * reader can recognise as one** (SPECS §2.2, §1.5 boundary 2). A draft that
  * neither cites nor declines may not pass as a decline because the machinery
  * happened to see no citations — and it may not be "fixed" by appending the
- * Always rules either: the dhaif trigger is the ASSEMBLED context, so decorating
- * this shape would put a weak-grade warning on a text that cites nothing. The
- * signal is a deterministic decline backstop, and its delivery is the product's
- * own refusal text in place of the model's words.
+ * Always rules either: decorating the draft's assertion would make the product
+ * responsible for a claim it refuses to make. The signal is a deterministic
+ * decline backstop, and its delivery is the product's own refusal text in place
+ * of the model's words.
  *
  * Why the wired pipeline: the shape only exists once the real retriever,
  * assembler, generator stub and reviewer stage have run in order, and the
