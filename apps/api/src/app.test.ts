@@ -10,6 +10,12 @@ import type { AssetFetcher } from "@app/hardening";
 import { isAdminApiPath } from "./lib/admin-paths";
 import { toOpenApiPath } from "./lib/openapi-path";
 import { BODY_MAX_BYTES } from "./lib/body";
+import {
+  stringLeaves,
+  unboundedStringLeaves,
+  worstCaseBodyBytes,
+  type OpenApiSchema,
+} from "./test-utils/openapi-schema";
 
 const { captureException } = vi.hoisted(() => ({
   captureException: vi.fn(),
@@ -259,49 +265,80 @@ describe("generated OpenAPI doc", () => {
     expect(sessionId?.description).toContain("404");
   });
 
-  it("documents the shared anchor-string ceiling on every feedback anchor variant", async () => {
+  it("bounds every string leaf in the feedback request and derives the budget from the walk", async () => {
     const { doc } = await getDoc();
     // The feedback request is a union of a thumb shape and a flag shape whose
-    // anchor is itself a variant: the ceiling must reach EVERY variant's `id`
-    // and the chain row's own grade and grader, or the document says a body the
-    // route refuses is valid again — the drift the staging fuzz reports.
-    type Field = { const?: string; maxLength?: number; description?: string };
+    // anchor is itself a variant. The walk below is the audit: every string
+    // leaf must publish a length bound or a named bounded format, so a new
+    // field cannot reopen the 413 class by being absent from a hand-written
+    // list.
     const body = doc.paths["/v1/feedback"]?.["post"]?.["requestBody"] as
-      | {
-          content: {
-            "application/json": {
-              schema: {
-                anyOf?: {
-                  properties?: {
-                    anchor?: { oneOf?: { properties?: Record<string, Field> }[] };
-                    freeText?: Field;
-                  };
-                }[];
-              };
-            };
-          };
-        }
+      | { content: { "application/json": { schema: OpenApiSchema } } }
       | undefined;
-    const variants =
-      body?.content["application/json"].schema.anyOf?.flatMap(
-        (shape) => shape.properties?.anchor?.oneOf ?? [],
-      ) ?? [];
-    expect(variants).toHaveLength(5);
-    for (const variant of variants) {
-      const id = variant.properties?.id;
-      expect(id?.maxLength, variant.properties?.type?.const).toBe(
-        FEEDBACK_ANCHOR_STRING_MAX_LENGTH,
-      );
-      expect(id?.description, variant.properties?.type?.const).toContain("UTF-16");
-      expect(id?.description, variant.properties?.type?.const).toContain("invalid_request");
+    const schema = body?.content["application/json"].schema;
+    expect(schema).toBeDefined();
+    if (schema === undefined) return;
+
+    const unbounded = unboundedStringLeaves(schema, ["uuid"]);
+    expect(unbounded.map((leaf) => `${leaf.path} (${leaf.format ?? "no bound"})`)).toEqual([]);
+
+    // The shared caps reach every request role; the walk above is what makes a
+    // future field redden, these pins keep today's fields on the shared values.
+    const leaves = stringLeaves(schema);
+    const anchorIds = leaves.filter((leaf) =>
+      /\.anchor\.oneOf\[\d+\]\.properties\.id$/.test(leaf.path),
+    );
+    expect(anchorIds).toHaveLength(5);
+    for (const leaf of anchorIds) {
+      expect(leaf.maxLength, leaf.path).toBe(FEEDBACK_ANCHOR_STRING_MAX_LENGTH);
+      expect(leaf.schema.description, leaf.path).toContain("code points");
     }
-    const chain = variants.find((variant) => variant.properties?.type?.const === "chain");
-    expect(chain?.properties?.grade?.maxLength).toBe(FEEDBACK_ANCHOR_STRING_MAX_LENGTH);
-    expect(chain?.properties?.grader?.maxLength).toBe(FEEDBACK_ANCHOR_STRING_MAX_LENGTH);
-    // The free text stays bounded too, so the document carries no unbounded
-    // string in the feedback body except the UUID, whose format bounds it.
-    const freeText = body?.content["application/json"].schema.anyOf?.[0]?.properties?.freeText;
-    expect(freeText?.maxLength).toBe(FEEDBACK_FREE_TEXT_MAX_LENGTH);
+    const chainFields = leaves.filter((leaf) => /\.properties\.(grade|grader)$/.test(leaf.path));
+    expect(chainFields).toHaveLength(2);
+    for (const leaf of chainFields) {
+      expect(leaf.maxLength, leaf.path).toBe(FEEDBACK_ANCHOR_STRING_MAX_LENGTH);
+    }
+    const freeText = leaves.filter((leaf) => leaf.path.endsWith(".properties.freeText"));
+    expect(freeText).toHaveLength(2);
+    for (const leaf of freeText) {
+      expect(leaf.maxLength, leaf.path).toBe(FEEDBACK_FREE_TEXT_MAX_LENGTH);
+      expect(leaf.schema.description, leaf.path).toContain("code points");
+    }
+    // The request-only rejection sentence belongs to the request anchor, not to
+    // the shared field description the response echo also publishes.
+    const flag = (schema.anyOf ?? []).find(
+      (shape) => shape.properties?.anchor?.oneOf !== undefined,
+    );
+    expect(flag?.properties?.anchor?.description).toContain("invalid_request");
+
+    // The same walk derives the byte budget: every code point at its published
+    // maxLength costs at most 12 escaped bytes, plus the key envelope. A new
+    // unbounded field would make this throw before the ceiling could be lied
+    // about.
+    const worstCase = worstCaseBodyBytes(schema, ["uuid"]);
+    expect(worstCase).toBeLessThan(BODY_MAX_BYTES);
+    expect(BODY_MAX_BYTES).toBeGreaterThanOrEqual(2 * worstCase);
+  });
+
+  it("pins the response echo to the same anchor cap without the request-only sentence", async () => {
+    const { doc } = await getDoc();
+    const responses = doc.paths["/v1/feedback"]?.["post"]?.["responses"] as
+      | Record<string, { content: { "application/json": { schema: OpenApiSchema } } }>
+      | undefined;
+    const schema = responses?.["200"]?.content["application/json"].schema;
+    expect(schema).toBeDefined();
+    if (schema === undefined) return;
+    // The echo reuses the shared pipe, so it must carry the same maxLength and
+    // the role-neutral description — never the request's 400 sentence.
+    const echoed = stringLeaves(schema).filter((leaf) =>
+      /\.anchor\.anyOf\[0\]\.properties\.(id|grade|grader)$/.test(leaf.path),
+    );
+    expect(echoed.map((leaf) => leaf.path.split(".").pop())).toEqual(["id", "grade", "grader"]);
+    for (const leaf of echoed) {
+      expect(leaf.maxLength, leaf.path).toBe(FEEDBACK_ANCHOR_STRING_MAX_LENGTH);
+      expect(leaf.schema.description, leaf.path).toContain("code points");
+      expect(leaf.schema.description, leaf.path).not.toContain("invalid_request");
+    }
   });
 
   it("documents every body rejection the write routes can answer", async () => {

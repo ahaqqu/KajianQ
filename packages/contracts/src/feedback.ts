@@ -58,28 +58,42 @@ export type FeedbackCategory = v.InferOutput<typeof FeedbackCategorySchema>;
  * must refuse: a schema-valid report answered 413. The ceiling is generous
  * beside the values a trace actually grounds — a chunk id is a UUID, the
  * corpus's citation labels are a few dozen characters, a grade is one word and
- * a grader a name — while keeping the worst-case schema-valid body far below
- * the byte ceiling.
+ * a grader a name — while keeping the worst-case schema-valid body below the
+ * byte ceiling. The bound counts code points, the same unit JSON Schema's
+ * `maxLength` counts, so the published contract and the parse are one rule.
  */
 export const FEEDBACK_ANCHOR_STRING_MAX_LENGTH = 200;
+
+/**
+ * The one code-point test the bounded feedback strings share. JSON Schema's
+ * `maxLength` counts code points, while `String.prototype.length` counts
+ * UTF-16 code units, so a `maxLength` action would refuse a string the
+ * published bound admits. Counting through `Array.from` keeps both on the
+ * published unit; the published `maxLength` is emitted from the same constant
+ * as schema metadata.
+ */
+export function isWithinCodePointCap(value: string, cap: number): boolean {
+  return Array.from(value).length <= cap;
+}
 
 /**
  * The one pipe every anchored string shares, so a request variant, the
  * response echo and the published `maxLength` cannot drift apart.
  *
- * Length is in UTF-16 code units on the raw string, with no trim. JSON Schema's
- * `maxLength` counts code points instead, so the published bound admits a
- * string of astral characters this parse refuses — the same code-point drift
- * `freeText` documents. It stays safe in this direction: an over-length value
- * is `400 invalid_request` before auth or the store, never the 413 the byte
- * ceiling answers, and the byte ceiling is measured on the encoded body.
+ * The description is true of the value in both roles: it states the bound and
+ * the unit, not what the write route answers. The request-only rejection
+ * sentence lives on `FeedbackRequestAnchorSchema`, where a 400 can happen.
  */
 export const FeedbackAnchorStringSchema = v.pipe(
   v.string(),
   v.minLength(1),
-  v.maxLength(FEEDBACK_ANCHOR_STRING_MAX_LENGTH),
+  v.check(
+    (value) => isWithinCodePointCap(value, FEEDBACK_ANCHOR_STRING_MAX_LENGTH),
+    `An anchored string is at most ${FEEDBACK_ANCHOR_STRING_MAX_LENGTH} code points.`,
+  ),
+  v.metadata({ maxLength: FEEDBACK_ANCHOR_STRING_MAX_LENGTH }),
   v.description(
-    `A trace-anchored string — an anchor id (a trace chunk id or a citation label) or a chain row's own grade or grader — measured in UTF-16 code units on the raw string, 1 to ${FEEDBACK_ANCHOR_STRING_MAX_LENGTH} with no trim. The ceiling keeps a schema-valid feedback body far below the route's request-body byte ceiling, so the contract never admits a body the route refuses as 413 payload_too_large; a value one code unit over the ceiling is 400 invalid_request before auth or the store. JSON Schema's maxLength counts code points, so an astral character counts as two here and one there.`,
+    `A trace-anchored string — an anchor id (a trace chunk id or a citation label) or a chain row's own grade or grader — at most ${FEEDBACK_ANCHOR_STRING_MAX_LENGTH} code points on the raw string with no trim. JSON Schema maxLength counts the same code points, so the published bound and this check are one rule. The bound is what keeps the widest schema-valid feedback body within the route's request-body byte ceiling.`,
   ),
 );
 
@@ -130,6 +144,19 @@ export const FeedbackAnchorSchema = v.variant("type", [
 export type FeedbackAnchor = v.InferOutput<typeof FeedbackAnchorSchema>;
 
 /**
+ * The request-side anchor: the one shared pipe above plus the rejection the
+ * write route can actually answer. The response echo uses
+ * `FeedbackAnchorStringSchema` directly, so its description never claims a 400
+ * a response cannot produce.
+ */
+const FeedbackRequestAnchorSchema = v.pipe(
+  FeedbackAnchorSchema,
+  v.description(
+    "The trace-anchored element to flag. An anchor string over the published cap on `id`, `grade` or `grader` is 400 invalid_request before auth or the store.",
+  ),
+);
+
+/**
  * Optional colour on either shape, stored verbatim in `free_text text`. The
  * field carries the shared storability rule (`STORABLE_TEXT_PATTERN`) rather
  * than a second character class: `text` cannot hold U+0000, and an unpaired
@@ -145,13 +172,17 @@ const STORABLE_TEXT = new RegExp(STORABLE_TEXT_PATTERN);
 const FeedbackFreeTextSchema = v.optional(
   v.pipe(
     v.string(),
-    v.maxLength(FEEDBACK_FREE_TEXT_MAX_LENGTH),
+    v.check(
+      (value) => isWithinCodePointCap(value, FEEDBACK_FREE_TEXT_MAX_LENGTH),
+      `Free text is at most ${FEEDBACK_FREE_TEXT_MAX_LENGTH} code points.`,
+    ),
+    v.metadata({ maxLength: FEEDBACK_FREE_TEXT_MAX_LENGTH }),
     v.regex(
       STORABLE_TEXT,
       `Free text must be storable as text: no U+0000 and no unpaired surrogate (up to ${FEEDBACK_FREE_TEXT_MAX_LENGTH} characters).`,
     ),
     v.description(
-      `Optional free text on either feedback shape, capped at ${FEEDBACK_FREE_TEXT_MAX_LENGTH} UTF-16 code units measured on the raw string with no trim — an astral character counts as two, so the JSON Schema maxLength (a code-point count) admits a body this cap refuses. The pattern admits no U+0000 and no unpaired surrogate: U+0000 is a value the store refuses, and an unpaired surrogate would be stored as U+FFFD, a silently different report; both answer 400 invalid_request before auth or the store. Every other control character is storable and accepted.`,
+      `Optional free text on either feedback shape, capped at ${FEEDBACK_FREE_TEXT_MAX_LENGTH} code points measured on the raw string with no trim, the same unit as the published JSON Schema maxLength. The pattern admits no U+0000 and no unpaired surrogate: U+0000 is a value the store refuses, and an unpaired surrogate would be stored as U+FFFD, a silently different report; both answer 400 invalid_request before auth or the store. Every other control character is storable and accepted.`,
     ),
   ),
 );
@@ -181,7 +212,7 @@ export const FeedbackThumbShape = v.object({
 export const FeedbackFlagShape = v.object({
   messageId: v.pipe(v.string(), v.uuid()),
   rating: v.optional(v.never()),
-  anchor: FeedbackAnchorSchema,
+  anchor: FeedbackRequestAnchorSchema,
   freeText: FeedbackFreeTextSchema,
 });
 

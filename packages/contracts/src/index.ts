@@ -66,6 +66,7 @@ export {
   FeedbackRequestSchema,
   FeedbackResponseSchema,
   FeedbackThumbShape,
+  isWithinCodePointCap,
   type FeedbackAnchor,
   type FeedbackAnchorType,
   type FeedbackCategory,
