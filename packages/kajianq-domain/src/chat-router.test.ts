@@ -431,8 +431,8 @@ describe("createKajianQRouter", () => {
       { role: "system", content: ROUTER_SYSTEM_PROMPT },
       { role: "user", content: "Apa hukum riba?" },
     ]);
-    // Absent means "no prior turns", so a trace written before this window existed
-    // reads the same as a single-turn one today.
+    // Absent means "no prior turns", so a single-turn trace keeps the shape it
+    // always had.
     expect(routed.attributes["historyTurns"]).toBeUndefined();
   });
 
@@ -522,8 +522,8 @@ describe("createKajianQRouter", () => {
 
     // Control: the same provider and question with no history. Nothing in the
     // call names a prior topic, so the reading repeats the follow-up's own words
-    // and the fired `sanad` template can only embed those words too — the
-    // pre-fix route, with no retrieval text about what was referred to.
+    // and the fired `sanad` template can only embed those words too — a route
+    // whose retrieval text names only the follow-up's own words.
     const withoutHistory = harness(reply);
     const single = (await withoutHistory.route({ text: followUp.text })) as {
       subQueries: { text: string }[];

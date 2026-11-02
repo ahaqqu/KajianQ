@@ -865,8 +865,8 @@ describe("POST /v1/chat", () => {
     });
     expect(second.status).toBe(200);
 
-    // The old refusal is gone: the follow-up ships the cited draft, and the
-    // citation frame agrees the citation is grounded.
+    // A grounded follow-up answer: the draft ships unchanged, and the citation
+    // frame agrees the citation is grounded.
     expect(second.answer).toContain(FOLLOW_UP_CITATION);
     const frame = JSON.parse(
       second.frames.find((f) => f.event === "citations")?.data ?? "null",

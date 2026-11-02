@@ -156,7 +156,7 @@ describe("a same-session follow-up retrieves from the prior turn's topic", () =>
     });
 
     // The draft was not replaced: the citation is grounded in the evidence this
-    // run retrieved. That is the property the ticket's refusal was missing.
+    // run retrieved, not in the citation the earlier turn carried.
     expect(answer.text).toContain(CITATION);
     expect(refusalTrigger(answer)).toBeUndefined();
 
