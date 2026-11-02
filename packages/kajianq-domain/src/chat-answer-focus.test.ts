@@ -72,7 +72,7 @@ describe("the answer-focus rule", () => {
         expect(rule).toMatch(/bukti primer\/terkuat di depan, mendahului paralelnya/);
       } else {
         expect(rule).toMatch(/answer the user's question directly first/);
-        expect(rule).toMatch(/primary\/strongest evidence first, ahead of its parallels/);
+        expect(rule).toMatch(/lead with the primary\/strongest evidence ahead of its parallels/);
       }
     },
   );
