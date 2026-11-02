@@ -270,6 +270,32 @@ describe("POST /v1/chat", () => {
     expect(store.allTraces().size).toBe(0);
   });
 
+  it("counts the ceiling in code points: 2,001 astral characters are one over", async () => {
+    const { store, token } = await wiredStore();
+    currentStore = store;
+    await seed(store);
+    currentOverrides = { answerText: "an answer that must never be produced" };
+    spendCalls.length = 0;
+
+    // 2,001 code points spend 4,002 UTF-16 units: the published maxLength
+    // counts code points, so this is one over the served bound, not two.
+    const res = await createApi().request(
+      "/v1/chat",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+        body: JSON.stringify({ message: "😀".repeat(CHAT_MESSAGE_MAX_LENGTH + 1) }),
+      },
+      env,
+    );
+
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "invalid_request" });
+    expect(spendCalls).toEqual([]);
+    expect(store.allChatMessages()).toEqual([]);
+    expect(store.allTraces().size).toBe(0);
+  });
+
   it("answers 400 invalid_request to a message the store cannot hold, and writes nothing (#478)", async () => {
     const { store, token } = await wiredStore();
     currentStore = store;
@@ -385,6 +411,25 @@ describe("POST /v1/chat", () => {
     expect(status).toBe(200);
     expect(frames.at(-1)?.event).toBe("done");
     expect(spendCalls).toContain("router.generate");
+  }, 15000);
+
+  it("accepts 2,000 astral code points (4,000 UTF-16 units) and runs the route", async () => {
+    const { store, token } = await wiredStore();
+    currentStore = store;
+    await seed(store);
+    currentOverrides = { answerText: "Jawaban berdasar konteks. QS. 2:255" };
+    spendCalls.length = 0;
+
+    const message = "😀".repeat(CHAT_MESSAGE_MAX_LENGTH);
+    expect(message.length).toBe(CHAT_MESSAGE_MAX_LENGTH * 2);
+    const { status, frames } = await postChat(token, { message });
+
+    // The served maxLength counts these 2,000 code points, so the route must
+    // accept them: whether the run answers or declines the message
+    // deterministically is the pipeline's call, never a body refusal.
+    expect(status).toBe(200);
+    expect(frames.at(-1)?.event).toBe("done");
+    expect(store.allChatMessages().find((m) => m.role === "user")?.content).toBe(message);
   }, 15000);
 
   it("answers with an SSE stream and persists the trace", async () => {

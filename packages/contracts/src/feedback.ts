@@ -1,5 +1,6 @@
 import * as v from "valibot";
 import { STORABLE_TEXT_PATTERN } from "./chat";
+import { isWithinCodePointCap } from "./code-points";
 
 /**
  * Feedback API contracts (ADR-0007): the `POST /v1/feedback` surface.
@@ -63,18 +64,6 @@ export type FeedbackCategory = v.InferOutput<typeof FeedbackCategorySchema>;
  * `maxLength` counts, so the published contract and the parse are one rule.
  */
 export const FEEDBACK_ANCHOR_STRING_MAX_LENGTH = 200;
-
-/**
- * The one code-point test the bounded feedback strings share. JSON Schema's
- * `maxLength` counts code points, while `String.prototype.length` counts
- * UTF-16 code units, so a `maxLength` action would refuse a string the
- * published bound admits. Counting through `Array.from` keeps both on the
- * published unit; the published `maxLength` is emitted from the same constant
- * as schema metadata.
- */
-export function isWithinCodePointCap(value: string, cap: number): boolean {
-  return Array.from(value).length <= cap;
-}
 
 /**
  * The one pipe every anchored string shares, so a request variant, the
