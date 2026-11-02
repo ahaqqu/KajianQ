@@ -45,8 +45,11 @@ export function sourceTypeRecall(
  * An EMPTY `grounded` list is likewise meaningful; only an ABSENT list yields
  * `undefined`, meaning no non-text evidence, and the caller picks its fallback.
  * Deliberately takes NO answer text: the text alone is not evidence.
+ *
+ * Exported so the descriptive citation count reads the SAME evidence precedence
+ * as citation validity instead of re-deriving one; neither reader may drift.
  */
-function verifiedEvidenceLabels(input: {
+export function citationEvidenceLabels(input: {
   frame?: CitationFrameLike | null | undefined;
   events?: readonly TraceEventLike[] | undefined;
 }): string[] | undefined {
@@ -57,7 +60,7 @@ function verifiedEvidenceLabels(input: {
 
 /**
  * The citation labels the harness can treat as present for one answer:
- * {@link verifiedEvidenceLabels} first, then the answer text through the
+ * {@link citationEvidenceLabels} first, then the answer text through the
  * injected citation grammar, which is the gate's own — so equivalent marker
  * spellings match, not only the byte-identical form. With no grammar the check
  * degrades to a substring test.
@@ -77,7 +80,7 @@ export function citationLabelsPresent(input: {
   if (grammar !== undefined) requireCitationGrammar(grammar);
   if (identity !== undefined) requireCitationIdentity(identity);
   requireAlternativesScope(required, alternatives);
-  const evidence = verifiedEvidenceLabels({ frame, events });
+  const evidence = citationEvidenceLabels({ frame, events });
   if (evidence !== undefined) {
     return groundedLabels(required, evidence, grammar, identity, alternatives);
   }
@@ -102,7 +105,7 @@ function reviewerGroundedLabels(events: readonly TraceEventLike[]): string[] | u
 /**
  * Whether one answer is grounded by the citation evidence already on hand — the
  * non-refusal branch of a trap question's acceptance. True exactly when
- * {@link verifiedEvidenceLabels} returns at least one label.
+ * {@link citationEvidenceLabels} returns at least one label.
  *
  * There is deliberately **no answer-text fallback**: a text path would let an
  * invented label ground its own answer into a pass.
@@ -111,7 +114,7 @@ export function groundedAnswer(input: {
   frame?: CitationFrameLike | null | undefined;
   events?: readonly TraceEventLike[];
 }): boolean {
-  return (verifiedEvidenceLabels(input) ?? []).length > 0;
+  return (citationEvidenceLabels(input) ?? []).length > 0;
 }
 
 /** The citation-shaped spans of the answer text, normalized by the injected

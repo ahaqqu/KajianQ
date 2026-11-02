@@ -2,7 +2,7 @@
  * question's verdict. */
 import type { EvalResultOutcome, GoldenQuestion } from "@app/contracts";
 import type { HarnessDeps } from "./harness";
-import { expansionProvenance, quoteFidelityOutcome } from "./harness-outcomes";
+import { answerStats, expansionProvenance, quoteFidelityOutcome } from "./harness-outcomes";
 import type { ChunkRefLike, CitationFrameLike, TraceEventLike } from "./harness-types";
 import {
   behaviorAccepted,
@@ -110,6 +110,12 @@ export function scoreQuestion(
     sourceTypeRecall: sourceTypes,
     citationAddressRecall: addressRecall,
     citationValidity: citations,
+    ...answerStats({
+      answerText,
+      events,
+      frame,
+      ...(deps.citationGrammar !== undefined ? { grammar: deps.citationGrammar } : {}),
+    }),
     ...quoteFidelityOutcome(answerText, frame, deps.quoteEquivalences),
     refused,
     ...(identitySatisfied !== undefined ? { identitySatisfied } : {}),

@@ -1,0 +1,65 @@
+{
+  "id": "independent-probes-v1",
+  "$comment": "The five independent questions from the manual check, kept as a separate regression suite: each probe names the citations a correct answer must ground and a short content check, and the runner applies none of the Golden Set's coverage floors. The expected references were checked against Quran.com and Sunnah.com before the questions were first asked. This file is not a Golden Set and is never counted as one.",
+  "probes": [
+    {
+      "id": "probe-4-103",
+      "question": "Apa ayat Al-Qur'an yang menyatakan bahwa shalat diwajibkan atas orang-orang mukmin pada waktu-waktu yang telah ditentukan? Sebutkan nomor ayatnya.",
+      "language": "id",
+      "expectedCitations": ["QS. 4:103"],
+      "expectedContent": [
+        { "label": "prayer", "anyOf": ["salat", "shalat", "sholat"] },
+        {
+          "label": "fixed times",
+          "anyOf": [
+            "waktu-waktu yang telah ditentukan",
+            "waktunya telah ditentukan",
+            "waktu yang telah ditentukan"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "probe-bukhari-1",
+      "question": "Sebutkan hadits tentang niat dan amal, beserta kitab dan nomor haditsnya.",
+      "language": "id",
+      "expectedCitations": ["HR. Bukhari no. 1"],
+      "expectedContent": [
+        { "label": "intention", "anyOf": ["niat", "niyat", "niyyah"] },
+        { "label": "deeds", "anyOf": ["amal", "amalan", "perbuatan"] }
+      ]
+    },
+    {
+      "id": "probe-2-275-278",
+      "question": "Apa dalil Al-Qur'an yang mengharamkan riba dan memerintahkan meninggalkan sisa riba? Sebutkan ayatnya.",
+      "language": "id",
+      "expectedCitations": ["QS. 2:275", "QS. 2:278"],
+      "expectedContent": [
+        { "label": "riba", "anyOf": ["riba"] },
+        { "label": "prohibition", "anyOf": ["haram", "mengharamkan", "diharamkan"] },
+        { "label": "remaining riba", "anyOf": ["sisa riba"] }
+      ]
+    },
+    {
+      "id": "probe-bukhari-6094",
+      "question": "Apa hadits Nabi tentang keutamaan jujur dan bahaya dusta? Sebutkan kitab dan nomor haditsnya.",
+      "language": "id",
+      "expectedCitations": ["HR. Bukhari no. 6094"],
+      "expectedContent": [
+        { "label": "truthfulness", "anyOf": ["jujur", "kejujuran", "shidiq", "siddiq"] },
+        { "label": "lying", "anyOf": ["dusta", "kedustaan", "bohong", "kadzib"] }
+      ]
+    },
+    {
+      "id": "probe-17-23-24",
+      "question": "Apa perintah Al-Qur'an tentang berbakti kepada orang tua dan larangan berkata kasar kepada mereka? Sebutkan ayatnya.",
+      "language": "id",
+      "expectedCitations": ["QS. 17:23", "QS. 17:24"],
+      "expectedContent": [
+        { "label": "parents", "anyOf": ["orang tua", "ibu bapak", "kedua orang tua"] },
+        { "label": "kindness", "anyOf": ["berbakti", "berbuat baik", "ihsan"] },
+        { "label": "no harsh words", "anyOf": ["jangan", "larangan", "kasar", "membentak"] }
+      ]
+    }
+  ]
+}

@@ -25,10 +25,11 @@
  * provider-smoke): the harness aborts because it needs the staging API to be
  * serving.
  *
- * The config load, budget banner, fixture load, and summary printer are the
- * shared CLI glue in `eval-cli.mjs` — one copy, no drift. This script keeps
- * only what is genuinely its own: the v0 content-bar assertion, the
- * golden-set banner line, and the ledger-backed cost figure in the summary.
+ * The config load, budget banner and fixture load are the shared CLI glue in
+ * `eval-cli.mjs`; the summary printer is its sibling `eval-summary.mjs` — one
+ * copy each, no drift. This script keeps only what is genuinely its own: the
+ * v0 content-bar assertion, the golden-set banner line, and the ledger-backed
+ * cost figure in the summary.
  * Its exit semantics are the shared policy too: non-zero when any question
  * failed, was skipped, or was never measured.
  */

@@ -1,6 +1,6 @@
 import type { EvalResultOutcome, EvalRunReport, GoldenQuestion, GoldenSet } from "@app/contracts";
 import { Budget, BudgetExceededError } from "./budget";
-import { ledgerFailureNote, skippedOutcome } from "./harness-outcomes";
+import { answerMetricsSummary, ledgerFailureNote, skippedOutcome } from "./harness-outcomes";
 import { scoreQuestion } from "./harness-score";
 import type {
   CitationFrameLike,
@@ -274,6 +274,9 @@ export function buildReport(set: GoldenSet, run: BuildReportRun): EvalRunReport 
     // The mean's denominator, so a perfect mean over two answers cannot read as one over
     // a hundred; absent when no answer was measured, like the mean's own null.
     ...(quoteFidelity.length > 0 ? { quoteFidelityMeasured: quoteFidelity.length } : {}),
+    // Descriptive only: the scored answers' own sizes and citation counts. No gate reads
+    // these, and a row that carries neither measurement is excluded rather than zeroed.
+    ...answerMetricsSummary(run.scored),
     // REPORTED, never gating: the exact numbers above stay the gate's; these say what
     // the same run would read if a signed identity satisfied the requirement. Absent
     // when no row carried the block (no reported identity map was injected).

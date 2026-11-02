@@ -181,3 +181,31 @@ export function loadEvalRunConfig(env: Record<string, string | undefined>): Eval
     goldenSetPath: resolveGoldenSetPath(env.EVAL_GOLDEN_SET_PATH),
   };
 }
+
+/**
+ * Default fixture path for the independent probe suite. It is its own file, never
+ * a Golden Set: the suite applies no coverage floors and writes no ledger row.
+ */
+export const INDEPENDENT_PROBES_DEFAULT_PATH =
+  "packages/kajianq-domain/fixtures/independent-probes-v1.json";
+
+/** Validated, typed configuration for one `eval:probes` invocation. The suite reads
+ * no ledger and scores from the answer it receives, so it needs no DATABASE_URL. */
+export type EvalProbeConfig = {
+  apiBaseUrl: string;
+  apiToken: string;
+  probePath: string;
+};
+
+/**
+ * Parse and validate the independent-probe env. Same binder discipline as
+ * `loadEvalRunConfig`, minus the store: the run asks its fixed questions and
+ * persists nothing, so a missing DATABASE_URL is not a misconfiguration here.
+ */
+export function loadEvalProbeConfig(env: Record<string, string | undefined>): EvalProbeConfig {
+  return {
+    apiBaseUrl: requireHttpUrl("EVAL_API_BASE_URL", env.EVAL_API_BASE_URL),
+    apiToken: requireToken("EVAL_API_TOKEN", env.EVAL_API_TOKEN),
+    probePath: env.EVAL_PROBE_FIXTURE_PATH?.trim() || INDEPENDENT_PROBES_DEFAULT_PATH,
+  };
+}

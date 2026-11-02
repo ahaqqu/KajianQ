@@ -302,7 +302,7 @@ describe("printSummary (#290, #340)", () => {
     );
   });
 
-  it("leaves a passing run's summary unchanged (#340 acceptance: counts, means, expansion lines)", () => {
+  it("keeps the summary's counts, means and line order on a passing run (#340)", () => {
     const scoped = {
       questionId: "q3",
       passed: true,
@@ -329,10 +329,32 @@ describe("printSummary (#290, #340)", () => {
       "  mean citation-address recall: 1.000",
       "  mean citation validity: 1.000",
       "  mean quote fidelity: n/a (0 of 2 answers measured)",
+      "  answer length (chars): mean n/a, max n/a",
+      "  citations per answer: mean n/a, max n/a",
       "  cost: 0.000025 USD  budget exceeded: false",
       "  deterministic: q3 — scope chunks 5; fused-only source-type recall 1.000 (reported 1.000)",
     ]);
     expect(printed).not.toMatch(/^ {2}(failed|skipped): /m);
+  });
+
+  it("prints the descriptive answer-size and citation figures over measured answers", () => {
+    const printed = printedSummary(
+      {
+        passed: 2,
+        failed: 0,
+        skipped: 0,
+        budgetExceeded: false,
+        results: [
+          { ...scored, answerChars: 10, citationCount: 1 },
+          { ...scored, questionId: "q3", answerChars: 20, citationCount: 3 },
+        ],
+      },
+      FIXTURE,
+    );
+    // Report-only descriptive figures: the mean and the maximum, derived from the
+    // same per-answer measurements the persisted report aggregates.
+    expect(printed).toContain("  answer length (chars): mean 15.0, max 20");
+    expect(printed).toContain("  citations per answer: mean 2.000, max 3");
   });
 
   it("derives the reported address misses from the run's own scores", () => {
@@ -383,6 +405,8 @@ describe("printSummary (#290, #340)", () => {
       "  address recall: reported, not gated — address misses in this sample (1 of 2 measured): gs-v0-003; the sample decides this line, not a full-set debt list",
       "  mean citation validity: 1.000",
       "  mean quote fidelity: n/a (0 of 2 answers measured)",
+      "  answer length (chars): mean n/a, max n/a",
+      "  citations per answer: mean n/a, max n/a",
       "  cost: 0.000025 USD  budget exceeded: false",
       "  failed: gs-v0-003 citationAddressRecall=0.000 (required HR. Bukhari no. 191, retrieved 0/1)",
     ]);
@@ -525,6 +549,8 @@ describe("printSummary (#290, #340)", () => {
       "  mean citation-address recall: 1.000",
       "  mean citation validity: 0.667",
       "  mean quote fidelity: n/a (0 of 3 answers measured)",
+      "  answer length (chars): mean n/a, max n/a",
+      "  citations per answer: mean n/a, max n/a",
       "  cost: 0.000025 USD  budget exceeded: false",
       "  deterministic: q4 — scope chunks 5; fused-only source-type recall 1.000 (reported 1.000)",
       "  failed: q3 citationValidity=0.000",

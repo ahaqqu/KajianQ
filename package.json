@@ -43,6 +43,7 @@
     "provider:smoke": "bun packages/infra/scripts/provider-smoke.mjs",
     "eval:run": "bun packages/eval/scripts/eval-run.mjs",
     "eval:smoke": "bun packages/eval/scripts/eval-smoke.mjs",
+    "eval:probes": "bun packages/eval/scripts/eval-probes.mjs",
     "eval:embed-bench": "bun packages/eval/scripts/embed-bench.mjs",
     "eval:decision-bench": "bun packages/eval/scripts/decision-bench.mjs",
     "ingest:quran": "bun packages/kajianq-domain/scripts/ingest-quran.mjs",

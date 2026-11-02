@@ -30,6 +30,24 @@ export type EvalResultOutcome = {
   /** Fraction of required citations present in the answer (0..1). */
   citationValidity: number;
   /**
+   * The answer's length in Unicode code points: the descriptive size measure the
+   * run report averages and maximizes. Report-only — no gate reads it. Absent on
+   * skipped rows (no answer was read) and on rows persisted before the metric
+   * existed.
+   */
+  answerChars?: number | undefined;
+  /**
+   * How many distinct citation labels the answer carries, read through the same
+   * evidence precedence as citation validity: the citations frame, then the trace's
+   * review-event grounded list, then the injected grammar's spans in the answer text.
+   * A range label counts once. Report-only — no gate reads it. Absent in the same
+   * states as `answerChars`, and also when no source could count the answer's
+   * citations (no frame, no grounded list, no grammar): that row was never measured,
+   * so a 0 would be a fabricated measurement. An empty frame or a grammar that finds
+   * no span is a real 0.
+   */
+  citationCount?: number | undefined;
+  /**
    * Quote fidelity: the fraction of the answer's quoted spans that appear, in order, in at
    * least one chunk the answer cites (0..1). Report-only: no gate reads it, and it never
    * changes `passed`. Absent in three states, none of which is a failed claim: the answer
@@ -112,6 +130,8 @@ const EvalResultOutcomeInputSchema = v.object({
   retrievalRecall: v.optional(v.pipe(v.number(), v.minValue(0), v.maxValue(1))),
   citationAddressRecall: v.optional(v.pipe(v.number(), v.minValue(0), v.maxValue(1))),
   citationValidity: v.pipe(v.number(), v.minValue(0), v.maxValue(1)),
+  answerChars: v.optional(v.pipe(v.number(), v.integer(), v.minValue(0))),
+  citationCount: v.optional(v.pipe(v.number(), v.integer(), v.minValue(0))),
   quoteFidelity: v.optional(v.pipe(v.number(), v.minValue(0), v.maxValue(1))),
   identitySatisfied: v.optional(
     v.object({
@@ -165,6 +185,8 @@ export const EvalResultOutcomeSchema = v.pipe(
         ? { citationAddressRecall: input.citationAddressRecall }
         : {}),
       citationValidity: input.citationValidity,
+      ...(input.answerChars !== undefined ? { answerChars: input.answerChars } : {}),
+      ...(input.citationCount !== undefined ? { citationCount: input.citationCount } : {}),
       ...(input.quoteFidelity !== undefined ? { quoteFidelity: input.quoteFidelity } : {}),
       ...(input.identitySatisfied !== undefined
         ? { identitySatisfied: input.identitySatisfied }

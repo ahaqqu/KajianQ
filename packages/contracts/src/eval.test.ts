@@ -71,6 +71,39 @@ describe("EvalResultOutcomeSchema", () => {
     ).toBe(false);
   });
 
+  it("parses a pre-metric outcome without the descriptive answer-size fields", () => {
+    const parsed = v.parse(EvalResultOutcomeSchema, PRE_CHANGE_OUTCOME);
+    expect(parsed.answerChars).toBeUndefined();
+    expect(parsed.citationCount).toBeUndefined();
+  });
+
+  it("parses and preserves the answer-size fields, including a measured zero", () => {
+    const parsed = v.parse(EvalResultOutcomeSchema, {
+      ...CURRENT_OUTCOME,
+      answerChars: 0,
+      citationCount: 0,
+    });
+    // Zero is a MEASURED answer (an empty answer carrying no citation), distinct
+    // from an absent field on a row that never read an answer.
+    expect(parsed.answerChars).toBe(0);
+    expect(parsed.citationCount).toBe(0);
+  });
+
+  it("rejects a negative or fractional answer-size count", () => {
+    expect(
+      v.safeParse(EvalResultOutcomeSchema, { ...CURRENT_OUTCOME, answerChars: -1 }).success,
+    ).toBe(false);
+    expect(
+      v.safeParse(EvalResultOutcomeSchema, { ...CURRENT_OUTCOME, answerChars: 1.5 }).success,
+    ).toBe(false);
+    expect(
+      v.safeParse(EvalResultOutcomeSchema, { ...CURRENT_OUTCOME, citationCount: -1 }).success,
+    ).toBe(false);
+    expect(
+      v.safeParse(EvalResultOutcomeSchema, { ...CURRENT_OUTCOME, citationCount: 2.5 }).success,
+    ).toBe(false);
+  });
+
   it("carries the scope expansion's contribution when the scoped path ran (#243 C1)", () => {
     const parsed = v.parse(EvalResultOutcomeSchema, {
       ...CURRENT_OUTCOME,
@@ -208,6 +241,112 @@ describe("EvalResultOutcomeSchema", () => {
     // where both fields are absent.
     expect(parsed.meanQuoteFidelity).toBeNull();
     expect(parsed.quoteFidelityMeasured).toBeUndefined();
+  });
+
+  it("round-trips the descriptive answer-size and citation figures", () => {
+    const parsed = v.parse(EvalRunReportSchema, {
+      runId: "r1",
+      setId: "golden-set-v0",
+      startedAt: 1,
+      finishedAt: 2,
+      questions: 2,
+      passed: 2,
+      failed: 0,
+      skipped: 0,
+      meanSourceTypeRecall: 1,
+      meanCitationValidity: 1,
+      meanAnswerChars: 12.5,
+      maxAnswerChars: 20,
+      meanCitationsPerAnswer: 1.5,
+      maxCitationsPerAnswer: 3,
+      costMicroUsd: 0,
+      budgetExceeded: false,
+      results: [CURRENT_OUTCOME, { ...CURRENT_OUTCOME, questionId: "gs-v0-016" }],
+      costs: [],
+    });
+    expect(parsed.meanAnswerChars).toBe(12.5);
+    expect(parsed.maxAnswerChars).toBe(20);
+    expect(parsed.meanCitationsPerAnswer).toBe(1.5);
+    expect(parsed.maxCitationsPerAnswer).toBe(3);
+  });
+
+  it("reads a pre-metric report without the descriptive answer-size figures", () => {
+    const parsed = v.parse(EvalRunReportSchema, {
+      runId: "r1",
+      setId: "golden-set-v0",
+      startedAt: 1,
+      finishedAt: 2,
+      questions: 1,
+      passed: 1,
+      failed: 0,
+      skipped: 0,
+      meanSourceTypeRecall: 1,
+      meanCitationValidity: 1,
+      costMicroUsd: 0,
+      budgetExceeded: false,
+      results: [CURRENT_OUTCOME],
+      costs: [],
+    });
+    // Absent is "never measured", not a measured zero: a pre-metric ledger row
+    // must not read as a run of empty answers.
+    expect(parsed.meanAnswerChars).toBeUndefined();
+    expect(parsed.maxAnswerChars).toBeUndefined();
+    expect(parsed.meanCitationsPerAnswer).toBeUndefined();
+    expect(parsed.maxCitationsPerAnswer).toBeUndefined();
+  });
+
+  it("accepts null answer-size means for a run that scored no answer", () => {
+    const parsed = v.parse(EvalRunReportSchema, {
+      runId: "r1",
+      setId: "golden-set-v0",
+      startedAt: 1,
+      finishedAt: 2,
+      questions: 1,
+      passed: 0,
+      failed: 0,
+      skipped: 1,
+      meanSourceTypeRecall: null,
+      meanCitationValidity: null,
+      meanAnswerChars: null,
+      maxAnswerChars: null,
+      meanCitationsPerAnswer: null,
+      maxCitationsPerAnswer: null,
+      costMicroUsd: 0,
+      budgetExceeded: false,
+      results: [],
+      costs: [],
+    });
+    expect(parsed.meanAnswerChars).toBeNull();
+    expect(parsed.maxAnswerChars).toBeNull();
+    expect(parsed.meanCitationsPerAnswer).toBeNull();
+    expect(parsed.maxCitationsPerAnswer).toBeNull();
+  });
+
+  it("rejects a negative or fractional answer-size figure", () => {
+    const base = {
+      runId: "r1",
+      setId: "golden-set-v0",
+      startedAt: 1,
+      finishedAt: 2,
+      questions: 1,
+      passed: 1,
+      failed: 0,
+      skipped: 0,
+      meanSourceTypeRecall: 1,
+      meanCitationValidity: 1,
+      costMicroUsd: 0,
+      budgetExceeded: false,
+      results: [CURRENT_OUTCOME],
+      costs: [],
+    };
+    expect(v.safeParse(EvalRunReportSchema, { ...base, meanAnswerChars: -1 }).success).toBe(false);
+    expect(v.safeParse(EvalRunReportSchema, { ...base, maxAnswerChars: 1.5 }).success).toBe(false);
+    expect(
+      v.safeParse(EvalRunReportSchema, { ...base, meanCitationsPerAnswer: -0.5 }).success,
+    ).toBe(false);
+    expect(v.safeParse(EvalRunReportSchema, { ...base, maxCitationsPerAnswer: 2.5 }).success).toBe(
+      false,
+    );
   });
 
   it("reads a pre-change report, whose metric names and columns predate this contract", () => {
