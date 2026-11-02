@@ -1,15 +1,4 @@
-import {
-  describeIssue,
-  FeedbackErrorSchema,
-  FeedbackRequestSchema,
-  FeedbackResponseSchema,
-  type ChatCitationsFrame,
-  type FeedbackAnchor,
-  type FeedbackRequest,
-  type Trace,
-} from "@app/contracts";
-import { describeRoute, resolver } from "hono-openapi";
-import * as v from "valibot";
+import { type ChatCitationsFrame, type FeedbackAnchor, type Trace } from "@app/contracts";
 import { deriveCitationsFrame } from "./chat-citations";
 import {
   chunksByIdOrEmpty,
@@ -22,12 +11,15 @@ import {
 // The route needs the same fetcher the derivation binds; re-exported here so
 // the route imports one lib module (same pattern as the chat-wiring hub).
 export { chunkFetcher };
+// The OpenAPI description and body parse live in their own module so this one
+// keeps the anchor invariant under the agentic import cap; re-exported here so
+// the route imports one lib module too.
+export { FEEDBACK_OPENAPI, parseFeedbackRequest } from "./feedback-openapi";
 
 /**
- * The feedback route's OpenAPI description, body-parse helper, and anchor
- * validation, split from the route file so the handler stays under the
- * agentic caps. Consumes the shared @app/contracts feedback schemas — one
- * source of truth for handler, validation, and doc.
+ * The feedback route's anchor validation, split from the route file so the
+ * handler stays under the agentic caps. The OpenAPI description and body parse
+ * live in `feedback-openapi.ts` and are re-exported here.
  *
  * The invariant this module owns: **a flag may only anchor an element the
  * persisted trace actually grounds.** Chunk anchors must be trace chunk refs
@@ -37,92 +29,6 @@ export { chunkFetcher };
  * malformed — the same "never without provenance" posture the citations frame
  * itself takes (ADR-0040) — so a report is always actionable.
  */
-export const FEEDBACK_OPENAPI = describeRoute({
-  summary: "Submit anonymous feedback (thumb or trace-anchored flag)",
-  requestBody: {
-    required: true,
-    content: {
-      "application/json": {
-        // Pre-resolved (see chat-openapi.ts): hono-openapi only resolves
-        // schemas in `responses` positions.
-        schema: await resolver(FeedbackRequestSchema)
-          .toOpenAPISchema()
-          .then((r) => r.schema),
-      },
-    },
-  },
-  responses: {
-    200: {
-      description:
-        "The stored feedback row, echoing its canonical message id and anchor; " +
-        "`id`'s repeat semantics are stated once in the `id` field description " +
-        "(canonical: `FeedbackResponseSchema.id`)",
-      content: { "application/json": { schema: resolver(FeedbackResponseSchema) } },
-    },
-    400: {
-      description: "Invalid request body (invalid_json or invalid_request)",
-      content: { "application/json": { schema: resolver(FeedbackErrorSchema) } },
-    },
-    401: {
-      description: "Unauthorized (anonymous Bearer session required)",
-      content: { "application/json": { schema: resolver(FeedbackErrorSchema) } },
-    },
-    404: {
-      description: "No answer trace for the message, or not the caller's answer",
-      content: { "application/json": { schema: resolver(FeedbackErrorSchema) } },
-    },
-    422: {
-      description: "Malformed anchor — the flagged element is not grounded by the persisted trace",
-      content: { "application/json": { schema: resolver(FeedbackErrorSchema) } },
-    },
-    429: {
-      description: "Rate limited — the per-IP request budget for the window is exhausted",
-      content: { "application/json": { schema: resolver(FeedbackErrorSchema) } },
-    },
-    503: {
-      description:
-        "Feedback not configured (DATABASE_URL binding absent), or the trace-side anchor " +
-        "derivation degraded (answer text reclaimed, chunk lookup failed) — anchor_unavailable",
-      content: { "application/json": { schema: resolver(FeedbackErrorSchema) } },
-    },
-  },
-});
-
-/**
- * Validate the /v1/feedback body against the shared contract (same posture as
- * parseChatRequest): JSON-parse and schema failures are distinct, diagnostic
- * codes, logged server-side, never collapsed into one generic 400.
- */
-export async function parseFeedbackRequest(
-  req: Request,
-  log?: { warn(msg: string, fields?: Record<string, string | number | boolean | null>): void },
-): Promise<
-  | { success: true; output: FeedbackRequest }
-  | { success: false; error: "invalid_json" | "invalid_request"; detail?: string }
-> {
-  const raw = await req.text().catch(() => null);
-  if (raw === null) {
-    log?.warn("feedback.body_unreadable");
-    return { success: false, error: "invalid_json" };
-  }
-  let body: unknown;
-  try {
-    body = JSON.parse(raw);
-  } catch (err) {
-    log?.warn("feedback.body_invalid_json", {
-      detail: err instanceof Error ? err.message.slice(0, 120) : "parse error",
-    });
-    return { success: false, error: "invalid_json" };
-  }
-  const parsed = v.safeParse(FeedbackRequestSchema, body);
-  if (!parsed.success) {
-    const detail = parsed.issues.map(describeIssue).join("; ");
-    log?.warn("feedback.body_invalid", { detail: detail.slice(0, 200) });
-    return { success: false, error: "invalid_request", detail: detail.slice(0, 200) };
-  }
-  return { success: true, output: parsed.output };
-}
-
 /**
  * The citations-frame derivation a flag's label must appear in: a frame, or
  * the reason the derivation DEGRADED — the answer text was reclaimed, or the

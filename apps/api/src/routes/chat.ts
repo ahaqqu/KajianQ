@@ -65,10 +65,10 @@ export const chatRoutes = newRouter().post("/v1/chat", CHAT_OPENAPI_DESCRIPTION,
   }
 
   const bodyParse = await parseChatRequest(c.req.raw, logger);
-  if (!bodyParse.success) {
-    // Distinct, diagnostic codes for JSON-parse vs schema failures.
-    return c.json({ error: bodyParse.error }, 400);
-  }
+  // The refusal carries its own status (400 invalid_json/invalid_encoding/
+  // invalid_request, 413 payload_too_large, 415 unsupported_media_type), so
+  // the route cannot map the same code differently.
+  if (!bodyParse.success) return c.json({ error: bodyParse.error }, bodyParse.status);
   const req = bodyParse.output;
 
   const store = wiring.fullStore;

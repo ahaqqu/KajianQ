@@ -4,6 +4,7 @@ import { CHAT_MESSAGE_MAX_LENGTH, STORABLE_TEXT_PATTERN } from "@app/contracts";
 import type { AssetFetcher } from "@app/hardening";
 import { isAdminApiPath } from "./lib/admin-paths";
 import { toOpenApiPath } from "./lib/openapi-path";
+import { BODY_MAX_BYTES } from "./lib/body";
 
 const { captureException } = vi.hoisted(() => ({
   captureException: vi.fn(),
@@ -251,5 +252,27 @@ describe("generated OpenAPI doc", () => {
     // The no-oracle half is published too: a well-formed unknown/foreign id
     // still answers the documented 404.
     expect(sessionId?.description).toContain("404");
+  });
+
+  it("documents every body refusal the write routes can answer", async () => {
+    const { doc } = await getDoc();
+    // A status the route can return but the document omits is the drift the
+    // staging fuzz reports as ST103. The body boundary answers 400 invalid_json/
+    // invalid_encoding, 413 payload_too_large and 415 unsupported_media_type, so
+    // both public write routes must publish all of them.
+    for (const path of ["/v1/chat", "/v1/feedback"]) {
+      const responses = doc.paths[path]?.["post"]?.["responses"] as
+        | Record<string, { description?: string }>
+        | undefined;
+      expect(Object.keys(responses ?? {}), path).toEqual(
+        expect.arrayContaining(["400", "413", "415"]),
+      );
+      expect(responses?.["400"]?.description, path).toContain("invalid_encoding");
+      expect(responses?.["400"]?.description, path).toContain("invalid_json");
+      expect(responses?.["400"]?.description, path).toContain("invalid_request");
+      expect(responses?.["413"]?.description, path).toContain(`${BODY_MAX_BYTES}-byte`);
+      expect(responses?.["413"]?.description, path).toContain("payload_too_large");
+      expect(responses?.["415"]?.description, path).toContain("unsupported_media_type");
+    }
   });
 });

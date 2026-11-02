@@ -6,6 +6,7 @@ const { captureException } = vi.hoisted(() => ({ captureException: vi.fn() }));
 vi.mock("@sentry/bun", () => ({ captureException }));
 import { CHAT_MESSAGE_MAX_LENGTH } from "@app/contracts";
 import { parseChatRequest } from "../lib/chat-openapi";
+import { BODY_MAX_BYTES } from "../lib/body";
 import {
   DEFAULT_REFUSALS,
   dhaifWarning,
@@ -796,6 +797,7 @@ describe("POST /v1/chat", () => {
     const parsed = await parseChatRequest(
       new Request("http://localhost/v1/chat", {
         method: "POST",
+        headers: { "content-type": "application/json" },
         body: JSON.stringify({ message: "hi", sessionId: "en" }),
       }),
       { warn: (msg, fields) => warnings.push(`${msg} ${JSON.stringify(fields ?? {})}`) },
@@ -822,5 +824,132 @@ describe("POST /v1/chat", () => {
     expect(unknown.status).toBe(404);
     expect(foreign.status).toBe(404);
     expect(await unknown.json()).toEqual(await foreign.json());
+  });
+});
+
+/**
+ * The malformed-body contract on the app side. The exact bodies Schemathesis
+ * generates, plus the byte-level classes a schema-driven generator cannot name:
+ * undecodable UTF-8, raw controls, missing media type, and an over-ceiling body.
+ * Every refusal is a documented 4xx with the JSON error shape, and nothing
+ * behind the boundary (session, message, trace, provider) runs.
+ */
+describe("POST /v1/chat — malformed-body contract", () => {
+  /** Concatenate text and raw bytes into one request body. */
+  function jsonBytes(...parts: (string | Uint8Array)[]): Uint8Array {
+    const encoder = new TextEncoder();
+    const chunks = parts.map((part) => (typeof part === "string" ? encoder.encode(part) : part));
+    const total = chunks.reduce((sum, chunk) => sum + chunk.byteLength, 0);
+    const out = new Uint8Array(total);
+    let offset = 0;
+    for (const chunk of chunks) {
+      out.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+    return out;
+  }
+
+  async function postBytes(
+    token: string | null,
+    body: BodyInit | Uint8Array | null,
+    contentType: string | null = "application/json",
+  ): Promise<Response> {
+    const headers: Record<string, string> = {};
+    if (contentType !== null) headers["content-type"] = contentType;
+    if (token !== null) headers.authorization = `Bearer ${token}`;
+    return createApi().request(
+      "/v1/chat",
+      { method: "POST", headers, body: body as BodyInit | null },
+      env,
+    );
+  }
+
+  async function armedStore(): Promise<{
+    store: ReturnType<typeof createMemoryRagStore>;
+    token: string;
+  }> {
+    const { store, token } = await wiredStore();
+    currentStore = store;
+    await seed(store);
+    currentOverrides = { answerText: "an answer that must never be produced" };
+    spendCalls.length = 0;
+    return { store, token };
+  }
+
+  it("refuses invalid UTF-8 with 400 invalid_encoding, never decoding it into a different message", async () => {
+    const { store, token } = await armedStore();
+    // A lone continuation byte is what a client sending raw C1 text produces;
+    // `Request.text()` would turn it into U+FFFD and ask the pipeline a
+    // question the user never typed.
+    const body = jsonBytes('{"message":"Apa itu ', new Uint8Array([0x93]), '?"}');
+    const res = await postBytes(token, body);
+
+    expect(res.status).toBe(400);
+    expect(res.headers.get("content-type")).toContain("application/json");
+    expect(await res.json()).toEqual({ error: "invalid_encoding" });
+    expect(spendCalls).toEqual([]);
+    expect(store.allChatMessages()).toEqual([]);
+    expect(store.allChatSessions()).toEqual([]);
+  });
+
+  it("refuses a missing Content-Type with 415 unsupported_media_type", async () => {
+    const { store, token } = await armedStore();
+    const res = await postBytes(token, JSON.stringify({ message: "hello" }), null);
+    expect(res.status).toBe(415);
+    expect(await res.json()).toEqual({ error: "unsupported_media_type" });
+    expect(spendCalls).toEqual([]);
+    expect(store.allChatSessions()).toEqual([]);
+  });
+
+  it("refuses a non-JSON Content-Type with 415", async () => {
+    const { token } = await armedStore();
+    const res = await postBytes(token, JSON.stringify({ message: "hello" }), "text/plain");
+    expect(res.status).toBe(415);
+    expect(await res.json()).toEqual({ error: "unsupported_media_type" });
+    expect(spendCalls).toEqual([]);
+  });
+
+  it("refuses a body over the documented ceiling with 413 payload_too_large", async () => {
+    const { store, token } = await armedStore();
+    const body = JSON.stringify({ message: "hello", pad: "a".repeat(BODY_MAX_BYTES) });
+    const res = await postBytes(token, body);
+    expect(res.status).toBe(413);
+    expect(await res.json()).toEqual({ error: "payload_too_large" });
+    expect(spendCalls).toEqual([]);
+    expect(store.allChatSessions()).toEqual([]);
+  });
+
+  it("refuses the large NUL-padded message class with 400 invalid_request", async () => {
+    const { store, token } = await armedStore();
+    // The body the staging fuzz generated: a legal JSON string carrying 1,999
+    // escaped U+0000, refused by the contract's storable-text rule. It is here
+    // because the app-side answer must be a 400, whatever the proxy in front
+    // does with a body this size.
+    const body = `{"message":")${"\\u0000".repeat(1999)}"}`;
+    const res = await postBytes(token, body);
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "invalid_request" });
+    expect(spendCalls).toEqual([]);
+    expect(store.allChatMessages()).toEqual([]);
+  });
+
+  it("refuses raw NUL and control padding with 400 invalid_json", async () => {
+    const { token } = await armedStore();
+    for (const pad of [new Uint8Array([0x00]), new Uint8Array([0x01]), new Uint8Array([0x1f])]) {
+      const res = await postBytes(token, jsonBytes('{"message":"a', pad, 'b"}'));
+      expect(res.status).toBe(400);
+      expect(await res.json()).toEqual({ error: "invalid_json" });
+    }
+    expect(spendCalls).toEqual([]);
+  });
+
+  it("refuses a JSON body of the wrong shape with 400 invalid_request", async () => {
+    const { token } = await armedStore();
+    for (const raw of ["[]", "null", '"message"', "{}", '{"message":42}']) {
+      const res = await postBytes(token, raw);
+      expect(res.status, raw).toBe(400);
+      expect(await res.json(), raw).toEqual({ error: "invalid_request" });
+    }
+    expect(spendCalls).toEqual([]);
   });
 });

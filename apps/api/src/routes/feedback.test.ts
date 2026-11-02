@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vite-plus/test";
 import { createApi } from "../app";
 import { parseFeedbackRequest } from "../lib/feedback";
+import { BODY_MAX_BYTES } from "../lib/body";
 import { STORABLE_TEXT_PATTERN, type Trace } from "@app/contracts";
 import { runStoreEffect } from "@app/kajianq-domain";
 import { createMemoryRagStore } from "@app/kajianq-domain/test-utils/memory-rag-store";
@@ -195,6 +196,7 @@ describe("POST /v1/feedback", () => {
     const parsed = await parseFeedbackRequest(
       new Request("http://localhost/v1/feedback", {
         method: "POST",
+        headers: { "content-type": "application/json" },
         body: JSON.stringify({ messageId: "msg1", rating: "up" }),
       }),
       { warn: (msg, fields) => warnings.push(`${msg} ${JSON.stringify(fields ?? {})}`) },
@@ -215,6 +217,7 @@ describe("POST /v1/feedback", () => {
     const parsed = await parseFeedbackRequest(
       new Request("http://localhost/v1/feedback", {
         method: "POST",
+        headers: { "content-type": "application/json" },
         body: JSON.stringify({
           messageId: "550e8400-e29b-41d4-a716-446655440000",
           rating: "meh",
@@ -611,6 +614,113 @@ describe("POST /v1/feedback — degraded derivation (thermo-review A3)", () => {
     });
     expect(res.status).toBe(503);
     expect(await res.json()).toEqual({ error: "anchor_unavailable" });
+    expect(store.allFeedback()).toHaveLength(0);
+  });
+});
+
+/**
+ * The same malformed-body contract on the feedback route: a body the reader
+ * cannot decode losslessly, a missing media type, or a body over the ceiling is
+ * refused before auth, the answer lookup, or any store write.
+ */
+describe("POST /v1/feedback — malformed-body contract", () => {
+  function jsonBytes(...parts: (string | Uint8Array)[]): Uint8Array {
+    const encoder = new TextEncoder();
+    const chunks = parts.map((part) => (typeof part === "string" ? encoder.encode(part) : part));
+    const total = chunks.reduce((sum, chunk) => sum + chunk.byteLength, 0);
+    const out = new Uint8Array(total);
+    let offset = 0;
+    for (const chunk of chunks) {
+      out.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+    return out;
+  }
+
+  async function postBytes(
+    token: string | null,
+    body: BodyInit | Uint8Array | null,
+    contentType: string | null = "application/json",
+  ): Promise<Response> {
+    const headers: Record<string, string> = {};
+    if (contentType !== null) headers["content-type"] = contentType;
+    if (token !== null) headers.authorization = `Bearer ${token}`;
+    return createApi().request(
+      "/v1/feedback",
+      { method: "POST", headers, body: body as BodyInit | null },
+      env,
+    );
+  }
+
+  it("refuses invalid UTF-8 with 400 invalid_encoding and stores nothing", async () => {
+    const { store, userId, token } = await wiredStore();
+    const messageId = await seedAnswer(store, userId);
+    const body = jsonBytes(
+      `{"messageId":"${messageId}","rating":"up","freeText":"bad `,
+      new Uint8Array([0x93]),
+      '"}',
+    );
+    const res = await postBytes(token, body);
+
+    expect(res.status).toBe(400);
+    expect(res.headers.get("content-type")).toContain("application/json");
+    expect(await res.json()).toEqual({ error: "invalid_encoding" });
+    expect(store.allFeedback()).toHaveLength(0);
+  });
+
+  it("refuses a missing Content-Type with 415, before the answer lookup", async () => {
+    const { store, userId, token } = await wiredStore();
+    const messageId = await seedAnswer(store, userId);
+    const res = await postBytes(token, JSON.stringify({ messageId, rating: "up" }), null);
+    expect(res.status).toBe(415);
+    expect(await res.json()).toEqual({ error: "unsupported_media_type" });
+    expect(store.allFeedback()).toHaveLength(0);
+  });
+
+  it("refuses a non-JSON Content-Type with 415", async () => {
+    const { store, userId, token } = await wiredStore();
+    const messageId = await seedAnswer(store, userId);
+    const res = await postBytes(
+      token,
+      JSON.stringify({ messageId, rating: "up" }),
+      "application/x-www-form-urlencoded",
+    );
+    expect(res.status).toBe(415);
+    expect(await res.json()).toEqual({ error: "unsupported_media_type" });
+    expect(store.allFeedback()).toHaveLength(0);
+  });
+
+  it("refuses a body over the documented ceiling with 413 payload_too_large", async () => {
+    const { store, userId, token } = await wiredStore();
+    const messageId = await seedAnswer(store, userId);
+    const body = JSON.stringify({ messageId, rating: "up", pad: "a".repeat(BODY_MAX_BYTES) });
+    const res = await postBytes(token, body);
+    expect(res.status).toBe(413);
+    expect(await res.json()).toEqual({ error: "payload_too_large" });
+    expect(store.allFeedback()).toHaveLength(0);
+  });
+
+  it("refuses raw NUL and control padding with 400 invalid_json", async () => {
+    const { store, userId, token } = await wiredStore();
+    const messageId = await seedAnswer(store, userId);
+    for (const pad of [new Uint8Array([0x00]), new Uint8Array([0x1f])]) {
+      const body = jsonBytes(`{"messageId":"${messageId}","rating":"up"}`, pad);
+      const res = await postBytes(token, body);
+      expect(res.status).toBe(400);
+      expect(await res.json()).toEqual({ error: "invalid_json" });
+    }
+    expect(store.allFeedback()).toHaveLength(0);
+  });
+
+  it("refuses the large NUL-padded free text class with 400 invalid_request", async () => {
+    const { store, userId, token } = await wiredStore();
+    const messageId = await seedAnswer(store, userId);
+    // The feedback twin of the chat reproducer: legal JSON, 2,000 escaped
+    // U+0000, refused by the contract's storable-text rule before the store.
+    const body = `{"messageId":"${messageId}","rating":"up","freeText":"${"\\u0000".repeat(2000)}"}`;
+    const res = await postBytes(token, body);
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "invalid_request" });
     expect(store.allFeedback()).toHaveLength(0);
   });
 });
