@@ -120,16 +120,18 @@ function flatGradeSuffix(citation: string, meta: Record<string, unknown>): strin
 const REFERENCE_HEADER = "Pertanyaan sebelumnya / Previous questions:";
 
 /**
- * The prior-conversation reference: the caller's own earlier questions, one per
- * line, and nothing else. An earlier answer is deliberately absent — its citation
- * labels are text this run's retrieval may not hold, and a prompt that printed
- * them beside the evidence would invite a draft the citation gate must refuse
- * (ADR-0068). The generator places this block ahead of the evidence and tells
- * the model it is not evidence (`chat-prompts.ts`).
+ * The prior-conversation reference: the caller's own earlier questions, one
+ * JSON-escaped line each, and nothing else. The escape is the data boundary: a
+ * question carrying a newline cannot print a line of its own, so no part of the
+ * block can pose as the evidence printed after it (the prompt also neutralises
+ * the evidence header — `chat-prompts.ts`). An earlier answer is deliberately
+ * absent: its citation labels are text this run's retrieval may not hold, and a
+ * prompt that printed them beside the evidence would invite a draft the citation
+ * gate must refuse (ADR-0068).
  */
 function renderReference(turns: readonly { role: string; content: string }[]): string {
   if (turns.length === 0) return "";
-  return [REFERENCE_HEADER, ...turns.map((turn) => `- ${turn.content}`)].join("\n");
+  return [REFERENCE_HEADER, ...turns.map((turn) => `- ${JSON.stringify(turn.content)}`)].join("\n");
 }
 
 /**

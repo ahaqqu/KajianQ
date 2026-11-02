@@ -23,10 +23,12 @@ import {
  * most recent turns ride the call, and how many characters one turn may
  * contribute.
  *
- * The window is *the router's own*: the Assembler still renders the whole
- * history the caller attached, and the run's verbatim question (`sourceText`)
- * is never rewritten from history — only the retrieval sub-queries may resolve
- * an anaphor against it.
+ * The window is *the router's own*: it is bounded here, while the Assembler
+ * renders just the caller's earlier questions as a labelled, non-evidence
+ * reference and the generator's reference resolves the anaphor in its own
+ * prompt. The run's verbatim question (`sourceText`) is never rewritten from
+ * history: the sub-queries are the only thing history shapes for retrieval
+ * (ADR-0068).
  */
 
 /**

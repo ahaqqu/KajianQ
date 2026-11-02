@@ -2,6 +2,7 @@ import { Effect } from "effect";
 import type { CostRecord } from "@app/contracts";
 import type { AssembledContext } from "@app/rag-core";
 import type { KajianQFilters } from "./filters";
+import { promptPartsOf } from "./chat-prompts";
 
 /** Re-exported so the stage module stays inside the import cap. */
 export type { KajianQFilters };
@@ -85,15 +86,15 @@ export const REVIEWER_SYSTEM_PROMPT = [
  * question and draft are the user's personal data, and the flag belongs at
  * the serving call site, not inside prompt construction (ADR-0043).
  *
- * Using the assembled turn makes the parity structural: one source of truth,
- * and the reference rides its own turn ahead of the evidence, so the last user
- * turn is the evidence — prior turns never reach the gate (ADR-0068).
+ * The split is `promptPartsOf`'s, the same one the generator's prompt uses: the
+ * gate reads exactly the evidence the generator was given, and the reference
+ * block the assembler prints ahead of it never reaches the gate (ADR-0068).
  */
 export function buildReviewMessages(
   context: AssembledContext<KajianQFilters>,
   draftText: string,
 ): { role: string; content: string }[] {
-  const evidence = context.turns.filter((turn) => turn.role === "user").at(-1)?.content ?? "";
+  const evidence = promptPartsOf(context.turns).evidence;
   return [
     { role: "system", content: REVIEWER_SYSTEM_PROMPT },
     {

@@ -1,6 +1,7 @@
 import type { AssembledContext, Draft } from "@app/rag-core";
 import type { KajianQFilters } from "./filters";
 import { MACHINE_TRANSLATION_LABEL } from "./chat-assembler";
+import { promptPartsOf } from "./chat-prompts";
 import {
   citedWeakGradeScope,
   dhaifChainWarning,
@@ -89,9 +90,14 @@ function quotesTranslation(text: string): boolean {
   return /Terjemahan mesin|machine translation/i.test(text);
 }
 
-/** True when the retrieved context contained a translation the model could quote. */
+/**
+ * True when the retrieved evidence contained a translation the model could quote.
+ * Only the evidence turn counts: the reference block is the caller's earlier
+ * questions, so a translation label typed in a prior question must not become a
+ * provenance claim about this answer (ADR-0068).
+ */
 function contextHasTranslation(context: AssembledContext<KajianQFilters>): boolean {
-  return context.turns.some((turn) => turn.content.includes(MACHINE_TRANSLATION_LABEL));
+  return promptPartsOf(context.turns).evidence.includes(MACHINE_TRANSLATION_LABEL);
 }
 
 /**

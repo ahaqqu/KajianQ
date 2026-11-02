@@ -112,6 +112,35 @@ export type ChatUserPromptOptions = {
 };
 
 /**
+ * The evidence section's header. The prompt prints it exactly once: caller text
+ * (the question, the reference block) is neutralised before it is printed, so
+ * the citable section always begins at the assembler's evidence and nowhere else.
+ */
+const EVIDENCE_HEADER = "Konteks / Context:";
+
+/**
+ * What an evidence header inside caller content becomes: the header is the
+ * prompt's own markup, so an occurrence in the question or the reference is text
+ * the caller wrote and must not open a section. The bracketed form keeps the
+ * words readable — a prior question that mentions the header still reads — while
+ * being unmistakably not a header.
+ */
+const NEUTRALISED_HEADER = "[Konteks / Context]";
+
+/**
+ * Caller-supplied text as prompt data. A reference or a question carrying the
+ * evidence header would otherwise print a section ahead of the real one, making
+ * the reference/evidence boundary positional: a prior question could name a
+ * source in a fake section and the test helpers that read the first header would
+ * treat it as citable. Neutralising the header keeps the boundary structural —
+ * exactly one `Konteks / Context:` line exists, and it is the assembler's
+ * (ADR-0068).
+ */
+function neutraliseEvidenceHeader(text: string): string {
+  return text.split(EVIDENCE_HEADER).join(NEUTRALISED_HEADER);
+}
+
+/**
  * The rule printed above the reference block: earlier questions resolve what the
  * question refers to and are never citable. The citation gate grounds only the
  * context section, so a source named in the reference is not this run's evidence
@@ -147,22 +176,27 @@ export function promptPartsOf(turns: readonly { role: string; content: string }[
 }
 
 /** The user turn: the routed question, the reference block, an optional
- * addressed-evidence line, and the assembled context. */
+ * addressed-evidence line, and the assembled context. Caller text is neutralised
+ * against the header, so the section below is the only citable one. */
 export function chatUserPrompt(
   question: string,
   context: string,
   options: ChatUserPromptOptions = {},
 ): string {
-  const lines = [`Pertanyaan / Question: ${question}`];
+  const lines = [`Pertanyaan / Question: ${neutraliseEvidenceHeader(question)}`];
   const addressed = options.addressed ?? [];
   if (addressed.length > 0) {
     lines.push("", ADDRESSED_EVIDENCE_PROMPT[options.language ?? "id"](addressed.join(", ")));
   }
   const reference = options.reference ?? "";
   if (reference !== "") {
-    lines.push("", REFERENCE_NOT_EVIDENCE_PROMPT[options.language ?? "id"], reference);
+    lines.push(
+      "",
+      REFERENCE_NOT_EVIDENCE_PROMPT[options.language ?? "id"],
+      neutraliseEvidenceHeader(reference),
+    );
   }
-  lines.push("", "Konteks / Context:", context);
+  lines.push("", EVIDENCE_HEADER, context);
   return lines.join("\n");
 }
 
