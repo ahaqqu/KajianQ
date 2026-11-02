@@ -169,6 +169,34 @@ export function groundingLabelsFor(
 }
 
 /**
+ * The characters that **continue an address word**: a letter or a decimal digit
+ * glued straight onto an address is part of it, so `… no. 5010a` and
+ * `… no. 50102` are different addresses from `… no. 5010` — the boundary the
+ * grammars' address word declares (`chat-citation-grammar`'s `hadithAddressOf`).
+ */
+const ADDRESS_WORD_CONTINUATION = /[\p{L}\p{Nd}]/u;
+
+/**
+ * Whether `label` occurs in `answer` as a **whole address** — an occurrence the
+ * character after which does not continue the address word.
+ *
+ * The grounded direction is a containment read rather than a scan (a label that
+ * does not begin with a grammar, a Kitab work-and-volume label, is still an
+ * address an answer cites), so it has to carry the boundary the grammar's
+ * address word carries. Without it `HR. Bukhari no. 5010` grounds inside
+ * `… no. 50102`, and the gate reports an address the answer never wrote as
+ * grounded — a false provenance claim its readers (the trace's `grounded` list,
+ * the citations frame, the weak-grade trigger) then act on.
+ */
+function containsWholeAddress(answer: string, label: string): boolean {
+  for (let at = answer.indexOf(label); at !== -1; at = answer.indexOf(label, at + 1)) {
+    const next = answer[at + label.length];
+    if (next === undefined || !ADDRESS_WORD_CONTINUATION.test(next)) return true;
+  }
+  return false;
+}
+
+/**
  * Check the draft's answer: which of the retrieved chunks' citation labels
  * appear in the text (`grounded`), and which citation-shaped spans in the
  * text exist in no retrieved chunk (`ungrounded`).
@@ -209,7 +237,11 @@ export function validateCitations(
   const normalizedAnswer = citationMatchText(answer);
   const grounded = new Set<string>();
   for (const label of known) {
-    if (normalizedAnswer.includes(label)) grounded.add(label);
+    // A whole address, not any occurrence: `… no. 287` is not written by a draft
+    // that only ever says `… no. 2878`, and recording it as grounded would let
+    // every reader of this set act on a citation the answer never made
+    // ({@link containsWholeAddress}).
+    if (containsWholeAddress(normalizedAnswer, label)) grounded.add(label);
   }
   const ungrounded: string[] = [];
   for (const candidate of citationCandidatesIn(answer)) {

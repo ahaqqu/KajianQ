@@ -125,7 +125,7 @@ export function createKajianQReviewer(deps: KajianQReviewerDeps): Reviewer<Kajia
             // Exhaustive on purpose: a new delivery must fail the typecheck here.
             switch (decision.delivery) {
               case "rules":
-                return withRules(draft, context, run);
+                return withRules(draft, context, run, grounded);
               case "draft":
                 return { text: draft.text };
               case "product_refusal":
@@ -136,7 +136,7 @@ export function createKajianQReviewer(deps: KajianQReviewerDeps): Reviewer<Kajia
           }
 
           if (deps.provider === null || deps.skipLlm === true) {
-            return withRules(draft, context, run);
+            return withRules(draft, context, run, grounded);
           }
 
           // The pre-gate sits between the free deterministic validator and the
@@ -153,7 +153,7 @@ export function createKajianQReviewer(deps: KajianQReviewerDeps): Reviewer<Kajia
               ...(deps.pregateThreshold !== undefined ? { threshold: deps.pregateThreshold } : {}),
             });
             if (pregate.kind === "skip") {
-              return withRules(draft, context, run);
+              return withRules(draft, context, run, grounded);
             }
           }
 
@@ -198,7 +198,7 @@ export function createKajianQReviewer(deps: KajianQReviewerDeps): Reviewer<Kajia
             });
             return { text: refusal("reviewer") };
           }
-          return withRules(draft, context, run);
+          return withRules(draft, context, run, grounded);
         }),
       ),
   };
@@ -235,9 +235,13 @@ export function createKajianQReviewer(deps: KajianQReviewerDeps): Reviewer<Kajia
     draft: Draft,
     context: AssembledContext<KajianQFilters>,
     run: RunContextService,
+    grounded: readonly string[],
   ): Draft {
     if (deps.applyProductRules === false) return draft;
-    const result = applyProductRules(draft, context, deps.language ?? "id");
+    // The rules read the deterministic gate's own grounded labels, computed once
+    // at the top of this stage: the rule's evidence set and the `grounded` list
+    // the trace records are one value, never two calls that happen to agree.
+    const result = applyProductRules(draft, context, deps.language ?? "id", grounded);
     run.record({
       stage: "reviewer",
       kind: "product_rules",

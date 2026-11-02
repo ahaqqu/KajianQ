@@ -8,6 +8,7 @@ import {
   hasWeakWarning,
 } from "./chat-postprocess";
 import { citedWeakGradeScope, type WeakGradeScope } from "./chat-weak-warning";
+import { validateCitations } from "./chat-citation-validator";
 import type { KajianQFilters } from "./filters";
 import { routedQuery } from "./test-utils/routed-query";
 
@@ -46,8 +47,18 @@ const WEAK_ROW = {
   moreMayExist: false,
 };
 
-/** Zero-padded so no generated label is a substring of another (`001` ≠ `010`). */
-const label = (index: number): string => `HR. Test no. ${String(index).padStart(3, "0")}`;
+/**
+ * A label per passage whose **number is a prefix of the next passage's number**
+ * (`… no. 1`, `… no. 11`, `… no. 111`, …). The nested fixture is deliberate: the
+ * gate's grounded pass is a containment read, so a label that only *prefixes* a
+ * cited one is the counterexample its address boundary must exclude, and a
+ * padded or single-width label set would assume that boundary instead of
+ * generating across it.
+ */
+const label = (index: number): string => `HR. Test no. ${"1".repeat(index + 1)}`;
+
+/** A citation no generated chunk grounds — no label is its prefix or its suffix. */
+const UNGROUNDED_LABEL = "HR. Test no. 999";
 
 type PassageSpec = {
   /** The passage's own flattened grade; `null` = no grade stored. */
@@ -94,7 +105,7 @@ function draftFor(input: Scenario): string {
   const citations = input.passages.flatMap((passage, index) =>
     passage.cited ? [`[${label(index)}]`] : [],
   );
-  if (input.ungroundedCitation) citations.push(`[${label(999)}]`);
+  if (input.ungroundedCitation) citations.push(`[${UNGROUNDED_LABEL}]`);
   return citations.length === 0
     ? "Jawaban tanpa sitasi."
     : `Jawaban memakai ${citations.join(" ")}.`;
@@ -113,13 +124,20 @@ describe("the weak-evidence trigger over the cited subset, not the retrieved set
       const chunks = input.passages.map(chunkFor);
       const draftText = draftFor(input);
       const expected = expectedScope(input.passages);
+      // The production seam: the reviewer stage passes the gate's grounded set
+      // into the rule. Both forms must agree — the passed set and the trigger's
+      // own derivation — or the rule could read a different citation set than the
+      // trace records.
+      const grounded = validateCitations(draftText, chunks).grounded;
 
+      expect(citedWeakGradeScope(draftText, chunks, grounded), draftText).toBe(expected);
       expect(citedWeakGradeScope(draftText, chunks), draftText).toBe(expected);
 
       const { draft, applied } = applyProductRules(
         { text: draftText },
         context(chunks),
         input.language,
+        grounded,
       );
       const warns = expected !== null;
       expect(hasWeakWarning(draft.text), draftText).toBe(warns);

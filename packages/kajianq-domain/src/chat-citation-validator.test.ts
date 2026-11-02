@@ -385,7 +385,11 @@ describe("validateCitations — grounded direction", () => {
   it("grounds on the full number, not the prefix sibling the glue used to truncate to (#264 item 1)", () => {
     // A retrieved prefix sibling (`no. 50`) must not ground a citation whose
     // digits one invisible character would split: the digits are one number, so
-    // the retrieved `no. 5010` is what it must ground on.
+    // the retrieved `no. 5010` is what it must ground on. The grounded direction
+    // carries the grammar's address boundary in both directions: `no. 5010` is
+    // not written by a draft that only ever says `no. 50102`, and `no. 50` is not
+    // written by one that says `no. 5010` — a digit glued to the address
+    // continues it, so the prefix is a different address, not a substring match.
     const meant = validateCitations("Rasulullah bersabda dalam HR. Bukhari no. 50\u200c10: matn", [
       chunk("HR. Bukhari no. 5010"),
     ]);
@@ -394,12 +398,12 @@ describe("validateCitations — grounded direction", () => {
       "Rasulullah bersabda dalam HR. Bukhari no. 50\u200c10: matn",
       [chunk("HR. Bukhari no. 50")],
     );
-    // The refusal is what closes the fail-open: the full number the draft
-    // cited grounds on no retrieved chunk. (`grounded` stays a substring test
-    // of the whole answer, so the sibling's shorter label still appears inside
-    // it — an advisory list, never the gate: the answer is refused on
-    // `ungrounded`, and a refused answer renders no citations.)
-    expect(sibling.ungrounded).toEqual(["HR. Bukhari no. 5010"]);
+    // The refusal is what closes the fail-open: the full number the draft cited
+    // grounds on no retrieved chunk, and the shorter label is NOT recorded as
+    // grounded — reading it as cited would let every consumer of `grounded` (the
+    // trace, the citations frame, the weak-grade trigger) act on a citation the
+    // answer never made.
+    expect(sibling).toEqual({ grounded: [], ungrounded: ["HR. Bukhari no. 5010"] });
   });
 
   it("scans the stripped text, so glue cannot hide a fabricated citation (A3)", () => {
@@ -1335,10 +1339,12 @@ describe("validateCitations — ungrounded direction (the trap cases)", () => {
       validateCitations("参阅HR. Ibn Majah no. 224HR Muslim no. 224", [
         chunk("HR. Ibn Majah no. 224"),
       ]),
-    ).toEqual({ grounded: ["HR. Ibn Majah no. 224"], ungrounded: [mergedNumber] });
+    ).toEqual({ grounded: [], ungrounded: [mergedNumber] });
     // A letter continuing the number word absorbs the marker the same way, and
     // the merged address refuses — the fabricated label is not named, even when
     // both real addresses were retrieved. The scan register states that scope.
+    // The absorbed head is not grounded either: the letter continues its address
+    // word, so the draft wrote the merged token, not the shorter address.
     const mergedLetter = "HR. Ibn Majah no. 224和HR";
     expect(
       validateCitations("参阅HR. Ibn Majah no. 224和HR. Muslim no. 224", [
@@ -1346,7 +1352,7 @@ describe("validateCitations — ungrounded direction (the trap cases)", () => {
         chunk("HR. Muslim no. 224"),
       ]),
     ).toEqual({
-      grounded: ["HR. Ibn Majah no. 224", "HR. Muslim no. 224"],
+      grounded: ["HR. Muslim no. 224"],
       ungrounded: [mergedLetter],
     });
   });

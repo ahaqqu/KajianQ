@@ -11,7 +11,6 @@ import {
 export {
   dhaifChainWarning,
   dhaifWarning,
-  hasWeakGradeChunk,
   hasWeakWarning,
   type WeakGradeScope,
 } from "./chat-weak-warning";
@@ -230,11 +229,19 @@ function withoutDisclaimer(text: string): string {
  * the model's to decorate and no rule to invent a trigger for. The
  * deterministic gate's own `ungrounded_citation` refusal (the refusal decision's
  * first row) replaces the draft for the same reason.
+ *
+ * `grounded` is the citation gate's grounded labels for this draft when the
+ * caller already ran it — the reviewer stage does, before every exit that
+ * reaches this function. Passing it here keeps the rule and the trace reading
+ * one value: the rule's evidence set is the gate's, not a second derivation that
+ * could drift from it. A direct caller that omits it gets the same set from the
+ * same `validateCitations` call inside the trigger.
  */
 export function applyProductRules(
   draft: Draft,
   context: AssembledContext<KajianQFilters>,
   language: "id" | "en",
+  grounded?: readonly string[],
 ): ProductRulesResult {
   const applied: string[] = [];
   // The disclaimer's wording is the rule's. Clearing the units that equal a template
@@ -246,9 +253,9 @@ export function applyProductRules(
 
   // The rule's evidence is what the delivered draft cites, not what retrieval
   // handed the model: a weak hadith the answer never names is not the "cited
-  // hadith" the copy describes. The rule adds no citation of its own, so reading
-  // the draft's citations here is reading the delivered answer's.
-  const weak = citedWeakGradeScope(draft.text, context.chunks);
+  // hadith" the copy describes. The gate's grounded set is passed in when the
+  // caller has it, so the rule reads the same citations the trace recorded.
+  const weak = citedWeakGradeScope(draft.text, context.chunks, grounded);
   if (weak !== null && !hasWeakWarning(body)) {
     // The copy names the trigger: a weak row on one sanad is not the same claim
     // as a passage graded weak, and the sheet beside this card may render both.

@@ -48,12 +48,13 @@ export type WeakGradeScope = "passage" | "chain";
  * passage grade outranks a weak row because the whole hadith — not one sanad —
  * is then the subject of the warning.
  *
- * It reads the list it is given as the evidence the answer states; the rule's
- * trigger selects that list by the draft's citations ({@link citedWeakGradeScope}).
- * Called with the whole retrieved set it would warn about evidence the answer
- * never cites, which is exactly the claim the copy does not make.
+ * Module-private on purpose: the rule's subject is the set the answer cites, and
+ * {@link citedWeakGradeScope} is the one caller that builds it. Aimed at the
+ * whole retrieved set this predicate would warn about evidence the answer never
+ * cites, which is exactly the claim the copy does not make, so it is not
+ * exported for a caller to aim wrong.
  */
-export function weakGradeScope(chunks: readonly Chunk[]): WeakGradeScope | null {
+function weakGradeScope(chunks: readonly Chunk[]): WeakGradeScope | null {
   let chain = false;
   for (const chunk of chunks) {
     const meta = (chunk.metadata ?? {}) as Record<string, unknown>;
@@ -65,19 +66,18 @@ export function weakGradeScope(chunks: readonly Chunk[]): WeakGradeScope | null 
 }
 
 /**
- * The retrieved passages whose own citation label the draft cites — the only
- * evidence the weak-evidence rule may read.
+ * The retrieved passages whose own citation label is in the citation gate's
+ * grounded set — the only evidence the weak-evidence rule may read.
  *
- * The read is the citation gate's own (`validateCitations`): its `grounded`
- * labels are the normalized labels the draft carries that a retrieved chunk
- * grounds, so this cannot disagree with the gate about what the answer cited. A
- * label the draft never wrote is not in it, however prominently retrieval placed
- * the chunk in the context.
+ * The set is the gate's own: its `grounded` labels are the whole addresses the
+ * draft carries that a retrieved chunk grounds, so this cannot disagree with the
+ * gate about what the answer cited. A label the draft never wrote is not in it,
+ * however prominently retrieval placed the chunk in the context.
  */
-export function citedChunks(draft: string, chunks: readonly Chunk[]): readonly Chunk[] {
-  const grounded = new Set(validateCitations(draft, chunks).grounded);
+function citedChunks(grounded: readonly string[], chunks: readonly Chunk[]): readonly Chunk[] {
+  const labels = new Set(grounded);
   return chunks.filter((chunk) =>
-    citationLabelsOf(chunk).some((label) => grounded.has(normalizeCitationLabel(label))),
+    citationLabelsOf(chunk).some((label) => labels.has(normalizeCitationLabel(label))),
   );
 }
 
@@ -90,25 +90,21 @@ export function citedChunks(draft: string, chunks: readonly Chunk[]): readonly C
  * copy's two scopes exist for. A weak passage that was only retrieved and never
  * cited fires nothing: the delivered answer makes no claim about it, and the
  * warning's copy would be false.
+ *
+ * `grounded` is the citation gate's grounded labels for this draft when the
+ * caller already ran it — the reviewer stage does, for the trace's `grounded`
+ * list and the refusal decision — so the rule reads the set the trace recorded
+ * instead of validating the same draft a second time. A caller that does not
+ * have it omits it; the same `validateCitations` call then derives the same set
+ * here, so the two paths cannot define "cited" differently.
  */
 export function citedWeakGradeScope(
   draft: string,
   chunks: readonly Chunk[],
+  grounded?: readonly string[],
 ): WeakGradeScope | null {
-  return weakGradeScope(citedChunks(draft, chunks));
-}
-
-/**
- * True when any passage in the list carries the weak grade — as its flattened
- * grade, or on any of its stored transmission rows. The second half is what
- * keeps a passage whose corpus grade is sound but whose chains include a weak one
- * flagged: the rule's subject is the evidence the answer cites, not the one value
- * the ingester happened to consolidate. This is the per-passage predicate over
- * whatever set a caller hands it; the rule's own trigger is
- * {@link citedWeakGradeScope}.
- */
-export function hasWeakGradeChunk(chunks: readonly Chunk[]): boolean {
-  return weakGradeScope(chunks) !== null;
+  const labels = grounded ?? validateCitations(draft, chunks).grounded;
+  return weakGradeScope(citedChunks(labels, chunks));
 }
 
 /**

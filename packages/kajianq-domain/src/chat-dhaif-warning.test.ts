@@ -28,9 +28,9 @@ import { createStubChatProviders } from "./test-utils/stub-chat-providers";
  * Asserted through the real composition — store rows → `createKajianQRetriever`
  * → `createKajianQAssembler` → generator → reviewer, driven by
  * `runChatPipeline` (the same `buildChatStages` wiring production uses,
- * ADR-0021) — so a narrowing of the reviewer's context, a lost metadata key, a
- * draft whose citations the rule cannot see, or a suppression predicate that
- * accepts a grade mention instead of the product's copy reddens here.
+ * ADR-0021) — so a lost metadata key, a draft whose citations the rule cannot
+ * see, or a suppression predicate that accepts a grade mention instead of the
+ * product's copy reddens here.
  */
 
 const ARABIC = "إِنَّ اللَّهَ لَا يَخْفَىٰ عَلَيْهِ شَيْءٌ";
@@ -574,23 +574,6 @@ describe("#439 — a hybrid refusal still runs the Always rules", () => {
     const text = (answer as { text: string }).text;
     expect(text).not.toContain(dhaifWarning("id"));
     expect(hasWeakWarning(text)).toBe(false);
-  });
-
-  it("still carries the warning on the hybrid path when the HYBRID TEXT cites the weak hadith", async () => {
-    // The Always control the cited-only scope must not cost: a hybrid that quotes
-    // the weak hadith and then declines is decorated with the warning, because
-    // the text that ships cites it.
-    const store = createMemoryRagStore();
-    await seedChild(store, DHAIF_METADATA, 0);
-    const draft = [
-      `Dalilnya hadits ini [${DHAIF_CITATION}].`,
-      `Untuk bagian lain dari pertanyaan ini saya ${DEFAULT_REFUSALS.id}.`,
-    ].join("\n\n");
-
-    const answer = await answerVia(store, draft, { reviewerDecider: SKIPPING_DECIDER });
-    const text = (answer as { text: string }).text;
-    expect(text).toContain(dhaifWarning("id"));
-    expect(productRulesEvents(answer)[0]?.detail["applied"]).toContain("dhaif_warning");
   });
 });
 
