@@ -41,6 +41,39 @@ describe("the canonical refusal contract", () => {
 });
 
 /**
+ * Rule 4's quote contract: a quotation is only text copied exactly from the
+ * cited passage; anything that is not an exact copy is a paraphrase and carries
+ * no quotation marks. The rule lives on rule 4's line, beside the Arabic-text
+ * and translation requirement it extends rather than replaces.
+ */
+describe("the verbatim-only quotation rule", () => {
+  const ruleFour = (language: "id" | "en"): string =>
+    chatSystemPrompt(language)
+      .split("\n")
+      .find((line) => line.startsWith("4."))!;
+
+  it("quotes only text copied exactly from the cited passage, per language", () => {
+    expect(ruleFour("id")).toMatch(
+      /Kutip hanya teks yang disalin persis dari bagian yang disitasi/,
+    );
+    expect(ruleFour("id")).toMatch(
+      /bila penyalinan persis tidak memungkinkan, parafrasekan tanpa tanda kutip/,
+    );
+    expect(ruleFour("en")).toMatch(/Quote only text copied exactly from the cited passage/);
+    expect(ruleFour("en")).toMatch(
+      /when exact copying is not possible, paraphrase without quotation marks/,
+    );
+  });
+
+  it("keeps rule 4's Arabic text and translation requirement in both languages", () => {
+    expect(ruleFour("id")).toMatch(/teks Arab untuk setiap ayat\/hadits yang dikutip/);
+    expect(ruleFour("id")).toMatch(/lalu terjemahannya/);
+    expect(ruleFour("en")).toMatch(/Arabic text for every quoted ayah\/hadith/);
+    expect(ruleFour("en")).toMatch(/followed by its translation/);
+  });
+});
+
+/**
  * The grounding discipline is stronger than "answer only from context".
  *
  * Live staging (gs-v0-001): asked for the meaning of Ayat al-Kursi, the
