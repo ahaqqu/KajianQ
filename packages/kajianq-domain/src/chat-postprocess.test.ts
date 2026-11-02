@@ -780,6 +780,14 @@ describe("chatSystemPrompt — the grounding rules the model receives", () => {
     expect(prompt).not.toMatch(/not a fatwa/i);
   });
 
+  it("scopes the grade-flag rule to the CITED hadith in both languages", () => {
+    // The model's own warning must not describe a retrieved hadith the answer
+    // never quotes: the copy it is asked for says "the cited hadith", so the
+    // instruction has to name the citation in both languages.
+    expect(chatSystemPrompt("id")).toMatch(/hadits yang dikutip ATAU salah satu sanadnya/i);
+    expect(chatSystemPrompt("en")).toMatch(/a cited hadith OR any of its chains/i);
+  });
+
   it("forbids naming a citation that is not in the context (the fabrication rule)", () => {
     expect(chatSystemPrompt("id")).toMatch(
       /Jangan pernah menyebut sitasi yang tidak tercetak di konteks/,
