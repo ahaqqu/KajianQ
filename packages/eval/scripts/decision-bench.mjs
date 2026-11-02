@@ -65,7 +65,7 @@ logger.info("fixture loaded", {
   languages,
 });
 
-const providerConfig = app.loadProviderConfig();
+const providerConfig = app.loadProviderConfig(process.env.PROVIDER_PROFILE);
 if (!providerConfig.roles["decision-candidates"]) {
   fail("provider config has no decision-candidates role");
 }

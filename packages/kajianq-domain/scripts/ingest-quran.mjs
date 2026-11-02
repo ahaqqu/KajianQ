@@ -108,7 +108,7 @@ if (CHECK_ONLY) {
 // connection URL and receives the seam, never importing a database client — and one runner feeds
 // both the RagStore and the report path.
 const store = app.resolvePostgresStore(databaseUrl, { logger });
-const config = app.loadProviderConfig();
+const config = app.loadProviderConfig(process.env.PROVIDER_PROFILE);
 // Batch retry policy: an offline ingest must ride out a vendor's per-minute window rather than give
 // up on the interactive timeout.
 const { provider: embedder } = app.resolveRole(config, "embedder", {
