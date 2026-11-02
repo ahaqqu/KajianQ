@@ -328,33 +328,33 @@
     },
     {
       "id": "gs-v1-007",
-      "question": "Apakah mengangkat tangan saat takbir, ruku', dan bangkit dari ruku' memiliki dalil? Mengapa sebagian umat Islam tidak melakukannya?",
+      "question": "Apakah mengangkat tangan saat takbir, ruku', dan bangkit dari ruku' memiliki dalil?",
       "language": "id",
       "expectedSourceTypes": ["hadith"],
       "requiredCitations": ["HR. Bukhari no. 735"],
       "expectedBehavior": "answer",
       "tags": ["fikih", "hadith", "cross-madzhab"],
-      "$comment": "HR. Bukhari no. 735 verified in doc_children: Ibn Umar reports the Prophet raising his hands at the opening takbir, at the takbir for bowing and on rising. Cross-madzhab trap: the evidence supports the practice while schools differ on repeating it, so the answer must give the report and name the difference without ranking the schools."
+      "$comment": "HR. Bukhari no. 735 verified in doc_children: Ibn Umar reports the Prophet raising his hands at the opening takbir, at the takbir for bowing and on rising. Cross-madzhab topic: the staged corpus carries the report but not the comparative school reasoning; a correct answer states only the evidence and does not rank the schools or add a position the context lacks."
     },
     {
       "id": "gs-v1-008",
-      "question": "Apakah qunut Subuh itu sunnah? Jelaskan dalil dan perbedaan pendapat di antara madzhab.",
+      "question": "Apakah ada dalil qunut dalam shalat Subuh?",
       "language": "id",
       "expectedSourceTypes": ["hadith"],
       "requiredCitations": ["HR. Bukhari no. 1001"],
       "expectedBehavior": "answer",
       "tags": ["fikih", "hadith", "cross-madzhab"],
-      "$comment": "HR. Bukhari no. 1001 verified in doc_children: Anas answers that the Prophet did perform qunut in Fajr, sometimes after bowing. Cross-madzhab trap: the Shafi'i school practices it and the Hanafi school does not, so the answer must present the evidence and the difference rather than one ruling as the only one."
+      "$comment": "HR. Bukhari no. 1001 verified in doc_children: Anas answers that the Prophet did perform qunut in Fajr, sometimes after bowing. Cross-madzhab topic: the staged corpus carries the report but not the comparative school reasoning; a correct answer states only the evidence and does not rank the schools or add a position the context lacks."
     },
     {
       "id": "gs-v1-009",
-      "question": "What is the evidence for placing the right hand over the left in prayer, and why do some schools differ on the exact position?",
+      "question": "What is the evidence for placing the right hand over the left in prayer?",
       "language": "en",
       "expectedSourceTypes": ["hadith"],
       "requiredCitations": ["HR. Bukhari no. 740"],
       "expectedBehavior": "answer",
       "tags": ["fikih", "hadith", "cross-madzhab", "english"],
-      "$comment": "HR. Bukhari no. 740 verified in doc_children: Sahl ibn Sa'd reports the command to place the right hand over the left forearm in prayer. Cross-madzhab trap: the report fixes the placement but not the height, so the answer must give the evidence and the schools' differing positions without ranking them."
+      "$comment": "HR. Bukhari no. 740 verified in doc_children: Sahl ibn Sa'd reports the command to place the right hand over the left forearm in prayer. Cross-madzhab topic: the staged corpus carries the report but not the comparative school reasoning; a correct answer states only the evidence and does not rank the schools or add a position the context lacks."
     },
     {
       "id": "gs-v1-010",
@@ -368,13 +368,13 @@
     },
     {
       "id": "gs-v1-011",
-      "question": "Sebutkan jalur sanad HR. Bukhari no. 191 tentang wudhu Abdullah bin Zaid!",
+      "question": "Sebutkan jalur sanad HR. Bukhari no. 52 tentang perkara halal, haram, dan syubhat!",
       "language": "id",
       "expectedSourceTypes": ["hadith"],
-      "requiredCitations": ["HR. Bukhari no. 191"],
+      "requiredCitations": ["HR. Bukhari no. 52"],
       "expectedBehavior": "answer",
       "tags": ["hadith"],
-      "$comment": "HR. Bukhari no. 191 verified in doc_children; narrator_chains records Musaddad <- Khalid ibn Abdullah <- Amr ibn Yahya <- his father <- Abdullah ibn Zayd. Takhrij/chain row: the answer must reproduce the recorded chain."
+      "$comment": "HR. Bukhari no. 52 verified in doc_children; narrator_chains records Abu Nu'aym <- Zakariyya <- Amir <- al-Nu'man ibn Bashir. Takhrij/chain row: the answer must reproduce the recorded chain. This row uses a different address from the v0 wudu retrieval-gap row."
     },
     {
       "id": "gs-v1-012",
@@ -418,53 +418,53 @@
     },
     {
       "id": "gs-v1-016",
-      "question": "Apa makna QS. 94:5, 'Maka sesungguhnya beserta kesulitan ada kemudahan'?",
+      "question": "Apa arti QS. 94:5, 'Maka sesungguhnya beserta kesulitan ada kemudahan'?",
       "language": "id",
       "expectedSourceTypes": ["quran"],
       "requiredCitations": ["QS. 94:5"],
       "expectedBehavior": "answer",
       "tags": ["tafsir", "quran"],
-      "$comment": "QS. 94:5 verified in doc_children: 'Maka, sesungguhnya beserta kesulitan ada kemudahan.' Tafsir row grounded on the verse because no tafsir chunk is staged; the answer must stay with the retrieved verse."
+      "$comment": "QS. 94:5 verified in doc_children: 'Maka, sesungguhnya beserta kesulitan ada kemudahan.' The staged corpus carries the verse and no tafsir chunk, so this tafsir-tagged row expects a translation-only answer from the retrieved verse, not added commentary."
     },
     {
       "id": "gs-v1-017",
-      "question": "Apa ciri orang yang tidak merugi menurut QS. 103:3?",
+      "question": "Apa isi QS. 103:3 tentang ciri orang yang tidak merugi?",
       "language": "id",
       "expectedSourceTypes": ["quran"],
       "requiredCitations": ["QS. 103:3"],
       "expectedBehavior": "answer",
       "tags": ["tafsir", "quran"],
-      "$comment": "QS. 103:3 verified in doc_children: 'kecuali orang-orang yang beriman dan beramal saleh serta saling menasihati untuk kebenaran dan kesabaran.' Tafsir row grounded on the verse; no tafsir chunk is staged."
+      "$comment": "QS. 103:3 verified in doc_children: 'kecuali orang-orang yang beriman dan beramal saleh serta saling menasihati untuk kebenaran dan kesabaran.' No tafsir chunk is staged; the row expects a translation-only answer from the retrieved verse."
     },
     {
       "id": "gs-v1-018",
-      "question": "Apa makna QS. 17:23 tentang berbakti kepada orang tua?",
+      "question": "Apa isi QS. 17:23 tentang berbakti kepada orang tua?",
       "language": "id",
       "expectedSourceTypes": ["quran"],
       "requiredCitations": ["QS. 17:23"],
       "expectedBehavior": "answer",
       "tags": ["tafsir", "quran", "adab"],
-      "$comment": "QS. 17:23 verified in doc_children: the command to worship none but God and to treat parents with ihsan, not even saying 'uff'. Tafsir row grounded on the verse; no tafsir chunk is staged."
+      "$comment": "QS. 17:23 verified in doc_children: the command to worship none but God and to treat parents with ihsan, not even saying 'uff'. No tafsir chunk is staged; the row expects a translation-only answer from the retrieved verse."
     },
     {
       "id": "gs-v1-019",
-      "question": "What does QS. 2:286 teach about divine burden and human capacity?",
+      "question": "What does QS. 2:286 say about divine burden and human capacity?",
       "language": "en",
       "expectedSourceTypes": ["quran"],
       "requiredCitations": ["QS. 2:286"],
       "expectedBehavior": "answer",
       "tags": ["tafsir", "quran", "english"],
-      "$comment": "QS. 2:286 verified in doc_children: 'Allah tidak membebani seseorang, kecuali menurut kesanggupannya.' Tafsir row grounded on the verse; no tafsir chunk is staged."
+      "$comment": "QS. 2:286 verified in doc_children: 'Allah tidak membebani seseorang, kecuali menurut kesanggupannya.' No tafsir chunk is staged; the row expects a translation-only answer from the retrieved verse."
     },
     {
       "id": "gs-v1-020",
-      "question": "What is the meaning of the Light verse, QS. 24:35?",
+      "question": "What does the Light verse, QS. 24:35, say?",
       "language": "en",
       "expectedSourceTypes": ["quran"],
       "requiredCitations": ["QS. 24:35"],
       "expectedBehavior": "answer",
       "tags": ["tafsir", "quran", "english"],
-      "$comment": "QS. 24:35 verified in doc_children: the Light verse's parable of the niche, lamp and oil. Tafsir row grounded on the verse; no tafsir chunk is staged."
+      "$comment": "QS. 24:35 verified in doc_children: the Light verse's parable of the niche, lamp and oil. No tafsir chunk is staged; the row expects a translation-only answer from the retrieved verse."
     },
     {
       "id": "gs-v1-021",

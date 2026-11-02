@@ -5,12 +5,13 @@ import type { GoldenQuestion } from "@app/contracts";
 import { loadGoldenSetJson } from "./golden-set";
 
 /**
- * Golden Set v1 (fixture slice): 21 v0 rows carried unchanged plus 29 newly
- * curated rows. This file pins the fixture's identity, the v0 subset's
- * immutability, the coverage the draft claims, and the citation shape the eval
- * gate relies on. It reads the domain fixture as DATA and imports no domain
- * module, so the engine package stays vocabulary-free; the tag strings below
- * are the fixture's own opaque labels, named here only to count them.
+ * Golden Set v1 (fixture slice) — the engine-side structural checks.
+ *
+ * This test loads the fixture through the engine loader and pins the set's
+ * identity, the carried v0 subset, the citation shape and question uniqueness.
+ * Coverage classes and source-type floors belong to the domain pack, whose own
+ * test reads the same fixture and names its vocabulary; this engine test
+ * deliberately names none of it.
  */
 
 type RawQuestion = GoldenQuestion & { $comment?: string };
@@ -25,30 +26,6 @@ const SET = loadGoldenSetJson(V1_TEXT, "golden-set-v1.json");
 const RAW = JSON.parse(V1_TEXT) as RawFixture;
 const V0 = JSON.parse(readFileSync(V0_URL, "utf8")) as RawFixture;
 const RAW_BY_ID = new Map(RAW.questions.map((question) => [question.id, question]));
-
-/** The fixture's trap/coverage labels, treated as opaque strings. */
-const TAGS = {
-  quotation: "fabricated-attribution",
-  dhaif: "dhaif-trap",
-  crossMadzhab: "cross-madzhab",
-  grade: "grade-check",
-  tafsir: "tafsir",
-} as const;
-
-/** The newly curated rows that ask for an isnad rather than only a matn. */
-const CHAIN_IDS = ["gs-v1-010", "gs-v1-011", "gs-v1-012"] as const;
-
-function idsWhere(predicate: (question: GoldenQuestion) => boolean): string[] {
-  return SET.questions.filter(predicate).map((question) => question.id);
-}
-
-function hasTag(question: GoldenQuestion, tag: string): boolean {
-  return (question.tags ?? []).includes(tag);
-}
-
-function hasSource(question: GoldenQuestion, source: string): boolean {
-  return question.expectedSourceTypes.includes(source);
-}
 
 function addedQuestions(): GoldenQuestion[] {
   return SET.questions.filter((question) => question.id.startsWith("gs-v1-"));
@@ -71,30 +48,6 @@ describe("golden-set-v1 fixture identity", () => {
     expect(V0.questions).toHaveLength(21);
     for (const before of V0.questions) {
       expect(RAW_BY_ID.get(before.id), before.id).toEqual(before);
-    }
-  });
-});
-
-describe("golden-set-v1 coverage", () => {
-  it("meets every coverage floor the slice claims", () => {
-    expect(idsWhere((question) => question.language === "id")).toHaveLength(37);
-    expect(idsWhere((question) => question.language === "en")).toHaveLength(13);
-    expect(idsWhere((question) => question.expectedBehavior === "refuse")).toHaveLength(8);
-    expect(idsWhere((question) => hasTag(question, TAGS.dhaif))).toHaveLength(4);
-    expect(idsWhere((question) => hasTag(question, TAGS.crossMadzhab))).toHaveLength(4);
-    expect(idsWhere((question) => hasSource(question, "hadith"))).toHaveLength(27);
-    expect(idsWhere((question) => hasSource(question, "quran"))).toHaveLength(17);
-    expect(idsWhere((question) => hasTag(question, TAGS.tafsir))).toHaveLength(8);
-    expect(idsWhere((question) => hasTag(question, TAGS.grade))).toHaveLength(5);
-    expect(idsWhere((question) => hasTag(question, TAGS.quotation))).toHaveLength(6);
-  });
-
-  it("pins at least three newly curated chain rows grounded in narrator_chains", () => {
-    for (const id of CHAIN_IDS) {
-      const row = RAW_BY_ID.get(id);
-      expect(row, id).toBeDefined();
-      expect(row?.expectedSourceTypes, id).toContain("hadith");
-      expect(row?.$comment, id).toMatch(/narrator_chains/);
     }
   });
 });
@@ -131,7 +84,7 @@ describe("golden-set-v1 citation shape", () => {
     expect(cited).toEqual([]);
   });
 
-  it("records an evidence-basis $comment on every newly curated row", () => {
+  it("records an evidence note on every newly curated row", () => {
     const missing = addedQuestions()
       .filter((question) => (RAW_BY_ID.get(question.id)?.$comment ?? "").trim() === "")
       .map((question) => question.id);

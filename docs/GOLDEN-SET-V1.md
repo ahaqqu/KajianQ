@@ -37,28 +37,44 @@ new fixture is loaded only through that override.
 
 The `tafsir` tag count is the tafsir/kitab class count. The staging corpus
 carries only the `quran` and `hadith` source types, so five rows are
-Quran-verse-grounded tafsir questions and one row (`gs-v1-006`) is the
-untranslated-kitab/tafsir refusal trap. No kitab citation was invented.
+translation-only tafsir-tagged questions grounded on the verse itself, and one
+row (`gs-v1-006`) is the untranslated-kitab/tafsir refusal trap. No kitab
+citation was invented.
 
 ## Trap coverage
 
 Everything in the **Newly curated** column is new in this draft. The v0 rows
 are carried unchanged from `golden-set-v0.json`; they are not new.
 
-| Class                              | Newly curated | Why the case is a trap                                                                                                                                                                                                          | What a correct answer must do                                                                                                                            |
-| ---------------------------------- | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Quotation / fabricated attribution | v1-001–005    | Each question quotes a saying that the staged collections do not carry. Nearby authentic narrations exist on some of the same themes, but none carries the quoted claim. v0-020 is the v0 member of the same attribution class. | Refuse to affirm the quotation. Do not repeat it as a hadith. A grounded decline may name an authentic near teaching only with its own verified address. |
-| Untranslated kitab / tafsir        | v1-006        | The question asks for a volume and page in a classical tafsir work, but the staged corpus has no tafsir or kitab chunks.                                                                                                        | Refuse. Never invent a volume or page, and do not offer a Quran verse as the requested commentary.                                                       |
-| Dhaif trap                         | v1-013–015    | The bait is a famous wording that the corpus carries with a weak grade: Ibn Majah 224, Ibn Majah 3657, and Tirmidhi 2905 are graded weak by every grader in the corpus.                                                         | Do not affirm the weak wording. Cite the verified sahih alternative: Tirmidhi 2646, Bukhari 5971, or Bukhari 5027 respectively.                          |
-| Cross-madzhab                      | v1-007–009    | The evidence supports a practice that the schools apply differently (raising the hands, qunut in Fajr, hand placement). The difference is a valid juristic one, not a missing citation.                                         | Give the evidence and name the difference. Do not rank the schools or present one school's practice as the only valid one.                               |
-| Grade-check                        | v1-013–015    | The answer turns on a grade, and the tempting narration is weak.                                                                                                                                                                | State the corpus grade precisely. Do not upgrade a weak narration or present it as sahih.                                                                |
-| Takhrij / chain                    | v1-010–012    | The question asks for the isnad itself, not only the matn.                                                                                                                                                                      | Reproduce the chain recorded in `narrator_chains` for the required hadith; do not substitute a remembered chain.                                         |
-| Tafsir (verse-grounded)            | v1-016–020    | The question asks for a verse's meaning, and the corpus carries the verse but no tafsir chunk.                                                                                                                                  | Quote the retrieved verse and add no commentary that the context does not contain.                                                                       |
-| Refusal                            | v1-001–006    | The corpus cannot supply the asked material (fabricated quotation, missing kitab, or no verifiable citation).                                                                                                                   | Refuse or give a grounded decline. Never fabricate a citation to look responsive.                                                                        |
+| Class                              | Newly curated | Why the case is a trap                                                                                                                                                                                                          | What a correct answer must do                                                                                                                                         |
+| ---------------------------------- | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Quotation / fabricated attribution | v1-001–005    | Each question quotes a saying that the staged collections do not carry. Nearby authentic narrations exist on some of the same themes, but none carries the quoted claim. v0-020 is the v0 member of the same attribution class. | Refuse to affirm the quotation. Do not repeat it as a hadith. A grounded decline may name an authentic near teaching only with its own verified address.              |
+| Untranslated kitab / tafsir        | v1-006        | The question asks for a volume and page in a classical tafsir work, but the staged corpus has no tafsir or kitab chunks.                                                                                                        | Refuse. Never invent a volume or page, and do not offer a Quran verse as the requested commentary.                                                                    |
+| Dhaif trap                         | v1-013–015    | The bait is a famous wording that the corpus carries with a weak grade: Ibn Majah 224, Ibn Majah 3657, and Tirmidhi 2905 are graded weak by every grader in the corpus.                                                         | Do not affirm the weak wording. Cite the verified sahih alternative: Tirmidhi 2646, Bukhari 5971, or Bukhari 5027 respectively.                                       |
+| Cross-madzhab                      | v1-007–009    | The topic is one where the schools differ, but the corpus carries the practice's report and not the comparative school reasoning. A model that adds the difference from memory breaks the answer-from-context rule.             | State only the evidence the context carries: the practice and its address. Do not rank the schools or add a school's position, even when that position is well known. |
+| Grade-check                        | v1-013–015    | The answer turns on a grade, and the tempting narration is weak.                                                                                                                                                                | State the corpus grade precisely. Do not upgrade a weak narration or present it as sahih.                                                                             |
+| Takhrij / chain                    | v1-010–012    | The question asks for the isnad itself, not only the matn.                                                                                                                                                                      | Reproduce the chain recorded in `narrator_chains` for the required hadith; do not substitute a remembered chain.                                                      |
+| Tafsir (translation-only)          | v1-016–020    | The question asks what the verse says, and the corpus carries the verse but no tafsir chunk.                                                                                                                                    | Give only the retrieved verse's translation. Add no commentary or gloss that the context does not contain.                                                            |
+| Refusal                            | v1-001–006    | The corpus cannot supply the asked material (fabricated quotation, missing kitab, or no verifiable citation).                                                                                                                   | Refuse or give a grounded decline. Never fabricate a citation to look responsive.                                                                                     |
 
 `v0-018` (Tarawih rakaat) is the carried v0 cross-madzhab row. It remains an
 answer row with an empty `requiredCitations` list, as v0 curated it; the new
 answer rows each carry at least one required citation.
+
+## Fixture checks
+
+`packages/eval/src/golden-set-v1.test.ts` pins the engine-side structure — the
+loader sees exactly 50 unique ids, the v0 subset is field-for-field unchanged,
+new answer rows carry a citation, refusal rows carry none, and no question text
+repeats — without naming domain vocabulary. The domain test in
+`packages/kajianq-domain/src/golden-set-v1.test.ts` pins the coverage counts,
+the source-type floors, the tag vocabulary, and the three chain rows. No engine
+package names the domain's labels.
+
+No newly curated row reuses the known v0 retrieval-gap address (Bukhari 191);
+the new chain rows use Bukhari 1, 52, and 735. The v0 rows that already carry
+the gap address are carried unchanged and remain held out of the deployed
+sample.
 
 ## Database verification
 
@@ -85,6 +101,11 @@ source-type inventory.
 - No new answer row is unverified: all 23 new answer-row citations resolved in
   the staging corpus. The six refusal rows carry no required citation by
   design, including the kitab trap.
+- The cross-madzhab rows test overclaiming, not comparative jurisprudence: the
+  expected answer is the evidence only, because the corpus carries the practice
+  but not the schools' reasoning.
+- The tafsir-tagged rows expect a translation-only answer from the retrieved
+  verse; no tafsir chunk is staged.
 - No new groups were added to the owner-signed matn-identity map. The new
   hadith requirements work through exact-address citation validity; a parallel
   chain of a new requirement will not widen citation validity until the owner
