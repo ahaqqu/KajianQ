@@ -82,7 +82,7 @@ logger.info("probes ready", {
   mono: probes.monolingual.length,
 });
 
-const providerConfig = app.loadProviderConfig();
+const providerConfig = app.loadProviderConfig(process.env.PROVIDER_PROFILE);
 if (!providerConfig.roles["embedder-candidates"]) {
   fail("provider config has no embedder-candidates role");
 }
