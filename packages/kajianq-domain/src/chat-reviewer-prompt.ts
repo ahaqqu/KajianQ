@@ -86,7 +86,8 @@ export const REVIEWER_SYSTEM_PROMPT = [
  * the serving call site, not inside prompt construction (ADR-0043).
  *
  * Using the assembled turn makes the parity structural: one source of truth,
- * and history rides its own turn, so the last user turn is the evidence.
+ * and the reference rides its own turn ahead of the evidence, so the last user
+ * turn is the evidence — prior turns never reach the gate (ADR-0068).
  */
 export function buildReviewMessages(
   context: AssembledContext<KajianQFilters>,

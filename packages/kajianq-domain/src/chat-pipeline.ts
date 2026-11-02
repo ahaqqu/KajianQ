@@ -69,8 +69,9 @@ export type ChatPipelineDeps = {
   /** Streamed-generation hook: each delta as the vendor produces it. The reviewer gates
    * the whole draft before any of it is delivered. */
   onDelta?: (delta: string) => void;
-  /** Prior conversation turns for follow-up questions, oldest first; the assembler renders
-   * them. Absent = single-turn. */
+  /** Prior conversation turns for follow-up questions, oldest first; the assembler
+   * renders the caller's own questions from them as a non-evidence reference — never
+   * an earlier answer (ADR-0068). Absent = single-turn. */
   history?: readonly { role: string; content: string }[];
 };
 

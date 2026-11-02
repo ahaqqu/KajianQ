@@ -37,6 +37,13 @@ export type StubChatProviderOverrides = {
    */
   routerReply?: (turns: readonly { role: string; content: string }[]) => string;
   answerText?: string;
+  /**
+   * The generator's reply as a function of the turns it was sent. A test uses it
+   * when the draft must depend on what the prompt presented — a model that reuses
+   * a label its prompt showed it — where `answerText` and `generatorReplies` are
+   * the fixed alternatives.
+   */
+  answerFor?: (turns: readonly { role: string; content: string }[]) => string;
   /** Explicit delta sequence (overrides `answerText` chunking). */
   streamDeltas?: readonly string[];
   /**
@@ -122,9 +129,11 @@ export function createStubChatProviders(overrides: StubChatProviderOverrides = {
   rerankDecider: import("@app/rag-core").Decider | null;
 } {
   const answerText = overrides.answerText ?? "Jawaban berdasar konteks.";
+  const answerFor = overrides.answerFor;
   const scripted = overrides.generatorReplies;
   let readings = 0;
-  const nextReading = (): string => {
+  const nextReading = (turns: readonly { role: string; content: string }[]): string => {
+    if (answerFor !== undefined) return answerFor(turns);
     if (scripted === undefined) return answerText;
     const reading = scripted[readings];
     if (reading === undefined) {
@@ -135,7 +144,8 @@ export function createStubChatProviders(overrides: StubChatProviderOverrides = {
     readings += 1;
     return reading;
   };
-  const deltasFor = (): readonly string[] => overrides.streamDeltas ?? [nextReading()];
+  const deltasFor = (turns: readonly { role: string; content: string }[]): readonly string[] =>
+    overrides.streamDeltas ?? [nextReading(turns)];
   const embedFor = overrides.embedFor;
   const generatorCalls: StubGeneratorCall[] = [];
   const generatorFails = overrides.generatorFails === true;
@@ -145,7 +155,7 @@ export function createStubChatProviders(overrides: StubChatProviderOverrides = {
       return generatorFails
         ? Effect.fail(new Error("stub generator failure"))
         : Effect.succeed({
-            text: nextReading(),
+            text: nextReading(spec.turns),
             cost: cost("stub-generator", 2),
           });
     },
@@ -157,7 +167,7 @@ export function createStubChatProviders(overrides: StubChatProviderOverrides = {
             return generatorFails
               ? Effect.fail(new Error("stub generator failure"))
               : Effect.succeed({
-                  deltas: Stream.fromIterable(deltasFor()),
+                  deltas: Stream.fromIterable(deltasFor(spec.turns)),
                   cost: () => Effect.succeed(cost("stub-generator", 2)),
                 });
           },

@@ -11,8 +11,9 @@ import { routedQuery } from "./test-utils/routed-query";
 
 /**
  * The assembler's product rules: Arabic originals accompany every quoted
- * passage with a labeled machine translation (ADR-0006), and prior turns ride
- * the prompt so follow-up questions have context. Deterministic, so these are
+ * passage with a labeled machine translation (ADR-0006), and the caller's
+ * earlier questions ride the prompt as a non-evidence reference so a follow-up
+ * has context — never an earlier answer (ADR-0068). Deterministic, so these are
  * direct assertions on the assembled turns — no provider, no run.
  *
  * The assembler takes the *routed* query (ADR-0018); these tests build one from
@@ -82,7 +83,11 @@ describe("createKajianQAssembler", () => {
     expect(turns.map((t) => t.content).join("\n")).toContain("[HR. Bukhari no. 1 (sahih)]");
   });
 
-  it("carries prior turns ahead of the evidence for follow-up questions", () => {
+  it("carries prior questions ahead of the evidence — never the prior answer", () => {
+    // The reference the generator gets is the caller's own earlier questions, so
+    // a follow-up's anaphor still names its topic. The earlier ANSWER is not part
+    // of it: its citation labels are text the current retrieval may not hold, and
+    // a prompt that presents them invites a draft the gate must refuse.
     const { turns } = assemble([{ id: "q", text: "evidence", metadata: {} }], {
       text: "Apa dalilnya?",
       history: [
@@ -90,17 +95,51 @@ describe("createKajianQAssembler", () => {
         { role: "assistant", content: "Ayat Kursi adalah QS. 2:255." },
       ],
     });
-    const preamble = turns[0]?.content ?? "";
-    expect(preamble).toContain("Apa itu Ayat Kursi?");
-    expect(preamble).toContain("Ayat Kursi adalah QS. 2:255.");
-    // Evidence still rides its own turn after the preamble.
+    const reference = turns[0]?.content ?? "";
+    expect(reference).toContain("Apa itu Ayat Kursi?");
+    expect(reference).not.toContain("Ayat Kursi adalah");
+    expect(reference).not.toContain("QS. 2:255");
+    // Evidence still rides its own turn after the reference.
     expect(turns.at(-1)?.content).toContain("evidence");
   });
 
-  it("emits no history preamble when there is no history", () => {
+  it("never renders a prior answer's citation label into any generator turn", () => {
+    // The trap: the earlier answer cited a label this run did not retrieve. No
+    // turn may carry it — the current evidence's label is the only one the
+    // prompt prints.
+    const current: Chunk = {
+      id: "h",
+      text: "طَلَبُ الْعِلْمِ فَرِيضَةٌ",
+      metadata: { sourceType: "hadith", citation: "HR. Ibn Majah no. 100 (Sahih)" },
+    };
+    const { turns } = assemble([current], {
+      text: "Jelaskan hadits itu.",
+      history: [
+        { role: "user", content: "Apa hadits tentang menuntut ilmu?" },
+        { role: "assistant", content: "Menuntut ilmu itu kewajiban [HR. Ibn Majah no. 224]." },
+      ],
+    });
+    const prompt = turns.map((turn) => turn.content).join("\n");
+    expect(prompt).not.toContain("no. 224");
+    expect(prompt).toContain("HR. Ibn Majah no. 100 (Sahih)");
+    expect(prompt).not.toContain("Menuntut ilmu itu kewajiban [");
+  });
+
+  it("emits no reference block when the history carries only answers", () => {
+    // Nothing to resolve a reference with: an earlier answer alone never becomes
+    // the generator's reference material.
+    const { turns } = assemble([{ id: "q", text: "evidence", metadata: {} }], {
+      text: "Jelaskan hadits itu.",
+      history: [{ role: "assistant", content: "Menuntut ilmu itu kewajiban." }],
+    });
+    expect(turns).toHaveLength(1);
+    expect(turns[0]?.content).toBe("evidence");
+  });
+
+  it("emits no reference block when there is no history", () => {
     const { turns } = assemble([{ id: "q", text: "evidence", metadata: {} }]);
     expect(turns).toHaveLength(1);
-    expect(turns[0]?.content).not.toContain("Percakapan sebelumnya");
+    expect(turns[0]?.content).not.toContain("Pertanyaan sebelumnya");
   });
 
   it("drops malformed history entries instead of crashing the answer path", () => {

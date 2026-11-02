@@ -28,8 +28,10 @@ import type { KajianQFilters } from "./filters";
  *
  * - an Arabic original accompanies every quoted passage, and a machine translation is
  *   labelled as such (ADR-0006), so the model never reproduces Arabic from memory;
- * - prior turns are rendered ahead of the evidence as their own turns, so a follow-up
- *   resolves against what was already asked.
+ * - the caller's earlier questions are rendered ahead of the evidence as a reference
+ *   block, so a follow-up resolves against what was already asked — an earlier
+ *   answer never is, because its citation labels are not this run's evidence
+ *   (ADR-0068).
  */
 
 /**
@@ -111,13 +113,23 @@ function flatGradeSuffix(citation: string, meta: Record<string, unknown>): strin
     : "";
 }
 
-/** The prior-conversation preamble (empty string when there is no history). */
-function renderHistory(history: readonly { role: string; content: string }[]): string {
-  if (history.length === 0) return "";
-  return [
-    "Percakapan sebelumnya / Previous conversation:",
-    ...history.map((m) => `${m.role}: ${m.content}`),
-  ].join("\n");
+/**
+ * The reference block's header. The generator prints the block ahead of the
+ * evidence and states the non-evidence rule itself (`chat-prompts.ts`).
+ */
+const REFERENCE_HEADER = "Pertanyaan sebelumnya / Previous questions:";
+
+/**
+ * The prior-conversation reference: the caller's own earlier questions, one per
+ * line, and nothing else. An earlier answer is deliberately absent — its citation
+ * labels are text this run's retrieval may not hold, and a prompt that printed
+ * them beside the evidence would invite a draft the citation gate must refuse
+ * (ADR-0068). The generator places this block ahead of the evidence and tells
+ * the model it is not evidence (`chat-prompts.ts`).
+ */
+function renderReference(turns: readonly { role: string; content: string }[]): string {
+  if (turns.length === 0) return "";
+  return [REFERENCE_HEADER, ...turns.map((turn) => `- ${turn.content}`)].join("\n");
 }
 
 /**
@@ -166,10 +178,9 @@ export function createKajianQAssembler(): Assembler<KajianQFilters> {
         Effect.sync(() => {
           const ordered = [...chunks].sort(compareSlots);
           const context = ordered.map(renderEvidenceChunk).join("\n\n");
-          const history = historyOf(routed);
-          const preamble = renderHistory(history);
+          const reference = renderReference(referenceTurnsOf(routed));
           const turns: Turn[] = [];
-          if (preamble !== "") turns.push({ role: "user", content: preamble });
+          if (reference !== "") turns.push({ role: "user", content: reference });
           turns.push({ role: "user", content: context });
           // The context carries the *routed* query itself — the run's query context plus
           // the router's reading — never a rebuilt lookalike (ADR-0018).
@@ -184,17 +195,17 @@ export function createKajianQAssembler(): Assembler<KajianQFilters> {
   };
 }
 
-/** Prior turns ride the routed query, stamped there by the engine. Malformed entries are
- * dropped rather than crashing the answer path — a bad history row must not take down a
- * question. */
-function historyOf(routed: RoutedQuery<KajianQFilters>): Turn[] {
+/** Prior turns ride the routed query, stamped there by the engine. Only the caller's
+ * own questions are reference material: an answer is never rendered into the prompt
+ * (ADR-0068). Malformed entries are dropped rather than crashing the answer path — a
+ * bad history row must not take down a question. */
+function referenceTurnsOf(routed: RoutedQuery<KajianQFilters>): Turn[] {
   const raw = routed.history;
   if (!Array.isArray(raw)) return [];
   return raw.flatMap((turn) => {
     if (turn === null || typeof turn !== "object") return [];
     const { role, content } = turn as { role?: unknown; content?: unknown };
-    if (typeof role !== "string" || typeof content !== "string") return [];
-    if (role === "" || content === "") return [];
+    if (role !== "user" || typeof content !== "string" || content === "") return [];
     return [{ role, content }];
   });
 }
