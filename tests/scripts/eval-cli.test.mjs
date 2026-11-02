@@ -302,7 +302,7 @@ describe("printSummary (#290, #340)", () => {
     );
   });
 
-  it("leaves a passing run's summary unchanged (#340 acceptance: counts, means, expansion lines)", () => {
+  it("keeps the summary's counts, means and line order on a passing run (#340)", () => {
     const scoped = {
       questionId: "q3",
       passed: true,
