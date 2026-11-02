@@ -71,6 +71,13 @@ are carried unchanged from `golden-set-v0.json`; they are not new.
 answer row with an empty `requiredCitations` list, as v0 curated it; the new
 answer rows each carry at least one required citation.
 
+Two questions are genuinely broader than one address, so they carry
+`citationAlternatives`: `gs-v1-007` accepts the same raising-hands practice
+through Bukhari 736/738, Abu Dawud 721 or Nasai 1025; `gs-v1-025` accepts the
+direct "do not get angry" report at Bukhari 6116 or its Muslim parallel 6643.
+Any listed member satisfies the row's single requirement; the set is matched as
+its own labels, not as an identity-family widening.
+
 ## Fixture checks
 
 `packages/eval/src/golden-set-v1.test.ts` pins the engine-side structure — the
