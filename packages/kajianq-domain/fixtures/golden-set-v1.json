@@ -332,9 +332,15 @@
       "language": "id",
       "expectedSourceTypes": ["hadith"],
       "requiredCitations": ["HR. Bukhari no. 735"],
+      "citationAlternatives": [
+        "HR. Bukhari no. 736",
+        "HR. Bukhari no. 738",
+        "HR. Abu Dawud no. 721",
+        "HR. Nasai no. 1025"
+      ],
       "expectedBehavior": "answer",
       "tags": ["fikih", "hadith", "cross-madzhab"],
-      "$comment": "HR. Bukhari no. 735 verified in doc_children: Ibn Umar reports the Prophet raising his hands at the opening takbir, at the takbir for bowing and on rising. Cross-madzhab topic: the staged corpus carries the report but not the comparative school reasoning; a correct answer states only the evidence and does not rank the schools or add a position the context lacks."
+      "$comment": "HR. Bukhari no. 735 verified in doc_children: Ibn Umar reports the Prophet raising his hands at the opening takbir, at the takbir for bowing and on rising. The corpus also carries the same practice through Bukhari 736/738, Abu Dawud 721 and Nasai 1025, so those labels are accepted alternatives: the question asks for the practice's evidence, not one route. Cross-madzhab topic: the staged corpus carries the report but not the comparative school reasoning; a correct answer states only the evidence and does not rank the schools or add a position the context lacks."
     },
     {
       "id": "gs-v1-008",
@@ -512,9 +518,10 @@
       "language": "id",
       "expectedSourceTypes": ["hadith"],
       "requiredCitations": ["HR. Bukhari no. 6114"],
+      "citationAlternatives": ["HR. Bukhari no. 6116", "HR. Muslim no. 6643"],
       "expectedBehavior": "answer",
       "tags": ["hadith", "adab"],
-      "$comment": "HR. Bukhari no. 6114 verified in doc_children: the strong one controls himself when angry, not the wrestler. Direct hadith row."
+      "$comment": "HR. Bukhari no. 6114 verified in doc_children: the strong one controls himself when angry, not the wrestler. The direct 'do not get angry' report at Bukhari 6116 and its Muslim parallel 6643 are accepted alternatives; both are carried by the corpus and answer the question's wording more directly."
     },
     {
       "id": "gs-v1-026",
