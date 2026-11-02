@@ -5,7 +5,7 @@ import { routerCallFor } from "./chat-router-prompt";
 import { fallbackRouting, recordRouting, routingOf } from "./chat-router-routing";
 
 export { extractJsonObject } from "./chat-router-output";
-export { ROUTER_SYSTEM_PROMPT, ROUTER_FOLLOW_UP_RULE } from "./chat-router-prompt";
+export { ROUTER_SYSTEM_PROMPT } from "./chat-router-prompt";
 
 /**
  * KajianQRouter — Smart Router stages 1–3 (spec §3.3, CONTEXT.md "Smart
@@ -36,10 +36,13 @@ export { ROUTER_SYSTEM_PROMPT, ROUTER_FOLLOW_UP_RULE } from "./chat-router-promp
  * "Apa dalilnya?", "Jelaskan hadits itu" — can be decomposed into retrieval
  * sub-queries about that topic instead of about the follow-up's own words. The
  * verbatim question is never rewritten from history: `sourceText` stays what
- * the caller typed, and only the sub-queries may resolve the reference. The
- * window the call actually carried is recorded on the intent event's
- * attributes, so a follow-up answer's evidence — which turns it saw, which
- * sub-queries it ran, which chunks came back — is auditable from the Trace.
+ * the caller typed, and only the sub-queries may resolve the reference. A
+ * question that stands on its own is routed from its own words: the rule's other
+ * arm says so, and the stage never folds a prior turn into a sub-query itself.
+ * The window the call actually carried is recorded on the intent event's
+ * attributes as how many prior turns it carried, so a follow-up answer's
+ * evidence — how much prior context it saw, which sub-queries it ran, which
+ * chunks came back — is auditable from the Trace.
  *
  * The route is **gated on the question, before the call**: the router's input
  * is the caller's question, and a text carrying no letter and no digit is not a
@@ -47,7 +50,7 @@ export { ROUTER_SYSTEM_PROMPT, ROUTER_FOLLOW_UP_RULE } from "./chat-router-promp
  * sub-query can be invented for it, no composition rule fires (every rule's text
  * embeds the question, and there is no question to embed), and retrieval fans
  * out over nothing: no embed, no search. The route it returns is the deterministic
- * fallback (chat-router-routing.ts), carrying no sub-query and marked on the Trace. *
+ * fallback (chat-router-routing.ts), carrying no sub-query and marked on the Trace.
  * An unusable reply (unparseable JSON, or a classification outside the
  * vocabulary) lands on that same fallback: one factual sub-query made
  * of the verbatim question, marked `origin: "fallback"` and flagged on the

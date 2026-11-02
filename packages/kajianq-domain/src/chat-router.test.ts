@@ -456,7 +456,7 @@ describe("createKajianQRouter", () => {
     expect(turns.at(-1)).toEqual({ role: "user", content: "Apa dalilnya?" });
     // The window the call actually carried is trace content (the runner stamps
     // `attributes` onto the `intent` event), so a follow-up answer's evidence is
-    // auditable: which prior turns the router saw, and which sub-queries it ran.
+    // auditable: how many prior turns the router carried, and which sub-queries it ran.
     expect(routed.attributes["historyTurns"]).toBe(2);
   });
 
@@ -531,6 +531,36 @@ describe("createKajianQRouter", () => {
     const singleTexts = single.subQueries.map((sub) => sub.text);
     expect(singleTexts.some((text) => text.includes("ayat kursi"))).toBe(false);
     expect(singleTexts).toContain("Apa dalilnya?");
+  });
+
+  it("keeps a self-contained short question's own topic when prior turns ride the call", async () => {
+    // The rule's other arm: the question stands on its own, so the earlier turns
+    // are context the model is told to ignore. The stage never folds a prior turn
+    // into a sub-query itself, so nothing from them reaches the retrieval set.
+    const h = harness(
+      JSON.stringify({
+        intent: "ruling",
+        category: "fikih",
+        subQueries: [{ text: "hukum riba dalam muamalah", role: "factual" }],
+      }),
+    );
+    const routed = (await h.route({
+      text: "Apa hukum riba?",
+      history: [
+        { role: "user", content: "Apa itu Ayat Kursi?" },
+        { role: "assistant", content: "Ayat Kursi adalah QS. 2:255." },
+      ],
+    })) as { subQueries: { text: string; role?: string; origin?: string }[] };
+
+    // Both arms ride the call, so the model is told which one applies.
+    expect(h.captured[0]?.turns[0]?.content).toContain(
+      "If the question is understandable on its own, ignore the earlier turns",
+    );
+    const texts = routed.subQueries.map((sub) => sub.text);
+    // The question's own topic is a retrieval angle — and the earlier topic is not.
+    expect(texts).toContain("hukum riba dalam muamalah");
+    expect(texts).toContain("Apa hukum riba?");
+    expect(texts.some((text) => text.includes("ayat kursi"))).toBe(false);
   });
 
   it("records the window when the reply is unusable, and asks nothing for a content-free text", async () => {

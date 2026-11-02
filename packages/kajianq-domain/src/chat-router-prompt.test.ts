@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { describe, expect, it } from "vite-plus/test";
 import {
   ROUTER_FOLLOW_UP_RULE,
@@ -11,7 +12,7 @@ import {
 /**
  * The window a session's prior turns enter the router prompt through. The
  * invariant: a follow-up's router call carries the turns it needs to resolve an
- * anaphor, and nothing else — bounded in turns and in characters, sanitized, and
+ * anaphor, and nothing else — bounded in turns and in code points, sanitized, and
  * with every bound visible on the call the trace records.
  */
 
@@ -20,18 +21,42 @@ const HISTORY = [
   { role: "assistant", content: "Ayat Kursi adalah QS. 2:255." },
 ];
 
+/**
+ * The base prompt's identity, written out rather than read from the module: the
+ * single-turn path sends this exact text, so editing the prompt has to redden the
+ * case instead of moving the expectation with it.
+ */
+const SINGLE_TURN_PROMPT_SHA256 =
+  "46449e9dbcedb6d0cc957eb7423828e7369e0b4df27f4ea748c292c511d44a0c";
+
 describe("routerCallFor", () => {
-  it("sends a single-turn question the base prompt, byte for byte", () => {
+  it("pins the base system prompt to its recorded identity", () => {
+    expect(createHash("sha256").update(ROUTER_SYSTEM_PROMPT).digest("hex")).toBe(
+      SINGLE_TURN_PROMPT_SHA256,
+    );
+  });
+
+  it("sends a single-turn question the base prompt and no history rule", () => {
     const call = routerCallFor("Apa hukum riba?", undefined);
 
     expect(call.question).toBe("Apa hukum riba?");
     expect(call.historyTurns).toBe(0);
-    // No follow-up rule: a single-turn call is not re-opened by the multi-turn
-    // change, and a model that never sees the rule cannot read it into a question.
     expect(call.turns).toEqual([
       { role: "system", content: ROUTER_SYSTEM_PROMPT },
       { role: "user", content: "Apa hukum riba?" },
     ]);
+    // No follow-up rule: a single-turn call is not re-opened by the multi-turn
+    // change, and a model that never sees the rule cannot read it into a question.
+    expect(call.turns[0]?.content).not.toContain(ROUTER_FOLLOW_UP_RULE);
+  });
+
+  it("states both arms of the history rule", () => {
+    // The negative arm is what keeps a self-contained question in an existing
+    // session routed from its own words; the positive arm resolves a reference.
+    expect(ROUTER_FOLLOW_UP_RULE).toContain(
+      "If the question is understandable on its own, ignore the earlier turns",
+    );
+    expect(ROUTER_FOLLOW_UP_RULE).toContain("resolve the reference");
   });
 
   it("appends the follow-up rule only when prior turns ride the call", () => {
@@ -86,6 +111,21 @@ describe("routerCallFor", () => {
     // complete.
     expect(turn?.content).toHaveLength(ROUTER_HISTORY_TURN_CHARS + 2);
     expect(turn?.content.endsWith(" …")).toBe(true);
+  });
+
+  it("cuts a turn between code points, never through a surrogate pair", () => {
+    // An emoji straddles the cap. A code-unit slice would keep half of it, and the
+    // request body would carry an unpaired surrogate.
+    const straddling = `${"a".repeat(ROUTER_HISTORY_TURN_CHARS - 1)}😀${"b".repeat(20)}`;
+    const [turn] = routerHistory([{ role: "assistant", content: straddling }]);
+    const content = turn?.content ?? "";
+
+    expect(content.endsWith(" …")).toBe(true);
+    // The pair is whole (one code unit wider than the code-point count), and the
+    // cut is exactly the cap in code points.
+    expect(content).toContain("😀");
+    expect(content).toHaveLength(ROUTER_HISTORY_TURN_CHARS + 3);
+    expect(Array.from(content)).toHaveLength(ROUTER_HISTORY_TURN_CHARS + 2);
   });
 
   it("drops malformed rows, empty turns, and roles that are not conversation turns", () => {
