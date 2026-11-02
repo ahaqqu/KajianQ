@@ -50,7 +50,7 @@ export {
   sourceTypeRecall,
 } from "./scorers";
 export { Budget, BudgetExceededError, budgetCapFromEnv } from "./budget";
-export { answerCitationLabels, answerMetricsSummary, answerStats } from "./answer-metrics";
+export { answerCitationLabels, answerMetricsSummary, answerStats } from "./harness-outcomes";
 export { CitationAlternativesScopeError, requireAlternativesScope } from "./citation-alternatives";
 export { CitationGrammarError, requireCitationGrammar } from "./citation-grammar";
 export {

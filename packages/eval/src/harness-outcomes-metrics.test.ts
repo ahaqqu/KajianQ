@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 import type { EvalResultOutcome, GoldenQuestion, GoldenSet } from "@app/contracts";
-import { answerCitationLabels, answerMetricsSummary, answerStats } from "./answer-metrics";
+import { answerCitationLabels, answerMetricsSummary, answerStats } from "./harness-outcomes";
 import { Budget } from "./budget";
 import {
   buildReport,

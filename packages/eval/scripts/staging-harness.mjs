@@ -56,10 +56,13 @@ export const LOOKUP_ORIGIN = CITATION_LOOKUP_ORIGIN;
 export const CALLER_PRIORITY_LABEL = CALLER_PRIORITY_ORIGIN;
 
 /**
- * The citation grammar the scorer normalizes labels with, re-exported from the
- * shared composition module so every eval CLI injects the same one.
+ * The citation grammar the scorer normalizes labels with, imported from the shared
+ * composition module so every eval CLI injects the same one and this harness also
+ * carries a local binding for its returned seams.
  */
-export { CITATION_GRAMMAR } from "./citation-grammar.mjs";
+import { CITATION_GRAMMAR } from "./citation-grammar.mjs";
+
+export { CITATION_GRAMMAR };
 
 /**
  * The citation-identity resolvers the scorer reads, loaded by the DOMAIN pack from

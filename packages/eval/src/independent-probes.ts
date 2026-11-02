@@ -1,6 +1,6 @@
 import * as v from "valibot";
 import { describeIssue } from "@app/contracts";
-import { answerStats } from "./answer-metrics";
+import { answerStats } from "./harness-outcomes";
 import type { CitationFrameLike, CitationGrammar } from "./harness-types";
 import { citationLabelsPresent } from "./scorers";
 

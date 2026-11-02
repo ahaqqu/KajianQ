@@ -1,9 +1,8 @@
 /** The per-question scorer: the harness owns the run lifecycle, this module owns one
  * question's verdict. */
 import type { EvalResultOutcome, GoldenQuestion } from "@app/contracts";
-import { answerStats } from "./answer-metrics";
 import type { HarnessDeps } from "./harness";
-import { expansionProvenance, quoteFidelityOutcome } from "./harness-outcomes";
+import { answerStats, expansionProvenance, quoteFidelityOutcome } from "./harness-outcomes";
 import type { ChunkRefLike, CitationFrameLike, TraceEventLike } from "./harness-types";
 import {
   behaviorAccepted,

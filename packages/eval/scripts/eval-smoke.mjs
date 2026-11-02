@@ -42,9 +42,9 @@
  * A live run needs staging secrets (the VPS store URL + vendor keys); absent them
  * the script fails fast with the missing name. Run instructions: SPECS §3.7.
  *
- * The config load, budget banner, fixture load, summary printer and exit policy are
- * the shared CLI glue in `eval-cli.mjs`; this script keeps only the subset selection
- * and the readiness gate's wiring.
+ * The config load, budget banner, fixture load and exit policy are the shared CLI
+ * glue in `eval-cli.mjs`, and the summary printer is its sibling `eval-summary.mjs`;
+ * this script keeps only the subset selection and the readiness gate's wiring.
  */
 import * as evalpkg from "@app/eval";
 // The required coverage classes and the held-out cases are the domain pack's
