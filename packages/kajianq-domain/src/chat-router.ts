@@ -1,18 +1,8 @@
 import { Effect } from "effect";
-import {
-  RunContext,
-  toStageError,
-  type CostRecord,
-  type Query,
-  type Router,
-  type Routing,
-  type RunContextService,
-  type SubQuery,
-} from "@app/rag-core";
-import { decomposeQuery } from "./chat-router-decompose";
-import { readRouterText, type RouterReading } from "./chat-router-output";
+import { RunContext, toStageError, type CostRecord, type Query, type Router } from "@app/rag-core";
+import { readRouterText } from "./chat-router-output";
 import { routerCallFor } from "./chat-router-prompt";
-import { routeFilters, sourceRoutingDetail, type SourceRoutingInput } from "./chat-source-routing";
+import { fallbackRouting, recordRouting, routingOf } from "./chat-router-routing";
 
 export { extractJsonObject } from "./chat-router-output";
 export { ROUTER_SYSTEM_PROMPT, ROUTER_FOLLOW_UP_RULE } from "./chat-router-prompt";
@@ -57,8 +47,7 @@ export { ROUTER_SYSTEM_PROMPT, ROUTER_FOLLOW_UP_RULE } from "./chat-router-promp
  * sub-query can be invented for it, no composition rule fires (every rule's text
  * embeds the question, and there is no question to embed), and retrieval fans
  * out over nothing: no embed, no search. The route it returns is the deterministic
- * fallback below, carrying no sub-query and marked on the Trace.
- *
+ * fallback (chat-router-routing.ts), carrying no sub-query and marked on the Trace. *
  * An unusable reply (unparseable JSON, or a classification outside the
  * vocabulary) lands on that same fallback: one factual sub-query made
  * of the verbatim question, marked `origin: "fallback"` and flagged on the
@@ -154,135 +143,5 @@ export function createKajianQRouter(
           );
         }),
       ),
-  };
-}
-
-/**
- * Record the route's `source_routing` decision and hand the route back — the one
- * boundary both arms cross, so the gate's deterministic route and the model's
- * reading fail the same way. Building the route is inside the boundary too:
- * `routeFilters` reads every Sub-query's role through `roleSources`, and
- * `sourceRoutingDetail` reads the filter record through `filterEntries`; either
- * throws on something the store cannot express, and that throw is a stage failure
- * — the declared `Effect<Routing, StageError>` — never a defect escaping a channel
- * the stage does not declare.
- */
-function recordRouting(
-  run: RunContextService,
-  build: () => Routing<import("./filters").KajianQFilters>,
-): Effect.Effect<Routing<import("./filters").KajianQFilters>, { cause: unknown }> {
-  return Effect.gen(function* () {
-    const { routing, decision } = yield* Effect.try({
-      try: () => {
-        const routing = build();
-        return { routing, decision: sourceRoutingDetail(routing.filters) };
-      },
-      catch: (cause: unknown) => ({ cause }),
-    });
-    run.record({
-      stage: "router",
-      kind: "source_routing",
-      detail: decision,
-      at: run.now(),
-    });
-    return routing;
-  });
-}
-
-/** What a usable reply routes to: the classification, sub-queries, and stage 3's filters.
- * `historyTurns` is the window the call carried (chat-router-prompt.ts), absent on a
- * single-turn call — the intent event's attributes are where the Trace records that a
- * follow-up's retrieval was resolved from prior turns. */
-function routingOf(
-  reading: RouterReading,
-  question: string,
-  historyTurns: number,
-): Routing<import("./filters").KajianQFilters> {
-  // The decomposition first, deliberately: stage 3's source selection is the
-  // union of the category and the roles of the parts retrieval will *actually*
-  // fan out over — repairs and the ceiling included — so a source is never
-  // selected for a part the route dropped, nor missed for a part it runs.
-  const subQueries = decomposeQuery({
-    question,
-    needsPrinciple: reading.needsPrinciple,
-    principleTags: reading.principleTags,
-    ...(reading.category !== undefined ? { category: reading.category } : {}),
-    modelSubQueries: reading.modelSubQueries,
-  });
-  const filters = routeFilters(routingInputOf(reading, subQueries));
-  return {
-    intent: reading.intent,
-    subQueries,
-    filters,
-    ...(reading.confidence !== undefined ? { confidence: reading.confidence } : {}),
-    ...(reading.reasoning !== undefined ? { reasoning: reading.reasoning } : {}),
-    // The EFFECTIVE filters, not the model's hints: they are what retrieval
-    // runs with, and the payload that claims to say what was understood must
-    // not disagree with the search it caused.
-    attributes: { ...reading.attributes, ...filters, ...historyAttribute(historyTurns) },
-  };
-}
-
-/** The window a call carried, as trace content: present only when there was one, so a
- * single-turn trace keeps the exact shape it had and absence means "no prior turns". */
-function historyAttribute(historyTurns: number): Record<string, unknown> {
-  return historyTurns > 0 ? { historyTurns } : {};
-}
-
-/** The router's reading, as source routing reads it. */
-function routingInputOf(
-  reading: RouterReading,
-  subQueries: readonly SubQuery[],
-): SourceRoutingInput {
-  return {
-    intent: reading.intent,
-    ...(reading.category !== undefined ? { category: reading.category } : {}),
-    needsPrinciple: reading.needsPrinciple,
-    filters: reading.filters,
-    subQueries,
-  };
-}
-
-/**
- * The stage's deterministic fallback: what the router routes to when no model
- * reading routes the query. Two shapes reach it — the caller's text is not a
- * query, so none was asked for (`question === undefined`), or the model's reply
- * could not be read (`question` is the admitted question then) — and both are
- * marked `fallback` on the intent event, so the Trace never presents a
- * deterministic route as the model's judgment. `contentFree` tells the two
- * apart on the trace: a reader can see that the router had nothing to ask about,
- * not that the model answered badly.
- *
- * `question` is the caller's text *after* the one admission — trimmed, and
- * `undefined` when it carries no letter and no digit. A text that cannot
- * retrieve contributes no sub-query, so this arm fans out over nothing and
- * retrieval short-circuits before any embed or search: the same treatment the
- * decomposer gives that text under any origin, taken one stage earlier.
- *
- * `historyTurns` records the window the failed call carried: the call still
- * happened and still cost money, and the answer's Trace must show that the
- * fallback route was given prior turns even though it could not use the reply.
- */
-function fallbackRouting(
-  overrides: import("./filters").KajianQFilters,
-  question: string | undefined,
-  historyTurns = 0,
-): Routing<import("./filters").KajianQFilters> {
-  return {
-    intent: "factual",
-    subQueries:
-      question === undefined ? [] : [{ text: question, role: "factual", origin: "fallback" }],
-    filters: overrides,
-    // The effective filters reach retrieval, so they belong in the payload that
-    // claims to say what was understood: a trace reader must be able to tell
-    // which filters this route actually ran with (chat-router-output.ts's
-    // `attributes` contract). `fallback: true` is what marks the route as the
-    // deterministic one; it is never the whole payload.
-    attributes: {
-      fallback: true,
-      ...(question === undefined ? { contentFree: true } : {}),
-      ...overrides,
-      ...historyAttribute(historyTurns),
-    },
   };
 }

@@ -28,6 +28,19 @@ const ANSWER_FIXTURE = [
   "event: done\ndata: {}\n\n",
 ].join("");
 
+/**
+ * The same-session follow-up's answer: the prior turn's topic retrieved again, so
+ * the citation stays grounded and the page renders a chip rather than a refusal.
+ */
+const FOLLOW_UP_ANSWER_FIXTURE = [
+  'event: meta\ndata: {"sessionId":"sess-e2e","messageId":"m-follow-up","traceId":"tr-follow-up"}\n\n',
+  "event: delta\ndata: Dalilnya adalah ayat kursi, ",
+  "event: delta\ndata: [QS. 2:255].\n\n",
+  'event: citations\ndata: {"messageId":"m-follow-up","refusal":false,"dhaifWarning":false,"citations":[{"label":"QS. 2:255","arabic":"اللَّهُ لَا إِلَٰهَ إِلَّا هُوَ","translation":"Allah, tidak ada tuhan selain Dia.","machineTranslated":true,"source":"Al-Baqarah"}]}\n\n',
+  'event: trace\ndata: {"messageId":"m-follow-up","sources":[{"id":"chunk-1","source":"Al-Baqarah"}],"technical":{"intent":"factual","subQueries":["Apa dalilnya?","dalil ayat kursi"],"chunks":[{"id":"chunk-1","source":"Al-Baqarah","score":0.03125}],"models":["router-stub","generator-stub"]}}\n\n',
+  "event: done\ndata: {}\n\n",
+].join("");
+
 const DHAIF_WARNING =
   "[Peringatan] Hadits yang dikutip berderajat lemah (dhaif); tidak dapat dijadikan dalil utama.";
 
@@ -308,6 +321,7 @@ async function openChatWithFixtures(
   rehydrateStatus = 200,
   holdReconnect = false,
   transcriptAfterChatPost?: Record<string, unknown>,
+  followUpAnswerFixture?: string,
 ): Promise<void> {
   chatPosts = 0;
   chatPostBodies = [];
@@ -341,7 +355,7 @@ async function openChatWithFixtures(
     await route.fulfill({
       status: 200,
       headers: { "content-type": "text/event-stream" },
-      body: answerFixture,
+      body: chatPosts === 1 ? answerFixture : (followUpAnswerFixture ?? answerFixture),
     });
   });
   // Seed the token before the app boots: the per-IP rate limiter counts every
@@ -358,6 +372,45 @@ When("I open the chat and ask about ayat kursi", async ({ page }) => {
   await openChatWithFixtures(page, ANSWER_FIXTURE);
   await page.getByTestId("composer").fill("Apa itu ayat kursi?");
   await page.getByTestId("send").click();
+});
+
+When("I open the chat and ask about ayat kursi awaiting a follow-up", async ({ page }) => {
+  // The follow-up's own stream is served for the second POST, so the page renders
+  // the same-session answer instead of replaying the first fixture.
+  await openChatWithFixtures(
+    page,
+    ANSWER_FIXTURE,
+    TRANSCRIPT_FIXTURE,
+    200,
+    false,
+    undefined,
+    FOLLOW_UP_ANSWER_FIXTURE,
+  );
+  await page.getByTestId("composer").fill("Apa itu ayat kursi?");
+  await page.getByTestId("send").click();
+  // The composer takes the next question once the first turn has settled.
+  await expect(page.getByTestId("message-assistant").first()).toContainText("Allah Mahahidup");
+});
+
+When("I ask a follow-up about that answer", async ({ page }) => {
+  await page.getByTestId("composer").fill("Apa dalilnya?");
+  await page.getByTestId("send").click();
+});
+
+Then("the follow-up is sent in the same session", async () => {
+  expect(chatPostBodies).toHaveLength(2);
+  const body = JSON.parse(chatPostBodies[1] ?? "{}") as { sessionId?: string; message?: string };
+  // The session id the first meta frame minted — not a fresh session. That is what
+  // lets the server load the prior turns the follow-up's retrieval resolves.
+  expect(body.sessionId).toBe("sess-e2e");
+  expect(body.message).toBe("Apa dalilnya?");
+});
+
+Then("the follow-up answer renders with a citation chip", async ({ page }) => {
+  const assistant = page.getByTestId("message-assistant").last();
+  await expect(assistant).toContainText("Dalilnya adalah ayat kursi");
+  // A grounded answer, not the refusal card: the citation chip is present.
+  await expect(assistant.getByTestId("citation-chip")).toHaveText("[QS. 2:255]");
 });
 
 When("I ask a question whose answer carries a dhaif hadith", async ({ page }) => {

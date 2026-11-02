@@ -13,6 +13,16 @@ Feature: Chat — ask, answer, citations, warnings, disclaimer
     And the answer renders with a citation chip
     And the disclaimer renders as a distinct footer
 
+  # The browser half of the same-session follow-up: the second turn must carry the
+  # session id the first answer minted, so the server can load the prior turns its
+  # retrieval resolves. The retrieval/grounding half is asserted at the route and
+  # pipeline levels against the real stages.
+  Scenario: A follow-up in the same session stays in that session and is answered
+    When I open the chat and ask about ayat kursi awaiting a follow-up
+    And I ask a follow-up about that answer
+    Then the follow-up is sent in the same session
+    And the follow-up answer renders with a citation chip
+
   Scenario: A citation chip opens the Arabic original with its translation
     When I open the chat and ask about ayat kursi
     And the answer renders with a citation chip
