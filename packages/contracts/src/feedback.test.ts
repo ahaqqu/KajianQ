@@ -7,9 +7,9 @@ import {
   FeedbackFlagShape,
   FeedbackRequestSchema,
   FeedbackThumbShape,
-  isWithinCodePointCap,
   type FeedbackRequest,
 } from "./feedback";
+import { isWithinCodePointCap } from "./code-points";
 import { isStorableText } from "./chat";
 
 /**

@@ -52,6 +52,7 @@ export {
   type ChatTraceReviewer,
   type ChatTraceReviewerItem,
 } from "./chat-trace";
+export { isWithinCodePointCap } from "./code-points";
 export {
   FEEDBACK_ANCHOR_STRING_MAX_LENGTH,
   FEEDBACK_FREE_TEXT_MAX_LENGTH,
@@ -66,7 +67,6 @@ export {
   FeedbackRequestSchema,
   FeedbackResponseSchema,
   FeedbackThumbShape,
-  isWithinCodePointCap,
   type FeedbackAnchor,
   type FeedbackAnchorType,
   type FeedbackCategory,

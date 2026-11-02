@@ -318,13 +318,15 @@ describe("readJsonBody — rejection contract", () => {
   });
 
   it("keeps the ceiling above the worst-case legal chat body", async () => {
-    // 2,000 UTF-16 code units of astral text, every surrogate escaped as
-    // \uXXXX, plus the envelope — the widest body the chat schema admits.
+    // 2,000 astral code points — the ceiling is counted in code points, so this
+    // is the widest message the chat schema admits: 4,000 UTF-16 units, every
+    // surrogate escaped as \uXXXX (12 bytes per code point), plus the envelope.
     const legal = {
-      message: "😀".repeat(CHAT_MESSAGE_MAX_LENGTH / 2),
+      message: "😀".repeat(CHAT_MESSAGE_MAX_LENGTH),
       sessionId: "00000000-0000-4000-8000-000000000000",
       language: "id",
     };
+    expect(legal.message.length).toBe(CHAT_MESSAGE_MAX_LENGTH * 2);
     await expectWorstCaseBodyAccepted(ChatRequestSchema, legal, "chat");
   });
 

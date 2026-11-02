@@ -38,7 +38,7 @@ describe("ChatRequestSchema message ceiling (#256)", () => {
   const parseMessage = (length: number) =>
     v.safeParse(ChatRequestSchema, { message: "a".repeat(length) }).success;
 
-  it("pins the owner-decided ceiling at 2,000 characters", () => {
+  it("pins the owner-decided ceiling at 2,000 code points", () => {
     expect(CHAT_MESSAGE_MAX_LENGTH).toBe(2000);
   });
 
@@ -49,6 +49,20 @@ describe("ChatRequestSchema message ceiling (#256)", () => {
 
   it("rejects a message one character over the ceiling", () => {
     expect(parseMessage(CHAT_MESSAGE_MAX_LENGTH + 1)).toBe(false);
+  });
+
+  // The ceiling is JSON Schema maxLength's unit, so astral text spends one
+  // code point per character however many UTF-16 units it occupies.
+  it("counts the ceiling in code points: 2,000 astral characters (4,000 units) are accepted", () => {
+    const atCeiling = "😀".repeat(CHAT_MESSAGE_MAX_LENGTH);
+    // The string the published maxLength admits: one code point per character.
+    expect(atCeiling.length).toBe(CHAT_MESSAGE_MAX_LENGTH * 2);
+    expect(v.safeParse(ChatRequestSchema, { message: atCeiling }).success).toBe(true);
+  });
+
+  it("refuses the 2,001st astral code point", () => {
+    const overCeiling = "😀".repeat(CHAT_MESSAGE_MAX_LENGTH + 1);
+    expect(v.safeParse(ChatRequestSchema, { message: overCeiling }).success).toBe(false);
   });
 
   it("rejects the 20,000-character probe that opened the QA finding", () => {
@@ -178,20 +192,31 @@ describe("ChatRequestSchema message storability (#478)", () => {
     .map((length) => "a".repeat(length));
 
   /**
-   * The law, against an oracle that reads the store rather than the check: a
-   * message is admissible exactly when it is within the ceiling, its UTF-8
-   * bytes carry no 0x00, and those bytes decode back to the same text — which is
-   * what "the store can hold it" means, since `text` is stored in the database
-   * encoding. A check that misses an unrepresentable class disagrees with the
-   * bytes and reddens here.
+   * Astral text straddles the same ceiling in code points while spending twice
+   * as many UTF-16 units, so the law below cannot pass by counting units: the
+   * draws at 1,995–2,000 code points are admissible in the published unit and
+   * over the ceiling in `String.prototype.length`.
    */
-  fcTest.prop([fc.oneof(codeUnitsArb, lengthArb)])(
+  const astralLengthArb = fc
+    .integer({ min: CHAT_MESSAGE_MAX_LENGTH - 5, max: CHAT_MESSAGE_MAX_LENGTH + 5 })
+    .map((length) => "😀".repeat(length));
+
+  /**
+   * The law, against an oracle that reads the store rather than the check: a
+   * message is admissible exactly when it is within the ceiling in code points,
+   * its UTF-8 bytes carry no 0x00, and those bytes decode back to the same text
+   * — which is what "the store can hold it" means, since `text` is stored in the
+   * database encoding. A check that misses an unrepresentable class, or counts
+   * the wrong unit, disagrees with the bytes and reddens here.
+   */
+  fcTest.prop([fc.oneof(codeUnitsArb, lengthArb, astralLengthArb)])(
     "admits exactly the texts whose UTF-8 bytes are NUL-free and decode back unchanged",
     (text) => {
       const encoded = new TextEncoder().encode(text);
+      const codePoints = Array.from(text).length;
       const storable =
-        text.length >= 1 &&
-        text.length <= CHAT_MESSAGE_MAX_LENGTH &&
+        codePoints >= 1 &&
+        codePoints <= CHAT_MESSAGE_MAX_LENGTH &&
         !encoded.includes(0) &&
         new TextDecoder().decode(encoded) === text;
       expect(v.safeParse(ChatRequestSchema, { message: text }).success).toBe(storable);

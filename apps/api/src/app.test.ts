@@ -196,8 +196,12 @@ describe("generated OpenAPI doc", () => {
         }
       | undefined;
     const message = body?.content["application/json"].schema.properties.message;
+    // The served bound and its unit, pinned as the document publishes them:
+    // JSON Schema maxLength counts code points, so the parse must count the
+    // same unit or a client trusts a body the route refuses.
+    expect(message?.maxLength).toBe(2000);
     expect(message?.maxLength).toBe(CHAT_MESSAGE_MAX_LENGTH);
-    expect(message?.description).toContain(`${CHAT_MESSAGE_MAX_LENGTH} characters`);
+    expect(message?.description).toContain(`${CHAT_MESSAGE_MAX_LENGTH} code points`);
     expect(message?.description).toContain("invalid_request");
     // The trim/length rule is part of the documented surface too: a client must
     // not assume a body that trims to the ceiling is accepted.

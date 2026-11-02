@@ -1,6 +1,7 @@
 import * as v from "valibot";
 import { ChatChainSchema } from "./chat-chain";
 import { ChatTraceFrameSchema } from "./chat-trace";
+import { isWithinCodePointCap } from "./code-points";
 
 /**
  * Chat API contracts: the `/v1/chat` request/response surface — request body
@@ -9,12 +10,15 @@ import { ChatTraceFrameSchema } from "./chat-trace";
  */
 
 /**
- * The chat message ceiling, in characters — a hard COST bound, not a UX nicety:
- * the rate limiter caps request frequency, not request size (ADR-0041), so
- * without a ceiling a client can multiply what each accepted question spends.
+ * The chat message ceiling, in Unicode code points — a hard COST bound, not a
+ * UX nicety: the rate limiter caps request frequency, not request size
+ * (ADR-0041), so without a ceiling a client can multiply what each accepted
+ * question spends.
  *
- * Length is in UTF-16 code units on the RAW string, before any trim: the bound
- * is on what the client sends, not on what a later stage would strip.
+ * Length is counted in code points on the RAW string, before any trim: the
+ * bound is on what the client sends, not on what a later stage would strip.
+ * Code points are JSON Schema's `maxLength` unit, so the published bound and
+ * the parse are one rule.
  */
 export const CHAT_MESSAGE_MAX_LENGTH = 2000;
 
@@ -92,10 +96,17 @@ export function isStorableText(text: string): boolean {
 /**
  * The `message` field: the user's question, and storable text (see
  * `isStorableText`). The bounds run first, so an over-length body reports the
- * length issue first and `minLength`/`maxLength` stay in the published schema —
- * but `v.pipe` does not stop at a failed action, so the pattern runs on every
- * body that reaches the schema, over-length ones included: one linear match
- * over a string `JSON.parse` already produced.
+ * length issue first; `minLength` publishes its bound as an action, while
+ * `maxLength` is published by the `v.metadata` below, because `v.check`
+ * publishes nothing — but `v.pipe` does not stop at a failed action, so the
+ * pattern runs on every body that reaches the schema, over-length ones
+ * included: one linear match over a string `JSON.parse` already produced.
+ *
+ * The ceiling is a code-point check, never `v.maxLength`: that action counts
+ * UTF-16 code units, the wrong unit for the published bound, so it would refuse
+ * a message the served `maxLength` admits — an astral character is one code
+ * point and two units. `v.metadata` publishes the same constant as `maxLength`,
+ * so the served document and the parse cannot drift apart.
  *
  * `v.regex` is deliberate, not a stylistic choice: `toOpenAPISchema` publishes
  * its `requirement.source` as the field's `pattern`, which is the one form
@@ -105,13 +116,17 @@ export function isStorableText(text: string): boolean {
 export const ChatMessageTextSchema = v.pipe(
   v.string(),
   v.minLength(1),
-  v.maxLength(CHAT_MESSAGE_MAX_LENGTH),
+  v.check(
+    (value) => isWithinCodePointCap(value, CHAT_MESSAGE_MAX_LENGTH),
+    `A message is at most ${CHAT_MESSAGE_MAX_LENGTH} code points.`,
+  ),
+  v.metadata({ maxLength: CHAT_MESSAGE_MAX_LENGTH }),
   v.regex(
     STORABLE_TEXT,
-    `A message must be storable as text: no U+0000 and no unpaired surrogate (1 to ${CHAT_MESSAGE_MAX_LENGTH} characters).`,
+    `A message must be storable as text: no U+0000 and no unpaired surrogate (1 to ${CHAT_MESSAGE_MAX_LENGTH} code points).`,
   ),
   v.description(
-    `The user's question (1 to ${CHAT_MESSAGE_MAX_LENGTH} characters), measured in UTF-16 code units on the raw string with no trim — so a body that would only trim to the ceiling is still rejected, and a whitespace-only body inside the ceiling is accepted. An over-length message, and a message the store cannot hold as text (U+0000, an unpaired surrogate), are rejected with 400 invalid_request before auth, the store or any pipeline stage runs; the other control characters are storable and reach the content-free admission, which declines them deterministically instead of refusing the body.`,
+    `The user's question (1 to ${CHAT_MESSAGE_MAX_LENGTH} code points, the same unit JSON Schema maxLength counts), measured on the raw string with no trim — so a body that would only trim to the ceiling is still rejected, and a whitespace-only body inside the ceiling is accepted. An over-length message, and a message the store cannot hold as text (U+0000, an unpaired surrogate), are rejected with 400 invalid_request before auth, the store or any pipeline stage runs; the other control characters are storable and reach the content-free admission, which declines them deterministically instead of refusing the body.`,
   ),
 );
 
