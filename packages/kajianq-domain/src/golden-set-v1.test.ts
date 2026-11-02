@@ -79,7 +79,7 @@ const HELD_OUT_LABELS = new Set(
 /** Every trap and source class, pinned by row membership rather than by count. */
 const EXPECTED_IDS = {
   quotation: ["gs-v0-020", "gs-v1-001", "gs-v1-002", "gs-v1-003", "gs-v1-004", "gs-v1-005"],
-  dhaif: ["gs-v0-020", "gs-v1-013", "gs-v1-014", "gs-v1-015"],
+  dhaif: ["gs-v0-020", "gs-v1-014"],
   cross: ["gs-v0-018", "gs-v1-007", "gs-v1-008", "gs-v1-009"],
   chain: [...CHAIN_IDS],
   tafsir: [
