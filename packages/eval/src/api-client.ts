@@ -6,7 +6,7 @@
  * stays SSE from the start (the product contract); the harness just collapses it.
  */
 
-import type { CitationFrameLike } from "./harness-types";
+import type { ChatLanguage, CitationFrameLike } from "./harness-types";
 
 /** The parsed outcome of one `/v1/chat` SSE round-trip. */
 export type ChatSseResult = {
@@ -31,7 +31,7 @@ export type ChatClientInput = {
   token: string;
   question: string;
   sessionId?: string;
-  language?: "id" | "en";
+  language?: ChatLanguage;
   signal?: AbortSignal;
   fetchImpl?: typeof fetch;
 };

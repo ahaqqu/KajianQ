@@ -41,7 +41,10 @@ export type EvalResultOutcome = {
    * evidence precedence as citation validity: the citations frame, then the trace's
    * review-event grounded list, then the injected grammar's spans in the answer text.
    * A range label counts once. Report-only — no gate reads it. Absent in the same
-   * states as `answerChars`.
+   * states as `answerChars`, and also when no source could count the answer's
+   * citations (no frame, no grounded list, no grammar): that row was never measured,
+   * so a 0 would be a fabricated measurement. An empty frame or a grammar that finds
+   * no span is a real 0.
    */
   citationCount?: number | undefined;
   /**

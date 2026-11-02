@@ -164,10 +164,11 @@ export type EvalRunReport = {
    */
   quoteFidelityMeasured?: number | undefined;
   /**
-   * Mean and maximum answer length in Unicode code points, and distinct citations per
-   * answer, over the scored answers that carry the measurement (null when none did).
-   * Descriptive, never gating; a row persisted before the metric existed is excluded,
-   * never counted as zero. Absent on reports written before the fields existed.
+   * Mean and maximum answer length in code points, and distinct citations per answer,
+   * over the scored answers carrying both measurements (null when none did). A row
+   * never measured — pre-metric, or scored without a citation-count source — is
+   * excluded from every figure, never counted as zero. Descriptive, never gating;
+   * absent on reports written before the fields existed.
    */
   meanAnswerChars?: number | null | undefined;
   maxAnswerChars?: number | null | undefined;

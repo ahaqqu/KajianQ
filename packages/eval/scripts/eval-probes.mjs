@@ -25,9 +25,9 @@
  * The fixture parse/scoring/report logic lives in `@app/eval` and is covered
  * offline; this script is only the network loop and the exit code.
  */
-import { readFileSync } from "node:fs";
 import * as evalpkg from "@app/eval";
 import { CITATION_GRAMMAR } from "./citation-grammar.mjs";
+import { readFixtureText } from "./fixture-path.mjs";
 
 function fail(msg) {
   console.error(`eval:probes: ${msg}`);
@@ -39,7 +39,7 @@ let fixture;
 try {
   config = evalpkg.loadEvalProbeConfig(process.env);
   fixture = evalpkg.loadIndependentProbesJson(
-    readFileSync(`${process.cwd()}/${config.probePath}`, "utf8"),
+    readFixtureText(process.cwd(), config.probePath),
     config.probePath,
   );
 } catch (err) {
@@ -53,7 +53,7 @@ const outcomes = await evalpkg.runProbes(
       baseUrl: config.apiBaseUrl,
       token: config.apiToken,
       question: probe.question,
-      language: probe.language === "en" ? "en" : "id",
+      language: probe.language,
     });
     return { text: reply.text, citations: reply.citations };
   },
@@ -62,7 +62,7 @@ const outcomes = await evalpkg.runProbes(
 
 for (const line of evalpkg.formatProbeRun(fixture, outcomes)) console.log(line);
 
-const verdict = evalpkg.probeExitPolicy(outcomes);
+const verdict = evalpkg.probeExitPolicy(fixture, outcomes);
 if (verdict.ok) {
   console.log(verdict.message);
 } else {

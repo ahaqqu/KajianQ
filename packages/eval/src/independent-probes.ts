@@ -1,7 +1,7 @@
 import * as v from "valibot";
 import { describeIssue } from "@app/contracts";
 import { answerStats } from "./harness-outcomes";
-import type { CitationFrameLike, CitationGrammar } from "./harness-types";
+import { CHAT_LANGUAGES, type CitationFrameLike, type CitationGrammar } from "./harness-types";
 import { citationLabelsPresent } from "./scorers";
 
 /**
@@ -26,8 +26,10 @@ export const IndependentContentCheckSchema = v.object({
 export const IndependentProbeSchema = v.object({
   id: v.pipe(v.string(), v.minLength(1)),
   question: v.pipe(v.string(), v.minLength(1)),
-  /** The language the question is asked in (the chat client's `language`). */
-  language: v.pipe(v.string(), v.minLength(1)),
+  /** The language the question is asked in: one of the chat client's accepted
+   * `language` values, validated here so a fixture cannot ask in a language the
+   * client would silently map to another. */
+  language: v.picklist(CHAT_LANGUAGES),
   /** The citations a passing answer must ground; all are required. */
   expectedCitations: v.pipe(v.array(v.pipe(v.string(), v.minLength(1))), v.minLength(1)),
   /** Short content checks a passing answer must satisfy. */
@@ -116,8 +118,9 @@ export type ProbeAnswer = { text: string; citations?: CitationFrameLike | null }
 export type ProbeContentOutcome = { label: string; passed: boolean };
 
 /** One probe's verdict and descriptive figures. `answerChars`/`citationCount` are
- * null exactly when no answer was read (a transport failure), never for an empty
- * answer — that is a measured 0. */
+ * null exactly when that figure was never measured — no answer was read (a transport
+ * failure), or the answer carried no citation-count source (no frame and no grammar) —
+ * never for an empty answer, which is a measured 0. */
 export type ProbeOutcome = {
   probeId: string;
   passed: boolean;
@@ -159,7 +162,7 @@ export function scoreProbe(
     passed:
       present.length === probe.expectedCitations.length && contentChecks.every((c) => c.passed),
     answerChars: stats.answerChars,
-    citationCount: stats.citationCount,
+    citationCount: stats.citationCount ?? null,
     missingCitations: probe.expectedCitations.filter((citation) => !present.includes(citation)),
     contentChecks,
   };
@@ -225,7 +228,11 @@ export function formatProbeRun(
       continue;
     }
     const citations =
-      outcome.citationCount === 1 ? "1 citation" : `${outcome.citationCount} citations`;
+      outcome.citationCount === null
+        ? "citations unmeasured"
+        : outcome.citationCount === 1
+          ? "1 citation"
+          : `${outcome.citationCount} citations`;
     const evidence = `${outcome.answerChars} chars, ${citations}`;
     const missing =
       outcome.missingCitations.length > 0
@@ -242,18 +249,42 @@ export function formatProbeRun(
     );
   }
   const passed = outcomes.filter((outcome) => outcome.passed).length;
-  lines.push(`eval:probes: ${passed} passed, ${outcomes.length - passed} failed`);
+  const missing = fixture.probes.filter(
+    (probe) => !outcomes.some((outcome) => outcome.probeId === probe.id),
+  ).length;
+  lines.push(
+    `eval:probes: ${passed} passed, ${outcomes.length - passed} failed${missing > 0 ? `, ${missing} missing` : ""}`,
+  );
   return lines;
 }
 
-/** The exit verdict: green only when every probe ran and passed. Pure, so the
- * live script's one effectful line stays trivial. */
-export function probeExitPolicy(outcomes: readonly ProbeOutcome[]): {
+/**
+ * The exit verdict: green only when every **fixture** probe ran and passed. Pure, so
+ * the live script's one effectful line stays trivial. The fixture is the expected
+ * enumeration, not the outcome list: a truncated run fails with the probes it never
+ * scored, because an unmeasured probe is not a pass.
+ */
+export function probeExitPolicy(
+  fixture: IndependentProbeFixture,
+  outcomes: readonly ProbeOutcome[],
+): {
   ok: boolean;
   message: string;
 } {
-  const failed = outcomes.filter((outcome) => !outcome.passed).map((outcome) => outcome.probeId);
-  return failed.length === 0
-    ? { ok: true, message: "eval:probes: PASSED" }
-    : { ok: false, message: `eval:probes: FAILED — ${failed.join(", ")}` };
+  const byId = new Map(outcomes.map((outcome) => [outcome.probeId, outcome]));
+  const failed: string[] = [];
+  const missing: string[] = [];
+  for (const probe of fixture.probes) {
+    const outcome = byId.get(probe.id);
+    if (outcome === undefined) missing.push(probe.id);
+    else if (!outcome.passed) failed.push(probe.id);
+  }
+  if (failed.length === 0 && missing.length === 0) {
+    return { ok: true, message: "eval:probes: PASSED" };
+  }
+  const parts = [
+    ...(failed.length > 0 ? [failed.join(", ")] : []),
+    ...missing.map((id) => `${id} (no outcome recorded)`),
+  ];
+  return { ok: false, message: `eval:probes: FAILED — ${parts.join("; ")}` };
 }

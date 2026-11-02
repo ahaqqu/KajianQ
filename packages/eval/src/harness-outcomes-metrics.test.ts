@@ -5,6 +5,7 @@ import { Budget } from "./budget";
 import {
   buildReport,
   runGoldenSet,
+  scoreQuestion,
   type AnswerTraceSource,
   type ChatTransport,
   type RunLedger,
@@ -15,7 +16,8 @@ import type { CitationFrameLike, CitationGrammar, TraceEventLike } from "./harne
  * The descriptive answer-size and citation-count metrics. The trust property is that
  * every figure comes from the SAME answer the scorer already read — never a second
  * source — and that "measured zero" stays distinguishable from "never measured":
- * an empty answer is a real 0, a skipped question and a pre-metric row are not.
+ * an empty answer is a real 0; a skipped question, a pre-metric row, and a
+ * grammar-less answer with no evidence source are not.
  */
 
 const GRAMMAR: CitationGrammar = {
@@ -78,10 +80,10 @@ describe("answerCitationLabels — the gate's own evidence precedence", () => {
     ).toEqual(["L-1", "L-3"]);
   });
 
-  it("returns no citations when the text cannot be split without a grammar", () => {
+  it("returns no label list when the text cannot be split without a grammar", () => {
     // The whole text is the validity fallback's only candidate; it is not a citation
-    // count, so the descriptive count stays 0 rather than inventing one span.
-    expect(answerCitationLabels({ answerText: "see L-1", events: [] })).toEqual([]);
+    // count, so the count is UNMEASURED (absent) rather than a fabricated 0.
+    expect(answerCitationLabels({ answerText: "see L-1", events: [] })).toBeUndefined();
   });
 });
 
@@ -108,6 +110,66 @@ describe("answerStats — size and count from one answer", () => {
         grammar: GRAMMAR,
       }).citationCount,
     ).toBe(1);
+  });
+
+  it("omits the count — never records a zero — when no source could count citations", () => {
+    const stats = answerStats({ answerText: "the answer cites label-1", events: [] });
+    expect(stats.answerChars).toBe(24);
+    expect(stats).not.toHaveProperty("citationCount");
+  });
+});
+
+/**
+ * The harness supports running without a citation grammar (the field is optional on
+ * `HarnessDeps`). Without one, and with no frame or trace grounded list, the answer
+ * text cannot be split into citations — a count of 0 there would be a fabricated
+ * measurement printed beside a citationValidity of 1 that same text earned.
+ */
+describe("scoreQuestion — a grammar-less answer's citation count is unmeasured", () => {
+  const question: GoldenQuestion = {
+    id: "q1",
+    question: "ask q1",
+    language: "en",
+    expectedSourceTypes: [],
+    requiredCitations: ["label-1"],
+    expectedBehavior: "answer",
+  };
+  const deps = {
+    sourceTypeOf: (_chunkId: string) => undefined,
+    citationOf: (_chunkId: string) => undefined,
+    refusalMarkers: [] as readonly string[],
+  };
+
+  it("drops the count instead of fabricating a zero beside a validity of 1", () => {
+    const outcome = scoreQuestion(question, "the answer cites label-1", [], deps);
+    expect(outcome.citationValidity).toBe(1);
+    expect(outcome.answerChars).toBe(24);
+    expect(outcome).not.toHaveProperty("citationCount");
+    expect(Object.keys(outcome)).not.toContain("citationCount");
+  });
+
+  it("leaves the unmeasured row out of the aggregate instead of averaging a zero", () => {
+    const outcome = scoreQuestion(question, "the answer cites label-1", [], deps);
+    expect(answerMetricsSummary([outcome])).toEqual({
+      meanAnswerChars: null,
+      maxAnswerChars: null,
+      meanCitationsPerAnswer: null,
+      maxCitationsPerAnswer: null,
+    });
+  });
+
+  it("still records a real zero when an empty frame is the authoritative evidence", () => {
+    const outcome = scoreQuestion(question, "the answer cites label-1", [], deps, frame());
+    expect(outcome).toHaveProperty("citationCount", 0);
+    expect(outcome.answerChars).toBe(24);
+  });
+
+  it("counts the grammar's spans when the run injects one", () => {
+    const outcome = scoreQuestion(question, "the answer cites L-1 and L-2", [], {
+      ...deps,
+      citationGrammar: GRAMMAR,
+    });
+    expect(outcome.citationCount).toBe(2);
   });
 });
 

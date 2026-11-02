@@ -205,35 +205,41 @@ export function quoteFidelityOutcome(
  * Deduplicated under the grammar's normalization, so a repeated citation counts once
  * and one range label counts once even though it names several addresses. With
  * neither non-text evidence nor a grammar the text cannot be split into citations, so
- * the count is 0 rather than an invented span.
+ * this returns `undefined` — never `[]`: an empty answer carrying no citation is a
+ * measured 0, while an unsplittable text with no evidence source is unmeasured.
  */
 export function answerCitationLabels(input: {
   answerText: string;
   frame?: CitationFrameLike | null | undefined;
   events?: readonly TraceEventLike[] | undefined;
   grammar?: CitationGrammar | undefined;
-}): string[] {
+}): string[] | undefined {
   const evidence = citationEvidenceLabels({ frame: input.frame, events: input.events });
   const labels =
-    evidence ?? (input.grammar === undefined ? [] : input.grammar.labelsInText(input.answerText));
+    evidence ??
+    (input.grammar === undefined ? undefined : input.grammar.labelsInText(input.answerText));
+  if (labels === undefined) return undefined;
   const normalize = input.grammar?.normalizeLabel;
   return [...new Set(labels.map((label) => (normalize === undefined ? label : normalize(label))))];
 }
 
 /**
  * One answer's descriptive statistics. Length is in Unicode code points, so an astral
- * character counts once. Zero is a MEASURED value — an empty answer carrying no
- * citation — never a missing measurement.
+ * character counts once, and it is always measurable. `citationCount` is **absent**
+ * when no source could count the answer's citations (no frame, no trace grounded list,
+ * no grammar): that row was never measured, and a 0 there would be a fabricated
+ * measurement. An empty frame or a grammar that finds no span is a real 0.
  */
 export function answerStats(input: {
   answerText: string;
   frame?: CitationFrameLike | null | undefined;
   events?: readonly TraceEventLike[] | undefined;
   grammar?: CitationGrammar | undefined;
-}): { answerChars: number; citationCount: number } {
+}): { answerChars: number; citationCount?: number } {
+  const labels = answerCitationLabels(input);
   return {
     answerChars: Array.from(input.answerText).length,
-    citationCount: answerCitationLabels(input).length,
+    ...(labels === undefined ? {} : { citationCount: labels.length }),
   };
 }
 

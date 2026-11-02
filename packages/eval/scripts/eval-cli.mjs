@@ -4,11 +4,11 @@
  * with the run summary rendered by `eval-summary.mjs`. One copy, so the commands
  * cannot drift into opposite failure semantics.
  */
-import { readFileSync } from "node:fs";
 import * as evalpkg from "@app/eval";
 // The trap marker is the domain pack's label vocabulary, imported rather than
 // written as a literal so a rename cannot leave the gate looking for a stale tag.
 import { DAIF_TRAP_LABEL } from "@app/kajianq-domain";
+import { readFixtureText } from "./fixture-path.mjs";
 
 /** Print a prefixed failure and exit non-zero. */
 export function fail(prefix, msg) {
@@ -39,10 +39,9 @@ export function createBudget(prefix, config) {
  * contract; `assertV0` adds the v0 content bar check, which only `eval:run` gates on.
  */
 export function loadFixture(prefix, config, { assertV0 = false } = {}) {
-  const fixturePath = `${process.cwd()}/${config.goldenSetPath}`;
   try {
     const fixture = evalpkg.loadGoldenSetJson(
-      readFileSync(fixturePath, "utf8"),
+      readFixtureText(process.cwd(), config.goldenSetPath),
       "golden-set-v0.json",
     );
     if (assertV0) evalpkg.assertV0Shape(fixture, { trapTag: DAIF_TRAP_LABEL });

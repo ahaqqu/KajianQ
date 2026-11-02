@@ -36,11 +36,19 @@ reader the Golden Set uses for citation validity: the server's citations frame
 when the chat client returns one (an empty frame is authoritative), otherwise
 the answer text through the domain's citation grammar. A transport failure is
 reported as that probe's error, not as a missing citation, and the other probes
-still run. The run exits non-zero when any probe fails.
+still run. The run exits non-zero when any probe fails **or was never scored**:
+the fixture is the expected enumeration, so a truncated outcome list is red, not
+green.
+
+Each probe's `language` must be one the chat client accepts (`id` or `en`). The
+fixture is validated at load, so a probe written as `en-US` or `ar` fails before
+any spend instead of being silently asked in another language.
 
 Answer length and citation count are the same descriptive derivation the eval
 report aggregates (Unicode code points; distinct citation labels), so the two
-surfaces cannot disagree about what an answer carried.
+surfaces cannot disagree about what an answer carried. A count is printed only
+when the answer carried a source to count it; with no frame and no grammar the
+line says the count was not measured rather than printing a zero.
 
 ## Running it
 
@@ -53,11 +61,11 @@ EVAL_API_TOKEN=<anonymous token> \
 bun run eval:probes
 ```
 
-| Env var                   | Required | Meaning                                                 |
-| ------------------------- | -------- | ------------------------------------------------------- |
-| `EVAL_API_BASE_URL`       | yes      | The `/v1/chat` origin (http(s)).                        |
-| `EVAL_API_TOKEN`          | yes      | An anonymous Bearer token minted by the API.            |
-| `EVAL_PROBE_FIXTURE_PATH` | no       | Fixture override; defaults to the domain fixture above. |
+| Env var                   | Required | Meaning                                                                            |
+| ------------------------- | -------- | ---------------------------------------------------------------------------------- |
+| `EVAL_API_BASE_URL`       | yes      | The `/v1/chat` origin (http(s)).                                                   |
+| `EVAL_API_TOKEN`          | yes      | An anonymous Bearer token minted by the API.                                       |
+| `EVAL_PROBE_FIXTURE_PATH` | no       | Fixture override (absolute or cwd-relative); defaults to the domain fixture above. |
 
 **Cost expectation:** the runner makes exactly one chat answer per probe — five
 with the default fixture — and no other call of its own. The spend is therefore
@@ -78,7 +86,7 @@ exit policy are deterministic and model-free; these tests make no network call:
 ```bash
 bunx vp test run \
   packages/eval/src/independent-probes.test.ts \
-  packages/eval/src/answer-metrics.test.ts \
+  packages/eval/src/harness-outcomes-metrics.test.ts \
   packages/kajianq-domain/src/independent-probes.test.ts
 ```
 

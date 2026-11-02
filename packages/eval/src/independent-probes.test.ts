@@ -98,6 +98,18 @@ describe("independent probe fixture — structure", () => {
     );
   });
 
+  it("rejects a language the chat client cannot ask in instead of coercing it", () => {
+    const fixture = (language: string) => ({ id: "set", probes: [{ ...probe(), language }] });
+    // The schema is the client's own union: `en-US`, `ar` and typos fail the load
+    // with the field named, rather than being silently asked in Indonesian.
+    for (const language of ["en-US", "ar", "EN", "idd"]) {
+      expect(() => parseIndependentProbes(fixture(language))).toThrow(/language/);
+    }
+    // Both accepted values pass through unchanged — no coercion at the boundary.
+    expect(parseIndependentProbes(fixture("en")).probes[0]?.language).toBe("en");
+    expect(parseIndependentProbes(fixture("id")).probes[0]?.language).toBe("id");
+  });
+
   it("rejects an empty anyOf term list", () => {
     const checks = [{ label: "first", anyOf: [] }];
     expect(() =>
@@ -251,13 +263,16 @@ describe("formatProbeRun / probeExitPolicy — the run report", () => {
     expect(lines[1]).not.toContain("missing citations");
   });
 
-  it("passes the exit policy only when every probe passed", async () => {
+  it("passes the exit policy only when every probe in the fixture passed", async () => {
     const allPass = await runProbes(
       fixture,
       async () => ({ text: "alpha beta L-1 L-2", citations: frame("L-1", "L-2") }),
       GRAMMAR,
     );
-    expect(probeExitPolicy(allPass)).toEqual({ ok: true, message: "eval:probes: PASSED" });
+    expect(probeExitPolicy(fixture, allPass)).toEqual({
+      ok: true,
+      message: "eval:probes: PASSED",
+    });
 
     const oneFails = await runProbes(
       fixture,
@@ -267,10 +282,45 @@ describe("formatProbeRun / probeExitPolicy — the run report", () => {
           : { text: "alpha beta", citations: frame() },
       GRAMMAR,
     );
-    expect(probeExitPolicy(oneFails)).toEqual({
+    expect(probeExitPolicy(fixture, oneFails)).toEqual({
       ok: false,
       message: "eval:probes: FAILED — p2",
     });
+  });
+
+  it("reddens on a truncated outcome list, naming the probes that never ran", async () => {
+    const allPass = await runProbes(
+      fixture,
+      async () => ({ text: "alpha beta L-1 L-2", citations: frame("L-1", "L-2") }),
+      GRAMMAR,
+    );
+    // A run that lost an outcome is not a pass: the fixture is the expected
+    // enumeration, and the missing probe is named rather than silently dropped.
+    expect(probeExitPolicy(fixture, allPass.slice(0, 1))).toEqual({
+      ok: false,
+      message: "eval:probes: FAILED — p2 (no outcome recorded)",
+    });
+    expect(probeExitPolicy(fixture, [])).toEqual({
+      ok: false,
+      message: "eval:probes: FAILED — p1 (no outcome recorded); p2 (no outcome recorded)",
+    });
+  });
+
+  it("prints a measured-zero citation count and an unmeasured one differently", async () => {
+    const measuredZero = await runProbes(
+      fixture,
+      async () => ({ text: "alpha beta L-1 L-2", citations: frame() }),
+      GRAMMAR,
+    );
+    expect(formatProbeRun(fixture, measuredZero)[1]).toContain("0 citations");
+
+    // No frame and no grammar: the count was never measured, so the line says so
+    // rather than printing a zero the answer did not earn.
+    const unmeasured = await runProbes(fixture, async () => ({
+      text: "alpha beta L-1 L-2",
+      citations: null,
+    }));
+    expect(formatProbeRun(fixture, unmeasured)[1]).toContain("citations unmeasured");
   });
 });
 

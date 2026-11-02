@@ -1,5 +1,15 @@
 /** Narrow structural views of the @app/contracts Trace/ChunkRef types the harness reads. */
 
+/**
+ * The languages the chat client can ask in, and the exact set every fixture that
+ * names a probe's language is validated against. One list: a fixture cannot ask in a
+ * language the client would silently map to another.
+ */
+export const CHAT_LANGUAGES = ["id", "en"] as const;
+
+/** The chat client's `language` field. */
+export type ChatLanguage = (typeof CHAT_LANGUAGES)[number];
+
 /** The subset of a trace's retrieval-event chunk ref the harness reads. */
 export type ChunkRefLike = {
   id: string;
