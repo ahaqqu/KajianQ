@@ -2,7 +2,12 @@ import { describe, expect, it, vi } from "vite-plus/test";
 import { createApi } from "../app";
 import { parseFeedbackRequest } from "../lib/feedback";
 import { BODY_MAX_BYTES } from "../lib/body";
-import { STORABLE_TEXT_PATTERN, type Trace } from "@app/contracts";
+import {
+  FEEDBACK_ANCHOR_STRING_MAX_LENGTH,
+  FEEDBACK_FREE_TEXT_MAX_LENGTH,
+  STORABLE_TEXT_PATTERN,
+  type Trace,
+} from "@app/contracts";
 import { runStoreEffect } from "@app/kajianq-domain";
 import { createMemoryRagStore } from "@app/kajianq-domain/test-utils/memory-rag-store";
 import { createMemoryRateLimiter } from "@app/rate";
@@ -187,6 +192,64 @@ describe("POST /v1/feedback", () => {
       expect(res.status).toBe(400);
       expect(await res.json()).toEqual({ error: "invalid_request" });
     }
+  });
+
+  it("answers 400 invalid_request to an anchor string one code point over the shared ceiling", async () => {
+    const { store, userId, token } = await wiredStore();
+    const messageId = await seedAnswer(store, userId);
+    // Astral characters make the code-point rule observable: 200 of them are
+    // 400 UTF-16 units, so a unit-based cap would refuse the ceiling itself.
+    // The same one-code-point margin runs on every anchored string: four
+    // variant ids, the chain anchor's id, and the chain row's grade and grader.
+    const atCeiling = "😀".repeat(FEEDBACK_ANCHOR_STRING_MAX_LENGTH);
+    const overCeiling = `${atCeiling}😀`;
+    const chain = {
+      type: "chain",
+      category: "questionable_grade",
+      id: atCeiling,
+      chainIndex: 0,
+      grade: atCeiling,
+      grader: atCeiling,
+    };
+    for (const anchor of [
+      { type: "chunk", category: "irrelevant_chunk", id: overCeiling },
+      { type: "citation", category: "wrong_citation", id: overCeiling },
+      { type: "translation", category: "bad_machine_translation", id: overCeiling },
+      { type: "grade", category: "questionable_grade", id: overCeiling },
+      { ...chain, id: overCeiling },
+      { ...chain, grade: overCeiling },
+      { ...chain, grader: overCeiling },
+    ]) {
+      const res = await post(token, { messageId, anchor });
+      expect(res.status, anchor.type).toBe(400);
+      expect(await res.json()).toEqual({ error: "invalid_request" });
+    }
+    expect(store.allFeedback()).toHaveLength(0);
+
+    // The ceiling itself passes the schema and reaches anchor validation,
+    // which refuses an ungrounded chunk with its documented 422 — never a body
+    // refusal and never the transport 413.
+    const atBoundary = await post(token, {
+      messageId,
+      anchor: { type: "chunk", category: "irrelevant_chunk", id: atCeiling },
+    });
+    expect(atBoundary.status).toBe(422);
+    expect(await atBoundary.json()).toEqual({ error: "invalid_anchor" });
+  });
+
+  it("counts free text in code points and answers 400, not 413, one over", async () => {
+    const { store, userId, token } = await wiredStore();
+    const messageId = await seedAnswer(store, userId);
+    const atCeiling = "😀".repeat(FEEDBACK_FREE_TEXT_MAX_LENGTH);
+    // 2,000 astral characters are 2,000 code points but 4,000 UTF-16 units; a
+    // unit-based cap would refuse the published ceiling.
+    const accepted = await post(token, { messageId, rating: "up", freeText: atCeiling });
+    expect(accepted.status).toBe(200);
+    expect(store.allFeedback()).toHaveLength(1);
+    const over = await post(token, { messageId, rating: "up", freeText: `${atCeiling}😀` });
+    expect(over.status).toBe(400);
+    expect(await over.json()).toEqual({ error: "invalid_request" });
+    expect(store.allFeedback()).toHaveLength(1);
   });
 
   it("names the offending field in the logged 400 diagnostic (#283)", async () => {
@@ -552,11 +615,11 @@ describe("POST /v1/feedback", () => {
       expect(published.test("\u0000")).toBe(false);
       expect(published.test("\ud800")).toBe(false);
       expect(published.test("tidak relevan")).toBe(true);
-      // `maxLength` counts code points, the route's cap counts UTF-16 code
-      // units; the description is the only place the document can state which
-      // unit a client must measure against the cap.
-      expect(properties.freeText?.maxLength).toBe(2000);
-      expect(properties.freeText?.description).toContain("UTF-16 code units");
+      // The route's cap and the published maxLength both count code points, so
+      // an astral character is one unit to both; the description is where the
+      // document states the unit a client must measure against the cap.
+      expect(properties.freeText?.maxLength).toBe(FEEDBACK_FREE_TEXT_MAX_LENGTH);
+      expect(properties.freeText?.description).toContain("code points");
       expect(properties.freeText?.description).toContain("no trim");
       expect(properties.freeText?.description).toContain("U+0000");
       expect(properties.freeText?.description).toContain("unpaired surrogate");

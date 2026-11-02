@@ -49,6 +49,55 @@ export const FeedbackCategorySchema = v.picklist([
 export type FeedbackCategory = v.InferOutput<typeof FeedbackCategorySchema>;
 
 /**
+ * The ceiling for every string a flag anchors with: the anchor `id` (a trace
+ * chunk id or a citation label) and a chain row's own `grade` and `grader`.
+ *
+ * The bound is the transport's, not the element's. The write route refuses a
+ * request body over its byte ceiling with `413 payload_too_large`, so a
+ * contract that left these strings unbounded would publish a body the route
+ * must refuse: a schema-valid report answered 413. The ceiling is generous
+ * beside the values a trace actually grounds — a chunk id is a UUID, the
+ * corpus's citation labels are a few dozen characters, a grade is one word and
+ * a grader a name — while keeping the worst-case schema-valid body below the
+ * byte ceiling. The bound counts code points, the same unit JSON Schema's
+ * `maxLength` counts, so the published contract and the parse are one rule.
+ */
+export const FEEDBACK_ANCHOR_STRING_MAX_LENGTH = 200;
+
+/**
+ * The one code-point test the bounded feedback strings share. JSON Schema's
+ * `maxLength` counts code points, while `String.prototype.length` counts
+ * UTF-16 code units, so a `maxLength` action would refuse a string the
+ * published bound admits. Counting through `Array.from` keeps both on the
+ * published unit; the published `maxLength` is emitted from the same constant
+ * as schema metadata.
+ */
+export function isWithinCodePointCap(value: string, cap: number): boolean {
+  return Array.from(value).length <= cap;
+}
+
+/**
+ * The one pipe every anchored string shares, so a request variant, the
+ * response echo and the published `maxLength` cannot drift apart.
+ *
+ * The description is true of the value in both roles: it states the bound and
+ * the unit, not what the write route answers. The request-only rejection
+ * sentence lives on `FeedbackRequestAnchorSchema`, where a 400 can happen.
+ */
+export const FeedbackAnchorStringSchema = v.pipe(
+  v.string(),
+  v.minLength(1),
+  v.check(
+    (value) => isWithinCodePointCap(value, FEEDBACK_ANCHOR_STRING_MAX_LENGTH),
+    `An anchored string is at most ${FEEDBACK_ANCHOR_STRING_MAX_LENGTH} code points.`,
+  ),
+  v.metadata({ maxLength: FEEDBACK_ANCHOR_STRING_MAX_LENGTH }),
+  v.description(
+    `A trace-anchored string — an anchor id (a trace chunk id or a citation label) or a chain row's own grade or grader — at most ${FEEDBACK_ANCHOR_STRING_MAX_LENGTH} code points on the raw string with no trim. JSON Schema maxLength counts the same code points, so the published bound and this check are one rule. The bound is what keeps the widest schema-valid feedback body within the route's request-body byte ceiling.`,
+  ),
+);
+
+/**
  * A flag on one trace-anchored element. `id` is the element's identifier as
  * the client saw it in a server-derived frame:
  *   - `chunk` → the trace chunk id (the Trace panel's rows);
@@ -65,34 +114,47 @@ export const FeedbackAnchorSchema = v.variant("type", [
   v.object({
     type: v.literal("chunk"),
     category: v.literal("irrelevant_chunk"),
-    id: v.pipe(v.string(), v.minLength(1)),
+    id: FeedbackAnchorStringSchema,
   }),
   v.object({
     type: v.literal("citation"),
     category: v.literal("wrong_citation"),
-    id: v.pipe(v.string(), v.minLength(1)),
+    id: FeedbackAnchorStringSchema,
   }),
   v.object({
     type: v.literal("translation"),
     category: v.literal("bad_machine_translation"),
-    id: v.pipe(v.string(), v.minLength(1)),
+    id: FeedbackAnchorStringSchema,
   }),
   v.object({
     type: v.literal("grade"),
     category: v.literal("questionable_grade"),
-    id: v.pipe(v.string(), v.minLength(1)),
+    id: FeedbackAnchorStringSchema,
   }),
   v.object({
     type: v.literal("chain"),
     category: v.literal("questionable_grade"),
-    id: v.pipe(v.string(), v.minLength(1)),
+    id: FeedbackAnchorStringSchema,
     chainIndex: v.pipe(v.number(), v.integer(), v.minValue(0)),
-    grade: v.optional(v.pipe(v.string(), v.minLength(1))),
-    grader: v.optional(v.pipe(v.string(), v.minLength(1))),
+    grade: v.optional(FeedbackAnchorStringSchema),
+    grader: v.optional(FeedbackAnchorStringSchema),
   }),
 ]);
 
 export type FeedbackAnchor = v.InferOutput<typeof FeedbackAnchorSchema>;
+
+/**
+ * The request-side anchor: the one shared pipe above plus the rejection the
+ * write route can actually answer. The response echo uses
+ * `FeedbackAnchorStringSchema` directly, so its description never claims a 400
+ * a response cannot produce.
+ */
+const FeedbackRequestAnchorSchema = v.pipe(
+  FeedbackAnchorSchema,
+  v.description(
+    "The trace-anchored element to flag. An anchor string over the published cap on `id`, `grade` or `grader` is 400 invalid_request before auth or the store.",
+  ),
+);
 
 /**
  * Optional colour on either shape, stored verbatim in `free_text text`. The
@@ -110,13 +172,17 @@ const STORABLE_TEXT = new RegExp(STORABLE_TEXT_PATTERN);
 const FeedbackFreeTextSchema = v.optional(
   v.pipe(
     v.string(),
-    v.maxLength(FEEDBACK_FREE_TEXT_MAX_LENGTH),
+    v.check(
+      (value) => isWithinCodePointCap(value, FEEDBACK_FREE_TEXT_MAX_LENGTH),
+      `Free text is at most ${FEEDBACK_FREE_TEXT_MAX_LENGTH} code points.`,
+    ),
+    v.metadata({ maxLength: FEEDBACK_FREE_TEXT_MAX_LENGTH }),
     v.regex(
       STORABLE_TEXT,
       `Free text must be storable as text: no U+0000 and no unpaired surrogate (up to ${FEEDBACK_FREE_TEXT_MAX_LENGTH} characters).`,
     ),
     v.description(
-      `Optional free text on either feedback shape, capped at ${FEEDBACK_FREE_TEXT_MAX_LENGTH} UTF-16 code units measured on the raw string with no trim — an astral character counts as two, so the JSON Schema maxLength (a code-point count) admits a body this cap refuses. The pattern admits no U+0000 and no unpaired surrogate: U+0000 is a value the store refuses, and an unpaired surrogate would be stored as U+FFFD, a silently different report; both answer 400 invalid_request before auth or the store. Every other control character is storable and accepted.`,
+      `Optional free text on either feedback shape, capped at ${FEEDBACK_FREE_TEXT_MAX_LENGTH} code points measured on the raw string with no trim, the same unit as the published JSON Schema maxLength. The pattern admits no U+0000 and no unpaired surrogate: U+0000 is a value the store refuses, and an unpaired surrogate would be stored as U+FFFD, a silently different report; both answer 400 invalid_request before auth or the store. Every other control character is storable and accepted.`,
     ),
   ),
 );
@@ -146,7 +212,7 @@ export const FeedbackThumbShape = v.object({
 export const FeedbackFlagShape = v.object({
   messageId: v.pipe(v.string(), v.uuid()),
   rating: v.optional(v.never()),
-  anchor: FeedbackAnchorSchema,
+  anchor: FeedbackRequestAnchorSchema,
   freeText: FeedbackFreeTextSchema,
 });
 
@@ -179,11 +245,11 @@ export const FeedbackResponseSchema = v.object({
     v.object({
       type: FeedbackAnchorTypeSchema,
       category: FeedbackCategorySchema,
-      id: v.pipe(v.string(), v.minLength(1)),
+      id: FeedbackAnchorStringSchema,
       /** A chain anchor's row position and that row's own verdict, when graded. */
       chainIndex: v.optional(v.pipe(v.number(), v.integer(), v.minValue(0))),
-      grade: v.optional(v.pipe(v.string(), v.minLength(1))),
-      grader: v.optional(v.pipe(v.string(), v.minLength(1))),
+      grade: v.optional(FeedbackAnchorStringSchema),
+      grader: v.optional(FeedbackAnchorStringSchema),
     }),
   ),
   /** The admin review queue state (spec §4): a fresh report starts pending. */

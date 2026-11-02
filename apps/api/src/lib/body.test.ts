@@ -1,5 +1,12 @@
-import { CHAT_MESSAGE_MAX_LENGTH, FEEDBACK_FREE_TEXT_MAX_LENGTH } from "@app/contracts";
+import {
+  CHAT_MESSAGE_MAX_LENGTH,
+  ChatRequestSchema,
+  FEEDBACK_ANCHOR_STRING_MAX_LENGTH,
+  FEEDBACK_FREE_TEXT_MAX_LENGTH,
+  FeedbackRequestSchema,
+} from "@app/contracts";
 import { describe, expect, it } from "vite-plus/test";
+import * as v from "valibot";
 import {
   BODY_MAX_BYTES,
   LOG_DETAIL_MAX_LENGTH,
@@ -65,6 +72,43 @@ function streamOf(chunks: Uint8Array[]): ReadableStream<Uint8Array> {
 
 const bytes = (...values: number[]): Uint8Array => new Uint8Array(values);
 const textBytes = (value: string): Uint8Array => new TextEncoder().encode(value);
+
+type ParseableSchema = Parameters<typeof v.safeParse>[0];
+
+/**
+ * The ceiling must stay at least this many times above the escaped worst-case
+ * body the route accepts. This is the headroom the test asserts; the caps
+ * themselves are what make the body the worst case.
+ */
+const WORST_CASE_HEADROOM_FACTOR = 2;
+
+/**
+ * Prove a payload is the worst-case legal body and that the reader whose
+ * ceiling this pins accepts it.
+ *
+ * The payload parses against the route's schema, survives the `\uXXXX` escape
+ * round-trip unchanged, and is then handed to `readJsonBody` as the exact wire
+ * bytes — so the comparison is against the boundary the routes use, not an
+ * arithmetic proxy.
+ */
+async function expectWorstCaseBodyAccepted(
+  schema: ParseableSchema,
+  payload: unknown,
+  route: "chat" | "feedback",
+): Promise<void> {
+  expect(v.safeParse(schema, payload).success).toBe(true);
+  const wire = JSON.stringify(payload).replace(
+    /[\u007f-\uffff]/g,
+    (unit) => `\\u${unit.charCodeAt(0).toString(16).padStart(4, "0")}`,
+  );
+  expect(JSON.parse(wire)).toEqual(payload);
+  expect(v.safeParse(schema, JSON.parse(wire)).success).toBe(true);
+  const read = await readJsonBody(request(wire), route);
+  expect(read.success).toBe(true);
+  const bodyBytes = new TextEncoder().encode(wire).byteLength;
+  expect(BODY_MAX_BYTES).toBeGreaterThan(bodyBytes);
+  expect(BODY_MAX_BYTES).toBeGreaterThanOrEqual(WORST_CASE_HEADROOM_FACTOR * bodyBytes);
+}
 
 describe("readJsonBody — media type", () => {
   it("accepts application/json, with or without parameters", async () => {
@@ -273,21 +317,35 @@ describe("readJsonBody — rejection contract", () => {
     expect(REJECTION_STATUS.invalid_request).toBe(400);
   });
 
-  it("keeps the ceiling above the worst-case legal chat body", () => {
-    // The binding comparison is the largest VALID body, not the character cap:
-    // 2,000 UTF-16 code units are at most 1,000 astral characters — 4,000
-    // bytes in UTF-8, or 12 bytes each when a client escapes every surrogate
-    // as \uXXXX (12,000 bytes) — plus the envelope. The feedback `freeText`
-    // field carries the same UTF-16 ceiling and a smaller envelope, so this
-    // worst case covers both write routes.
-    expect(FEEDBACK_FREE_TEXT_MAX_LENGTH).toBe(CHAT_MESSAGE_MAX_LENGTH);
-    const uuid = "00000000-0000-4000-8000-000000000000";
-    const escapedAstralText = Math.floor(CHAT_MESSAGE_MAX_LENGTH / 2) * 12;
-    const envelope = JSON.stringify({ message: "", sessionId: uuid, language: "id" }).length;
-    const worstCaseLegalBody = escapedAstralText + envelope;
-    expect(BODY_MAX_BYTES).toBeGreaterThan(worstCaseLegalBody);
-    // With headroom: the ceiling is a transport bound, not a size policy for
-    // legal requests, so it stays several times the worst case.
-    expect(BODY_MAX_BYTES).toBeGreaterThanOrEqual(4 * worstCaseLegalBody);
+  it("keeps the ceiling above the worst-case legal chat body", async () => {
+    // 2,000 UTF-16 code units of astral text, every surrogate escaped as
+    // \uXXXX, plus the envelope — the widest body the chat schema admits.
+    const legal = {
+      message: "😀".repeat(CHAT_MESSAGE_MAX_LENGTH / 2),
+      sessionId: "00000000-0000-4000-8000-000000000000",
+      language: "id",
+    };
+    await expectWorstCaseBodyAccepted(ChatRequestSchema, legal, "chat");
+  });
+
+  it("keeps the ceiling above the worst-case legal feedback body", async () => {
+    // A chain flag is the widest valid shape: free text at its own code-point
+    // cap plus three anchored strings at the shared anchor cap. Every allowed
+    // code point is an astral character escaped as two \uXXXX sequences, and
+    // the payload is schema-valid, so the fuzz can generate exactly it.
+    const astral = (codePoints: number) => "😀".repeat(codePoints);
+    const legal = {
+      messageId: "00000000-0000-4000-8000-000000000000",
+      anchor: {
+        type: "chain",
+        category: "questionable_grade",
+        id: astral(FEEDBACK_ANCHOR_STRING_MAX_LENGTH),
+        chainIndex: 0,
+        grade: astral(FEEDBACK_ANCHOR_STRING_MAX_LENGTH),
+        grader: astral(FEEDBACK_ANCHOR_STRING_MAX_LENGTH),
+      },
+      freeText: astral(FEEDBACK_FREE_TEXT_MAX_LENGTH),
+    };
+    await expectWorstCaseBodyAccepted(FeedbackRequestSchema, legal, "feedback");
   });
 });

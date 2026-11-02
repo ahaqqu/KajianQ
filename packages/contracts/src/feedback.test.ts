@@ -2,10 +2,12 @@ import { fc, test as fcTest } from "@fast-check/vitest";
 import { describe, expect, it } from "vite-plus/test";
 import * as v from "valibot";
 import {
+  FEEDBACK_ANCHOR_STRING_MAX_LENGTH,
   FeedbackAnchorSchema,
   FeedbackFlagShape,
   FeedbackRequestSchema,
   FeedbackThumbShape,
+  isWithinCodePointCap,
   type FeedbackRequest,
 } from "./feedback";
 import { isStorableText } from "./chat";
@@ -156,6 +158,63 @@ describe("FeedbackRequestSchema", () => {
     ).toBe(false);
   });
 
+  it("bounds every anchor string at the shared ceiling", () => {
+    // One pipe serves every variant's `id` and the chain row's own grade and
+    // grader, so the last accepted and first refused values are the same here
+    // and in the published schema.
+    const atCeiling = "a".repeat(FEEDBACK_ANCHOR_STRING_MAX_LENGTH);
+    const overCeiling = `${atCeiling}a`;
+    const variants = [
+      { type: "chunk", category: "irrelevant_chunk" },
+      { type: "citation", category: "wrong_citation" },
+      { type: "translation", category: "bad_machine_translation" },
+      { type: "grade", category: "questionable_grade" },
+    ] as const;
+    for (const variant of variants) {
+      expect(v.is(FeedbackAnchorSchema, { ...variant, id: atCeiling }), variant.type).toBe(true);
+      expect(v.is(FeedbackAnchorSchema, { ...variant, id: overCeiling }), variant.type).toBe(false);
+    }
+    const chain = {
+      type: "chain",
+      category: "questionable_grade",
+      id: atCeiling,
+      chainIndex: 0,
+      grade: atCeiling,
+      grader: atCeiling,
+    } as const;
+    expect(v.is(FeedbackAnchorSchema, chain)).toBe(true);
+    expect(v.is(FeedbackAnchorSchema, { ...chain, id: overCeiling })).toBe(false);
+    expect(v.is(FeedbackAnchorSchema, { ...chain, grade: overCeiling })).toBe(false);
+    expect(v.is(FeedbackAnchorSchema, { ...chain, grader: overCeiling })).toBe(false);
+  });
+
+  it("counts the anchor ceiling in code points, the published maxLength's unit", () => {
+    // An astral character is one code point but two UTF-16 units, so 200 of
+    // them fill the 200-code-point ceiling with 400 units — the published
+    // maxLength admits exactly this string. The 201st code point is refused,
+    // which is again exactly where the published bound draws the line.
+    const atCeiling = "😀".repeat(FEEDBACK_ANCHOR_STRING_MAX_LENGTH);
+    expect(atCeiling).toHaveLength(FEEDBACK_ANCHOR_STRING_MAX_LENGTH * 2);
+    expect(Array.from(atCeiling)).toHaveLength(FEEDBACK_ANCHOR_STRING_MAX_LENGTH);
+    const anchor = (id: string) => ({ type: "chunk", category: "irrelevant_chunk", id });
+    expect(v.is(FeedbackAnchorSchema, anchor(atCeiling))).toBe(true);
+    const over = `${atCeiling}😀`;
+    expect(over).toHaveLength(FEEDBACK_ANCHOR_STRING_MAX_LENGTH * 2 + 2);
+    expect(Array.from(over)).toHaveLength(FEEDBACK_ANCHOR_STRING_MAX_LENGTH + 1);
+    expect(v.is(FeedbackAnchorSchema, anchor(over))).toBe(false);
+  });
+
+  it("counts the free-text cap in code points, the published maxLength's unit", () => {
+    // The same rule on the other bounded feedback string: 2,000 astral
+    // characters are 2,000 code points (4,000 units), so the published
+    // maxLength admits them and the parse must too; the 2,001st is refused.
+    const atCeiling = "😀".repeat(2000);
+    expect(atCeiling).toHaveLength(4000);
+    expect(Array.from(atCeiling)).toHaveLength(2000);
+    expect(v.is(FeedbackRequestSchema, base({ freeText: atCeiling }))).toBe(true);
+    expect(v.is(FeedbackRequestSchema, base({ freeText: `${atCeiling}😀` }))).toBe(false);
+  });
+
   it("rejects a non-uuid messageId", () => {
     expect(v.is(FeedbackRequestSchema, base({ messageId: "msg1" }))).toBe(false);
   });
@@ -229,10 +288,14 @@ describe("FeedbackRequestSchema free text storability (#510)", () => {
 
   const lengthArb = fc.integer({ min: 1995, max: 2005 }).map((length) => "a".repeat(length));
 
-  fcTest.prop([fc.oneof(codeUnitsArb, lengthArb)])(
+  // Astral text straddles the same cap in code points while spending twice as
+  // many UTF-16 units, so the law below cannot pass by counting units.
+  const astralLengthArb = fc.integer({ min: 1995, max: 2005 }).map((length) => "😀".repeat(length));
+
+  fcTest.prop([fc.oneof(codeUnitsArb, lengthArb, astralLengthArb)])(
     "admits exactly the storable texts within the cap, on both shapes",
     (freeText) => {
-      const storable = freeText.length <= 2000 && isStorableText(freeText);
+      const storable = isWithinCodePointCap(freeText, 2000) && isStorableText(freeText);
       expect(v.safeParse(FeedbackRequestSchema, thumb(freeText)).success).toBe(storable);
       expect(v.safeParse(FeedbackRequestSchema, flag(freeText)).success).toBe(storable);
     },

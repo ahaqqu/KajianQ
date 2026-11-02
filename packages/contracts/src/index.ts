@@ -53,9 +53,11 @@ export {
   type ChatTraceReviewerItem,
 } from "./chat-trace";
 export {
+  FEEDBACK_ANCHOR_STRING_MAX_LENGTH,
   FEEDBACK_FREE_TEXT_MAX_LENGTH,
   FEEDBACK_INITIAL_STATUS,
   FeedbackAnchorSchema,
+  FeedbackAnchorStringSchema,
   FeedbackAnchorTypeSchema,
   FeedbackCategorySchema,
   FeedbackErrorSchema,
@@ -64,6 +66,7 @@ export {
   FeedbackRequestSchema,
   FeedbackResponseSchema,
   FeedbackThumbShape,
+  isWithinCodePointCap,
   type FeedbackAnchor,
   type FeedbackAnchorType,
   type FeedbackCategory,
