@@ -146,7 +146,9 @@ describe("CitationSheet — the hadith numbering-edition caption", () => {
     expect(caption.textContent).toContain("fawazahmed0/hadith-api");
     expect(caption.textContent).toContain("sunnah.com");
     expect(caption.textContent).toContain("edisi cetak lain");
-    expect(caption.textContent).toMatch(/nomor/i);
+    // The caveat is the caption's load-bearing claim: another printed edition
+    // may number the same hadith differently.
+    expect(caption.textContent).toMatch(/nomor yang berbeda/);
   });
 
   it("renders the English copy under the English locale", () => {
@@ -154,6 +156,7 @@ describe("CitationSheet — the hadith numbering-edition caption", () => {
     const caption = screen.getByTestId("citation-edition");
     expect(caption.textContent).toContain("corpus edition");
     expect(caption.textContent).toContain("other printed editions");
+    expect(caption.textContent).toContain("number them differently");
   });
 
   it("shows no hadith-numbering caption on a non-hadith citation", () => {

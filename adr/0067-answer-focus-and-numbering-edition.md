@@ -5,10 +5,12 @@
 1. **The answer comes first, and the primary/strongest evidence leads.** Every
    answer states what the evidence says about the question directly, then places
    the primary or strongest narration ahead of its parallels.
-2. **The full matn is quoted once.** The Arabic and its translation are
-   reproduced for the primary/strongest narration only. A parallel narration of
-   the same hadith — another collection, another chain, another route — is named
-   compactly: collection, number, grade and grader.
+2. **The full matn is quoted once per hadith, and in full for each different
+   hadith.** The Arabic and its translation are reproduced for the
+   primary/strongest narration and for every other hadith the answer cites.
+   Only a parallel narration of the same hadith — another collection, another
+   chain, another route — is compressed to the compact form: collection, number,
+   grade and grader.
 3. **Completeness is unchanged.** Every chain and grade the evidence rules
    require stays named, the takhrij is still given, and no grade is ever raised;
    the rule governs presentation, never disclosure. The assembled context still
@@ -42,9 +44,11 @@ Compressing the repeated text keeps every disclosure.
 ## Consequences
 
 - Both language prompts carry the rule after the chain rules, and it states
-  explicitly that it does not relax them.
-- A prompt contract test pins the instruction against several parallel
-  narrations; the assembled context keeps every parallel's label and grade.
+  explicitly that it does not relax them — rule 4's Arabic and translation for
+  every quotation included.
+- A prompt contract test pins the instruction, the different-hadith case
+  included, and the assembled context keeps every matn, parallel label and
+  grade.
 - The caption is externalized Indonesian and English UI copy; the citation
   contract, the trace vocabulary and the API are unchanged.
 - **Revisit when** evaluation shows the model still catalogues under the rule,

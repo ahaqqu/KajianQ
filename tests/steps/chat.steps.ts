@@ -438,6 +438,7 @@ Then("the sheet names the corpus edition its hadith numbers follow", async ({ pa
   await expect(caption).toContainText("fawazahmed0/hadith-api");
   await expect(caption).toContainText("sunnah.com");
   await expect(caption).toContainText("edisi cetak lain");
+  await expect(caption).toContainText("nomor yang berbeda");
 });
 
 Then("the Trace lists the chains consulted with their sanads", async ({ page }) => {
