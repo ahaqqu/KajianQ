@@ -8,7 +8,7 @@ import { loadGoldenSetJson } from "./golden-set";
  * Golden Set v1 (fixture slice) — the engine-side structural checks.
  *
  * This test loads the fixture through the engine loader and pins the set's
- * identity, the carried v0 subset, the citation shape and question uniqueness.
+ * identity, the carried v0 block in order, the citation shape and question uniqueness.
  * Coverage classes and source-type floors belong to the domain pack, whose own
  * test reads the same fixture and names its vocabulary; this engine test
  * deliberately names none of it.
@@ -44,11 +44,9 @@ describe("golden-set-v1 fixture identity", () => {
     );
   });
 
-  it("carries every v0 question unchanged, field for field", () => {
+  it("carries the v0 block unchanged and in order", () => {
     expect(V0.questions).toHaveLength(21);
-    for (const before of V0.questions) {
-      expect(RAW_BY_ID.get(before.id), before.id).toEqual(before);
-    }
+    expect(RAW.questions.slice(0, V0.questions.length)).toEqual(V0.questions);
   });
 });
 

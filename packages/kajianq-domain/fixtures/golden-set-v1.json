@@ -1,7 +1,7 @@
 {
   "id": "golden-set-v1",
   "status": "v0-draft",
-  "$comment": "Golden Set v1 draft: the 21 v0 rows are carried unchanged from golden-set-v0.json; gs-v1-001 through gs-v1-029 are newly curated, each with a $comment recording its evidence basis. Owner trap approval is pending; no eval run has been executed.",
+  "$comment": "Golden Set v1 draft: the 21 v0 rows are carried unchanged from golden-set-v0.json; gs-v1-001 through gs-v1-029 are newly curated, each with a $comment recording its evidence basis. Owner trap approval is pending; no eval run has been executed. Refusal rows carry empty requiredCitations and expectedSourceTypes, so the current gate's citation and recall dimensions are trivially satisfied and a grounded non-refusal is accepted; those rows test non-affirmation and non-invention, not a literal refusal.",
   "questions": [
     {
       "id": "gs-v0-001",
@@ -274,7 +274,7 @@
       "requiredCitations": [],
       "expectedBehavior": "refuse",
       "tags": ["refusal", "fabricated-attribution"],
-      "$comment": "The staged collections carry no narration with this wording or meaning; the Arabic من زارني is absent, and the grave-visit reports they do carry (e.g. HR. Muslim no. 2257-2260 and HR. Abu Dawud no. 3235) teach visiting as a reminder, not a guaranteed intercession. Quotation trap: the answer must refuse the attribution."
+      "$comment": "The staged collections carry no narration with this wording or meaning; the Arabic من زارني is absent, and the grave-visit reports they do carry (e.g. HR. Muslim no. 2257-2260 and HR. Abu Dawud no. 3235) teach visiting as a reminder, not a guaranteed intercession. Quotation trap: the answer must not affirm the attribution."
     },
     {
       "id": "gs-v1-002",
@@ -284,7 +284,7 @@
       "requiredCitations": [],
       "expectedBehavior": "refuse",
       "tags": ["refusal", "fabricated-attribution"],
-      "$comment": "The exact saying is absent from the staged collections; the Arabic حب الدنيا رأس كل خطيئة does not occur. The nearest row, HR. Ibn Majah no. 4233, says only that an old heart keeps loving the world and wealth, so it cannot ground the maxim. Quotation trap: refuse the attribution."
+      "$comment": "The exact saying is absent from the staged collections; the Arabic حب الدنيا رأس كل خطيئة does not occur. The nearest row, HR. Ibn Majah no. 4233, says only that an old heart keeps loving the world and wealth, so it cannot ground the maxim. Quotation trap: the answer must not affirm the attribution."
     },
     {
       "id": "gs-v1-003",
@@ -294,7 +294,7 @@
       "requiredCitations": [],
       "expectedBehavior": "refuse",
       "tags": ["refusal", "fabricated-attribution", "english"],
-      "$comment": "The scholar-ink saying is absent from the staged collections in Arabic and Indonesian; no row pairs ink (مداد) with the martyr's blood. The corpus does carry graded reports on the virtue of knowledge (e.g. HR. Tirmidhi no. 2646), but none is this quote. Quotation trap: refuse the attribution."
+      "$comment": "The scholar-ink saying is absent from the staged collections in Arabic and Indonesian; no row pairs ink (مداد) with the martyr's blood. The corpus does carry graded reports on the virtue of knowledge (e.g. HR. Tirmidhi no. 2646), but none is this quote. Quotation trap: the answer must not affirm the attribution."
     },
     {
       "id": "gs-v1-004",
@@ -304,7 +304,7 @@
       "requiredCitations": [],
       "expectedBehavior": "refuse",
       "tags": ["refusal", "fabricated-attribution", "english"],
-      "$comment": "The exact saying is absent: the Arabic اختلاف أمتي رحمة does not occur, and the near row HR. Abu Dawud no. 4297 concerns nations gathering against the Muslims, not disagreement as a mercy. Quotation trap: refuse the attribution."
+      "$comment": "The exact saying is absent: the Arabic اختلاف أمتي رحمة does not occur. The nearest mercy/division report, HR. Abu Dawud no. 4659, has the Prophet describe himself as a mercy and warn against spreading angry words that divide; it does not call disagreement a mercy. Quotation trap: the answer must not affirm the attribution."
     },
     {
       "id": "gs-v1-005",
@@ -314,7 +314,7 @@
       "requiredCitations": [],
       "expectedBehavior": "refuse",
       "tags": ["refusal", "fabricated-attribution"],
-      "$comment": "The saying is absent from the staged collections: من عرف نفسه does not occur, and no row identifies self-knowledge as knowledge of God. Quotation trap: refuse the attribution rather than read it into a Sufi text the corpus does not carry."
+      "$comment": "The saying is absent from the staged collections: من عرف نفسه does not occur, and no row identifies self-knowledge as knowledge of God. Quotation trap: the answer must not affirm the attribution or read it into a Sufi text the corpus does not carry."
     },
     {
       "id": "gs-v1-006",
@@ -324,7 +324,7 @@
       "requiredCitations": [],
       "expectedBehavior": "refuse",
       "tags": ["tafsir", "refusal", "unanswerable"],
-      "$comment": "The staged corpus has no tafsir or kitab source type - doc_parents carries quran and hadith only - so Jami' al-Bayan's volume and page cannot be cited. Untranslated-kitab/tafsir trap: refuse rather than invent a page or offer a Quran verse as the asked commentary."
+      "$comment": "Untranslated-kitab/tafsir trap: the staged corpus has no tafsir or kitab source type - doc_parents carries quran and hadith only - so Jami' al-Bayan's volume and page cannot be cited. The question demands that volume and page; the current gate accepts a grounded decline or a grounded non-refusal, so the row tests non-invention of the requested reference, not a literal refusal."
     },
     {
       "id": "gs-v1-007",
@@ -388,13 +388,13 @@
     },
     {
       "id": "gs-v1-013",
-      "question": "Saya sering mendengar hadits 'Menuntut ilmu wajib bagi setiap Muslim'. Apakah hadits itu sahih? Sebutkan hadits sahih tentang keutamaan menuntut ilmu.",
+      "question": "Saya sering mendengar hadits 'Menuntut ilmu wajib bagi setiap Muslim'. Apakah hadits itu sahih? Sebutkan hadits sahih tentang keutamaan memahami agama.",
       "language": "id",
       "expectedSourceTypes": ["hadith"],
-      "requiredCitations": ["HR. Tirmidhi no. 2646"],
+      "requiredCitations": ["HR. Bukhari no. 71"],
       "expectedBehavior": "answer",
       "tags": ["hadith", "grade-check", "dhaif-trap"],
-      "$comment": "The quoted obligation is HR. Ibn Majah no. 224 in doc_children, graded dhaif by every grader; the sahih alternative is HR. Tirmidhi no. 2646 (whoever treads a path seeking knowledge, Allah eases his path to Paradise). Dhaif trap: do not affirm the famous weak attribution; cite the authentic narration."
+      "$comment": "The quoted obligation is HR. Ibn Majah no. 224 in doc_children, graded dhaif by every grader; the authentic alternative is HR. Bukhari no. 71 (whoever Allah wishes good for, He gives him understanding of the religion), an ungraded sahihayn report registered with the Bukhari edition. It is a different report from the held-out Tirmidhi 2646, so the held-out label cannot satisfy this row through the identity map. Dhaif trap: do not affirm the famous weak attribution; cite the authentic narration."
     },
     {
       "id": "gs-v1-014",
