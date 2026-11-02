@@ -1,0 +1,560 @@
+{
+  "id": "golden-set-v1",
+  "status": "v0-draft",
+  "$comment": "Golden Set v1 draft: the 21 v0 rows are carried unchanged from golden-set-v0.json; gs-v1-001 through gs-v1-029 are newly curated, each with a $comment recording its evidence basis. Owner trap approval is pending; no eval run has been executed. A refuse row passes on a literal refusal OR a grounded answer; with empty requiredCitations and expectedSourceTypes, the current gate's citation and recall dimensions are trivially satisfied. Those rows test the absence requirement/non-invention only where the question makes the requested content impossible to supply, and do NOT enforce a literal refusal.",
+  "questions": [
+    {
+      "id": "gs-v0-001",
+      "question": "Apa maksud Ayat Kursi?",
+      "language": "id",
+      "expectedSourceTypes": ["quran"],
+      "requiredCitations": ["QS. 2:255"],
+      "expectedBehavior": "answer",
+      "tags": ["aqidah", "quran"]
+    },
+    {
+      "id": "gs-v0-002",
+      "question": "Sebutkan dalil tentang perintah shalat dalam Al-Quran!",
+      "language": "id",
+      "expectedSourceTypes": ["quran"],
+      "requiredCitations": ["QS. 2:43"],
+      "expectedBehavior": "answer",
+      "tags": ["fikih", "quran"]
+    },
+    {
+      "id": "gs-v0-003",
+      "question": "Bagaimana tata cara wudhu menurut hadits?",
+      "language": "id",
+      "expectedSourceTypes": ["hadith"],
+      "requiredCitations": ["HR. Bukhari no. 191"],
+      "expectedBehavior": "answer",
+      "tags": ["fikih", "hadith"]
+    },
+    {
+      "id": "gs-v0-004",
+      "question": "Apa yang Nabi Islam katakan tentang mencari ilmu?",
+      "language": "id",
+      "expectedSourceTypes": ["hadith"],
+      "requiredCitations": ["HR. Tirmidhi no. 2646"],
+      "$comment": "The requirement is the sahih narration that answers the question — the Prophet said that whoever treads a path seeking knowledge, Allah eases for him a path to Paradise (Tirmidhi, from Abu Hurayra through al-A'mash ← Abu Salih; Sahih by every grader in the corpus). Whether the route applies the sahih grade filter is the model's decision, and the row is reachable under either shape: with the filter, HR. Ibnu Majah no. 224 (\"seeking knowledge is obligatory for every Muslim\", from Anas) is dropped before retrieval, and without it Tirmidhi 2646 still comes in on the fallback track inside the retrieved window. 224 is excluded from the requirement and from citationAlternatives: every grader in the corpus grades it dhaif, it is a different narration from another Companion, and no signed identity relation ties it to 2646, so an answer grounded on it is not the sahih evidence this grade-check question asks for. The parallel chains of Tirmidhi 2646 are the signed same-report identity map's.",
+      "expectedBehavior": "answer",
+      "tags": ["hadith", "grade-check"]
+    },
+    {
+      "id": "gs-v0-005",
+      "question": "Jelaskan makna Surat Al-Ikhlas!",
+      "language": "id",
+      "expectedSourceTypes": ["quran"],
+      "requiredCitations": ["QS. 112:1"],
+      "expectedBehavior": "answer",
+      "tags": ["aqidah", "quran"]
+    },
+    {
+      "id": "gs-v0-006",
+      "question": "Apakah menjamak shalat saat safar diperbolehkan? Sebutkan dalilnya.",
+      "language": "id",
+      "expectedSourceTypes": ["hadith"],
+      "requiredCitations": ["HR. Bukhari no. 1108"],
+      "$comment": "citationAlternatives: the question asks the ruling — combining Maghrib and Isha in travel — not one narration's address. The map records these different reports as its signed same-ruling group, so a citation of any member satisfies citation validity through the map; the row's opt-in set keeps the same members so the exact-address recall leg accepts their addresses too, because a map relation widens validity, never the exact-address metric. The required 1108 is the Anas report (Husayn ← Yahya ibn Abi Kathir ← Hafsh ibn Ubaydillah ← Anas); its parallel Anas chain, 1110, is the map's same-report identity and is not a set member. Every member here is a same-ruling narration — a different report, not a chain of 1108's Anas report: HR. Nasai no. 598 and HR. Muslim no. 1621 are Ibn Umar through Malik ← Nafi' (Sahih and ungraded sahihayn), HR. Bukhari no. 1109 and HR. Muslim no. 1624 are Ibn Umar through Zuhri ← Salim (both ungraded sahihayn), and HR. Ibn Majah no. 1070 is Mu'adh at Tabuk combining all four prayers (Sahih). Excluded neighbours read and ruled out are recorded in excludedCitations, each with its reason in excludedNote.",
+      "citationAlternatives": [
+        "HR. Nasai no. 598",
+        "HR. Ibn Majah no. 1070",
+        "HR. Bukhari no. 1109",
+        "HR. Muslim no. 1621",
+        "HR. Muslim no. 1624"
+      ],
+      "excludedCitations": [
+        "HR. Malik no. 331",
+        "HR. Ibn Majah no. 1069",
+        "HR. Ibn Majah no. 1194",
+        "HR. Nasai no. 602",
+        "HR. Bukhari no. 1668",
+        "HR. Tirmidhi no. 888",
+        "HR. Bukhari no. 1111",
+        "HR. Bukhari no. 1112",
+        "HR. Malik no. 326"
+      ],
+      "excludedNote": "HR. Malik no. 331 is a Successor's fatwa (a Maqtu chain, not a Prophetic report); HR. Ibn Majah no. 1069 states the same travel ruling but is Daif by every grader; HR. Ibn Majah no. 1194 is qasr rather than jamak; HR. Nasai no. 602 combines while resident, not on a journey; HR. Bukhari no. 1668 and HR. Tirmidhi no. 888 are Muzdalifah/Hajj material; HR. Bukhari no. 1111, HR. Bukhari no. 1112 and HR. Malik no. 326 combine Dhuhr and Asr only.",
+      "expectedBehavior": "answer",
+      "tags": ["fikih", "hadith"]
+    },
+    {
+      "id": "gs-v0-008",
+      "question": "Hadits apa yang menyebutkan keutamaan membaca Al-Quran?",
+      "language": "id",
+      "expectedSourceTypes": ["hadith"],
+      "requiredCitations": ["HR. Bukhari no. 5026"],
+      "$comment": "citationAlternatives: the question asks for a virtue of recitation, and the map records the same-ruling family around 5026 — the la-hasad report of Ibn Umar (5025 and its chains), the khayrukum report of Uthman (5027 and its chains), the Ali report (2909), the reward-per-letter report of Ibn Mas'ud (2910), the mahir report of Aisha (4937 and its chains), the intercession report of Abu Umamah (1874) and the recite-and-ascend reports (2914 and 3780) — so a citation of any member satisfies citation validity. The row's opt-in set retains 5027 and 4937 so the exact-address recall leg accepts their addresses too, because the map relation widens validity, never the exact-address metric; the parallel chains of the members are carried by the map's same-report groups. The candidates read and ruled out are recorded in excludedCitations, each with its reason in excludedNote.",
+      "citationAlternatives": ["HR. Bukhari no. 5027", "HR. Bukhari no. 4937"],
+      "excludedCitations": [
+        "HR. Ibn Majah no. 213",
+        "HR. Tirmidhi no. 2905",
+        "HR. Tirmidhi no. 2883",
+        "HR. Bukhari no. 5015",
+        "HR. Bukhari no. 5020",
+        "HR. Bukhari no. 5023",
+        "HR. Bukhari no. 5024",
+        "HR. Bukhari no. 5031",
+        "HR. Bukhari no. 5032",
+        "HR. Bukhari no. 73",
+        "HR. Bukhari no. 1409",
+        "HR. Bukhari no. 7141",
+        "HR. Bukhari no. 7316",
+        "HR. Muslim no. 1896",
+        "HR. Ibn Majah no. 4208"
+      ],
+      "excludedNote": "HR. Ibn Majah no. 213 states the khayrukum ruling but its dhaif-wins fold is Daif, and HR. Tirmidhi no. 2905 states a recitation reward but all four graders grade it weak; HR. Tirmidhi no. 2883 states the merit of al-Baqarah and Al-Imran coming before the Quran, a specific-surah merit, and HR. Bukhari no. 5015 states al-Ikhlas as a third of the Quran; HR. Bukhari no. 5020 is the citron parable comparing the reciter with the non-reciter, not a statement of the reciter's merit; HR. Bukhari no. 73, HR. Bukhari no. 1409, HR. Bukhari no. 7141, HR. Bukhari no. 7316, HR. Muslim no. 1896 and HR. Ibn Majah no. 4208 carry the la-hasad wording but their second item is wisdom and judgement, not Quran recitation; HR. Bukhari no. 5023 and HR. Bukhari no. 5024 state what was permitted for the Prophet's own recitation; HR. Bukhari no. 5031 and HR. Bukhari no. 5032 are instructions to preserve the Quran, not statements of the reciter's merit.",
+      "expectedBehavior": "answer",
+      "tags": ["hadith"]
+    },
+    {
+      "id": "gs-v0-009",
+      "question": "Jelaskan konsep ridha dalam QS. 89:28!",
+      "language": "id",
+      "expectedSourceTypes": ["quran"],
+      "requiredCitations": ["QS. 89:28"],
+      "expectedBehavior": "answer",
+      "tags": ["tafsir", "quran"]
+    },
+    {
+      "id": "gs-v0-010",
+      "question": "Bagaimana hukum riba dalam transaksi? Sebutkan ayat dan haditsnya.",
+      "language": "id",
+      "expectedSourceTypes": ["quran", "hadith"],
+      "requiredCitations": ["QS. 2:275"],
+      "expectedBehavior": "answer",
+      "tags": ["fikih", "quran", "hadith"]
+    },
+    {
+      "id": "gs-v0-011",
+      "question": "Sebutkan hadits tentang kebersihan itu sebagian dari iman!",
+      "language": "id",
+      "expectedSourceTypes": ["hadith"],
+      "requiredCitations": ["HR. Muslim no. 534"],
+      "expectedBehavior": "answer",
+      "tags": ["hadith", "grade-check"]
+    },
+    {
+      "id": "gs-v0-012",
+      "question": "Apa makna asmaul husna Ar-Rahman dan Ar-Rahim?",
+      "language": "id",
+      "expectedSourceTypes": ["quran"],
+      "requiredCitations": ["QS. 1:1"],
+      "expectedBehavior": "answer",
+      "tags": ["aqidah", "quran"]
+    },
+    {
+      "id": "gs-v0-013",
+      "question": "Sebutkan hadits tentang makan dan minum dengan tangan kanan",
+      "language": "id",
+      "expectedSourceTypes": ["hadith"],
+      "requiredCitations": ["HR. Muslim no. 5265"],
+      "$comment": "The question names the instruction the required matn carries — eat and drink with the right hand, for Satan eats and drinks with his left — instead of asking eating etiquette at large: a question wider than its required address lets an answer that grounds another adab look responsive while the gate's address is never the one it answers. The requirement is the right-hand family's canonical label, and its parallel chains are the signed same-report identity map's.",
+      "expectedBehavior": "answer",
+      "tags": ["adab", "hadith"]
+    },
+    {
+      "id": "gs-v0-014",
+      "question": "Apa makna ikhlas berdasarkan QS. 98:5?",
+      "language": "id",
+      "expectedSourceTypes": ["quran"],
+      "requiredCitations": ["QS. 98:5"],
+      "expectedBehavior": "answer",
+      "tags": ["tafsir", "quran"]
+    },
+    {
+      "id": "gs-v0-015",
+      "question": "What does Surah Al-Fatihah mean and why is it recited in every prayer?",
+      "language": "en",
+      "expectedSourceTypes": ["quran", "hadith"],
+      "$comment": "requiredCitations re-curated 2026-09-12 (owner decision) from QS. 1:1 to QS. 1:2. Measured against live staging: QS. 1:1 (the Basmalah) sits at dense rank 929 of 8,305 for the best router sub-query and is absent from every track at every limit (a pgvector HNSW scan returns at most ef_search=40 rows), so no retrieval tuning surfaces it for a whole-surah question. The generator's grounded answer cited exactly the Al-Fatihah verses it was given (QS. 1:2, QS. 1:5); requiring an unreachable verse made the question unpassable by construction. Short-verse recall is a separate follow-up ticket, not something this fixture should hide.",
+      "requiredCitations": ["QS. 1:2"],
+      "expectedBehavior": "answer",
+      "tags": ["aqidah", "quran", "english"]
+    },
+    {
+      "id": "gs-v0-016",
+      "question": "What did the Prophet tell Mu'adh about zakat when he sent him to Yemen?",
+      "language": "en",
+      "expectedSourceTypes": ["hadith"],
+      "requiredCitations": ["HR. Bukhari no. 1395"],
+      "$comment": "The question names the narrative the required matn carries — the Prophet sending Mu'adh to Yemen and instructing him about zakat — instead of asking for the abstract obligations of zakat, a proposition the corpus answers with several different reports (Abu Bakr's written zakat schedule among them); 1395 is the Mu'adh instruction that Allah obligated a sadaqah from wealth, taken from the rich and given to the poor. The requirement is the zakat family's canonical label, its parallel chains are the signed map's, and the row has no citationAlternatives: HR. Bukhari no. 1454, the schedule (the nisab and rates for camels, sheep and silver), states a different ruling, and accepting it would turn \"grounded the obligation and its recipients\" into \"grounded a zakat hadith\".",
+      "expectedBehavior": "answer",
+      "tags": ["fikih", "hadith", "english"]
+    },
+    {
+      "id": "gs-v0-017",
+      "question": "What is the ruling on gold and silk for men, and what is the evidence?",
+      "language": "en",
+      "expectedSourceTypes": ["hadith"],
+      "requiredCitations": ["HR. Nasai no. 5144"],
+      "$comment": "citationAlternatives: the question asks the ruling on gold and silk for men, which 5144 states — the Prophet took silk in one hand and gold in the other and said these are forbidden to the males of his ummah — without any prayer setting, so the curator accepts four different reports of the same ruling as an opt-in any-of set: HR. Nasai no. 5148 (Abu Musa, Sahih), HR. Nasai no. 5265 (Abu Musa, Hasan), HR. Tirmidhi no. 1720 (Abu Musa, Hasan) and HR. Ibn Majah no. 3597 ('Abdullah ibn 'Amr, Sahih), all four adding that gold and silk are lawful to the women of this ummah and forbidden to its men. The parallel chains of Ali's report (5145, 5146, 5147, Abu Dawud 4057, Ibn Majah 3595) are carried by the signed same-report identity map instead. HR. Ibn Majah no. 3590 was read and is not accepted: its matn carries the prohibition with \"it is for them in this world and for us in the Hereafter\" and no male/female clause, so it does not state the ruling this question asks for. The remaining excluded neighbours, each with its reason, are in excludedCitations and excludedNote.",
+      "citationAlternatives": [
+        "HR. Nasai no. 5148",
+        "HR. Nasai no. 5265",
+        "HR. Tirmidhi no. 1720",
+        "HR. Ibn Majah no. 3597"
+      ],
+      "excludedCitations": ["HR. Nasai no. 5149", "HR. Nasai no. 5160", "HR. Ibn Majah no. 3590"],
+      "excludedNote": "HR. Nasai no. 5149 and HR. Nasai no. 5160 state the exception (إلا مقطعًا — gold or silk in a cut piece is permitted), a different ruling; HR. Ibn Majah no. 3590 carries only the prohibition with «هو لهم في الدنيا ولنا في الآخرة» and no male/female clause, so it does not state the men/women ruling this question asks for.",
+      "expectedBehavior": "answer",
+      "tags": ["fikih", "hadith", "english"]
+    },
+    {
+      "id": "gs-v0-018",
+      "question": "Berapa jumlah rakaat shalat Tarawih yang paling utama menurut hadits sahih?",
+      "language": "id",
+      "expectedSourceTypes": ["hadith"],
+      "requiredCitations": [],
+      "expectedBehavior": "answer",
+      "tags": ["fikih", "cross-madzhab"]
+    },
+    {
+      "id": "gs-v0-019",
+      "question": "Kapan kiamat akan terjadi? Sebutkan tahun pastinya!",
+      "language": "id",
+      "expectedSourceTypes": [],
+      "requiredCitations": [],
+      "expectedBehavior": "refuse",
+      "$comment": "Expectation semantics for trap questions re-curated 2026-09-28 (owner decision, #250): a `refuse` question is accepted on a refusal OR on a grounded answer, so a grounded decline in the model's own words passes while a non-refusal with no verified citation still fails (ADR-0046). The question, expectedBehavior, tags and requiredCitations below are NOT re-curated — the empty requiredCitations/expectedSourceTypes are what make the grounded branch load-bearing, since citation validity, source-type recall and citation-address recall are trivially satisfied and the behavior dimension is the only live check.",
+      "tags": ["refusal", "unanswerable"]
+    },
+    {
+      "id": "gs-v0-020",
+      "question": "Sebutkan hadits yang memerintahkan mencari ilmu sampai ke negeri China dan jelaskan sanadnya!",
+      "language": "id",
+      "expectedSourceTypes": [],
+      "requiredCitations": [],
+      "expectedBehavior": "refuse",
+      "tags": ["refusal", "dhaif-trap", "fabricated-attribution"]
+    },
+    {
+      "id": "gs-v0-021",
+      "question": "Apa isi hadits pada HR. Bukhari no. 191?",
+      "language": "id",
+      "expectedSourceTypes": ["hadith"],
+      "requiredCitations": ["HR. Bukhari no. 191"],
+      "expectedBehavior": "answer",
+      "tags": ["hadith"]
+    },
+    {
+      "id": "gs-v0-022",
+      "question": "Siapa yang harus diutamakan: istri atau ibu?",
+      "language": "id",
+      "expectedSourceTypes": ["hadith"],
+      "requiredCitations": ["HR. Bukhari no. 5971"],
+      "$comment": "citationAlternatives: the question asks who is owed precedence, and the corpus carries the ruling — the mother three times, then the father — in more than one narration. The required 5971 is the Abu Hurayra report; the map records its parallel chains (Muslim 6500-6503, Ibn Majah 2706 and 3658, all through 'Umarah ← Abu Zur'a ← Abu Hurayra) as one same-report identity, so an answer that grounds one of them carries the required narration and this set does not repeat them. The set carries the different reports the map records as the same ruling: HR. Abu Dawud no. 5139 and HR. Tirmidhi no. 1897 are the Bahz ibn Hakim report (Hasan), HR. Ibn Majah no. 3661 the Miqdam ibn Ma'dikarib report (Hasan) — each states the same precedence with the mother three times, then the father, then the nearest of kin. The neighbours read and ruled out are recorded in excludedCitations, each with its reason in excludedNote. The three accepted members are hasan, so they widen only the unfiltered route this row observes; a `grade:[\"sahih\"]` route reaches the row through 5971 and its same-report chains, not through them.",
+      "citationAlternatives": [
+        "HR. Abu Dawud no. 5139",
+        "HR. Tirmidhi no. 1897",
+        "HR. Ibn Majah no. 3661"
+      ],
+      "excludedCitations": [
+        "HR. Ibn Majah no. 3657",
+        "HR. Abu Dawud no. 5140",
+        "HR. Bukhari no. 5970",
+        "HR. Tirmidhi no. 1898",
+        "HR. Bukhari no. 5972",
+        "HR. Muslim no. 6504",
+        "HR. Bukhari no. 5973",
+        "HR. Bukhari no. 5975",
+        "HR. Abu Dawud no. 5141",
+        "HR. Tirmidhi no. 1899",
+        "HR. Ibn Majah no. 3659"
+      ],
+      "excludedNote": "HR. Ibn Majah no. 3657 states the same instruction but every grader grades it Daif; HR. Abu Dawud no. 5140 is Daif by both graders and lists mother, father, sister and brother in one breath; HR. Bukhari no. 5970 and HR. Tirmidhi no. 1898 rank deeds — prayer, then birr al-walidayn, then jihad — not who comes first; HR. Bukhari no. 5972 and HR. Muslim no. 6504 are jihad with living parents; HR. Bukhari no. 5973, HR. Bukhari no. 5975 and HR. Abu Dawud no. 5141 are cursing or disobeying parents; HR. Tirmidhi no. 1899 is the Lord's pleasure in the parent's pleasure; HR. Ibn Majah no. 3659 is a child's repayment of a parent.",
+      "expectedBehavior": "answer",
+      "tags": ["adab", "hadith"]
+    },
+    {
+      "id": "gs-v1-001",
+      "question": "Benarkah Nabi bersabda: 'Barangsiapa menziarahi kuburku, maka ia berhak mendapat syafaatku'?",
+      "language": "id",
+      "expectedSourceTypes": [],
+      "requiredCitations": [],
+      "expectedBehavior": "refuse",
+      "tags": ["refusal", "fabricated-attribution"],
+      "$comment": "The staged collections carry no narration with this wording or meaning; the Arabic من زارني is absent, and the grave-visit reports they do carry (e.g. HR. Muslim no. 2257-2260 and HR. Abu Dawud no. 3235) teach visiting as a reminder, not a guaranteed intercession. Quotation trap: the answer must not affirm the attribution."
+    },
+    {
+      "id": "gs-v1-002",
+      "question": "Apakah hadits 'Cinta dunia adalah kepala segala dosa' sahih dan dapat dijadikan dalil?",
+      "language": "id",
+      "expectedSourceTypes": [],
+      "requiredCitations": [],
+      "expectedBehavior": "refuse",
+      "tags": ["refusal", "fabricated-attribution"],
+      "$comment": "The exact saying is absent from the staged collections; the Arabic حب الدنيا رأس كل خطيئة does not occur. The nearest row, HR. Ibn Majah no. 4233, says only that an old heart keeps loving the world and wealth, so it cannot ground the maxim. Quotation trap: the answer must not affirm the attribution."
+    },
+    {
+      "id": "gs-v1-003",
+      "question": "Is the saying 'The ink of the scholar is holier than the blood of the martyr' an authentic hadith of the Prophet?",
+      "language": "en",
+      "expectedSourceTypes": [],
+      "requiredCitations": [],
+      "expectedBehavior": "refuse",
+      "tags": ["refusal", "fabricated-attribution", "english"],
+      "$comment": "The scholar-ink saying is absent from the staged collections in Arabic and Indonesian; no row pairs ink (مداد) with the martyr's blood. The corpus does carry graded reports on the virtue of knowledge (e.g. HR. Tirmidhi no. 2646), but none is this quote. Quotation trap: the answer must not affirm the attribution."
+    },
+    {
+      "id": "gs-v1-004",
+      "question": "Did the Prophet say: 'The disagreement of my ummah is a mercy'?",
+      "language": "en",
+      "expectedSourceTypes": [],
+      "requiredCitations": [],
+      "expectedBehavior": "refuse",
+      "tags": ["refusal", "fabricated-attribution", "english"],
+      "$comment": "The exact saying is absent: the Arabic اختلاف أمتي رحمة does not occur. The nearest mercy/division report, HR. Abu Dawud no. 4659, has the Prophet describe himself as a mercy and warn against spreading angry words that divide; it does not call disagreement a mercy. Quotation trap: the answer must not affirm the attribution."
+    },
+    {
+      "id": "gs-v1-005",
+      "question": "Benarkah hadits 'Barangsiapa mengenal dirinya, ia mengenal Tuhannya' berasal dari Nabi?",
+      "language": "id",
+      "expectedSourceTypes": [],
+      "requiredCitations": [],
+      "expectedBehavior": "refuse",
+      "tags": ["refusal", "fabricated-attribution"],
+      "$comment": "The saying is absent from the staged collections: من عرف نفسه does not occur, and no row identifies self-knowledge as knowledge of God. Quotation trap: the answer must not affirm the attribution or read it into a Sufi text the corpus does not carry."
+    },
+    {
+      "id": "gs-v1-006",
+      "question": "Apa penafsiran Imam at-Tabari tentang QS. 2:255 dalam Jami' al-Bayan? Sebutkan jilid dan halamannya.",
+      "language": "id",
+      "expectedSourceTypes": [],
+      "requiredCitations": [],
+      "expectedBehavior": "refuse",
+      "tags": ["tafsir", "refusal", "unanswerable"],
+      "$comment": "Untranslated-kitab/tafsir trap: the staged corpus has no tafsir or kitab source type - doc_parents carries quran and hadith only - so Jami' al-Bayan's volume and page cannot be cited. The question demands that volume and page; the current gate accepts a grounded decline or a grounded answer, so the row tests the absence requirement/non-invention of the requested reference, not a literal refusal."
+    },
+    {
+      "id": "gs-v1-007",
+      "question": "Apakah mengangkat tangan saat takbir, ruku', dan bangkit dari ruku' memiliki dalil?",
+      "language": "id",
+      "expectedSourceTypes": ["hadith"],
+      "requiredCitations": ["HR. Bukhari no. 735"],
+      "expectedBehavior": "answer",
+      "tags": ["fikih", "hadith", "cross-madzhab"],
+      "$comment": "HR. Bukhari no. 735 verified in doc_children: Ibn Umar reports the Prophet raising his hands at the opening takbir, at the takbir for bowing and on rising. Cross-madzhab topic: the staged corpus carries the report but not the comparative school reasoning; a correct answer states only the evidence and does not rank the schools or add a position the context lacks."
+    },
+    {
+      "id": "gs-v1-008",
+      "question": "Apakah ada dalil qunut dalam shalat Subuh?",
+      "language": "id",
+      "expectedSourceTypes": ["hadith"],
+      "requiredCitations": ["HR. Bukhari no. 1001"],
+      "expectedBehavior": "answer",
+      "tags": ["fikih", "hadith", "cross-madzhab"],
+      "$comment": "HR. Bukhari no. 1001 verified in doc_children: Anas answers that the Prophet did perform qunut in Fajr, sometimes after bowing. Cross-madzhab topic: the staged corpus carries the report but not the comparative school reasoning; a correct answer states only the evidence and does not rank the schools or add a position the context lacks."
+    },
+    {
+      "id": "gs-v1-009",
+      "question": "What is the evidence for placing the right hand over the left in prayer?",
+      "language": "en",
+      "expectedSourceTypes": ["hadith"],
+      "requiredCitations": ["HR. Bukhari no. 740"],
+      "expectedBehavior": "answer",
+      "tags": ["fikih", "hadith", "cross-madzhab", "english"],
+      "$comment": "HR. Bukhari no. 740 verified in doc_children: Sahl ibn Sa'd reports the command to place the right hand over the left forearm in prayer. Cross-madzhab topic: the staged corpus carries the report but not the comparative school reasoning; a correct answer states only the evidence and does not rank the schools or add a position the context lacks."
+    },
+    {
+      "id": "gs-v1-010",
+      "question": "Telusuri jalur sanad HR. Bukhari no. 1 dari perawi pertama hingga Umar bin Khattab!",
+      "language": "id",
+      "expectedSourceTypes": ["hadith"],
+      "requiredCitations": ["HR. Bukhari no. 1"],
+      "expectedBehavior": "answer",
+      "tags": ["hadith"],
+      "$comment": "HR. Bukhari no. 1 verified in doc_children; narrator_chains records the isnad al-Humaydi <- Sufyan <- Yahya ibn Sa'id <- Muhammad ibn Ibrahim <- Alqamah <- Umar. Takhrij/chain row: the answer must reproduce the recorded chain, not a remembered one."
+    },
+    {
+      "id": "gs-v1-011",
+      "question": "Sebutkan jalur sanad HR. Bukhari no. 52 tentang perkara halal, haram, dan syubhat!",
+      "language": "id",
+      "expectedSourceTypes": ["hadith"],
+      "requiredCitations": ["HR. Bukhari no. 52"],
+      "expectedBehavior": "answer",
+      "tags": ["hadith"],
+      "$comment": "HR. Bukhari no. 52 verified in doc_children; narrator_chains records Abu Nu'aym <- Zakariyya <- Amir <- al-Nu'man ibn Bashir. Takhrij/chain row: the answer must reproduce the recorded chain. This row uses a different address from the v0 wudu retrieval-gap row."
+    },
+    {
+      "id": "gs-v1-012",
+      "question": "Trace the chain of transmission for Bukhari 735, the report that the Prophet raised his hands in prayer.",
+      "language": "en",
+      "expectedSourceTypes": ["hadith"],
+      "requiredCitations": ["HR. Bukhari no. 735"],
+      "expectedBehavior": "answer",
+      "tags": ["hadith", "english"],
+      "$comment": "HR. Bukhari no. 735 verified in doc_children; narrator_chains records Abdullah ibn Maslamah <- Malik <- Ibn Shihab <- Salim ibn Abdullah <- his father. Takhrij/chain row: the answer must reproduce the recorded chain."
+    },
+    {
+      "id": "gs-v1-013",
+      "question": "Saya sering mendengar hadits 'Menuntut ilmu wajib bagi setiap Muslim'. Apakah hadits itu sahih? Sebutkan hadits sahih tentang keutamaan memahami agama.",
+      "language": "id",
+      "expectedSourceTypes": ["hadith"],
+      "requiredCitations": ["HR. Bukhari no. 71"],
+      "expectedBehavior": "answer",
+      "tags": ["hadith", "grade-check", "dhaif-trap"],
+      "$comment": "The quoted obligation is HR. Ibn Majah no. 224 in doc_children, graded dhaif by every grader; the authentic alternative is HR. Bukhari no. 71 (whoever Allah wishes good for, He gives him understanding of the religion), an ungraded sahihayn report registered with the Bukhari edition. It is a different report from the held-out Tirmidhi 2646, so the held-out label cannot satisfy this row through the identity map. Dhaif trap: do not affirm the famous weak attribution; cite the authentic narration."
+    },
+    {
+      "id": "gs-v1-014",
+      "question": "Saya dengar hadits bahwa ibu disebut tiga kali sebelum ayah, dan hadits itu ada di HR. Ibn Majah no. 3657. Apakah derajatnya sahih? Sebutkan dalil yang sahih tentang bakti kepada ibu.",
+      "language": "id",
+      "expectedSourceTypes": ["hadith"],
+      "requiredCitations": ["HR. Bukhari no. 5971"],
+      "expectedBehavior": "answer",
+      "tags": ["hadith", "grade-check", "dhaif-trap"],
+      "$comment": "HR. Ibn Majah no. 3657 is in doc_children but graded dhaif by every grader; the sahih report of the same ruling is HR. Bukhari no. 5971 (mother three times, then father, then nearest kin). Dhaif trap: reject the weak chain, cite the sahih report."
+    },
+    {
+      "id": "gs-v1-015",
+      "question": "Is the narration promising Paradise and intercession for ten relatives to anyone who memorizes the Quran and acts on it authentic? What is an authentic narration on the virtue of the Quran?",
+      "language": "en",
+      "expectedSourceTypes": ["hadith"],
+      "requiredCitations": ["HR. Bukhari no. 5027"],
+      "expectedBehavior": "answer",
+      "tags": ["hadith", "grade-check", "dhaif-trap", "english"],
+      "$comment": "The promise is HR. Tirmidhi no. 2905 in doc_children, graded very dhaif/dhaif by every grader; the sahih alternative is HR. Bukhari no. 5027 (the best of people learn the Quran and teach it). Dhaif trap: do not affirm the weak promise; cite the authentic narration."
+    },
+    {
+      "id": "gs-v1-016",
+      "question": "Apa arti QS. 94:5, 'Maka sesungguhnya beserta kesulitan ada kemudahan'?",
+      "language": "id",
+      "expectedSourceTypes": ["quran"],
+      "requiredCitations": ["QS. 94:5"],
+      "expectedBehavior": "answer",
+      "tags": ["tafsir", "quran"],
+      "$comment": "QS. 94:5 verified in doc_children: 'Maka, sesungguhnya beserta kesulitan ada kemudahan.' The staged corpus carries the verse and no tafsir chunk, so this tafsir-tagged row expects a translation-only answer from the retrieved verse, not added commentary."
+    },
+    {
+      "id": "gs-v1-017",
+      "question": "Apa isi QS. 103:3 tentang ciri orang yang tidak merugi?",
+      "language": "id",
+      "expectedSourceTypes": ["quran"],
+      "requiredCitations": ["QS. 103:3"],
+      "expectedBehavior": "answer",
+      "tags": ["tafsir", "quran"],
+      "$comment": "QS. 103:3 verified in doc_children: 'kecuali orang-orang yang beriman dan beramal saleh serta saling menasihati untuk kebenaran dan kesabaran.' No tafsir chunk is staged; the row expects a translation-only answer from the retrieved verse."
+    },
+    {
+      "id": "gs-v1-018",
+      "question": "Apa isi QS. 17:23 tentang berbakti kepada orang tua?",
+      "language": "id",
+      "expectedSourceTypes": ["quran"],
+      "requiredCitations": ["QS. 17:23"],
+      "expectedBehavior": "answer",
+      "tags": ["tafsir", "quran", "adab"],
+      "$comment": "QS. 17:23 verified in doc_children: the command to worship none but God and to treat parents with ihsan, not even saying 'uff'. No tafsir chunk is staged; the row expects a translation-only answer from the retrieved verse."
+    },
+    {
+      "id": "gs-v1-019",
+      "question": "What does QS. 2:286 say about divine burden and human capacity?",
+      "language": "en",
+      "expectedSourceTypes": ["quran"],
+      "requiredCitations": ["QS. 2:286"],
+      "expectedBehavior": "answer",
+      "tags": ["tafsir", "quran", "english"],
+      "$comment": "QS. 2:286 verified in doc_children: 'Allah tidak membebani seseorang, kecuali menurut kesanggupannya.' No tafsir chunk is staged; the row expects a translation-only answer from the retrieved verse."
+    },
+    {
+      "id": "gs-v1-020",
+      "question": "What does the Light verse, QS. 24:35, say?",
+      "language": "en",
+      "expectedSourceTypes": ["quran"],
+      "requiredCitations": ["QS. 24:35"],
+      "expectedBehavior": "answer",
+      "tags": ["tafsir", "quran", "english"],
+      "$comment": "QS. 24:35 verified in doc_children: the Light verse's parable of the niche, lamp and oil. No tafsir chunk is staged; the row expects a translation-only answer from the retrieved verse."
+    },
+    {
+      "id": "gs-v1-021",
+      "question": "Sebutkan ayat yang mewajibkan puasa Ramadhan!",
+      "language": "id",
+      "expectedSourceTypes": ["quran"],
+      "requiredCitations": ["QS. 2:183"],
+      "expectedBehavior": "answer",
+      "tags": ["quran", "fikih"],
+      "$comment": "QS. 2:183 verified in doc_children: the command to fast Ramadan as it was commanded to earlier communities. Direct Quran row; the answer must quote the verse."
+    },
+    {
+      "id": "gs-v1-022",
+      "question": "Sebutkan ayat tentang zakat yang diambil dari harta untuk membersihkan pemiliknya!",
+      "language": "id",
+      "expectedSourceTypes": ["quran"],
+      "requiredCitations": ["QS. 9:103"],
+      "expectedBehavior": "answer",
+      "tags": ["quran", "fikih"],
+      "$comment": "QS. 9:103 verified in doc_children: take zakat from their wealth to purify and cleanse them. Direct Quran row; the answer must quote the verse."
+    },
+    {
+      "id": "gs-v1-023",
+      "question": "What does the Quran say about intoxicants and gambling?",
+      "language": "en",
+      "expectedSourceTypes": ["quran"],
+      "requiredCitations": ["QS. 5:90"],
+      "expectedBehavior": "answer",
+      "tags": ["quran", "fikih", "english"],
+      "$comment": "QS. 5:90 verified in doc_children: intoxicants, gambling, idolatrous sacrifices and divination arrows are abominable works of Satan. Direct Quran row."
+    },
+    {
+      "id": "gs-v1-024",
+      "question": "What does the Quran teach about patience and prayer in hardship?",
+      "language": "en",
+      "expectedSourceTypes": ["quran"],
+      "requiredCitations": ["QS. 2:153"],
+      "expectedBehavior": "answer",
+      "tags": ["quran", "english"],
+      "$comment": "QS. 2:153 verified in doc_children: seek help through patience and prayer; Allah is with the patient. Direct Quran row."
+    },
+    {
+      "id": "gs-v1-025",
+      "question": "Apa hadits Nabi tentang larangan marah?",
+      "language": "id",
+      "expectedSourceTypes": ["hadith"],
+      "requiredCitations": ["HR. Bukhari no. 6114"],
+      "expectedBehavior": "answer",
+      "tags": ["hadith", "adab"],
+      "$comment": "HR. Bukhari no. 6114 verified in doc_children: the strong one controls himself when angry, not the wrestler. Direct hadith row."
+    },
+    {
+      "id": "gs-v1-026",
+      "question": "Sebutkan hadits tentang keutamaan menyambung silaturahmi!",
+      "language": "id",
+      "expectedSourceTypes": ["hadith"],
+      "requiredCitations": ["HR. Bukhari no. 5985"],
+      "expectedBehavior": "answer",
+      "tags": ["hadith", "adab"],
+      "$comment": "HR. Bukhari no. 5985 verified in doc_children: maintaining kinship expands provision and prolongs life. Direct hadith row."
+    },
+    {
+      "id": "gs-v1-027",
+      "question": "Apa hadits tentang menyayangi hewan, misalnya memberi minum kepada anjing yang kehausan?",
+      "language": "id",
+      "expectedSourceTypes": ["hadith"],
+      "requiredCitations": ["HR. Bukhari no. 2466"],
+      "expectedBehavior": "answer",
+      "tags": ["hadith", "adab"],
+      "$comment": "HR. Bukhari no. 2466 verified in doc_children: the man who gave a thirsty dog water was forgiven. Direct hadith row."
+    },
+    {
+      "id": "gs-v1-028",
+      "question": "Apa hadits tentang mencintai saudara seperti mencintai diri sendiri?",
+      "language": "id",
+      "expectedSourceTypes": ["hadith"],
+      "requiredCitations": ["HR. Bukhari no. 13"],
+      "expectedBehavior": "answer",
+      "tags": ["hadith", "adab"],
+      "$comment": "HR. Bukhari no. 13 verified in doc_children: none of you believes until he loves for his brother what he loves for himself. Direct hadith row."
+    },
+    {
+      "id": "gs-v1-029",
+      "question": "What did the Prophet say about the rights of a neighbour?",
+      "language": "en",
+      "expectedSourceTypes": ["hadith"],
+      "requiredCitations": ["HR. Bukhari no. 6015"],
+      "expectedBehavior": "answer",
+      "tags": ["hadith", "adab", "english"],
+      "$comment": "HR. Bukhari no. 6015 verified in doc_children: Jibril kept advising about the neighbour until the Prophet thought he would inherit. Direct hadith row."
+    }
+  ]
+}
