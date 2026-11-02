@@ -242,6 +242,52 @@ describe("applyProductRules", () => {
     expect(applied).not.toContain("machine_translation_label");
   });
 
+  /**
+   * The reference block is the caller's earlier questions, not evidence
+   * (ADR-0068): a translation label typed in a prior question is not a
+   * translated passage this run retrieved, so it cannot become a provenance
+   * claim about the answer — while a translation the evidence does carry still
+   * labels it.
+   */
+  const contextWithReference = (
+    reference: string,
+    evidenceWithTranslation: boolean,
+  ): AssembledContext<KajianQFilters> => ({
+    query: routedQuery("q"),
+    chunks: [chunk()],
+    turns: [
+      { role: "user", content: reference },
+      {
+        role: "user",
+        content: evidenceWithTranslation
+          ? `evidence\n(${MACHINE_TRANSLATION_LABEL})\ntranslation`
+          : "evidence",
+      },
+    ],
+  });
+
+  it("appends no translation label when only the reference names one", () => {
+    const reference = `Pertanyaan sebelumnya / Previous questions:\n- Apa arti (${MACHINE_TRANSLATION_LABEL})?`;
+    const { draft, applied } = applyProductRules(
+      { text: "Jawaban." },
+      contextWithReference(reference, false),
+      "id",
+    );
+    expect(applied).not.toContain("machine_translation_label");
+    expect(draft.text).not.toContain(MACHINE_TRANSLATION_LABEL);
+  });
+
+  it("still appends the translation label when the evidence carries a translation", () => {
+    const reference =
+      "Pertanyaan sebelumnya / Previous questions:\n- Apa hadits tentang menuntut ilmu?";
+    const { applied } = applyProductRules(
+      { text: "Terjemahannya: menuntut ilmu itu kewajiban." },
+      contextWithReference(reference, true),
+      "id",
+    );
+    expect(applied).toContain("machine_translation_label");
+  });
+
   it("emits English rule text for an English answer", () => {
     const { draft } = applyProductRules(
       { text: `Answer. [${WEAK_CITATION}]` },

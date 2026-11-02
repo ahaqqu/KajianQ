@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vite-plus/test";
-import { REVIEWER_SYSTEM_PROMPT } from "./chat-reviewer";
+import type { AssembledContext } from "@app/rag-core";
+import { buildReviewMessages, REVIEWER_SYSTEM_PROMPT } from "./chat-reviewer";
+import type { KajianQFilters } from "./filters";
+import { routedQuery } from "./test-utils/routed-query";
 
 /**
  * The reviewer gate's fail criteria, pinned against the exact prompt string
@@ -99,5 +102,40 @@ describe("the reviewer's anti-over-fail guarantees", () => {
   it("still fixes the reply contract: ONLY JSON, pass|fail, with a reason", () => {
     expect(REVIEWER_SYSTEM_PROMPT).toContain('{"verdict": "pass" | "fail", "reason": "..."}');
     expect(REVIEWER_SYSTEM_PROMPT).toContain("reply with ONLY JSON");
+  });
+});
+
+/**
+ * **The reviewer reads the generator's evidence — one split, not two.**
+ *
+ * The assembler prints the caller's earlier questions in a turn ahead of the
+ * evidence, so a hand-rolled "last user turn" split in the reviewer would
+ * silently diverge from the generator's the day the split changes. The gate
+ * reads `promptPartsOf`, the construction the generator's prompt uses, and this
+ * multi-turn trap pins the shape: the evidence is in the gate's prompt, the
+ * reference never is (ADR-0068).
+ */
+describe("the reviewer's evidence is the generator's evidence", () => {
+  const reviewerPrompt = (turns: readonly { role: string; content: string }[]): string => {
+    const context: AssembledContext<KajianQFilters> = {
+      query: routedQuery("Jelaskan hadits itu."),
+      chunks: [],
+      turns,
+    };
+    return buildReviewMessages(context, "Draft.").at(-1)?.content ?? "";
+  };
+
+  it("reads the evidence turn only, never the reference block", () => {
+    const evidence = "Menuntut ilmu itu kewajiban [HR. Ibn Majah no. 100 (Sahih)]";
+    const reference =
+      "Pertanyaan sebelumnya / Previous questions:\n- Apa hadits tentang menuntut ilmu?";
+    const prompt = reviewerPrompt([
+      { role: "user", content: reference },
+      { role: "user", content: evidence },
+    ]);
+
+    expect(prompt).toContain(`Evidence:\n${evidence}\n\nDraft answer:`);
+    expect(prompt).not.toContain(reference);
+    expect(prompt).not.toContain("Previous questions");
   });
 });

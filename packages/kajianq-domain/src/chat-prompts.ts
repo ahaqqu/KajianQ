@@ -102,20 +102,101 @@ export type ChatUserPromptOptions = {
   language?: ChatLanguage;
   /** Citation labels the context carries that the question names (ADR-0055). */
   addressed?: readonly string[];
+  /**
+   * The caller's own earlier questions, as the assembler rendered them. They show
+   * what a follow-up refers to and are never evidence: the block below states
+   * that rule, and the context section carries this run's retrieved passages only
+   * (ADR-0068).
+   */
+  reference?: string;
 };
 
-/** The user turn: the routed question, an optional addressed-evidence line, and the assembled context. */
+/**
+ * The evidence section's header. The prompt prints it exactly once: caller text
+ * (the question, the reference block) is neutralised before it is printed, so
+ * the citable section always begins at the assembler's evidence and nowhere else.
+ */
+const EVIDENCE_HEADER = "Konteks / Context:";
+
+/**
+ * What an evidence header inside caller content becomes: the header is the
+ * prompt's own markup, so an occurrence in the question or the reference is text
+ * the caller wrote and must not open a section. The bracketed form keeps the
+ * words readable — a prior question that mentions the header still reads — while
+ * being unmistakably not a header.
+ */
+const NEUTRALISED_HEADER = "[Konteks / Context]";
+
+/**
+ * Caller-supplied text as prompt data. A reference or a question carrying the
+ * evidence header would otherwise print a section ahead of the real one, making
+ * the reference/evidence boundary positional: a prior question could name a
+ * source in a fake section and the test helpers that read the first header would
+ * treat it as citable. Neutralising the header keeps the boundary structural —
+ * exactly one `Konteks / Context:` line exists, and it is the assembler's
+ * (ADR-0068).
+ */
+function neutraliseEvidenceHeader(text: string): string {
+  return text.split(EVIDENCE_HEADER).join(NEUTRALISED_HEADER);
+}
+
+/**
+ * The rule printed above the reference block: earlier questions resolve what the
+ * question refers to and are never citable. The citation gate grounds only the
+ * context section, so a source named in the reference is not this run's evidence
+ * (ADR-0068) — the model must not repeat it as if it were.
+ */
+export const REFERENCE_NOT_EVIDENCE_PROMPT = {
+  id: "Pertanyaan sebelumnya hanya menjelaskan apa yang dirujuk pertanyaan pengguna; pertanyaan itu bukan bukti. Jangan mengutip atau menyebut sumber yang hanya tercetak di sana — sitasi hanya boleh dari bagian Konteks.",
+  en: "The earlier questions only show what the user's question refers to; they are not evidence. Never quote or name a source printed only there — cite only what the Context section carries.",
+} as const;
+
+/**
+ * Split the assembler's turns into the prompt's two parts: the **evidence** is the
+ * last user turn — the block the assembler renders from this run's retrieved
+ * chunks — and the **reference** is every user turn before it — the block the
+ * assembler renders from the caller's earlier questions. The split is structural:
+ * the evidence string cannot contain a reference turn, so a prior answer's text
+ * has no path into the citable section (ADR-0068). A turn that is not a user turn
+ * is never rendered at all.
+ */
+export function promptPartsOf(turns: readonly { role: string; content: string }[]): {
+  evidence: string;
+  reference: string;
+} {
+  const evidenceAt = turns.map((turn) => turn.role).lastIndexOf("user");
+  if (evidenceAt === -1) return { evidence: "", reference: "" };
+  const referenceTurns = turns
+    .slice(0, evidenceAt)
+    .filter((turn) => turn.role === "user" && turn.content !== "");
+  return {
+    evidence: turns[evidenceAt]?.content ?? "",
+    reference: referenceTurns.map((turn) => turn.content).join("\n"),
+  };
+}
+
+/** The user turn: the routed question, the reference block, an optional
+ * addressed-evidence line, and the assembled context. Caller text is neutralised
+ * against the header, so the section below is the only citable one. */
 export function chatUserPrompt(
   question: string,
   context: string,
   options: ChatUserPromptOptions = {},
 ): string {
-  const lines = [`Pertanyaan / Question: ${question}`];
+  const lines = [`Pertanyaan / Question: ${neutraliseEvidenceHeader(question)}`];
   const addressed = options.addressed ?? [];
   if (addressed.length > 0) {
     lines.push("", ADDRESSED_EVIDENCE_PROMPT[options.language ?? "id"](addressed.join(", ")));
   }
-  lines.push("", "Konteks / Context:", context);
+  const reference = options.reference ?? "";
+  if (reference !== "") {
+    lines.push(
+      "",
+      REFERENCE_NOT_EVIDENCE_PROMPT[options.language ?? "id"],
+      neutraliseEvidenceHeader(reference),
+    );
+  }
+  lines.push("", EVIDENCE_HEADER, context);
   return lines.join("\n");
 }
 
@@ -148,6 +229,9 @@ export function addressedReread(input: {
   context: string;
   chunks: readonly Chunk[];
   language: ChatLanguage;
+  /** The reference block the first reading carried, so the reread reads the same
+   * prompt plus the directed line. */
+  reference?: string;
 }): AddressedReread | null {
   const addressed = addressedEvidenceIn(input.question, input.chunks);
   if (addressed.length === 0) return null;
@@ -161,6 +245,7 @@ export function addressedReread(input: {
         content: chatUserPrompt(input.question, input.context, {
           language: input.language,
           addressed,
+          ...(input.reference !== undefined ? { reference: input.reference } : {}),
         }),
       },
     ],

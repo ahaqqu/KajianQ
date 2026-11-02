@@ -14,6 +14,7 @@ import {
   addressedReread,
   chatSystemPrompt,
   chatUserPrompt,
+  promptPartsOf,
   type ChatLanguage,
   type ChatTurn,
 } from "./chat-prompts";
@@ -109,10 +110,19 @@ export function createKajianQGenerator(deps: KajianQGeneratorDeps): Generator<Ka
           // The verbatim question the user asked — not the router's intent:
           // the engine stamps `sourceText` from the caller's query (ADR-0018).
           const question = context.query.sourceText;
-          const evidence = context.turns.map((t) => t.content).join("\n");
+          // The evidence is this run's retrieved chunks; the reference is the
+          // caller's earlier questions. The split is structural, so no prior
+          // answer's text can reach the prompt as citable material (ADR-0068).
+          const parts = promptPartsOf(context.turns);
           const turns: ChatTurn[] = [
             { role: "system", content: chatSystemPrompt(deps.language) },
-            { role: "user", content: chatUserPrompt(question, evidence) },
+            {
+              role: "user",
+              content: chatUserPrompt(question, parts.evidence, {
+                language: deps.language,
+                ...(parts.reference !== "" ? { reference: parts.reference } : {}),
+              }),
+            },
           ];
           // The directed second reading is decided once, by the prompt module
           // that owns its copy (ADR-0055): a question naming no carried address,
@@ -120,9 +130,10 @@ export function createKajianQGenerator(deps: KajianQGeneratorDeps): Generator<Ka
           // plain reread below.
           const reread = addressedReread({
             question,
-            context: evidence,
+            context: parts.evidence,
             chunks: context.chunks,
             language: deps.language,
+            ...(parts.reference !== "" ? { reference: parts.reference } : {}),
           });
           // Bind the provider's own method before narrowing it. `Provider`
           // methods are class members on the fallback chain, so extracting

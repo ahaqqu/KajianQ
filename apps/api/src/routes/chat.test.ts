@@ -781,7 +781,10 @@ describe("POST /v1/chat", () => {
   const FOLLOW_UP_DRAFT = `Menuntut ilmu itu kewajiban bagi setiap muslim [${FOLLOW_UP_CITATION}].`;
 
   /** Seed the hadith the first turn establishes and the follow-up refers to. */
-  async function seedFollowUpHadith(store: ReturnType<typeof createMemoryRagStore>): Promise<void> {
+  async function seedFollowUpHadith(
+    store: ReturnType<typeof createMemoryRagStore>,
+    citation = FOLLOW_UP_CITATION,
+  ): Promise<void> {
     const parentId = await runStoreEffect<string>(
       store.insertDocParent({
         sourceKey: "hadith/bukhari",
@@ -801,7 +804,7 @@ describe("POST /v1/chat", () => {
           collection: "bukhari",
           hadithNo: "52",
           grade: "sahih",
-          citation: FOLLOW_UP_CITATION,
+          citation,
         },
         embeddingPrimary: [1, 0, 0],
         embeddingFallback: [1, 0, 0],
@@ -964,6 +967,77 @@ describe("POST /v1/chat", () => {
     expect(prompt(2)).not.toContain("riba");
     expect(prompt(3)).toContain("riba");
     expect(prompt(3)).not.toContain(FOLLOW_UP_TOPIC);
+  }, 15000);
+
+  /**
+   * **The earlier answer is not the generator's citable material.**
+   *
+   * A session is seeded directly with a pair whose answer cites a label this run
+   * does not retrieve, and the generator stub answers as a real model does when
+   * the prompt shows it that label: it reuses it. The draft citing the earlier
+   * answer's label is then refused by the citation gate — the user-visible
+   * refusal this case must not produce — while a prompt that carries only this
+   * run's evidence produces the retrieved label and ships the answer.
+   */
+  it("answers the seeded follow-up from this run's retrieval, not the earlier answer's label", async () => {
+    const staleCitation = "HR. Ibn Majah no. 224";
+    const currentCitation = "HR. Ibn Majah no. 100 (Sahih)";
+    const staleDraft = `Menuntut ilmu itu kewajiban [${staleCitation}].`;
+    const currentDraft = `Menuntut ilmu itu kewajiban bagi setiap muslim [${currentCitation}].`;
+    const { store, token } = await wiredStore();
+    await seedFollowUpHadith(store, currentCitation);
+    currentStore = withDistanceFloor(store, 0.5);
+
+    const userId = await runStoreEffect<string | null>(store.resolveUserId(token));
+    if (userId === null) throw new Error("the wired store minted no user for this token");
+    const sessionId = await runStoreEffect<string>(store.createChatSession({ userId }));
+    for (const message of [
+      { role: "user", content: `Sebutkan hadis tentang ${FOLLOW_UP_TOPIC}!` },
+      { role: "assistant", content: staleDraft },
+    ]) {
+      await runStoreEffect(
+        store.insertChatMessage({ sessionId, role: message.role, content: message.content }),
+      );
+    }
+
+    currentOverrides = {
+      // A generator that copies what its prompt presented: the draft is a
+      // function of the turns the stage actually delivered.
+      answerFor: (turns) =>
+        turns.some((turn) => turn.content.includes(staleCitation)) ? staleDraft : currentDraft,
+      embedFor: followUpEmbedFor,
+      routerReply: followUpRouter([]),
+    };
+
+    const followUp = await postChat(token, { message: "Jelaskan hadits itu.", sessionId });
+    expect(followUp.status).toBe(200);
+
+    // The retrieved label is cited, the stale one is not named, and the answer
+    // ships — the citations frame agrees it is grounded.
+    expect(followUp.answer).toContain(currentCitation);
+    expect(followUp.answer).not.toContain(staleCitation);
+    const frame = JSON.parse(
+      followUp.frames.find((f) => f.event === "citations")?.data ?? "null",
+    ) as { refusal: boolean; citations: { label: string }[] };
+    expect(frame.refusal).toBe(false);
+    expect(
+      frame.citations.some((citation) => citation.label.startsWith("HR. Ibn Majah no. 100")),
+    ).toBe(true);
+
+    // The router still carried the session's full pair; the assembled context holds
+    // the reference turn ahead of this run's evidence and nothing else.
+    const trace = store.allTraces().get(followUp.meta.messageId) as
+      | { events: { kind: string; detail?: Record<string, unknown> }[] }
+      | undefined;
+    const intent = trace?.events.find((event) => event.kind === "intent");
+    expect((intent?.detail?.["attributes"] as Record<string, unknown>)?.["historyTurns"]).toBe(2);
+    const assembly = trace?.events.find((event) => event.kind === "assembly");
+    expect(assembly?.detail?.["turnCount"]).toBe(2);
+    expect(
+      trace?.events.some(
+        (event) => event.kind === "refusal" && event.detail?.["trigger"] === "ungrounded_citation",
+      ),
+    ).toBe(false);
   }, 15000);
 
   /**

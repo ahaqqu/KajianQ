@@ -6,12 +6,14 @@ The router call carries a bounded tail window of the current session's prior
 turns, so a question that names its topic only by reference can be decomposed
 into retrieval sub-queries about the topic it refers to.
 
-Prior turns may only resolve a reference. They never rewrite the caller's
+Prior turns may only resolve a reference. In the router that is the sub-queries;
+in the generator it is at most the caller's own earlier questions, shown as a
+labelled reference that carries no citation. They never rewrite the caller's
 verbatim question, never become retrieval evidence, and never reach the citation
-gate: the sub-queries are the only thing history shapes. The caller's question
-stays one of the searches, and an answer's citations must still be evidence this
-run retrieved — a follow-up whose resolved search cannot ground it is refused
-exactly as before.
+gate: an earlier answer is never shown to the generator at all. The caller's
+question stays one of the searches, and an answer's citations must still be
+evidence this run retrieved — a follow-up whose resolved search cannot ground it
+is refused exactly as before.
 
 A single-turn call's prompt is unchanged. The window is bounded in the product
 domain rather than trusted from the caller, and every call still declares its
