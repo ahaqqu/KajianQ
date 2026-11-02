@@ -55,6 +55,8 @@ export const messages = {
     citationChainsUnread:
       "The transmission chains for this passage were not read, so no grade is shown.",
     citationChainUnread: "chain evidence not read",
+    citationEditionNote:
+      "Hadith numbers follow the corpus edition (fawazahmed0/hadith-api, derived from sunnah.com); other printed editions may number them differently.",
     arabicOriginal: "Original Arabic text",
     translationLabel: "Translation",
     citationChipAria: "View source for citation",
@@ -194,6 +196,8 @@ export const messages = {
     citationChainTruncated: "sanad lain tidak ditampilkan",
     citationChainsUnread: "Sanad kutipan ini tidak dibaca, sehingga derajatnya tidak ditampilkan.",
     citationChainUnread: "sanad tidak dibaca",
+    citationEditionNote:
+      "Nomor hadits mengikuti edisi korpus (fawazahmed0/hadith-api, diturunkan dari sunnah.com); edisi cetak lain dapat memakai nomor yang berbeda.",
     arabicOriginal: "Teks Arab asli",
     translationLabel: "Terjemahan",
     citationChipAria: "Lihat sumber sitasi",

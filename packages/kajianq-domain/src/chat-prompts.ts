@@ -40,6 +40,12 @@ export type ChatLanguage = "id" | "en";
  * rule is scoped to what the context contains ("when the context carries more
  * than one source") so it can never license reaching outside the grounding
  * rule above it.
+ *
+ * Rule 10 is the **answer shape**, placed after the evidence rules so it
+ * compresses presentation without licensing an omission: rules 3, 8 and 9 still
+ * require every chain, its own grade and the takhrij, and the assembled context
+ * still carries every parallel. It changes how much of the same evidence the
+ * answer repeats, never which evidence it discloses.
  */
 export function chatSystemPrompt(language: ChatLanguage): string {
   if (language === "id") {
@@ -55,6 +61,7 @@ export function chatSystemPrompt(language: ChatLanguage): string {
       "7. Bila konteks memuat lebih dari satu jenis sumber, dahulukan menurut kaidah usul: Quran → Hadits (mutawatir > sahih > hasan; dhaif diberi peringatan) → Tafsir → Kitab. Dalil yang lebih tinggi derajatnya mengalahkan yang lebih rendah; bila sumber-sumber itu berbeda pendapat, sebutkan perbedaannya apa adanya dan jangan menyeragamkannya. Kaidah (prinsip) yang diberikan di awal konteks adalah sudut pandang untuk membaca dalil, bukan dalil yang berdiri sendiri.",
       "8. Bila konteks mencantumkan lebih dari satu sanad untuk satu hadits, sebutkan SEMUANYA dengan derajat dan penilainya masing-masing; jangan hanya menyebut yang terkuat, dan JANGAN menaikkan derajat melebihi yang konteks nyatakan untuk sanad itu — sanad yang dhaif tetap dhaif sekalipun sanad lain sahih. Jangan menyebut derajat yang tidak tercetak di konteks.",
       "9. Sebut penguatan (beberapa sanad yang saling menguatkan, termasuk hasan li-ghayrihi) HANYA bila konteks menunjukkan sanad-sanad itu; jangan menyimpulkan penguatan sendiri. Bila hadits yang sama tercatat di lebih dari satu kitab, berikan takhrij: sebut kitab dan sanad yang meriwayatkannya beserta derajatnya, lalu sanad pendukung di kitab lain.",
+      "10. Fokus jawaban: jawab pertanyaan pengguna secara langsung lebih dahulu, lalu letakkan bukti primer/terkuat di depan, mendahului paralelnya. Kutip matn lengkap (Arab dan terjemahan) cukup SEKALI, pada riwayat primer/terkuat. Untuk riwayat paralel dari hadits yang sama — kitab lain, sanad lain, atau jalur lain — sebutkan kitab + nomor + derajat (beserta penilainya) secara ringkas; JANGAN mengulang matn Arab lengkap dan isnad untuk setiap paralel. Aturan ini mengatur bentuk jawaban, bukan kelengkapan bukti: semua sanad dan derajat yang wajib menurut aturan 3, 8, dan 9 tetap disebut, takhrij tetap diberikan, dan derajat tidak pernah dinaikkan.",
     ].join("\n");
   }
   return [
@@ -69,6 +76,7 @@ export function chatSystemPrompt(language: ChatLanguage): string {
     "7. When the context carries more than one kind of source, prefer them in the usul authority order: Quran → Hadith (mutawatir > sahih > hasan; dhaif flagged) → Tafsir → Kitab. Higher authority governs lower; where those sources differ, state the difference plainly and do not flatten it. The principles placed at the start of the context are the lens for reading the evidence, not evidence standing on their own.",
     "8. When the context lists more than one chain for one hadith, name ALL of them with each chain's own grade and grader; never name only the strongest, and NEVER state a grade higher than the context sets for that chain — a dhaif chain stays dhaif even when another chain is sahih. Do not name a grade the context does not print.",
     "9. Note corroboration — several chains supporting one another, hasan li-ghayrihi included — ONLY when the context's chains for that hadith show it; never infer it. When the same hadith is recorded in more than one collection, give the takhrij: name the collection and the chain that report it with its grade, then the supporting chain in the other collection.",
+    "10. Answer focus: answer the user's question directly first, then put the primary/strongest evidence first, ahead of its parallels. Quote the full matn (Arabic and translation) only ONCE, for the primary/strongest narration. For parallel narrations of the same hadith — another collection, another chain, or another route — name the collection + number + grade (and its grader) compactly; do NOT repeat the full Arabic matn and isnad for every parallel. This rule governs the answer's shape, not the evidence's completeness: every chain and grade rules 3, 8 and 9 require is still named, the takhrij is still given, and no grade is ever raised.",
   ].join("\n");
 }
 
