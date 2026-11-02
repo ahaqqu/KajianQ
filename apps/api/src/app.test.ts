@@ -1,6 +1,11 @@
 import { describe, expect, it, vi } from "vite-plus/test";
 import { createApi } from "./app";
-import { CHAT_MESSAGE_MAX_LENGTH, STORABLE_TEXT_PATTERN } from "@app/contracts";
+import {
+  CHAT_MESSAGE_MAX_LENGTH,
+  FEEDBACK_ANCHOR_STRING_MAX_LENGTH,
+  FEEDBACK_FREE_TEXT_MAX_LENGTH,
+  STORABLE_TEXT_PATTERN,
+} from "@app/contracts";
 import type { AssetFetcher } from "@app/hardening";
 import { isAdminApiPath } from "./lib/admin-paths";
 import { toOpenApiPath } from "./lib/openapi-path";
@@ -252,6 +257,51 @@ describe("generated OpenAPI doc", () => {
     // The no-oracle half is published too: a well-formed unknown/foreign id
     // still answers the documented 404.
     expect(sessionId?.description).toContain("404");
+  });
+
+  it("documents the shared anchor-string ceiling on every feedback anchor variant", async () => {
+    const { doc } = await getDoc();
+    // The feedback request is a union of a thumb shape and a flag shape whose
+    // anchor is itself a variant: the ceiling must reach EVERY variant's `id`
+    // and the chain row's own grade and grader, or the document says a body the
+    // route refuses is valid again — the drift the staging fuzz reports.
+    type Field = { const?: string; maxLength?: number; description?: string };
+    const body = doc.paths["/v1/feedback"]?.["post"]?.["requestBody"] as
+      | {
+          content: {
+            "application/json": {
+              schema: {
+                anyOf?: {
+                  properties?: {
+                    anchor?: { oneOf?: { properties?: Record<string, Field> }[] };
+                    freeText?: Field;
+                  };
+                }[];
+              };
+            };
+          };
+        }
+      | undefined;
+    const variants =
+      body?.content["application/json"].schema.anyOf?.flatMap(
+        (shape) => shape.properties?.anchor?.oneOf ?? [],
+      ) ?? [];
+    expect(variants).toHaveLength(5);
+    for (const variant of variants) {
+      const id = variant.properties?.id;
+      expect(id?.maxLength, variant.properties?.type?.const).toBe(
+        FEEDBACK_ANCHOR_STRING_MAX_LENGTH,
+      );
+      expect(id?.description, variant.properties?.type?.const).toContain("UTF-16");
+      expect(id?.description, variant.properties?.type?.const).toContain("invalid_request");
+    }
+    const chain = variants.find((variant) => variant.properties?.type?.const === "chain");
+    expect(chain?.properties?.grade?.maxLength).toBe(FEEDBACK_ANCHOR_STRING_MAX_LENGTH);
+    expect(chain?.properties?.grader?.maxLength).toBe(FEEDBACK_ANCHOR_STRING_MAX_LENGTH);
+    // The free text stays bounded too, so the document carries no unbounded
+    // string in the feedback body except the UUID, whose format bounds it.
+    const freeText = body?.content["application/json"].schema.anyOf?.[0]?.properties?.freeText;
+    expect(freeText?.maxLength).toBe(FEEDBACK_FREE_TEXT_MAX_LENGTH);
   });
 
   it("documents every body rejection the write routes can answer", async () => {

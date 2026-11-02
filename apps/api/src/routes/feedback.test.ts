@@ -2,7 +2,11 @@ import { describe, expect, it, vi } from "vite-plus/test";
 import { createApi } from "../app";
 import { parseFeedbackRequest } from "../lib/feedback";
 import { BODY_MAX_BYTES } from "../lib/body";
-import { STORABLE_TEXT_PATTERN, type Trace } from "@app/contracts";
+import {
+  FEEDBACK_ANCHOR_STRING_MAX_LENGTH,
+  STORABLE_TEXT_PATTERN,
+  type Trace,
+} from "@app/contracts";
 import { runStoreEffect } from "@app/kajianq-domain";
 import { createMemoryRagStore } from "@app/kajianq-domain/test-utils/memory-rag-store";
 import { createMemoryRateLimiter } from "@app/rate";
@@ -187,6 +191,48 @@ describe("POST /v1/feedback", () => {
       expect(res.status).toBe(400);
       expect(await res.json()).toEqual({ error: "invalid_request" });
     }
+  });
+
+  it("answers 400 invalid_request to an anchor string one over the shared ceiling", async () => {
+    const { store, userId, token } = await wiredStore();
+    const messageId = await seedAnswer(store, userId);
+    // The same one-unit margin on every anchored string the contract bounds:
+    // four variant ids, the chain anchor's id, and the chain row's grade and
+    // grader. A body the document calls valid must never reach the store.
+    const atCeiling = "a".repeat(FEEDBACK_ANCHOR_STRING_MAX_LENGTH);
+    const overCeiling = `${atCeiling}a`;
+    const chain = {
+      type: "chain",
+      category: "questionable_grade",
+      id: atCeiling,
+      chainIndex: 0,
+      grade: atCeiling,
+      grader: atCeiling,
+    };
+    for (const anchor of [
+      { type: "chunk", category: "irrelevant_chunk", id: overCeiling },
+      { type: "citation", category: "wrong_citation", id: overCeiling },
+      { type: "translation", category: "bad_machine_translation", id: overCeiling },
+      { type: "grade", category: "questionable_grade", id: overCeiling },
+      { ...chain, id: overCeiling },
+      { ...chain, grade: overCeiling },
+      { ...chain, grader: overCeiling },
+    ]) {
+      const res = await post(token, { messageId, anchor });
+      expect(res.status, anchor.type).toBe(400);
+      expect(await res.json()).toEqual({ error: "invalid_request" });
+    }
+    expect(store.allFeedback()).toHaveLength(0);
+
+    // The ceiling itself passes the schema and reaches anchor validation,
+    // which refuses an ungrounded chunk with its documented 422 — never a body
+    // refusal and never the transport 413.
+    const atBoundary = await post(token, {
+      messageId,
+      anchor: { type: "chunk", category: "irrelevant_chunk", id: atCeiling },
+    });
+    expect(atBoundary.status).toBe(422);
+    expect(await atBoundary.json()).toEqual({ error: "invalid_anchor" });
   });
 
   it("names the offending field in the logged 400 diagnostic (#283)", async () => {

@@ -1,5 +1,11 @@
-import { CHAT_MESSAGE_MAX_LENGTH, FEEDBACK_FREE_TEXT_MAX_LENGTH } from "@app/contracts";
+import {
+  CHAT_MESSAGE_MAX_LENGTH,
+  FEEDBACK_ANCHOR_STRING_MAX_LENGTH,
+  FEEDBACK_FREE_TEXT_MAX_LENGTH,
+  FeedbackRequestSchema,
+} from "@app/contracts";
 import { describe, expect, it } from "vite-plus/test";
+import * as v from "valibot";
 import {
   BODY_MAX_BYTES,
   LOG_DETAIL_MAX_LENGTH,
@@ -277,10 +283,7 @@ describe("readJsonBody — rejection contract", () => {
     // The binding comparison is the largest VALID body, not the character cap:
     // 2,000 UTF-16 code units are at most 1,000 astral characters — 4,000
     // bytes in UTF-8, or 12 bytes each when a client escapes every surrogate
-    // as \uXXXX (12,000 bytes) — plus the envelope. The feedback `freeText`
-    // field carries the same UTF-16 ceiling and a smaller envelope, so this
-    // worst case covers both write routes.
-    expect(FEEDBACK_FREE_TEXT_MAX_LENGTH).toBe(CHAT_MESSAGE_MAX_LENGTH);
+    // as \uXXXX (12,000 bytes) — plus the envelope.
     const uuid = "00000000-0000-4000-8000-000000000000";
     const escapedAstralText = Math.floor(CHAT_MESSAGE_MAX_LENGTH / 2) * 12;
     const envelope = JSON.stringify({ message: "", sessionId: uuid, language: "id" }).length;
@@ -288,6 +291,37 @@ describe("readJsonBody — rejection contract", () => {
     expect(BODY_MAX_BYTES).toBeGreaterThan(worstCaseLegalBody);
     // With headroom: the ceiling is a transport bound, not a size policy for
     // legal requests, so it stays several times the worst case.
+    expect(BODY_MAX_BYTES).toBeGreaterThanOrEqual(4 * worstCaseLegalBody);
+  });
+
+  it("keeps the ceiling above the worst-case legal feedback body", () => {
+    // A chain flag is the widest valid shape: free text at its own ceiling plus
+    // three anchored strings at the shared anchor ceiling. Every unit spent on
+    // an astral character costs 12 bytes escaped as \uXXXX, and the payload
+    // below is schema-valid, so the fuzz can generate exactly it.
+    const astral = (units: number) => "😀".repeat(units / 2);
+    const legal = {
+      messageId: "00000000-0000-4000-8000-000000000000",
+      anchor: {
+        type: "chain",
+        category: "questionable_grade",
+        id: astral(FEEDBACK_ANCHOR_STRING_MAX_LENGTH),
+        chainIndex: 0,
+        grade: astral(FEEDBACK_ANCHOR_STRING_MAX_LENGTH),
+        grader: astral(FEEDBACK_ANCHOR_STRING_MAX_LENGTH),
+      },
+      freeText: astral(FEEDBACK_FREE_TEXT_MAX_LENGTH),
+    };
+    expect(v.safeParse(FeedbackRequestSchema, legal).success).toBe(true);
+    const wire = JSON.stringify(legal).replace(
+      /[\u007f-\uffff]/g,
+      (unit) => `\\u${unit.charCodeAt(0).toString(16).padStart(4, "0")}`,
+    );
+    // The escaped wire body decodes to the same schema-valid payload, so the
+    // size below is measured on a body the route accepts.
+    expect(v.safeParse(FeedbackRequestSchema, JSON.parse(wire)).success).toBe(true);
+    const worstCaseLegalBody = new TextEncoder().encode(wire).byteLength;
+    expect(BODY_MAX_BYTES).toBeGreaterThan(worstCaseLegalBody);
     expect(BODY_MAX_BYTES).toBeGreaterThanOrEqual(4 * worstCaseLegalBody);
   });
 });

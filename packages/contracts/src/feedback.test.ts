@@ -2,6 +2,7 @@ import { fc, test as fcTest } from "@fast-check/vitest";
 import { describe, expect, it } from "vite-plus/test";
 import * as v from "valibot";
 import {
+  FEEDBACK_ANCHOR_STRING_MAX_LENGTH,
   FeedbackAnchorSchema,
   FeedbackFlagShape,
   FeedbackRequestSchema,
@@ -154,6 +155,52 @@ describe("FeedbackRequestSchema", () => {
         }),
       ),
     ).toBe(false);
+  });
+
+  it("bounds every anchor string at the shared ceiling", () => {
+    // One pipe serves every variant's `id` and the chain row's own grade and
+    // grader, so the last accepted and first refused values are the same here
+    // and in the published schema.
+    const atCeiling = "a".repeat(FEEDBACK_ANCHOR_STRING_MAX_LENGTH);
+    const overCeiling = `${atCeiling}a`;
+    const variants = [
+      { type: "chunk", category: "irrelevant_chunk" },
+      { type: "citation", category: "wrong_citation" },
+      { type: "translation", category: "bad_machine_translation" },
+      { type: "grade", category: "questionable_grade" },
+    ] as const;
+    for (const variant of variants) {
+      expect(v.is(FeedbackAnchorSchema, { ...variant, id: atCeiling }), variant.type).toBe(true);
+      expect(v.is(FeedbackAnchorSchema, { ...variant, id: overCeiling }), variant.type).toBe(false);
+    }
+    const chain = {
+      type: "chain",
+      category: "questionable_grade",
+      id: atCeiling,
+      chainIndex: 0,
+      grade: atCeiling,
+      grader: atCeiling,
+    } as const;
+    expect(v.is(FeedbackAnchorSchema, chain)).toBe(true);
+    expect(v.is(FeedbackAnchorSchema, { ...chain, id: overCeiling })).toBe(false);
+    expect(v.is(FeedbackAnchorSchema, { ...chain, grade: overCeiling })).toBe(false);
+    expect(v.is(FeedbackAnchorSchema, { ...chain, grader: overCeiling })).toBe(false);
+  });
+
+  it("counts the anchor ceiling in UTF-16 code units, not code points", () => {
+    // The cap is measured on the raw string, so an astral character costs two:
+    // 100 of them fill the 200-unit ceiling. The 101st is refused although the
+    // published JSON Schema maxLength (a code-point count) would admit it.
+    const units = FEEDBACK_ANCHOR_STRING_MAX_LENGTH - (FEEDBACK_ANCHOR_STRING_MAX_LENGTH % 2);
+    const astralAtCeiling = "😀".repeat(units / 2);
+    expect(astralAtCeiling).toHaveLength(units);
+    expect(Array.from(astralAtCeiling)).toHaveLength(units / 2);
+    const anchor = (id: string) => ({ type: "chunk", category: "irrelevant_chunk", id });
+    expect(v.is(FeedbackAnchorSchema, anchor(astralAtCeiling))).toBe(true);
+    const over = `${astralAtCeiling}😀`;
+    expect(over).toHaveLength(units + 2);
+    expect(Array.from(over)).toHaveLength(units / 2 + 1);
+    expect(v.is(FeedbackAnchorSchema, anchor(over))).toBe(false);
   });
 
   it("rejects a non-uuid messageId", () => {

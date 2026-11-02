@@ -49,6 +49,41 @@ export const FeedbackCategorySchema = v.picklist([
 export type FeedbackCategory = v.InferOutput<typeof FeedbackCategorySchema>;
 
 /**
+ * The ceiling for every string a flag anchors with: the anchor `id` (a trace
+ * chunk id or a citation label) and a chain row's own `grade` and `grader`.
+ *
+ * The bound is the transport's, not the element's. The write route refuses a
+ * request body over its byte ceiling with `413 payload_too_large`, so a
+ * contract that left these strings unbounded would publish a body the route
+ * must refuse: a schema-valid report answered 413. The ceiling is generous
+ * beside the values a trace actually grounds — a chunk id is a UUID, the
+ * corpus's citation labels are a few dozen characters, a grade is one word and
+ * a grader a name — while keeping the worst-case schema-valid body far below
+ * the byte ceiling.
+ */
+export const FEEDBACK_ANCHOR_STRING_MAX_LENGTH = 200;
+
+/**
+ * The one pipe every anchored string shares, so a request variant, the
+ * response echo and the published `maxLength` cannot drift apart.
+ *
+ * Length is in UTF-16 code units on the raw string, with no trim. JSON Schema's
+ * `maxLength` counts code points instead, so the published bound admits a
+ * string of astral characters this parse refuses — the same code-point drift
+ * `freeText` documents. It stays safe in this direction: an over-length value
+ * is `400 invalid_request` before auth or the store, never the 413 the byte
+ * ceiling answers, and the byte ceiling is measured on the encoded body.
+ */
+export const FeedbackAnchorStringSchema = v.pipe(
+  v.string(),
+  v.minLength(1),
+  v.maxLength(FEEDBACK_ANCHOR_STRING_MAX_LENGTH),
+  v.description(
+    `A trace-anchored string — an anchor id (a trace chunk id or a citation label) or a chain row's own grade or grader — measured in UTF-16 code units on the raw string, 1 to ${FEEDBACK_ANCHOR_STRING_MAX_LENGTH} with no trim. The ceiling keeps a schema-valid feedback body far below the route's request-body byte ceiling, so the contract never admits a body the route refuses as 413 payload_too_large; a value one code unit over the ceiling is 400 invalid_request before auth or the store. JSON Schema's maxLength counts code points, so an astral character counts as two here and one there.`,
+  ),
+);
+
+/**
  * A flag on one trace-anchored element. `id` is the element's identifier as
  * the client saw it in a server-derived frame:
  *   - `chunk` → the trace chunk id (the Trace panel's rows);
@@ -65,30 +100,30 @@ export const FeedbackAnchorSchema = v.variant("type", [
   v.object({
     type: v.literal("chunk"),
     category: v.literal("irrelevant_chunk"),
-    id: v.pipe(v.string(), v.minLength(1)),
+    id: FeedbackAnchorStringSchema,
   }),
   v.object({
     type: v.literal("citation"),
     category: v.literal("wrong_citation"),
-    id: v.pipe(v.string(), v.minLength(1)),
+    id: FeedbackAnchorStringSchema,
   }),
   v.object({
     type: v.literal("translation"),
     category: v.literal("bad_machine_translation"),
-    id: v.pipe(v.string(), v.minLength(1)),
+    id: FeedbackAnchorStringSchema,
   }),
   v.object({
     type: v.literal("grade"),
     category: v.literal("questionable_grade"),
-    id: v.pipe(v.string(), v.minLength(1)),
+    id: FeedbackAnchorStringSchema,
   }),
   v.object({
     type: v.literal("chain"),
     category: v.literal("questionable_grade"),
-    id: v.pipe(v.string(), v.minLength(1)),
+    id: FeedbackAnchorStringSchema,
     chainIndex: v.pipe(v.number(), v.integer(), v.minValue(0)),
-    grade: v.optional(v.pipe(v.string(), v.minLength(1))),
-    grader: v.optional(v.pipe(v.string(), v.minLength(1))),
+    grade: v.optional(FeedbackAnchorStringSchema),
+    grader: v.optional(FeedbackAnchorStringSchema),
   }),
 ]);
 
@@ -179,11 +214,11 @@ export const FeedbackResponseSchema = v.object({
     v.object({
       type: FeedbackAnchorTypeSchema,
       category: FeedbackCategorySchema,
-      id: v.pipe(v.string(), v.minLength(1)),
+      id: FeedbackAnchorStringSchema,
       /** A chain anchor's row position and that row's own verdict, when graded. */
       chainIndex: v.optional(v.pipe(v.number(), v.integer(), v.minValue(0))),
-      grade: v.optional(v.pipe(v.string(), v.minLength(1))),
-      grader: v.optional(v.pipe(v.string(), v.minLength(1))),
+      grade: v.optional(FeedbackAnchorStringSchema),
+      grader: v.optional(FeedbackAnchorStringSchema),
     }),
   ),
   /** The admin review queue state (spec §4): a fresh report starts pending. */
