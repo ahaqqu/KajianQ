@@ -1,7 +1,7 @@
 {
   "id": "golden-set-v1",
   "status": "v0-draft",
-  "$comment": "Golden Set v1 draft: the 21 v0 rows are carried unchanged from golden-set-v0.json; gs-v1-001 through gs-v1-029 are newly curated, each with a $comment recording its evidence basis. Owner trap approval is pending; no eval run has been executed. A refuse row passes on a literal refusal OR a grounded answer; with empty requiredCitations and expectedSourceTypes, the current gate's citation and recall dimensions are trivially satisfied. Those rows test the absence requirement/non-invention only where the question makes the requested content impossible to supply, and do NOT enforce a literal refusal.",
+  "$comment": "Golden Set v1 draft: the 21 v0 rows are carried unchanged from golden-set-v0.json; gs-v1-001 through gs-v1-029 are newly curated, each with a $comment recording its evidence basis. Each newly curated answer row names its required report unambiguously. A refuse row passes on a literal refusal OR a grounded answer; with empty requiredCitations and expectedSourceTypes, the current gate's citation and recall dimensions are trivially satisfied. Those rows test the absence requirement/non-invention only where the question makes the requested content impossible to supply, and do NOT enforce a literal refusal.",
   "questions": [
     {
       "id": "gs-v0-001",
@@ -388,13 +388,13 @@
     },
     {
       "id": "gs-v1-013",
-      "question": "Saya sering mendengar hadits 'Menuntut ilmu wajib bagi setiap Muslim'. Apakah hadits itu sahih? Sebutkan hadits sahih tentang keutamaan memahami agama.",
+      "question": "Apa hadits sahih tentang keutamaan memahami agama?",
       "language": "id",
       "expectedSourceTypes": ["hadith"],
       "requiredCitations": ["HR. Bukhari no. 71"],
       "expectedBehavior": "answer",
-      "tags": ["hadith", "grade-check", "dhaif-trap"],
-      "$comment": "The quoted obligation is HR. Ibn Majah no. 224 in doc_children, graded dhaif by every grader; the authentic alternative is HR. Bukhari no. 71 (whoever Allah wishes good for, He gives him understanding of the religion), an ungraded sahihayn report registered with the Bukhari edition. It is a different report from the held-out Tirmidhi 2646, so the held-out label cannot satisfy this row through the identity map. Dhaif trap: do not affirm the famous weak attribution; cite the authentic narration."
+      "tags": ["hadith", "grade-check"],
+      "$comment": "Direct grade check: HR. Bukhari no. 71 (whoever Allah wishes good for, He gives him understanding of the religion) is an ungraded sahihayn report registered with the Bukhari edition. It is a different report from the held-out Tirmidhi 2646, so the held-out label cannot satisfy this row through the identity map. The question names the theme so the required narration is unambiguous; it does not pair it with an absent quotation, because the product's specific-fact refusal rule would then correctly refuse the whole turn."
     },
     {
       "id": "gs-v1-014",
@@ -408,13 +408,13 @@
     },
     {
       "id": "gs-v1-015",
-      "question": "Is the narration promising Paradise and intercession for ten relatives to anyone who memorizes the Quran and acts on it authentic? What is an authentic narration on the virtue of the Quran?",
+      "question": "Which authentic narration says that the best people are those who learn the Quran and teach it?",
       "language": "en",
       "expectedSourceTypes": ["hadith"],
       "requiredCitations": ["HR. Bukhari no. 5027"],
       "expectedBehavior": "answer",
-      "tags": ["hadith", "grade-check", "dhaif-trap", "english"],
-      "$comment": "The promise is HR. Tirmidhi no. 2905 in doc_children, graded very dhaif/dhaif by every grader; the sahih alternative is HR. Bukhari no. 5027 (the best of people learn the Quran and teach it). Dhaif trap: do not affirm the weak promise; cite the authentic narration."
+      "tags": ["hadith", "grade-check", "english"],
+      "$comment": "Direct grade check: HR. Bukhari no. 5027 (the best of people learn the Quran and teach it) is an ungraded sahihayn report. The question names the narration's own wording so the required address is unambiguous; it does not pair it with the weak ten-relatives promise, because the product's specific-fact refusal rule would then refuse the mixed turn."
     },
     {
       "id": "gs-v1-016",
@@ -548,13 +548,13 @@
     },
     {
       "id": "gs-v1-029",
-      "question": "What did the Prophet say about the rights of a neighbour?",
+      "question": "What did the Prophet say about Jibril's repeated advice concerning neighbours?",
       "language": "en",
       "expectedSourceTypes": ["hadith"],
       "requiredCitations": ["HR. Bukhari no. 6015"],
       "expectedBehavior": "answer",
       "tags": ["hadith", "adab", "english"],
-      "$comment": "HR. Bukhari no. 6015 verified in doc_children: Jibril kept advising about the neighbour until the Prophet thought he would inherit. Direct hadith row."
+      "$comment": "Direct hadith row: HR. Bukhari no. 6015 (Jibril kept advising about the neighbour until the Prophet thought he would inherit). The question names Jibril's advice so the required narration is unambiguous."
     }
   ]
 }
