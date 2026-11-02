@@ -185,8 +185,12 @@ const ADDRESS_WORD_CONTINUATION = /[\p{L}\p{Nd}]/u;
  * address an answer cites), so it has to carry the boundary the grammar's
  * address word carries. Without it `HR. Bukhari no. 5010` grounds inside
  * `… no. 50102`, and the gate reports an address the answer never wrote as
- * grounded — a false provenance claim its readers (the trace's `grounded` list,
- * the citations frame, the weak-grade trigger) then act on.
+ * grounded — a false provenance claim the `grounded` list's readers then act on:
+ * the trace records the list, and the weak-grade trigger selects its evidence
+ * from it. The citations frame is not one of those readers: it derives each chip
+ * from a written span through {@link groundingLabelsFor}, so it shares the
+ * gate's grounding rule rather than this computed set — and its spans are
+ * grammar addresses, so it was already whole-address-correct.
  */
 function containsWholeAddress(answer: string, label: string): boolean {
   for (let at = answer.indexOf(label); at !== -1; at = answer.indexOf(label, at + 1)) {
