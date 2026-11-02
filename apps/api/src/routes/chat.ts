@@ -65,7 +65,7 @@ export const chatRoutes = newRouter().post("/v1/chat", CHAT_OPENAPI_DESCRIPTION,
   }
 
   const bodyParse = await parseChatRequest(c.req.raw, logger);
-  // The refusal carries its own status (400 invalid_json/invalid_encoding/
+  // The rejection carries its own status (400 invalid_json/invalid_encoding/
   // invalid_request, 413 payload_too_large, 415 unsupported_media_type), so
   // the route cannot map the same code differently.
   if (!bodyParse.success) return c.json({ error: bodyParse.error }, bodyParse.status);
@@ -79,7 +79,7 @@ export const chatRoutes = newRouter().post("/v1/chat", CHAT_OPENAPI_DESCRIPTION,
   // Session + user message, via the store seam (promise-shaped bridge).
   // An explicitly supplied sessionId appends to that session (validated to
   // belong to the authenticated user); absent = a new session. The body
-  // contract has already refused a non-UUID id (400 invalid_request above,
+  // contract has already rejected a non-UUID id (400 invalid_request above,
   // before auth or the store), so the seam is never handed a value its `uuid`
   // column cannot cast; a well-formed unknown or foreign UUID stays the
   // documented 404, indistinguishable from one that does not exist.

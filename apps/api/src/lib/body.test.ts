@@ -1,9 +1,18 @@
+import { CHAT_MESSAGE_MAX_LENGTH, FEEDBACK_FREE_TEXT_MAX_LENGTH } from "@app/contracts";
 import { describe, expect, it } from "vite-plus/test";
-import { BODY_MAX_BYTES, readJsonBody, type Warn } from "./body";
+import {
+  BODY_MAX_BYTES,
+  LOG_DETAIL_MAX_LENGTH,
+  REJECTION_STATUS,
+  readJsonBody,
+  reject,
+  type BodyRejectionCode,
+  type Warn,
+} from "./body";
 
 /**
  * The boundary invariant: a JSON request body is either decoded losslessly and
- * handed to the route's schema, or refused with the documented code/status —
+ * handed to the route's schema, or rejected with the documented code/status —
  * never replacement-decoded into a different string, never silently truncated,
  * and never a 500.
  *
@@ -78,7 +87,20 @@ describe("readJsonBody — media type", () => {
     expect(result.success).toBe(true);
   });
 
-  it("refuses a missing Content-Type with 415, before reading the body", async () => {
+  it("rejects a structured suffix with an empty subtype", async () => {
+    // RFC 6839's suffix needs a registered (hence non-empty) subtype: a media
+    // type with nothing before `+json` is not JSON, whatever the ends match.
+    for (const contentType of ["application/+json", "application/ +json"]) {
+      const result = await readJsonBody(request('{"message":"hi"}', contentType), "chat");
+      expect(result, contentType).toMatchObject({
+        success: false,
+        error: "unsupported_media_type",
+        status: 415,
+      });
+    }
+  });
+
+  it("rejects a missing Content-Type with 415, before reading the body", async () => {
     const { entries, log } = capture();
     const result = await readJsonBody(request('{"message":"hi"}', null), "chat", log);
     expect(result).toMatchObject({
@@ -89,7 +111,7 @@ describe("readJsonBody — media type", () => {
     expect(entries.map((entry) => entry.msg)).toContain("chat.body_unsupported_media_type");
   });
 
-  it("refuses a non-JSON Content-Type with 415 and names the type in the log", async () => {
+  it("rejects a non-JSON Content-Type with 415 and names the type in the log", async () => {
     const { entries, log } = capture();
     const result = await readJsonBody(
       request('{"message":"hi"}', "application/x-www-form-urlencoded"),
@@ -108,7 +130,7 @@ describe("readJsonBody — encoding", () => {
     if (result.success) expect(result.value).toEqual({ message: "😀؟" });
   });
 
-  it("refuses invalid UTF-8 with 400 invalid_encoding instead of replacement-decoding it", async () => {
+  it("rejects invalid UTF-8 with 400 invalid_encoding instead of replacement-decoding it", async () => {
     const bodies: [string, Uint8Array][] = [
       // A lone continuation byte — what a client sending the C1 control U+0093
       // as a raw byte produces; `Request.text()` would silently turn it into U+FFFD.
@@ -138,7 +160,7 @@ describe("readJsonBody — encoding", () => {
 });
 
 describe("readJsonBody — JSON syntax", () => {
-  it("refuses raw NUL and control padding with 400 invalid_json", async () => {
+  it("rejects raw NUL and control padding with 400 invalid_json", async () => {
     for (const pad of [0x00, 0x01, 0x1f]) {
       const result = await readJsonBody(
         request(bytes(0x7b, 0x22, 0x6d, 0x22, 0x3a, 0x22, 0x61, pad, 0x22, 0x7d)),
@@ -155,14 +177,15 @@ describe("readJsonBody — JSON syntax", () => {
     const detail = String(entries[0]?.fields?.["detail"] ?? "");
     expect(detail).toContain("\\u0001");
     expect(detail).not.toContain("\u0001");
+    expect(detail.length).toBeLessThanOrEqual(LOG_DETAIL_MAX_LENGTH);
   });
 
-  it("refuses an empty body with 400 invalid_json", async () => {
+  it("rejects an empty body with 400 invalid_json", async () => {
     const result = await readJsonBody(request(new Uint8Array(0)), "chat");
     expect(result).toMatchObject({ success: false, error: "invalid_json", status: 400 });
   });
 
-  it("refuses an unreadable stream with 400 invalid_json and a body_unreadable log", async () => {
+  it("rejects an unreadable stream with 400 invalid_json and a body_unreadable log", async () => {
     const body = new ReadableStream<Uint8Array>({
       pull(controller) {
         controller.error(new Error("socket reset"));
@@ -184,7 +207,7 @@ describe("readJsonBody — JSON syntax", () => {
 });
 
 describe("readJsonBody — size", () => {
-  it("refuses a streamed body over the ceiling with 413, without buffering it all", async () => {
+  it("rejects a streamed body over the ceiling with 413, without buffering it all", async () => {
     const chunk = textBytes("a".repeat(16 * 1024));
     const result = await readJsonBody(
       request(streamOf([chunk, chunk, chunk, chunk, chunk])),
@@ -193,7 +216,7 @@ describe("readJsonBody — size", () => {
     expect(result).toMatchObject({ success: false, error: "payload_too_large", status: 413 });
   });
 
-  it("refuses on a declared Content-Length over the ceiling before looking at the bytes", async () => {
+  it("rejects on a declared Content-Length over the ceiling before looking at the bytes", async () => {
     // The bytes are invalid UTF-8 and invalid JSON, so only the header check can
     // produce the 413: a reader-first implementation would answer 400 instead.
     const req = request(bytes(0x93));
@@ -212,7 +235,7 @@ describe("readJsonBody — size", () => {
     expect(result.success).toBe(true);
   });
 
-  it("refuses one byte over the ceiling even when Content-Length lies", async () => {
+  it("rejects one byte over the ceiling even when Content-Length lies", async () => {
     const prefix = '{"message":"';
     const suffix = '"}';
     const padding = " ".repeat(BODY_MAX_BYTES - prefix.length - suffix.length + 1);
@@ -224,8 +247,8 @@ describe("readJsonBody — size", () => {
   });
 });
 
-describe("readJsonBody — refusal contract", () => {
-  it("maps every refusal to its documented status", async () => {
+describe("readJsonBody — rejection contract", () => {
+  it("maps every rejection to its documented status", async () => {
     const cases: [string, Request, number][] = [
       ["no media type", request("{}", null), 415],
       ["bad media type", request("{}", "text/plain"), 415],
@@ -238,5 +261,33 @@ describe("readJsonBody — refusal contract", () => {
       expect(result.success, name).toBe(false);
       if (!result.success) expect(result.status, name).toBe(status);
     }
+  });
+
+  it("assigns every code its status through the one map", () => {
+    // The constructor is the only place a status is assigned, so a code added
+    // to the map without a status — or a caller mapping a 400 by hand — is the
+    // drift this row catches, for the reader's codes and the schema's alike.
+    for (const code of Object.keys(REJECTION_STATUS) as BodyRejectionCode[]) {
+      expect(reject(code).status, code).toBe(REJECTION_STATUS[code]);
+    }
+    expect(REJECTION_STATUS.invalid_request).toBe(400);
+  });
+
+  it("keeps the ceiling above the worst-case legal chat body", () => {
+    // The binding comparison is the largest VALID body, not the character cap:
+    // 2,000 UTF-16 code units are at most 1,000 astral characters — 4,000
+    // bytes in UTF-8, or 12 bytes each when a client escapes every surrogate
+    // as \uXXXX (12,000 bytes) — plus the envelope. The feedback `freeText`
+    // field carries the same UTF-16 ceiling and a smaller envelope, so this
+    // worst case covers both write routes.
+    expect(FEEDBACK_FREE_TEXT_MAX_LENGTH).toBe(CHAT_MESSAGE_MAX_LENGTH);
+    const uuid = "00000000-0000-4000-8000-000000000000";
+    const escapedAstralText = Math.floor(CHAT_MESSAGE_MAX_LENGTH / 2) * 12;
+    const envelope = JSON.stringify({ message: "", sessionId: uuid, language: "id" }).length;
+    const worstCaseLegalBody = escapedAstralText + envelope;
+    expect(BODY_MAX_BYTES).toBeGreaterThan(worstCaseLegalBody);
+    // With headroom: the ceiling is a transport bound, not a size policy for
+    // legal requests, so it stays several times the worst case.
+    expect(BODY_MAX_BYTES).toBeGreaterThanOrEqual(4 * worstCaseLegalBody);
   });
 });

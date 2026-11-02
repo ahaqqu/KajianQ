@@ -190,7 +190,7 @@ describe("POST /v1/feedback", () => {
   });
 
   it("names the offending field in the logged 400 diagnostic (#283)", async () => {
-    // The DETAIL makes the refusal diagnosable in ops, names the field that failed, and
+    // The DETAIL makes the rejection diagnosable in ops, names the field that failed, and
     // never stringifies a valibot path item as `[object Object]`.
     const warnings: string[] = [];
     const parsed = await parseFeedbackRequest(
@@ -621,7 +621,7 @@ describe("POST /v1/feedback — degraded derivation (thermo-review A3)", () => {
 /**
  * The same malformed-body contract on the feedback route: a body the reader
  * cannot decode losslessly, a missing media type, or a body over the ceiling is
- * refused before auth, the answer lookup, or any store write.
+ * rejected before auth, the answer lookup, or any store write.
  */
 describe("POST /v1/feedback — malformed-body contract", () => {
   function jsonBytes(...parts: (string | Uint8Array)[]): Uint8Array {
@@ -652,7 +652,7 @@ describe("POST /v1/feedback — malformed-body contract", () => {
     );
   }
 
-  it("refuses invalid UTF-8 with 400 invalid_encoding and stores nothing", async () => {
+  it("rejects invalid UTF-8 with 400 invalid_encoding and stores nothing", async () => {
     const { store, userId, token } = await wiredStore();
     const messageId = await seedAnswer(store, userId);
     const body = jsonBytes(
@@ -668,7 +668,7 @@ describe("POST /v1/feedback — malformed-body contract", () => {
     expect(store.allFeedback()).toHaveLength(0);
   });
 
-  it("refuses a missing Content-Type with 415, before the answer lookup", async () => {
+  it("rejects a missing Content-Type with 415, before the answer lookup", async () => {
     const { store, userId, token } = await wiredStore();
     const messageId = await seedAnswer(store, userId);
     const res = await postBytes(token, JSON.stringify({ messageId, rating: "up" }), null);
@@ -677,7 +677,7 @@ describe("POST /v1/feedback — malformed-body contract", () => {
     expect(store.allFeedback()).toHaveLength(0);
   });
 
-  it("refuses a non-JSON Content-Type with 415", async () => {
+  it("rejects a non-JSON Content-Type with 415", async () => {
     const { store, userId, token } = await wiredStore();
     const messageId = await seedAnswer(store, userId);
     const res = await postBytes(
@@ -690,7 +690,7 @@ describe("POST /v1/feedback — malformed-body contract", () => {
     expect(store.allFeedback()).toHaveLength(0);
   });
 
-  it("refuses a body over the documented ceiling with 413 payload_too_large", async () => {
+  it("rejects a body over the documented ceiling with 413 payload_too_large", async () => {
     const { store, userId, token } = await wiredStore();
     const messageId = await seedAnswer(store, userId);
     const body = JSON.stringify({ messageId, rating: "up", pad: "a".repeat(BODY_MAX_BYTES) });
@@ -700,7 +700,7 @@ describe("POST /v1/feedback — malformed-body contract", () => {
     expect(store.allFeedback()).toHaveLength(0);
   });
 
-  it("refuses raw NUL and control padding with 400 invalid_json", async () => {
+  it("rejects raw NUL and control padding with 400 invalid_json", async () => {
     const { store, userId, token } = await wiredStore();
     const messageId = await seedAnswer(store, userId);
     for (const pad of [new Uint8Array([0x00]), new Uint8Array([0x1f])]) {
@@ -712,11 +712,11 @@ describe("POST /v1/feedback — malformed-body contract", () => {
     expect(store.allFeedback()).toHaveLength(0);
   });
 
-  it("refuses the large NUL-padded free text class with 400 invalid_request", async () => {
+  it("rejects the large NUL-padded free text class with 400 invalid_request", async () => {
     const { store, userId, token } = await wiredStore();
     const messageId = await seedAnswer(store, userId);
     // The feedback twin of the chat reproducer: legal JSON, 2,000 escaped
-    // U+0000, refused by the contract's storable-text rule before the store.
+    // U+0000, rejected by the contract's storable-text rule before the store.
     const body = `{"messageId":"${messageId}","rating":"up","freeText":"${"\\u0000".repeat(2000)}"}`;
     const res = await postBytes(token, body);
     expect(res.status).toBe(400);

@@ -225,7 +225,7 @@ describe("generated OpenAPI doc", () => {
     for (const accepted of ["riba", "😀", "\u0001\u0007", " ", "؟!؟", "\u200b"]) {
       expect(published.test(accepted), JSON.stringify(accepted)).toBe(true);
     }
-    // The description names the same two refusals the pattern expresses.
+    // The description names the same two rejections the pattern expresses.
     expect(message?.description).toContain("U+0000");
     expect(message?.description).toContain("unpaired surrogate");
   });
@@ -254,7 +254,7 @@ describe("generated OpenAPI doc", () => {
     expect(sessionId?.description).toContain("404");
   });
 
-  it("documents every body refusal the write routes can answer", async () => {
+  it("documents every body rejection the write routes can answer", async () => {
     const { doc } = await getDoc();
     // A status the route can return but the document omits is the drift the
     // staging fuzz reports as ST103. The body boundary answers 400 invalid_json/
@@ -273,6 +273,27 @@ describe("generated OpenAPI doc", () => {
       expect(responses?.["413"]?.description, path).toContain(`${BODY_MAX_BYTES}-byte`);
       expect(responses?.["413"]?.description, path).toContain("payload_too_large");
       expect(responses?.["415"]?.description, path).toContain("unsupported_media_type");
+    }
+  });
+
+  it("publishes one body-rejection contract on both write routes", async () => {
+    const { doc } = await getDoc();
+    // One factory feeds both operations: the prose is byte-identical there, so
+    // a hand-copied edit on either route — the drift the per-key rows above
+    // cannot see — reddens this row. The error payload is the same `{ error }`
+    // shape on both, published from each route's own contract schema.
+    const responses = (path: string) =>
+      (doc.paths[path]?.["post"]?.["responses"] ?? {}) as Record<
+        string,
+        { description?: string; content?: { "application/json"?: { schema?: unknown } } }
+      >;
+    const chat = responses("/v1/chat");
+    const feedback = responses("/v1/feedback");
+    for (const status of ["400", "413", "415"]) {
+      expect(chat[status]?.description, status).toBe(feedback[status]?.description);
+      expect(chat[status]?.content?.["application/json"]?.schema, status).toEqual(
+        feedback[status]?.content?.["application/json"]?.schema,
+      );
     }
   });
 });

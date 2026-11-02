@@ -53,6 +53,7 @@ export {
   type ChatTraceReviewerItem,
 } from "./chat-trace";
 export {
+  FEEDBACK_FREE_TEXT_MAX_LENGTH,
   FEEDBACK_INITIAL_STATUS,
   FeedbackAnchorSchema,
   FeedbackAnchorTypeSchema,

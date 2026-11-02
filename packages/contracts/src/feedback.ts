@@ -103,7 +103,7 @@ export type FeedbackAnchor = v.InferOutput<typeof FeedbackAnchorSchema>;
  * report stays the length issue; `v.regex` publishes the rule in
  * `/openapi.json` for the same reason it does on the chat message.
  */
-const FEEDBACK_FREE_TEXT_MAX_LENGTH = 2000;
+export const FEEDBACK_FREE_TEXT_MAX_LENGTH = 2000;
 
 const STORABLE_TEXT = new RegExp(STORABLE_TEXT_PATTERN);
 

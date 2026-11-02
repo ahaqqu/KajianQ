@@ -296,7 +296,7 @@ describe("POST /v1/chat", () => {
       expect(await res.json(), JSON.stringify(message)).toEqual({ error: "invalid_request" });
     }
 
-    // The refusal is at the boundary: no seam was called, no session, message
+    // The rejection is at the boundary: no seam was called, no session, message
     // or trace was written, so nothing of a rejected body survives.
     expect(spendCalls).toEqual([]);
     expect(store.allChatSessions()).toEqual([]);
@@ -784,7 +784,7 @@ describe("POST /v1/chat", () => {
     expect(res.status).toBe(400);
     expect(await res.json()).toEqual({ error: "invalid_request" });
 
-    // Nothing happens behind the refusal, measured rather than inferred.
+    // Nothing happens behind the rejection, measured rather than inferred.
     expect(spendCalls).toEqual([]);
     expect(store.allChatMessages()).toEqual([]);
     expect(store.allTraces().size).toBe(0);
@@ -792,7 +792,7 @@ describe("POST /v1/chat", () => {
   });
 
   it("names the offending field in the 400's diagnostic detail (#271)", async () => {
-    // The DETAIL makes the refusal diagnosable in ops, naming the field that failed.
+    // The DETAIL makes the rejection diagnosable in ops, naming the field that failed.
     const warnings: string[] = [];
     const parsed = await parseChatRequest(
       new Request("http://localhost/v1/chat", {
@@ -807,6 +807,29 @@ describe("POST /v1/chat", () => {
     expect(parsed.error).toBe("invalid_request");
     expect(parsed.detail).toContain("sessionId");
     expect(warnings.join(" ")).toContain("sessionId");
+  });
+
+  it("escapes a control character the schema echoes back out of the logged detail", async () => {
+    // Valibot embeds the received value in its message, so a JSON-legal control
+    // character in a schema-invalid field would otherwise reach the log raw.
+    // The schema detail is log-only and passes the boundary's sanitizer.
+    const entries: { msg: string; fields?: Record<string, unknown> }[] = [];
+    const parsed = await parseChatRequest(
+      new Request("http://localhost/v1/chat", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ message: "hi", language: "i\u0001d" }),
+      }),
+      { warn: (msg, fields) => entries.push(fields === undefined ? { msg } : { msg, fields }) },
+    );
+    expect(parsed.success).toBe(false);
+    if (parsed.success) return;
+    expect(parsed.error).toBe("invalid_request");
+    expect(parsed.detail).toContain("\\u0001");
+    expect(parsed.detail).not.toContain("\u0001");
+    const logged = String(entries[0]?.fields?.["detail"] ?? "");
+    expect(logged).toContain("\\u0001");
+    expect(logged).not.toContain("\u0001");
   });
 
   it("answers 404 for a well-formed but unknown session UUID, like a foreign one", async () => {
@@ -831,7 +854,7 @@ describe("POST /v1/chat", () => {
  * The malformed-body contract on the app side. The exact bodies Schemathesis
  * generates, plus the byte-level classes a schema-driven generator cannot name:
  * undecodable UTF-8, raw controls, missing media type, and an over-ceiling body.
- * Every refusal is a documented 4xx with the JSON error shape, and nothing
+ * Every rejection is a documented 4xx with the JSON error shape, and nothing
  * behind the boundary (session, message, trace, provider) runs.
  */
 describe("POST /v1/chat — malformed-body contract", () => {
@@ -876,7 +899,7 @@ describe("POST /v1/chat — malformed-body contract", () => {
     return { store, token };
   }
 
-  it("refuses invalid UTF-8 with 400 invalid_encoding, never decoding it into a different message", async () => {
+  it("rejects invalid UTF-8 with 400 invalid_encoding, never decoding it into a different message", async () => {
     const { store, token } = await armedStore();
     // A lone continuation byte is what a client sending raw C1 text produces;
     // `Request.text()` would turn it into U+FFFD and ask the pipeline a
@@ -892,7 +915,7 @@ describe("POST /v1/chat — malformed-body contract", () => {
     expect(store.allChatSessions()).toEqual([]);
   });
 
-  it("refuses a missing Content-Type with 415 unsupported_media_type", async () => {
+  it("rejects a missing Content-Type with 415 unsupported_media_type", async () => {
     const { store, token } = await armedStore();
     const res = await postBytes(token, JSON.stringify({ message: "hello" }), null);
     expect(res.status).toBe(415);
@@ -901,7 +924,7 @@ describe("POST /v1/chat — malformed-body contract", () => {
     expect(store.allChatSessions()).toEqual([]);
   });
 
-  it("refuses a non-JSON Content-Type with 415", async () => {
+  it("rejects a non-JSON Content-Type with 415", async () => {
     const { token } = await armedStore();
     const res = await postBytes(token, JSON.stringify({ message: "hello" }), "text/plain");
     expect(res.status).toBe(415);
@@ -909,7 +932,7 @@ describe("POST /v1/chat — malformed-body contract", () => {
     expect(spendCalls).toEqual([]);
   });
 
-  it("refuses a body over the documented ceiling with 413 payload_too_large", async () => {
+  it("rejects a body over the documented ceiling with 413 payload_too_large", async () => {
     const { store, token } = await armedStore();
     const body = JSON.stringify({ message: "hello", pad: "a".repeat(BODY_MAX_BYTES) });
     const res = await postBytes(token, body);
@@ -919,10 +942,10 @@ describe("POST /v1/chat — malformed-body contract", () => {
     expect(store.allChatSessions()).toEqual([]);
   });
 
-  it("refuses the large NUL-padded message class with 400 invalid_request", async () => {
+  it("rejects the large NUL-padded message class with 400 invalid_request", async () => {
     const { store, token } = await armedStore();
     // The body the staging fuzz generated: a legal JSON string carrying 1,999
-    // escaped U+0000, refused by the contract's storable-text rule. It is here
+    // escaped U+0000, rejected by the contract's storable-text rule. It is here
     // because the app-side answer must be a 400, whatever the proxy in front
     // does with a body this size.
     const body = `{"message":")${"\\u0000".repeat(1999)}"}`;
@@ -933,7 +956,7 @@ describe("POST /v1/chat — malformed-body contract", () => {
     expect(store.allChatMessages()).toEqual([]);
   });
 
-  it("refuses raw NUL and control padding with 400 invalid_json", async () => {
+  it("rejects raw NUL and control padding with 400 invalid_json", async () => {
     const { token } = await armedStore();
     for (const pad of [new Uint8Array([0x00]), new Uint8Array([0x01]), new Uint8Array([0x1f])]) {
       const res = await postBytes(token, jsonBytes('{"message":"a', pad, 'b"}'));
@@ -943,7 +966,7 @@ describe("POST /v1/chat — malformed-body contract", () => {
     expect(spendCalls).toEqual([]);
   });
 
-  it("refuses a JSON body of the wrong shape with 400 invalid_request", async () => {
+  it("rejects a JSON body of the wrong shape with 400 invalid_request", async () => {
     const { token } = await armedStore();
     for (const raw of ["[]", "null", '"message"', "{}", '{"message":42}']) {
       const res = await postBytes(token, raw);
