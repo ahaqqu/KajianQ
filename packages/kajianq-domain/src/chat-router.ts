@@ -9,11 +9,13 @@ import {
   type RunContextService,
   type SubQuery,
 } from "@app/rag-core";
-import { admitSubQueryText, decomposeQuery } from "./chat-router-decompose";
-import { readRouterText, ROUTER_SYSTEM_PROMPT, type RouterReading } from "./chat-router-output";
+import { decomposeQuery } from "./chat-router-decompose";
+import { readRouterText, type RouterReading } from "./chat-router-output";
+import { routerCallFor } from "./chat-router-prompt";
 import { routeFilters, sourceRoutingDetail, type SourceRoutingInput } from "./chat-source-routing";
 
-export { extractJsonObject, ROUTER_SYSTEM_PROMPT } from "./chat-router-output";
+export { extractJsonObject } from "./chat-router-output";
+export { ROUTER_SYSTEM_PROMPT, ROUTER_FOLLOW_UP_RULE } from "./chat-router-prompt";
 
 /**
  * KajianQRouter — Smart Router stages 1–3 (spec §3.3, CONTEXT.md "Smart
@@ -37,6 +39,17 @@ export { extractJsonObject, ROUTER_SYSTEM_PROMPT } from "./chat-router-output";
  * the engine's runner stamps the caller's verbatim question and prior turns
  * onto it, so the fields downstream stages read are guaranteed rather than
  * echoed back by this stage (ADR-0018).
+ *
+ * **A follow-up is routed from the session's own prior turns.** The call
+ * carries a bounded window of them (chat-router-prompt.ts owns the window and
+ * the follow-up rule), so a question that names its topic only by reference —
+ * "Apa dalilnya?", "Jelaskan hadits itu" — can be decomposed into retrieval
+ * sub-queries about that topic instead of about the follow-up's own words. The
+ * verbatim question is never rewritten from history: `sourceText` stays what
+ * the caller typed, and only the sub-queries may resolve the reference. The
+ * window the call actually carried is recorded on the intent event's
+ * attributes, so a follow-up answer's evidence — which turns it saw, which
+ * sub-queries it ran, which chunks came back — is auditable from the Trace.
  *
  * The route is **gated on the question, before the call**: the router's input
  * is the caller's question, and a text carrying no letter and no digit is not a
@@ -76,10 +89,11 @@ export type RouterProvider = {
     turns: readonly { role: string; content: string }[];
     /**
      * Required, never optional, on the serving seam: the router prompt
-     * carries the user's chat question, which is personal data (ADR-0043
-     * Consequences). A non-optional field makes dropping the flag a compile
-     * error at the call site, and the flag makes `FallbackProvider` skip
-     * free-tier candidates for the call (`personalDataAllowed`, ADR-0009).
+     * carries the user's chat question and any prior turns of the session,
+     * which are personal data (ADR-0043 Consequences). A non-optional field
+     * makes dropping the flag a compile error at the call site, and the flag
+     * makes `FallbackProvider` skip free-tier candidates for the call
+     * (`personalDataAllowed`, ADR-0009).
      */
     personalData: true;
     /**
@@ -102,18 +116,16 @@ export function createKajianQRouter(
         Effect.gen(function* () {
           const run = yield* RunContext;
           const overrides = query.filters ?? {};
-          const question = admitSubQueryText(query.text);
-          if (question === undefined) {
-            return yield* recordRouting(run, () => fallbackRouting(overrides, question));
+          const call = routerCallFor(query.text, query.history);
+          if (call.question === undefined) {
+            return yield* recordRouting(run, () => fallbackRouting(overrides, call.question));
           }
           const reply = yield* provider
             .generate({
-              turns: [
-                { role: "system", content: ROUTER_SYSTEM_PROMPT },
-                { role: "user", content: query.text },
-              ],
-              // The user's question is personal data — never a free-tier ride
-              // (ADR-0043 Consequences; enforced by the provider seam).
+              turns: call.turns,
+              // The user's question and any prior turns are personal data — never
+              // a free-tier ride (ADR-0043 Consequences; enforced by the
+              // provider seam).
               personalData: true,
               options: ROUTER_SAMPLING,
             })
@@ -137,8 +149,8 @@ export function createKajianQRouter(
           // failure before a search runs.
           return yield* recordRouting(run, () =>
             reading === undefined
-              ? fallbackRouting(overrides, question)
-              : routingOf(reading, query.text),
+              ? fallbackRouting(overrides, call.question, call.historyTurns)
+              : routingOf(reading, query.text, call.historyTurns),
           );
         }),
       ),
@@ -177,10 +189,14 @@ function recordRouting(
   });
 }
 
-/** What a usable reply routes to: the classification, sub-queries, and stage 3's filters. */
+/** What a usable reply routes to: the classification, sub-queries, and stage 3's filters.
+ * `historyTurns` is the window the call carried (chat-router-prompt.ts), absent on a
+ * single-turn call — the intent event's attributes are where the Trace records that a
+ * follow-up's retrieval was resolved from prior turns. */
 function routingOf(
   reading: RouterReading,
   question: string,
+  historyTurns: number,
 ): Routing<import("./filters").KajianQFilters> {
   // The decomposition first, deliberately: stage 3's source selection is the
   // union of the category and the roles of the parts retrieval will *actually*
@@ -203,8 +219,14 @@ function routingOf(
     // The EFFECTIVE filters, not the model's hints: they are what retrieval
     // runs with, and the payload that claims to say what was understood must
     // not disagree with the search it caused.
-    attributes: { ...reading.attributes, ...filters },
+    attributes: { ...reading.attributes, ...filters, ...historyAttribute(historyTurns) },
   };
+}
+
+/** The window a call carried, as trace content: present only when there was one, so a
+ * single-turn trace keeps the exact shape it had and absence means "no prior turns". */
+function historyAttribute(historyTurns: number): Record<string, unknown> {
+  return historyTurns > 0 ? { historyTurns } : {};
 }
 
 /** The router's reading, as source routing reads it. */
@@ -236,10 +258,15 @@ function routingInputOf(
  * retrieve contributes no sub-query, so this arm fans out over nothing and
  * retrieval short-circuits before any embed or search: the same treatment the
  * decomposer gives that text under any origin, taken one stage earlier.
+ *
+ * `historyTurns` records the window the failed call carried: the call still
+ * happened and still cost money, and the answer's Trace must show that the
+ * fallback route was given prior turns even though it could not use the reply.
  */
 function fallbackRouting(
   overrides: import("./filters").KajianQFilters,
   question: string | undefined,
+  historyTurns = 0,
 ): Routing<import("./filters").KajianQFilters> {
   return {
     intent: "factual",
@@ -255,6 +282,7 @@ function fallbackRouting(
       fallback: true,
       ...(question === undefined ? { contentFree: true } : {}),
       ...overrides,
+      ...historyAttribute(historyTurns),
     },
   };
 }
