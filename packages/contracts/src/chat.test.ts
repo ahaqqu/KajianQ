@@ -192,6 +192,16 @@ describe("ChatRequestSchema message storability (#478)", () => {
     .map((length) => "a".repeat(length));
 
   /**
+   * Astral text straddles the same ceiling in code points while spending twice
+   * as many UTF-16 units, so the law below cannot pass by counting units: the
+   * draws at 1,995–2,000 code points are admissible in the published unit and
+   * over the ceiling in `String.prototype.length`.
+   */
+  const astralLengthArb = fc
+    .integer({ min: CHAT_MESSAGE_MAX_LENGTH - 5, max: CHAT_MESSAGE_MAX_LENGTH + 5 })
+    .map((length) => "😀".repeat(length));
+
+  /**
    * The law, against an oracle that reads the store rather than the check: a
    * message is admissible exactly when it is within the ceiling in code points,
    * its UTF-8 bytes carry no 0x00, and those bytes decode back to the same text
@@ -199,7 +209,7 @@ describe("ChatRequestSchema message storability (#478)", () => {
    * database encoding. A check that misses an unrepresentable class, or counts
    * the wrong unit, disagrees with the bytes and reddens here.
    */
-  fcTest.prop([fc.oneof(codeUnitsArb, lengthArb)])(
+  fcTest.prop([fc.oneof(codeUnitsArb, lengthArb, astralLengthArb)])(
     "admits exactly the texts whose UTF-8 bytes are NUL-free and decode back unchanged",
     (text) => {
       const encoded = new TextEncoder().encode(text);
