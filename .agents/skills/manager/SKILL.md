@@ -69,15 +69,6 @@ The manager owns every board move; role subagents never touch the board — they
 - **In QA → Done** when the verdict is recorded as `verified`; **In QA → Cancelled** when a `not verified` or `blocked` change is reverted or superseded — the closure names that verdict as its reason, so the card reaches its end without a verification it never got. **Done** means merged **and**, where a verdict was owed, closed on that verdict — a merged ticket whose verdict is still pending stays in **In QA**, and so does a `not verified` or `blocked` change whose fix or re-run is still in flight, where the column names the work outstanding rather than a verdict owed on the merged head.
 - **→ Cancelled** whenever the issue closes not planned: filed and never started, abandoned, or a merged-but-unverified change reverted. A ticket that never delivered is never **Done**; **Cancelled** names the closure instead.
 
-**Repair transitions — the `board-reconcile` sweep.** Between loops the board drifts, so the manager session or the owner runs the [`board-reconcile`](../board-reconcile/SKILL.md) sweep: it applies the transition rules above to every card and may make exactly these moves, each on the evidence named. A card it cannot settle is reported, never moved:
-
-- **Any column → Done** when delivery is proven and the verdict, where one was owed, is accounted for: the issue closed as completed and a merged PR closes it, or a merged PR closes an open issue whose QA ticket records `verified` — and in that second case report the closure the issue is still owed. A completed closure whose QA ticket records no verdict, `not verified`, or `blocked` is not a Done move; report it.
-- **Any column → Cancelled** when the issue closed not planned.
-- **Any column → In QA** when a merged PR closes an issue that is still open and its QA ticket records no verdict yet, `not verified`, or `blocked` — the column names the verdict or the work outstanding. A **Done** card it finds that way is moved too: the column asserts a closure the verdict does not support. The same verdict on a closed completed issue is the Done bullet's report-only case, never a move here.
-- **Backlog, Ready, Done or Cancelled → In review** when an open PR closes the ticket, and **→ Waiting for merge** when that PR is approved and `gh pr checks` exits 0.
-- **Ready → Backlog** when the ticket carries no routing label or not exactly one type label — triage never settled it as dispatchable, so the column claims a readiness the labels do not show.
-- **Reported, never moved:** a completed closure with no merged closing PR, an open issue on a **Cancelled** card, an open issue after a merge that no QA ticket names, and any column claiming a PR or a merge the reads cannot show.
-
 **Open question: no `Needs decision` state.** A ticket parked on an owner decision has no state of its own, so it sits in **Ready** or **Backlog** and reads as dispatchable. Adding a state is the owner's call and carries the option-id discipline below; until that call, name a parked ticket in the summary rather than letting its column imply it is ready.
 
 ### Board API mechanics
