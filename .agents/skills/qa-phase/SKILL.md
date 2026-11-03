@@ -74,7 +74,7 @@ The verdict is the only thing that closes a QA-needed change: `verified` when th
 
 ## The verdict and the board
 
-**The QA phase owns the verdict; the manager owns the card move.** `In QA` is the card of a merged and deployed change whose verdict is still pending, and the manager's transition rules are what take a card out of it — on the verdict the QA role posts, never on a move the role makes. Roles report artifacts and do not touch the board (`.zcode/agents/README.md`); the `manager` skill's § Project board — the ticket state surface is canonical for the states, their transitions, and what **Done** means.
+**The QA phase owns the verdict; the manager owns the card move.** `In QA` is the card of a merged and deployed change whose verdict is still pending, and the manager's transition rules are what take a card out of it — on the verdict the QA role posts, never on a move the role makes. Roles report artifacts and do not touch the board (`.agents/roles/README.md`); the `manager` skill's § Project board — the ticket state surface is canonical for the states, their transitions, and what **Done** means.
 
 Each verdict implies one card state:
 

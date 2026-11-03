@@ -4,7 +4,7 @@ name: Staging
 # serving host is the netcup VPS: the `deploy` job delegates to the reusable
 # `deploy-vps.yml` workflow, so the deploy command lives in exactly one place
 # (issue #181's deployer separation). Docs-and-tests-only pushes (markdown,
-# docs/, adr/, NOTICES/, .agents/, .zcode/, tests/**, *.test.ts, *.test.mjs,
+# docs/, adr/, NOTICES/, .agents/, tests/**, *.test.ts, *.test.mjs,
 # and the test-support class stated at the patterns below) cannot change the
 # deployed artifact, so they skip the push trigger — a deploy plus its paid
 # smoke would be pure spend with no new artifact to verify.
@@ -36,7 +36,6 @@ on:
       - "adr/**"
       - "NOTICES/**"
       - ".agents/**"
-      - ".zcode/**"
       # Test patterns by convention, not by directory: most *.test.ts are
       # colocated under apps/ and packages/, so tests/** alone would leave them
       # deploying.

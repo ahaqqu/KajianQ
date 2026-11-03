@@ -10,7 +10,6 @@ export default defineConfig({
       "**/test-results/**",
       "**/playwright-report/**",
       ...byteExactFixtures,
-      ".zcode/**",
       "bun.lock",
     ],
   },

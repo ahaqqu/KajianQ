@@ -139,6 +139,6 @@ When the tickets went to a real tracker, publishing them (step 5) is not done un
 
 **Resolve the item before creating one.** An item whose Status is unset belongs to no column, so a column-based read cannot find the ticket — a filing puts a ticket in the repo, not in a column. Add an item only when the ticket has none: the step is a Status **set** on the item the ticket already has, never a second add. Read the field's option ids and each item's id fresh at use time, per that section's mechanics.
 
-A ticket filed outside this skill — a review round's defect ticket, a finding the QA role opens, the owner's own filing — arrives the same way, and the manager cards it: the manager owns every board move and no role subagent touches the board (`.zcode/agents/README.md`).
+A ticket filed outside this skill — a review round's defect ticket, a finding the QA role opens, the owner's own filing — arrives the same way, and the manager cards it: the manager owns every board move and no role subagent touches the board (`.agents/roles/README.md`).
 
 **Completion criterion:** every ticket filed in step 5 appears in a **complete** read (`gh project item-list <number> --owner <owner> --format json --limit <n>`, per that section's Board API mechanics — a fresh filing is appended last, so a truncated read hides the ticket it is meant to confirm) with its Status set.

@@ -29,7 +29,6 @@ on:
       - "adr/**"
       - "NOTICES/**"
       - ".agents/**"
-      - ".zcode/**"
   push:
     branches: [main]
     paths-ignore:
@@ -38,7 +37,6 @@ on:
       - "adr/**"
       - "NOTICES/**"
       - ".agents/**"
-      - ".zcode/**"
       # The shared test class minus `tests/**` and playwright.config.ts: those
       # two ARE this suite's input, so they are deliberately not listed. The
       # check named in the header keeps every other member in sync with

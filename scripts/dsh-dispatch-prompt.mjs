@@ -4,7 +4,7 @@
 //
 // The DSH adapter dispatches roles as generic `subagent` calls whose prompt
 // must carry (a) the task and (b) the role definition from
-// .zcode/agents/<role>.md — the single source of truth. Hand-assembling that
+// .agents/roles/<role>.md — the single source of truth. Hand-assembling that
 // prompt each time is where consistency dies: a body mis-copied here is a
 // silent contract break. This script prints the assembled prompt to stdout,
 // verbatim-worthy: the agent passes it to `subagent` unchanged.
@@ -19,7 +19,7 @@
 // "## Dispatch authorization" section; the researcher carries it as
 // "What you may do" / "What you must not do"; fixer implies it; reviewer and
 // qa need none) — this script holds no role→authorization table and adds no
-// third section. The role contract is canonical in .zcode/agents/README.md
+// third section. The role contract is canonical in .agents/roles/README.md
 // (Dispatch authorization); what the script emits is canonical here.
 //
 // Usage:
@@ -29,7 +29,7 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
-const ROLES_DIR = join(import.meta.dir, "..", ".zcode", "agents");
+const ROLES_DIR = join(import.meta.dir, "..", ".agents", "roles");
 
 /** The manager's role set. The role argument is validated against this list —
  * a dispatch prompt carries commit/push/PR authority, so it is assembled only

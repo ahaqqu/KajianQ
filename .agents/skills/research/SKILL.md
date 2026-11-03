@@ -11,7 +11,7 @@ silences the symptom, and the bill arrives later as a regression nobody can expl
 research produces notes nobody can act on. This skill is the discipline between them: a bounded
 investigation that ends in a decision the manager can take.
 
-The `researcher` role (`.zcode/agents/researcher.md`) runs it. The manager dispatches it when the
+The `researcher` role (`.agents/roles/researcher.md`) runs it. The manager dispatches it when the
 mechanism or the evidence is missing; the researcher never ships production code.
 
 ## 1. Write the brief before you search

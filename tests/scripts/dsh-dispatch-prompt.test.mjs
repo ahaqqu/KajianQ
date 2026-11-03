@@ -22,7 +22,7 @@ import { spawnSync } from "node:child_process";
 
 const ROOT = process.cwd();
 const SCRIPT = resolve(ROOT, "scripts/dsh-dispatch-prompt.mjs");
-const ROLES_DIR = join(ROOT, ".zcode", "agents");
+const ROLES_DIR = join(ROOT, ".agents", "roles");
 const SCRIPT_SOURCE = readFileSync(SCRIPT, "utf8");
 
 // The section list documented in the script's header comment, in order. Kept as

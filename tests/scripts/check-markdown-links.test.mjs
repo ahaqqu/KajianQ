@@ -801,7 +801,7 @@ describe("markdown-links — the skill-name half", () => {
 
   it('does NOT extend to "the `X` role" — that marker has no resolution target', () => {
     // The "the `X` role" marker has no resolution target: it spans live harness
-    // roles (`.zcode/agents/<role>.md`) and model-stage names, deliberately unchecked.
+    // roles (`.agents/roles/<role>.md`) and model-stage names, deliberately unchecked.
     const result = scan("The `cheap` role does the work.", { paths: [], skills: [] });
     expect(result.violations).toEqual([]);
   });

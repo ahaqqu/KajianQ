@@ -137,14 +137,7 @@ export const DRILL_WORKFLOW = ".github/workflows/vps-restore-drill.yml";
  * class, and both `pull_request` halves must be exactly these. Pinned rather than
  * derived, because a docs pattern leaving the set is what re-widens staging's paid
  * deploy and nothing else in the graph would notice. */
-export const DOCS_ONLY_PATTERNS = [
-  "**.md",
-  "docs/**",
-  "adr/**",
-  "NOTICES/**",
-  ".agents/**",
-  ".zcode/**",
-];
+export const DOCS_ONLY_PATTERNS = ["**.md", "docs/**", "adr/**", "NOTICES/**", ".agents/**"];
 
 export const DEPLOY_SH = "provision/vps/deploy/deploy.sh";
 /** The web artifact's build command and entry (Vite root = apps/web). */

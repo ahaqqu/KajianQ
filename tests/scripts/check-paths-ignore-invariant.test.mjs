@@ -904,7 +904,7 @@ describe("#399 green case — matched paths outside every deploy closure", () =>
     // Non-vacuous: the class really was matched, and the walk really walked.
     const evidence = /\((\d+) patterns, (\d+) matched paths\) × .*\((\d+) files\)/.exec(stdout);
     expect(evidence, stdout).not.toBeNull();
-    expect(Number(evidence[1])).toBe(14);
+    expect(Number(evidence[1])).toBe(13);
     expect(Number(evidence[2])).toBeGreaterThan(3);
     expect(Number(evidence[3])).toBeGreaterThan(5);
     expect(stdout).toContain("0 matches");
@@ -1078,7 +1078,7 @@ describe("#399 the triggered workflows derive the class and pin their PR half", 
     expect(stdout).toContain(".github/workflows/e2e.yml on.push.paths-ignore");
     expect(stdout).toContain(".github/workflows/vps-restore-drill.yml on.push.paths-ignore");
     expect(stdout).toContain("test class derived from .github/workflows/staging.yml: 8 patterns");
-    expect(stdout).toContain("docs class pinned at 6 patterns");
+    expect(stdout).toContain("docs class pinned at 5 patterns");
     expect(stdout).toContain("pull_request filters carry the docs class only");
   });
 
