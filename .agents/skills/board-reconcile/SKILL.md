@@ -70,13 +70,16 @@ Most cards no row matches are simply consistent: In progress with no PR is work 
 
 ## 3. Move the drifted cards
 
-Write the plan to `.scratch/board-reconcile/plan.json` first — issue, from, to, evidence — then apply it in one script. One call per card, with every id resolved from the fresh reads; the name form the manager section rules out is not a shortcut here:
+Write the plan to `.scratch/board-reconcile/plan.json` first — issue, from, to, evidence — then apply it in one script, one `item-edit` per card, every id resolved from the fresh reads; the name form the manager section rules out is not a shortcut here:
 
 ```sh
-cards=.scratch/board-reconcile/cards.json
-fields=.scratch/board-reconcile/fields.json
+# once, before the loop
 project=$(gh project view 3 --owner ahaqqu --format json --jq .id)
+fields=.scratch/board-reconcile/fields.json
+cards=.scratch/board-reconcile/cards.json
 field=$(jq -r '.fields[] | select(.name == "Status") | .id' "$fields")
+
+# per card, $issue and $column from the plan
 option=$(jq -r --arg column "$column" \
   '.fields[] | select(.name == "Status") | .options[] | select(.name == $column) | .id' "$fields")
 item=$(jq -r --arg issue "$issue" \
