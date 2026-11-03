@@ -130,7 +130,7 @@ describe("markdown-links — the real tree", () => {
     const ctx = buildContext(ROOT);
     const topDirs = [...ctx.tree.dirs].filter((d) => !d.includes("/"));
     expect(topDirs.filter((d) => !CLAIM_ROOTS.includes(d))).toEqual([]);
-    for (const root of ["apps", "packages", "scripts", "docs", "adr", ".agents", ".zcode"]) {
+    for (const root of ["apps", "packages", "scripts", "docs", "adr", ".agents"]) {
       expect(topDirs).toContain(root);
     }
   });
@@ -151,12 +151,12 @@ describe("markdown-links — the real tree", () => {
 
   it("distinguishes the two deliberately unchecked role markers", () => {
     // The "the `X` role" marker covers two namespaces — live harness roles
-    // (`.zcode/agents/<role>.md`) and model-stage names — and is deliberately unchecked.
+    // (`.agents/roles/<role>.md`) and model-stage names — and is deliberately unchecked.
     const { tree } = buildContext(ROOT);
     for (const role of ["qa", "reviewer", "fixer"]) {
-      expect(tree.files.has(`.zcode/agents/${role}.md`), role).toBe(true);
+      expect(tree.files.has(`.agents/roles/${role}.md`), role).toBe(true);
     }
-    expect(tree.files.has(".zcode/agents/test-implementer.md")).toBe(false);
+    expect(tree.files.has(".agents/roles/test-implementer.md")).toBe(false);
     expect(isSkillName("qa")).toBe(true);
     expect(scan("The `qa` role owns the probes.", { paths: [], skills: [] }).violations).toEqual(
       [],

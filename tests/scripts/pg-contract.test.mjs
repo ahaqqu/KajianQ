@@ -46,7 +46,7 @@ const CONTRACT_SUITE = "packages/infra/src/rag-store-postgres.test.ts";
 const ONE_FILE_PER_GLOB = [
   "packages/contracts/src/chat.test.ts",
   "apps/api/src/app.ratelimit.test.ts",
-  "tests/scripts/agent-usage-metadata.test.mjs",
+  "tests/scripts/check-paths-ignore-invariant.test.mjs",
   "tests/parity/chat-rule-copy.test.mjs",
 ];
 

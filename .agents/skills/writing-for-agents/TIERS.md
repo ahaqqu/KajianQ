@@ -11,7 +11,7 @@ Every skill is one of two tiers, defined by **who may start it** — never by di
   - First line of the body, right under the title: `> **Library skill** — not an entry point. Reached only through <parents>.` The pointer's **wording** is the mechanism — naming the parents is what makes agents route correctly.
   - **Description stripped of trigger phrases** — it states what the skill _is_ and who loads it, never "Use when…". No triggers, no autonomous firing.
   - **Not indexed in the instruction file** — referenced only by relative path from its parents. Invariant: the library header's presence, not any directory, decides the tier.
-  - `disable-model-invocation: true` only when nothing auto-loads it — verify first that the consumers that need it (e.g. a role agent's `skills:` field) still load a flagged skill.
+  - `disable-model-invocation: true` only when nothing auto-loads it — verify first that the consumers that need it still load a flagged skill: the role body names it, and the dispatcher inlines that body with `bun run dsh:prompt`.
 - **Vendored skills** — synced from an upstream source — are exempt from _body_ edits: keep the body byte-faithful so upstream syncs stay trivial, and declare their tier at the consumption sites (the parent skills and role agents that reach them) instead.
 
 ## Provenance fields

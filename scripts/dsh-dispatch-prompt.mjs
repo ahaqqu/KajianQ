@@ -4,7 +4,7 @@
 //
 // The DSH adapter dispatches roles as generic `subagent` calls whose prompt
 // must carry (a) the task and (b) the role definition from
-// .zcode/agents/<role>.md — the single source of truth. Hand-assembling that
+// .agents/roles/<role>.md — the single source of truth. Hand-assembling that
 // prompt each time is where consistency dies: a body mis-copied here is a
 // silent contract break. This script prints the assembled prompt to stdout,
 // verbatim-worthy: the agent passes it to `subagent` unchanged.
@@ -12,14 +12,14 @@
 // It emits exactly two sections, in this order, and appends nothing else:
 //
 //   ## Task              the manager-authored task text, trimmed
-//   ## Role definition   the role file's body, frontmatter stripped and trimmed
+//   ## Role definition   the role file's body, trimmed
 //
 // Authorization text a role carries travels inside ## Role definition with
 // the rest of its body (implementer and senior-implementer carry a
 // "## Dispatch authorization" section; the researcher carries it as
 // "What you may do" / "What you must not do"; fixer implies it; reviewer and
 // qa need none) — this script holds no role→authorization table and adds no
-// third section. The role contract is canonical in .zcode/agents/README.md
+// third section. The role contract is canonical in .agents/roles/README.md
 // (Dispatch authorization); what the script emits is canonical here.
 //
 // Usage:
@@ -29,7 +29,7 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
-const ROLES_DIR = join(import.meta.dir, "..", ".zcode", "agents");
+const ROLES_DIR = join(import.meta.dir, "..", ".agents", "roles");
 
 /** The manager's role set. The role argument is validated against this list —
  * a dispatch prompt carries commit/push/PR authority, so it is assembled only
@@ -82,9 +82,7 @@ if (!taskText.trim())
 
 let roleBody;
 try {
-  const text = await readFile(join(ROLES_DIR, `${role}.md`), "utf8");
-  const fm = text.match(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/);
-  roleBody = fm ? text.slice(fm[0].length) : text;
+  roleBody = await readFile(join(ROLES_DIR, `${role}.md`), "utf8");
 } catch (error) {
   fail(
     `cannot read the role file ${join(ROLES_DIR, `${role}.md`)} (${error.code ?? error.message})`,

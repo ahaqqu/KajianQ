@@ -281,13 +281,13 @@
  *   the next doc edit.
  *
  *   Deliberately NOT extended to "the `X` role". That marker names several
- *   different things: live harness roles (`.zcode/agents/<role>.md` — `qa`,
+ *   different things: live harness roles (`.agents/roles/<role>.md` — `qa`,
  *   `reviewer`, `fixer`), a price pair in prose (caught only because the marker
  *   is lexical), and model-stage names (`embedder`, `cheap`,
  *   `decision-candidates`, `generator`, `kajianq`, …). The last classes are a
  *   false-positive factory with no resolution target, which is why the marker is
  *   rejected as a whole — but the harness-role namespace
- *   (`.zcode/agents/<role>.md`) is a **second deliberately unchecked marker**,
+ *   (`.agents/roles/<role>.md`) is a **second deliberately unchecked marker**,
  *   not an empty one. A test pins that distinction.
  *
  *   COST, named: the marker *is* the claim, so a doc naming a skill that lives
@@ -315,7 +315,7 @@
  */
 
 /**
- * Files scanned. `.agents/` and `.zcode/` are included deliberately: a skill that
+ * Files scanned. `.agents/` is included deliberately: a skill that
  * points at a retired runbook sends the next agent somewhere that no longer
  * exists.
  */
@@ -329,7 +329,6 @@ export const ROOTS = [
   "adr",
   "NOTICES",
   ".agents",
-  ".zcode",
   "packages",
 ];
 
@@ -352,7 +351,6 @@ export const CLAIM_ROOTS = [
   "docs",
   "adr",
   ".agents",
-  ".zcode",
   ".githooks",
   ".github",
   "provision",

@@ -160,7 +160,7 @@ For autonomous, multi-agent orchestration (implement → review → fix in one
 run), invoke the `manager` skill (`.agents/skills/manager/SKILL.md`). It
 supervises role subagents — implementer, reviewer —
 monitoring until the PR is green and relaying itemized review feedback.
-Per-role models are configured in [`.zcode/agents/`](.zcode/agents/README.md).
+Per-role models are configured in [`.agents/roles/`](.agents/roles/README.md).
 
 **Runtime LLM:** the chat product's own LLM stack is a later choice —
 the engine is model-agnostic by design, and the vendor/model selection is

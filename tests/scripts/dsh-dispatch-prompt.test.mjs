@@ -8,10 +8,9 @@ import { spawnSync } from "node:child_process";
  *
  * The script's header comment is the canonical statement of what it emits, and
  * it claims exactly two sections: `## Task` (the manager-authored task text,
- * trimmed) then `## Role definition` (the role file's body, frontmatter
- * stripped and trimmed), with nothing appended. The claim is pinned here for
- * every role: a third appended section fails this test, and so does a
- * rewritten or truncated role body.
+ * trimmed) then `## Role definition` (the role file's body, trimmed), with
+ * nothing appended. The claim is pinned here for every role: a third appended
+ * section fails this test, and so does a rewritten or truncated role body.
  *
  * Neither list is left hand-synced without a check: the roles come from the
  * script's own allowlist, so a new role is pinned automatically, and
@@ -22,7 +21,7 @@ import { spawnSync } from "node:child_process";
 
 const ROOT = process.cwd();
 const SCRIPT = resolve(ROOT, "scripts/dsh-dispatch-prompt.mjs");
-const ROLES_DIR = join(ROOT, ".zcode", "agents");
+const ROLES_DIR = join(ROOT, ".agents", "roles");
 const SCRIPT_SOURCE = readFileSync(SCRIPT, "utf8");
 
 // The section list documented in the script's header comment, in order. Kept as
@@ -85,11 +84,6 @@ function rolesFromSource(source = SCRIPT_SOURCE) {
 
 const ROLES = rolesFromSource();
 
-function stripFrontmatter(text) {
-  const fm = text.match(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/);
-  return (fm ? text.slice(fm[0].length) : text).trim();
-}
-
 describe("role allowlist parsing", () => {
   it("throws instead of parsing a prefix when the declaration is malformed", () => {
     expect(() => rolesFromSource('const ROLES = new Set(["implementer", "reviewer"]')).toThrow(
@@ -115,7 +109,7 @@ describe("dsh:prompt — documented section list", () => {
         0,
       );
 
-      const body = stripFrontmatter(readFileSync(join(ROLES_DIR, `${role}.md`), "utf8"));
+      const body = readFileSync(join(ROLES_DIR, `${role}.md`), "utf8").trim();
       // Exact equality is the check: any generated section beyond the
       // documented two — an authorization section included — breaks it.
       expect(res.stdout).toBe(

@@ -29,7 +29,6 @@ on:
       - "adr/**"
       - "NOTICES/**"
       - ".agents/**"
-      - ".zcode/**"
   push:
     branches: [main]
     paths-ignore:
@@ -38,7 +37,6 @@ on:
       - "adr/**"
       - "NOTICES/**"
       - ".agents/**"
-      - ".zcode/**"
       # The full shared test class: none of these members is in this drill's
       # execution closure — its imports, the scripts it spawns and the migration
       # it applies — so a tests-only merge cannot change what the drill proves.
