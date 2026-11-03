@@ -11,7 +11,7 @@ The board carries each ticket's workflow state; the issue carries its content. T
 
 You run as the manager session or the owner. The board has one writer, and a role subagent never runs this pass. The pass changes cards only: issues, labels, PRs, merges and comments stay out of reach, and work whose bookkeeping is missing — a card settled at Done while its issue is still open — is reported, not closed.
 
-The seven states, what each means, and the board API mechanics are canonical in [`manager`](../manager/SKILL.md) § Project board — the ticket state surface. Read that section first in a run; this file adds the audit procedure, the evidence classifier, and the conservative rule that keeps the pass from guessing.
+The eight states, what each means, and the board API mechanics are canonical in [`manager`](../manager/SKILL.md) § Project board — the ticket state surface. Read that section first in a run; this file adds the audit procedure, the evidence classifier, and the conservative rule that keeps the pass from guessing.
 
 ## 1. Read the board and the tickets
 
@@ -34,19 +34,21 @@ gh pr list --repo ahaqqu/KajianQ --state all --limit 1000 \
 
 ## 2. Classify the cards
 
-The audit set is every card not in Done, every Done card whose issue is still open, and every open issue with no card. **Done-and-closed cards are consistent by definition and are not read again** — the settled majority costs nothing, which is what keeps the pass cheap.
+The audit set is every card not in Done, every Done card whose issue is still open, every Done card whose issue closed without delivery, and every open issue with no card. **Done cards closed as completed are consistent by definition and are not read again** — the settled majority costs nothing, which is what keeps the pass cheap.
 
 Classify by the evidence, never by the current column. The evidence is the issue's state and close reason, the closing PRs that name it, and — only where the table sends you — whether a QA verdict has been recorded. The first matching row wins, and a card that starts with no Status re-enters the table once Backlog is applied:
 
-| Evidence about the ticket                                  | Card now             | Settles at                                                                                                                     |
-| ---------------------------------------------------------- | -------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| no Status                                                  | —                    | **Backlog**, then classify again                                                                                               |
-| issue closed                                               | anything but Done    | **Done** — a never-merged, not-planned closure included; the board has no Cancelled column, and adding one is the owner's call |
-| issue open; a PR closing it is merged; no verdict recorded | anything but Done    | **In QA**                                                                                                                      |
-| issue open; a PR closing it is merged; verdict recorded    | anything but Done    | **Done** — and report the closure owed                                                                                         |
-| issue open; the card says Done                             | Done                 | **In QA** when the ticket records no verdict; **Done** plus the closure owed when it does                                      |
-| an open PR closes it; the card is parked                   | Backlog, Ready, Done | **In review**, or **Waiting for merge** when the PR is approved and its checks are green (`gh pr checks` exits 0)              |
-| no routing label, or not exactly one type label            | Ready                | **Backlog** — not triaged                                                                                                      |
+| Evidence about the ticket                                  | Card now                        | Settles at                                                                                                        |
+| ---------------------------------------------------------- | ------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| no Status                                                  | —                               | **Backlog**, then classify again                                                                                  |
+| issue closed as completed                                  | anything but Done               | **Done**                                                                                                          |
+| issue closed as not planned                                | anything but Cancelled          | **Cancelled** — a closure without delivery, and never Done                                                        |
+| issue open; a PR closing it is merged; no verdict recorded | anything but Done               | **In QA**                                                                                                         |
+| issue open; a PR closing it is merged; verdict recorded    | anything but Done               | **Done** — and report the closure owed                                                                            |
+| issue open; the card says Done                             | Done                            | **In QA** when the ticket records no verdict; **Done** plus the closure owed when it does                         |
+| an open PR closes it; the card is parked                   | Backlog, Ready, Done, Cancelled | **In review**, or **Waiting for merge** when the PR is approved and its checks are green (`gh pr checks` exits 0) |
+| issue open; the card says Cancelled                        | Cancelled                       | **Backlog**, then classify again — the ticket is live again                                                       |
+| no routing label, or not exactly one type label            | Ready                           | **Backlog** — not triaged                                                                                         |
 
 A merged PR belongs to the ticket when it names it in `closingIssuesReferences`. A PR that merely mentions the ticket is partial progress and settles nothing, so the pass reads no PR bodies and runs no search per card.
 

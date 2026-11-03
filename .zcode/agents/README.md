@@ -58,11 +58,6 @@ The state vocabulary, the transition rules, and the board API mechanics are
 canonical in `.agents/skills/manager/SKILL.md` § Project board — the ticket
 state surface.
 
-A manual sweep of the same surface — every open card brought back in line with
-its ticket — is the `board-reconcile` skill, run by the manager session or the
-owner. It writes cards only, and reports the ticket closures it does not
-perform.
-
 ## Implementer-class operating rules
 
 The implementer-class roles follow the phase-boundary discipline from the
