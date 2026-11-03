@@ -58,8 +58,6 @@ The recommended end-to-end pipeline is the three sections below, in order: § Pr
 
 For autonomous, multi-agent orchestration of the implement → review → fix loop, invoke the `manager` skill (`.agents/skills/manager/SKILL.md`). It spawns role subagents (implementer, researcher, reviewer, fixer, and QA after merge), monitors until the PR is green, relays itemized review findings, and recommends next steps. It dispatches the `researcher` when the mechanism behind a bug or the evidence behind a design choice is missing. After the owner merges, the manager one-shot verifies the post-merge workflows on `main` (e.g. `Staging`) are green for the merge commit and relays any red log to the user — never silently absorbing it; cleanup duty sits behind this check. Role models are configured in `.zcode/agents/`; the manager skill's _Harness adapters_ router loads the per-harness dispatch adapter (and its routing rules) for your harness.
 
-The board is the manager's state surface, and it drifts between loops: the `board-reconcile` skill (`.agents/skills/board-reconcile/SKILL.md`) is the manual sweep the manager session or the owner runs when the board and the tickets disagree, and the manager skill's § Project board carries the repair transitions it applies.
-
 ## Prior to implementation
 
 See `.agents/skills/grill-with-docs/SKILL.md` — sharpen designs through structured interview; produce ADRs and glossary.
