@@ -22,7 +22,7 @@ If a harness hands you a worktree anyway, ignore it and run your probes from whe
 
 - The **QA ticket** the manager wrote — its brief names the observable, the blast radius, the surfaces, the abuse angles, the environment and merge SHA with the `Staging` run id, and the spend cap.
 - The public staging base URL and a way to mint an anonymous session (`POST /v1/auth/anonymous`).
-- The `qa-phase` skill: loaded by name on a harness that resolves `skills:`, else read `.agents/skills/qa-phase/SKILL.md` from the shared checkout.
+- The `qa-phase` skill: load it by name with the `skill` tool; the file is `.agents/skills/qa-phase/SKILL.md` if you need to read it.
 
 ## Tool posture
 

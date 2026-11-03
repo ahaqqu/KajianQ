@@ -17,7 +17,7 @@ The `senior-implementer` writing its own tests is deliberate: the earlier `test-
 
 ## Model pins
 
-**The table above is the single source of truth for role models and reasoning effort.** The manager reads the dispatched role's row and passes the route on the call — provider, model id, reasoning effort — as the DSH adapter's Model routing states; no client parses a role file, and the pins are not repeated in the role files, so they cannot drift. A blank model cell makes that role inherit the dispatcher's route.
+**The table above is the single source of truth for role models and reasoning effort.** The manager reads the dispatched role's row — its model id and reasoning effort — and sets them with the adapter's provider on the dispatch, as the DSH adapter's Model routing states; no client parses a role file, and the pins are not repeated in the role files, so they cannot drift.
 
 A model that cannot run is a configuration fix in the adapter's catalog and recorded policy, never a substitution: a role retargeted at whatever happens to resolve is silently weaker than the table declares. A pin change is an edit to this table, and it reaches a session only when that session's recorded route list carries the model.
 

@@ -12,7 +12,7 @@
 // It emits exactly two sections, in this order, and appends nothing else:
 //
 //   ## Task              the manager-authored task text, trimmed
-//   ## Role definition   the role file's body, frontmatter stripped and trimmed
+//   ## Role definition   the role file's body, trimmed
 //
 // Authorization text a role carries travels inside ## Role definition with
 // the rest of its body (implementer and senior-implementer carry a
@@ -82,9 +82,7 @@ if (!taskText.trim())
 
 let roleBody;
 try {
-  const text = await readFile(join(ROLES_DIR, `${role}.md`), "utf8");
-  const fm = text.match(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/);
-  roleBody = fm ? text.slice(fm[0].length) : text;
+  roleBody = await readFile(join(ROLES_DIR, `${role}.md`), "utf8");
 } catch (error) {
   fail(
     `cannot read the role file ${join(ROLES_DIR, `${role}.md`)} (${error.code ?? error.message})`,
