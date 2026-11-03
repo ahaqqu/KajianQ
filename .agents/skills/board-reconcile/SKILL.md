@@ -11,7 +11,7 @@ The board carries each ticket's workflow state; the issue carries its content. T
 
 You run as the manager session or the owner. The board has one writer, and a role subagent never runs this pass. The pass changes cards only: issues, labels, PRs, merges and comments stay out of reach, and work whose bookkeeping is missing — a card settled at Done while its issue is still open — is reported, not closed.
 
-The eight states, what each means, the transition rules and the board API mechanics are canonical in [`manager`](../manager/SKILL.md) § Project board — the ticket state surface. Read that section first in a run, its **Repair transitions** included: this file's classifier only applies the moves named there, and a card it cannot settle is reported rather than moved. What this file adds is the audit procedure, the evidence table, and the conservative rule that keeps the pass from guessing.
+The eight states, what each means, the transition rules and the board API mechanics are canonical in [`manager`](../manager/SKILL.md) § Project board — the ticket state surface. This file's classifier applies the moves in § Classify the cards below, and a card it cannot settle is reported rather than moved. What this file adds is the audit procedure, the evidence table, and the conservative rule that keeps the pass from guessing.
 
 ## 1. Read the board and the tickets
 
