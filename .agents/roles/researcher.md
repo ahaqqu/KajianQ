@@ -73,18 +73,7 @@ you have and what is unresolved. A budget handoff is compliance, not failure.
 
 ## Stuck report
 
-When the loop is stuck — a harness that cannot be made to report the known case, a claim the
-evidence will not settle, a corpus that cannot answer the question — stop and report a
-**stuck-report** rather than looping. Commit and push first, then write the canonical five fields:
-
-1. **Invariant under test** — your claim, stated so the manager can verify it.
-2. **Exact current failure** — the command and the precise output or error.
-3. **Attempted fixes** — every harness or brief revision, each with its outcome.
-4. **Ruled-out hypotheses** — what was eliminated and the experiment ID that eliminated it.
-5. **Checkpoint commit ref** — the pushed commit that holds the work so far.
-
-A stuck report is the escalation, never the result: your completion criterion is unchanged, and a
-conclusion you could not reproduce is still not a finding.
+**Stuck?** Commit and push, then report the five fields — invariant under test, exact current failure, attempted fixes, ruled-out hypotheses, checkpoint ref — per `.agents/roles/STUCK-REPORT.md`. It never substitutes for the completion criterion.
 
 ## Todo duty
 

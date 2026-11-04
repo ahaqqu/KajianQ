@@ -1,6 +1,6 @@
 # AGENTS.md — Task guardrails for AI agents working on KajianQ & DARS
 
-Read before any task, whatever your role — manager, implementer, reviewer, or assistant. This file states the guardrails every role must hold; the technical depth (seam maps, checklists, verification scans, pipeline contracts) lives in the skills referenced below — load the skill for the phase you are working in.
+This file states the guardrails every role must hold; the technical depth (seam maps, checklists, verification scans, pipeline contracts) lives in the skills referenced below — load the skill for the phase you are working in.
 
 For philosophy and rationale, see `docs/ARCHITECTURE.md`. For the living architecture/plan spec, see `SPECS.md` — read the sections your task touches, and keep them true in the same PR (rule below).
 
@@ -15,13 +15,9 @@ Two projects in one monorepo (ADR-0005):
 
 ## The VPS and host configuration
 
-Production runs on the shared box `62.83.35.220`. **Host configuration is not in this repository** — nginx, systemd units and timers, logrotate, sudoers, the Postgres posture, journald retention and env templates live in [ahaqqu/vps](https://github.com/ahaqqu/vps) under `kajianq/`. A merged PR there is the deploy: a root-owned applier fetches `main` on a timer and installs it as one transaction.
+Production runs on the shared box `62.83.35.220`. **Host configuration is not in this repository** — it lives in [ahaqqu/vps](https://github.com/ahaqqu/vps) under `kajianq/`, and a merged PR there is the deploy. Load `ship` before host or deploy work: its § Host preconditions and Guards carry the deploy mechanics.
 
 - **Never edit the live box by hand** for a configuration change — no direct edits to `/etc/nginx`, systemd, `/etc/sudoers.d`, logrotate, `/srv/vps-ops` or `/var/lib/vps/repo`. Break-glass repair is allowed only to restore service, and the same change is reconciled in `ahaqqu/vps` in the same session.
-- **Read the vps repository's ACCESS and DEPLOY docs** before touching anything host-level, and change the `kajianq` manifest there with its tests and docs, not a copy under `provision/vps/`.
-- **KajianQ's deploy ships one artifact through `vps-deploy kajianq`** (ADR-0065 decisions 1–3 and 7; the contract is [ahaqqu/vps docs/DEPLOY.md](https://github.com/ahaqqu/vps/blob/main/docs/DEPLOY.md)): `kajianq-deploy` uploads `/srv/vps-incoming/kajianq.tar.gz` and invokes the root helper, which verifies the artifact, swaps `/srv/kajianq`, restarts `kajianq-api.service` and health-checks `/v1/health`. The contract and the grant live in `ahaqqu/vps` under `kajianq/`; the deploy uses the helper (deploy/rollback plus the four bounded service verbs), the cron proof (`systemctl start kajianq-cron.service`) and the doctor diagnostics (`nginx -t`, `certbot certificates`). The installed grant is exactly those commands — no raw `systemctl restart kajianq-api.service`: the helper owns that restart, and the deploy never issues one (nor does it get a raw root shell). The deploy path is `provision/vps/deploy/deploy.sh`; the host applier, not this repository, owns every host file.
-- **App code and its config stay here**; host config belongs in the vps repository. Root-only env files under `/etc/` hold the secrets and are never committed or copied into this repo.
-- **A green deploy includes the shared `/srv/vps-ops/doctor.sh` sweep**; a red sweep or a missing doctor is a failed deploy, not something to bypass.
 
 ## Universal guardrails
 
@@ -56,7 +52,7 @@ These apply to every role and every task. Each bullet names the skill that carri
 
 The recommended end-to-end pipeline is the three sections below, in order: § Prior to implementation → § During implementation → § After implementation.
 
-For autonomous, multi-agent orchestration of the implement → review → fix loop, invoke the `manager` skill (`.agents/skills/manager/SKILL.md`). It spawns role subagents (implementer, researcher, reviewer, fixer, and QA after merge), monitors until the PR is green, relays itemized review findings, and recommends next steps. It dispatches the `researcher` when the mechanism behind a bug or the evidence behind a design choice is missing. After the owner merges, the manager one-shot verifies the post-merge workflows on `main` (e.g. `Staging`) are green for the merge commit and relays any red log to the user — never silently absorbing it; cleanup duty sits behind this check. Role models and reasoning effort are configured in `.agents/roles/README.md`; the manager skill's dispatch adapter (`DSH-ADAPTER.md`) carries the harness mechanics.
+For autonomous, multi-agent orchestration of the implement → review → fix loop, invoke the `manager` skill (`.agents/skills/manager/SKILL.md`). Role models and reasoning effort are configured in `.agents/roles/README.md`; the manager skill's dispatch adapter (`.agents/skills/manager/DSH-ADAPTER.md`) carries the harness mechanics.
 
 ## Prior to implementation
 
@@ -84,15 +80,11 @@ See `.agents/skills/ship/SKILL.md` — staging → tests → production → smok
 
 ## Troubleshooting
 
-See § _Debugging a bug_ in `.agents/skills/guided-implementation/SKILL.md` — tight, red feedback-loop-first debugging discipline.
+See `.agents/skills/guided-implementation/DEBUGGING.md` — tight, red feedback-loop-first debugging discipline.
 
 ## Ticket model routing
 
-Tickets carry model routing labels applied by the `to-tickets` skill and consumed by the `manager` skill's dispatch decision — the manager consumes labels, never invents them:
-
-- **`model:high`** — the ticket carries a correctness/trust invariant that fails silently (validators, trap questions, sample audits). Implement with a high-reasoning model; do not downgrade.
-- **`model:plus-human`** — a human curation/verification gate holds an acceptance criterion (Principle Index, complete-works bibliographies, Golden Set trap design). Code alone never closes the ticket; the manager escalates to the owner instead of dispatching implementation.
-- **No label** — default tier.
+Tickets carry model routing labels applied by the `to-tickets` skill and consumed by the `manager` skill's dispatch decision — the manager consumes labels, never invents them.
 
 ## Working agreements (from the owner — non-negotiable)
 

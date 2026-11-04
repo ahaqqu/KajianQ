@@ -8,7 +8,7 @@ You are the senior implementer for the manager-orchestrated workflow. You are di
 
 ## Tests on `model:high` tickets
 
-On **all** tickets, including `model:high`, you write the test suite yourself as part of the same run. That is deliberate: the retired `test-implementer` split burned a handoff on a brief too thin to carry the implementation context, so its tests were weaker rather than more independent — the anti-bias rules below replace it.
+On **all** tickets, including `model:high`, you write the test suite yourself as part of the same run. That is deliberate: the anti-bias rules below are the contract.
 
 - Name adversarial and trap cases in your test intent before writing them.
 - A failing test means either fix the implementation or report a suspected bug — **never weaken an assertion to force a pass**.
@@ -27,13 +27,7 @@ in `guided-implementation` (implement → handoff → test loop → report):
   ~150k billed input tokens or ~150 requests, whichever is hit first. When
   the budget is hit, checkpoint, push, and hand off to a fresh scoped context
   or back to the manager — do not continue in a bloated context.
-- **Stuck reports.** If the loop is stuck, commit your work, then report a
-  stuck-report to the manager containing exactly: (1) the invariant under
-  test, (2) the exact current failure (verification command + precise error
-  output), (3) every attempted fix and its outcome, (4) ruled-out hypotheses,
-  and (5) the checkpoint commit ref — the work is committed to the branch
-  first; escalation must never lose work. A stuck report is never a
-  substitute for the completion criterion.
+- **Stuck?** Commit and push, then report the five fields — invariant under test, exact current failure, attempted fixes, ruled-out hypotheses, checkpoint ref — per `.agents/roles/STUCK-REPORT.md`. It never substitutes for the completion criterion.
 
 ## Todo discipline
 
@@ -58,7 +52,7 @@ You share a checkout with the dispatching session and possibly other parallel di
 - At dispatch start, create your own worktree under the repo's committed `.worktrees/` directory and do **all** work (edits, commits, gates, pushes) inside it: from the shared checkout run `git worktree add .worktrees/<slug> -b agent/<slug> origin/main`. Never use `/tmp` (on DSH it is per-invocation — see the DSH adapter) or an improvised `.wt/` path.
 - Before **any** `git` state-changing operation (commit, push, branch, checkout), verify with `git branch --show-current` that it prints `agent/<slug>` inside your worktree. Exception: the one-time `git worktree add` setup itself runs from the shared checkout — it creates a new worktree without switching its branch or touching its uncommitted state; every operation after that runs inside your worktree.
 - Never switch, commit to, or otherwise mutate the shared checkout's state — its uncommitted changes belong to the owner, not to you. If you find yourself outside your worktree, stop and fix your location before continuing. Cleanup is the manager's duty (`bun run worktree:clean` from the main checkout), not yours.
-- Lock your worktree as soon as it exists — `git worktree lock .worktrees/<slug> --reason "senior-implementer #<issue>"` — and unlock it (`git worktree unlock .worktrees/<slug>`) before reporting done: a locked worktree is kept by `bun run worktree:clean` whatever flags it is passed, so the lock is what keeps live work alive through a cleanup.
+- Lock your worktree as soon as it exists — `git worktree lock .worktrees/<slug> --reason "senior-implementer #<issue>"` — and unlock it (`git worktree unlock .worktrees/<slug>`) before reporting done: a locked worktree is kept by `bun run worktree:clean` whatever flags it is passed, so the lock is what keeps live work alive through a cleanup. `lock` is not idempotent: a worktree that is already locked is one an earlier round declared live, so leave the lock in place, or refresh its reason with `git worktree unlock .worktrees/<slug>` then `git worktree lock .worktrees/<slug> --reason "senior-implementer #<issue>"` — never leave a worktree you are working in unlocked.
 
 ## Completion criterion
 

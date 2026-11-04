@@ -118,7 +118,7 @@ Before opening the PR, run the Quick review scans from `.agents/skills/dars-plug
 
 ### Debugging a bug
 
-Build the **tight**, **red** loop before you theorise or edit: name one command you have already run — paste the invocation and its output — that drives the bug's code path, asserts the user's exact symptom, and is deterministic and fast. Treat the loop as a product and tighten it: cache the setup, sharpen the assertion to the symptom, pin time, seed RNG, freeze the network; for a flaky bug, raise the reproduction rate until it is debuggable. With no loop built, stop — list what you tried, and ask for the environment or captured artifact that reproduces the bug.
+**Bug?** `DEBUGGING.md`: build the tight, red loop — one deterministic, fast command that asserts the exact symptom — before theorising or editing.
 
 ## Phase boundaries
 
@@ -150,7 +150,7 @@ mandatory, not advisory:
 ## After implementation
 
 - Run the project CI gates locally: `bun run check`, `bun run lint` (Vite+ `vp check` + vite-pin guard), `bun run test` (Vitest under `vp test` — runs on vp's managed Node, not bun), `bun run boundary`, `bun run agentic-limits`, `bun run openapi:check`, `bun run size-limit`. See `docs/ARCHITECTURE.md` §16 for tooling.
-- The API/dev/deploy lifecycle goes through the VPS deploy path: local dev and e2e boot the real Bun entry (`bun run api:serve`, or `playwright.config.ts` for the suite); deploys are `provision/vps/deploy/deploy.sh` (or a `Deploy to VPS` dispatch). Host preconditions — the deploy identity's grant, `VPS_USER`, `api.env` — are in `.agents/skills/ship/SKILL.md`; a bad deploy is rolled back with `git revert` (there is no instant rollback).
+- Deploy: `ship`.
 - Verify against `AGENTS.md` Definition of Done.
 - Report what was implemented and what changed from the plan.
 - **Handoff:** in the test phase (Phase boundary 2), the fresh scoped context
