@@ -40,7 +40,7 @@ The **board carries the ticket's workflow state; the issue carries its content.*
 
 **Status is state; model and triage labels route; type labels classify.** The board carries state only: the routing labels (`model:high`, `model:plus-human`, `ready-for-agent`) remain the routing authority `AGENTS.md` names them, and a card's column never selects a model, overrides a label, or authorizes a dispatch — a `Ready` card is not a dispatch trigger. The type label (`bug`, `enhancement`, `feature` — `to-tickets` § Type labels) is a third family, the ticket's **kind** rather than its state or its route: it selects no model and authorizes no dispatch, and triage reads it beside the routing labels to answer "what kind of work is it?", where they answer "who implements it?".
 
-Seven states, and who moves what:
+Eight states, and who moves what:
 
 | State             | Meaning                                                            |
 | ----------------- | ------------------------------------------------------------------ |
@@ -51,6 +51,7 @@ Seven states, and who moves what:
 | Waiting for merge | review clear, CI green; the owner's merge decision is what remains |
 | In QA             | merged and deployed, QA verdict pending                            |
 | Done              | merged, and closed on the verdict where one was owed               |
+| Cancelled         | closed without delivery: not planned, abandoned, or reverted       |
 
 The manager owns every board move; role subagents never touch the board — they report an artifact, and the manager reflects it as a move. The rules govern every ticket, this skill's own workflow ticket included. The transition rules:
 
@@ -59,10 +60,11 @@ The manager owns every board move; role subagents never touch the board — they
 - **Ready → In progress** at A's dispatch (step 1), on the dispatch's returned agent id — the id is the artifact that proves the dispatch exists, and the `agent/<slug>` branch and the PR URL (`gh pr view`) join it as they appear.
 - **In progress → In review** at B's dispatch (step 3), on an open PR for the ticket (`gh pr view`) and B's returned reviewer dispatch id; it stays there through a fixer round, because a reviewer/fixer round is what the state means. A ticket sits in **In review** only while that round is actually in flight — the moment the review artifact (posted item comments covering the head) and green `gh pr checks` land, move it to **Waiting for merge**.
 - **In review → Waiting for merge** when the gate is clear and no scoped re-review is pending (the fix-then-re-review trigger). **Waiting for merge** is the owner's queue: recommend merge, then leave the state alone until the owner acts.
-- **Waiting for merge → In QA** on merge when a QA verdict is owed (gate-affecting or runtime); **→ Done** on merge when none is owed (inert).
-- **In QA → Done** when the verdict is recorded as `verified`, or when a `not verified` or `blocked` change is reverted or superseded — the closure names that verdict as its reason, so the card reaches **Done** without a verification it never got. **Done** means merged **and**, where a verdict was owed, closed on that verdict — a merged ticket whose verdict is still pending stays in **In QA**, and so does a `not verified` or `blocked` change whose fix or re-run is still in flight, where the column names the work outstanding rather than a verdict owed on the merged head.
+- **Waiting for merge → In QA** on merge when a QA verdict is owed (gate-affecting or runtime); **→ Done** on merge when none is owed (inert); **→ Cancelled** when the change is abandoned before merge.
+- **In QA → Done** when the verdict is recorded as `verified`; **In QA → Cancelled** when a `not verified` or `blocked` change is reverted or superseded — the closure names that verdict as its reason, so the card reaches its end without a verification it never got. **Done** means merged **and**, where a verdict was owed, closed on that verdict — a merged ticket whose verdict is still pending stays in **In QA**, and so does a `not verified` or `blocked` change whose fix or re-run is still in flight, where the column names the work outstanding rather than a verdict owed on the merged head.
+- **→ Cancelled** whenever the issue closes not planned: filed and never started, abandoned, or a merged-but-unverified change reverted. A ticket that never delivered is never **Done**; **Cancelled** names the closure instead.
 
-**Open question: no `Needs decision` state.** A ticket parked on an owner decision has no state of its own, so it sits in **Ready** or **Backlog** and reads as dispatchable; #273 and #284 are the current cases. Adding a state is the owner's call and carries the option-id discipline below, so until that call, name a parked ticket in the summary rather than letting its column imply it is ready.
+**Open question: no `Needs decision` state.** A ticket parked on an owner decision has no state of its own, so it sits in **Ready** or **Backlog** and reads as dispatchable. Adding a state is the owner's call and carries the option-id discipline below; until that call, name a parked ticket in the summary rather than letting its column imply it is ready.
 
 ### Board API mechanics
 
@@ -73,7 +75,7 @@ The manager moves items with `gh`; option ids are data read at use time, not con
 - **Prove a board read is complete before acting on it.** A dump is usable only when `items | length == totalCount`; an incomplete dump is discarded and re-read with a larger `--limit`, never acted on — a pass built on a truncated read re-applies part of the board and then reads back as done.
 - **Every move is written back and read back; an unresolved item id is a failure, not a skip — no `[ -n "$id" ]` guard.** A transition completes only when a re-read of that item's Status via `item-list`, over a dump meeting the complete-read proof, reads the target; a mismatch means re-read the option map and retry. An empty id is three failures:
   1. **Incomplete read** — discard it, re-read larger, retry.
-  2. **Complete read without the item** — card in **Backlog**, re-apply the **current** transition (**Done** if merged or closed), blocker only if it still fails.
+  2. **Complete read without the item** — card in **Backlog**, re-apply the **current** transition (**Done** when merged and, where a verdict was owed, closed on it; **Cancelled** when closed not planned), blocker only if it still fails.
   3. **Missing `project` scope** — the scope bullet's degrade-and-continue (canonical: Check the `project` scope): never a blocker, never a dispatch gate.
 
 - **An option change is a partial update: echo the existing ids.** `updateProjectV2Field`'s `singleSelectOptions` replaces the option list, but `ProjectV2SingleSelectFieldOptionInput` carries a nullable `id`, and the field's own description says _existing options should be fetched for partial updates_: fetch the current options **with their ids**, resend every existing option unchanged **including its `id`**, and append or rename only the state you need. An option resent without its id is recreated, and every item holding the old id loses its Status — the id is the only link between an item and its state. Verify the change with a before/after `gh project item-list <number> --owner <owner> --format json --limit <n>` diff that no item lost Status.
