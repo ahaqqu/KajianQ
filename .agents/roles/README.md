@@ -27,7 +27,7 @@ On DSH, a role subagent's `gh` runs under the dispatching session's ambient iden
 
 ## Implementer-class operating rules
 
-The implementer-class roles follow the phase-boundary discipline from the `guided-implementation` skill — the `researcher` included, with a pushed research branch as its completion criterion rather than a PR. Each role file is **self-contained** and remains the operative copy: a contract change lands in every role file in the same commit.
+The implementer-class roles follow the phase-boundary discipline from the `guided-implementation` skill — the `researcher` included, with a pushed research branch as its completion criterion rather than a PR. Each role file is **self-contained** and remains the operative copy for the always-used contract — phase boundaries, budget handoff, workspace isolation and dispatch authorization — so a change to any of those lands in every role file in the same commit. The rare stuck-report format is the one named exception: its five fields live in `.agents/roles/STUCK-REPORT.md`, and each role file carries the pointer instead of a copy.
 
 ### Todo discipline (canonical)
 

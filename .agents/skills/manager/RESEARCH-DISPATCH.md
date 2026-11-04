@@ -8,7 +8,7 @@ Dispatch `researcher` **before** an implementer when any one holds:
 - a pending decision needs a number that does not exist yet (gate calibration, corpus coverage, the cost of a path);
 - an external system — vendor API, model, database — behaves differently from its documentation.
 
-The brief you write is one screen: the question as a falsifiable claim, **the kill condition** — the observation that would refute it — the decision it unblocks, the budget (spend and prototypes), what evidence form settles it, and the stop rule. Name the artifact paths in the task text — the brief's file, the experiment log's file, the prototype directory, and where a bug's failing test lives; the `research` skill takes them from the dispatch and does not invent repo structure. Dispatch it into its own worktree, `.worktrees/research-<slug>` on branch `research/<slug>`, and tell it to remove that worktree once the branch is pushed (canonical: `SKILL.md` — Workspace isolation).
+The brief you write is one screen: the question as a falsifiable claim, **the kill condition** — the observation that would refute it — the decision it unblocks, the budget (spend and prototypes), what evidence form settles it, and the stop rule. Name the artifact paths in the task text — the brief's file, the experiment log's file, the prototype directory, and where a bug's failing test lives; the `research` skill takes them from the dispatch and does not invent repo structure. Dispatch it into its own worktree, `.worktrees/research-<slug>` on branch `research/<slug>`, and tell it to remove that worktree once the branch is pushed (canonical: `.agents/roles/README.md` § Workspace isolation).
 
 On return, verify before you read the result:
 

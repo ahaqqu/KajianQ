@@ -73,7 +73,7 @@ you have and what is unresolved. A budget handoff is compliance, not failure.
 
 ## Stuck report
 
-**Stuck?** Commit and push, then report the five fields — invariant under test, exact current failure, attempted fixes, ruled-out hypotheses, checkpoint ref — per `.agents/roles/STUCK-REPORT.md`. It never substitutes for the completion criterion.
+**Stuck?** The triggers are the researcher's three: a harness that cannot be made to report the known case, a claim the evidence will not settle, a corpus that cannot answer the question — stop looping and report a **stuck-report**. Commit and push first, then report the five fields — invariant under test, exact current failure, attempted fixes, ruled-out hypotheses, checkpoint ref — per `.agents/roles/STUCK-REPORT.md`. It never substitutes for the completion criterion.
 
 ## Todo duty
 

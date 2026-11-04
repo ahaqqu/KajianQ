@@ -46,4 +46,4 @@ This repo is already a working monorepo (no bootstrap). Plans must extend the ex
 
 ## Completion criterion
 
-The review is done when every principle enumerated above is either satisfied by the plan or named in the report with its severity.
+The review is done when every principle from `docs/ARCHITECTURE.md` is either satisfied by the plan or named in the report with its severity.
