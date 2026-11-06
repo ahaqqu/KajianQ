@@ -76,3 +76,7 @@ A description of the things that are out of scope for this spec.
 Any further notes about the feature.
 
 </spec-template>
+
+## Completion criterion
+
+The spec is done when its publication is checked — the issue exists on the configured tracker, or the file exists under `.scratch/specs/` when none is configured — and the `ready-for-agent` label is applied.

@@ -12,8 +12,8 @@ Use this skill when creating a pull request.
 
 1. Check the branch at the start of the turn (`git branch --show-current`); create a branch from `main` if task work is not already on one. Never commit task work directly on `main`.
 2. Run the project CI gates locally: `bun run check`, `bun run lint`, `bun run test`, `bun run boundary`, `bun run agentic-limits`, `bun run openapi:check`, `bun run size-limit`. Fix failures until green.
-3. Read `AGENTS.md`. Validate code against the Definition of Done.
-4. Do not read `docs/ARCHITECTURE.md`.
+3. Read `AGENTS.md`.
+4. Validate code against its Definition of Done; this skill needs no architecture read.
 5. If this PR addresses one or more GitHub issues, gather their numbers/URLs from the current branch context. You will need them for the PR description.
 
 ## Validation

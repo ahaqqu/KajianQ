@@ -43,3 +43,7 @@ Severity on each finding:
 - **NOTE** — observation only
 
 This repo is already a working monorepo (no bootstrap). Plans must extend the existing layout in `CONTEXT.md`, not invent a new scaffold.
+
+## Completion criterion
+
+The review is done when every principle from `docs/ARCHITECTURE.md` is either satisfied by the plan or named in the report with its severity.

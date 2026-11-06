@@ -12,9 +12,8 @@ Take a change from CI-green on `main` through staging validation to production, 
 
 **The serving host is the netcup VPS** (a plain Bun process behind nginx). There
 is one box, and its environment label is `staging`: **no production is
-provisioned** (deferred, not pending — ADR-0044 decision 2, 2026-10-03), so a
-`prod` dispatch runs the same box through its approval gate rather than a second
-host. The operator's as-is manual is
+provisioned**, so a `prod` dispatch runs the same box through its approval gate
+rather than a second host. The operator's as-is manual is
 [`docs/VPS-OPERATIONS.md`](../../../docs/VPS-OPERATIONS.md), which is the authority
 for anything below that drifts.
 
@@ -84,13 +83,35 @@ known-fatal class is a missing host precondition (below).
 
 The deploy depends on things that live on the box, not in the repo. If one is
 missing, the deploy fails **after** shipping the tree, so the previous code keeps
-running:
+running.
+
+**The deploy contract and the host configuration live in
+[ahaqqu/vps](https://github.com/ahaqqu/vps) under `kajianq/`** — nginx, systemd
+units and timers, logrotate, sudoers, the Postgres posture, journald retention
+and env templates. Read that repository's ACCESS and DEPLOY docs before
+touching anything host-level, and change the `kajianq` manifest there with its
+tests and docs, not a copy under `provision/vps/`. A merged PR there is the
+deploy: a root-owned applier fetches `main` on a timer and installs it as one
+transaction. `kajianq-deploy` uploads `/srv/vps-incoming/kajianq.tar.gz` and
+invokes the root helper, which verifies the artifact, swaps `/srv/kajianq`,
+restarts `kajianq-api.service` and health-checks `/v1/health` (ADR-0065
+decisions 1–3 and 7; the contract is
+[ahaqqu/vps docs/DEPLOY.md](https://github.com/ahaqqu/vps/blob/main/docs/DEPLOY.md)).
+The installed grant is exactly the helper's commands — deploy/rollback plus the
+four bounded service verbs, the cron proof
+`systemctl start kajianq-cron.service`, and the doctor diagnostics `nginx -t`
+and `certbot certificates` — with no raw `systemctl restart
+kajianq-api.service`: the helper owns that restart, and the deploy never issues
+one (nor does it get a raw root shell). `provision/vps/deploy/deploy.sh` is this
+repository's deploy path; the host applier, not this repository, owns every host
+file. App code and its config stay here, and root-only env files under `/etc/`
+hold the secrets and are never committed or copied in. **A green deploy includes
+the shared `/srv/vps-ops/doctor.sh` sweep** — a red sweep or a missing doctor is
+a failed deploy, not something to bypass.
 
 - **The deploy identity and its grant.** `kajianq-deploy` with
-  `/etc/sudoers.d/kajianq-deploy` (the `vps-deploy kajianq` helper with
-  deploy/rollback and the four bounded service verbs, the cron proof
-  `systemctl start kajianq-cron.service`, and the doctor diagnostics `nginx -t`
-  and `certbot certificates`). The grant lives in
+  `/etc/sudoers.d/kajianq-deploy` (the `vps-deploy kajianq` helper and its
+  bounded commands, above). The grant lives in
   [ahaqqu/vps](https://github.com/ahaqqu/vps) under `kajianq/` and is installed
   by that repository's applier; `tests/scripts/vps-hardening.test.mjs` pins the
   privileged calls `deploy.sh` may make, so a new one must land in the grant
@@ -136,10 +157,8 @@ do not promote.
 ## Phase 6 — Promote to production
 
 There is no separate production host to point DNS at: **the one box is the
-`staging` deployment** and no production is provisioned (deferred, not pending —
-ADR-0044 decision 2), so this dispatch runs that box
-through the
-approval gate. Promotion is:
+`staging` deployment** and no production is provisioned, so this dispatch runs
+that box through the approval gate. Promotion is:
 
 ```bash
 gh workflow run "Deploy to VPS" -f environment=prod   # waits at the approval gate
@@ -151,9 +170,8 @@ the deploy key from the scope it names — `staging` carries its own vars under 
 same decision, and both point at the one box. The measured split of which scope
 holds which value is §1.4 of [`docs/VPS-OPERATIONS.md`](../../../docs/VPS-OPERATIONS.md). The label itself is
 cosmetic (the `env` field on log lines plus the health JSON; no behavioral gate
-differs) and already reads `staging` — the flip ran on the box on 2026-10-03,
-and [`docs/VPS-OPERATIONS.md`](../../../docs/VPS-OPERATIONS.md) §1.7 now holds the
-recovery commands for a box built from the pre-fix template.
+differs) and already reads `staging`; [`docs/VPS-OPERATIONS.md`](../../../docs/VPS-OPERATIONS.md)
+§1.7 holds the recovery commands for a box built from the pre-fix template.
 
 ## Phase 7 — Smoke tests
 

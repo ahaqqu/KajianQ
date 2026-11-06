@@ -13,7 +13,7 @@ This directory holds the role-agent definitions the manager-orchestrated workflo
 
 The manager is the session agent itself — it has no role file.
 
-The `senior-implementer` writing its own tests is deliberate: the earlier `test-implementer` split burned a handoff on a brief too thin to carry the implementation context, so its traps were weaker rather than more independent. The anti-bias rules live in the role file instead — state the invariant before the code, name the adversarial cases in the test intent, and never weaken an assertion to make it pass.
+The `senior-implementer` writing its own tests is deliberate: state the invariant before the code, name the adversarial cases in the test intent, and never weaken an assertion to make it pass.
 
 ## Model pins
 
@@ -25,15 +25,9 @@ A model that cannot run is a configuration fix in the adapter's catalog and reco
 
 On DSH, a role subagent's `gh` runs under the dispatching session's ambient identity: no role is denied a bare `gh`, and the manager session (no role) is never denied. The DSH adapter states this as it applies on DSH.
 
-## Board moves belong to the manager
-
-The project board is the manager's state surface, and it has one writer. **The manager owns every move; a role subagent never touches the board.** A role reports the artifact its work earned — a branch, a PR, a review comment, a verdict — and the manager reflects it as a card move. Reading the board is open to any role; a state-changing call (`gh project item-add`, `gh project item-edit`, a field update) is the manager's alone.
-
-The state vocabulary, the transition rules, and the board API mechanics are canonical in `.agents/skills/manager/SKILL.md` § Project board — the ticket state surface.
-
 ## Implementer-class operating rules
 
-The implementer-class roles follow the phase-boundary discipline from the `guided-implementation` skill. The `researcher` is implementer-class for this contract — phase boundaries, budget handoff, stuck-report, workspace isolation — but its completion criterion is a pushed research branch rather than a PR (Dispatch authorization). Each role file is **self-contained**: it carries the full operating contract inline — phase boundaries, budget handoff, stuck-report format, workspace isolation, dispatch authorization — so a dispatched agent never needs a second file read. This section documents the same contract for the manager and human readers; the role files remain the operative copy. If you change the contract, change every role file in the same commit.
+The implementer-class roles follow the phase-boundary discipline from the `guided-implementation` skill — the `researcher` included, with a pushed research branch as its completion criterion rather than a PR. Each role file is **self-contained** and remains the operative copy for the always-used contract — phase boundaries, budget handoff, workspace isolation and dispatch authorization — so a change to any of those lands in every role file in the same commit. The rare stuck-report format is the one named exception: its five fields live in `.agents/roles/STUCK-REPORT.md`, and each role file carries the pointer instead of a copy.
 
 ### Todo discipline (canonical)
 
@@ -46,17 +40,9 @@ Every implementer-class role maintains its plan in its own `todo_write` task lis
 
 The completion criterion is unchanged: a green PR is the evidence, and the todo list is progress telemetry, never a substitute for it.
 
-### Stuck-report format (canonical)
+### Stuck reports
 
-When an implementer-class agent judges the loop stuck, it stops looping and reports a **stuck-report** to the manager, containing exactly:
-
-1. **Invariant under test** — the property the work must protect, stated so the receiver can verify it.
-2. **Exact current failure** — the verification command and the precise error output.
-3. **Attempted fixes** — every fix attempt, each with its outcome.
-4. **Ruled-out hypotheses** — what was already eliminated and how.
-5. **Checkpoint commit ref** — the work is committed to the branch **first**; escalation must never lose work.
-
-The receiver must be able to act on this without re-deriving the history. **Never fake done:** the completion criterion is unchanged — a PR must exist and all its checks must be green (for the researcher: the pushed `research/<slug>` branch with its committed artifacts). A stuck-report never substitutes for that evidence; escalate instead.
+**Stuck?** Commit and push, then report the five fields — invariant under test, exact current failure, attempted fixes, ruled-out hypotheses, checkpoint ref — per `.agents/roles/STUCK-REPORT.md`. It never substitutes for the completion criterion.
 
 ### Workspace isolation (canonical)
 

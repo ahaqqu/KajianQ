@@ -46,7 +46,7 @@ Every QA ticket's probe list covers these classes; a class that genuinely does n
 - **The issue's own acceptance criterion, reproduced in staging.** The ticket's observable, probed exactly as the acceptance criterion words it.
 - **Neighbouring behaviour** — everything else on the changed code path, not just the symptom in the ticket. If a scorer changed, probe the questions it judges; if a route changed, probe its siblings and its rehydration path.
 - **Happy path, non-happy path, and boundary** — empty input, oversized input, malformed input, missing fields, the en↔id locale switch, timeouts, partial failures, a second turn in the same session.
-- **The adversarial persona — a user who abuses or hacks the system.** At minimum, for this product: prompt injection through the query or the retrieved corpus to force an ungrounded or dated answer or to leak the system prompt (**the query arm stays a QA probe; the corpus arm is a local falsification harness, not a QA probe — #294**, per _Corpus-injection belongs to a harness_ below); forcing a fabricated citation past the validator and the citations frame; the trap/refusal boundary and the dhaif-grade warning; madzhab-policy bypass attempts; session and token abuse (another session's id, replayed tokens, reading traces or feedback across sessions); erasure-path abuse (`DELETE /v1/auth/me`) against the retention claims; cost and rate abuse (burning the paid budget, rapid-fire queries, the ADR-0041 rate limits); malformed SSE/frame tampering and the UI's rendering of hostile content; and anything the specific change may have impacted.
+- **The adversarial persona — a user who abuses or hacks the system.** At minimum, for this product: prompt injection through the query or the retrieved corpus to force an ungrounded or dated answer or to leak the system prompt (**the query arm stays a QA probe; the corpus arm is a local falsification harness, not a QA probe**, per _Corpus-injection belongs to a harness_ below); forcing a fabricated citation past the validator and the citations frame; the trap/refusal boundary and the dhaif-grade warning; madzhab-policy bypass attempts; session and token abuse (another session's id, replayed tokens, reading traces or feedback across sessions); erasure-path abuse (`DELETE /v1/auth/me`) against the retention claims; cost and rate abuse (burning the paid budget, rapid-fire queries, the ADR-0041 rate limits); malformed SSE/frame tampering and the UI's rendering of hostile content; and anything the specific change may have impacted.
 
 Two probes of the same class with the same mechanism are one probe. The taxonomy is a floor: a change whose blast radius suggests an angle the list does not name gets that probe too.
 
@@ -75,7 +75,7 @@ The verdict is the only thing that closes a QA-needed change: `verified` when th
 
 ## The verdict and the board
 
-**The QA phase owns the verdict; the manager owns the card move.** `In QA` is the card of a merged and deployed change whose verdict is still pending, and the manager's transition rules are what take a card out of it — on the verdict the QA role posts, never on a move the role makes. Roles report artifacts and do not touch the board (`.agents/roles/README.md`); the `manager` skill's § Project board — the ticket state surface is canonical for the states, their transitions, and what **Done** means.
+**The QA phase owns the verdict; the manager owns the card move.** `In QA` is the card of a merged and deployed change whose verdict is still pending, and the manager's transition rules are what take a card out of it — on the verdict the QA role posts, never on a move the role makes. Roles report artifacts and do not touch the board; the `manager` skill's § Project board — the ticket state surface is canonical for the states, their transitions, and what **Done** means.
 
 Each verdict implies one card state:
 
@@ -89,8 +89,8 @@ A non-`verified` verdict is never withheld for the card's sake — post it with 
 
 - **Staging only.** The one deployment is the `staging` environment and it **is**
   the public URL (`https://kajianq.ahaqqu.com`) — no production deployment is
-  provisioned (ADR-0044 decision 2; deferred 2026-10-03), so there is no second
-  environment a probe could reach or be pointed at. **Never a prod dispatch**
+  provisioned, so there is no second environment a probe could reach or be
+  pointed at. **Never a prod dispatch**
   either: an operator deploy through the `prod` environment's approval gate
   stays outside this role's reach, and with no production provisioned it would
   land on the same box. The rails below are what bound the blast radius.
@@ -115,7 +115,7 @@ PGOPTIONS='-c default_transaction_read_only=on' psql \
 
 **The tunnel opens as your own login on the box** — the account a plain `ssh <host>` reaches you at, which `ssh <host> whoami` names. `kajianq-deploy` is the other kind of account: the CI deploy identity `vars.VPS_USER` names, whose authorized keys are the workflows' deploy keys and whose sudo grant is scoped to a deploy. A `Permission denied (publickey)` from the snippet is the login name to fix; the ssh account is unrelated to the database role, which stays `kajianq`.
 
-(The operator runbook's own §2.8 snippet still shows the URL form; that operator-side shape is #297, and it is not the pattern to copy here.)
+(The operator runbook's own §2.8 snippet still shows the URL form; that operator-side shape is not the pattern to copy here.)
 
 ### Spend
 
@@ -168,7 +168,7 @@ Read the result against the outcome, not against the event you expected:
 
 ### Corpus-injection belongs to a harness, not the QA role
 
-The adversarial persona names injection through the retrieved corpus. Planting a hostile chunk is a **write**, which the QA posture forbids — the store is the asset the QA phase judges, and the grant above is SELECT-only by posture, not by privilege (see the safety rail). Query-level injection (the same attack carried by the question) stays a QA probe and runs against the deployed surface. The corpus variant belongs in a **local falsification harness**: an implementer or reviewer dispatch inserts one hostile chunk into a scratch or fixture store, runs the pipeline, and asserts the answer is not swayed by it. It is #294.
+The adversarial persona names injection through the retrieved corpus. Planting a hostile chunk is a **write**, which the QA posture forbids — the store is the asset the QA phase judges, and the grant above is SELECT-only by posture, not by privilege (see the safety rail). Query-level injection (the same attack carried by the question) stays a QA probe and runs against the deployed surface. The corpus variant belongs in a **local falsification harness**: an implementer or reviewer dispatch inserts one hostile chunk into a scratch or fixture store, runs the pipeline, and asserts the answer is not swayed by it.
 
 ## Completion criterion
 

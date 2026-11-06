@@ -87,7 +87,7 @@ Apply a **model routing label** to every published ticket so downstream agents (
 - **`model:plus-human`** — an acceptance criterion requires **owner verification or human review/curation**. Code alone never closes the ticket.
 - **No label** — default tier: medium/cheap-tier model acceptable.
 
-These heuristics are template-generic. Project-specific routing rules live in project-owned surfaces — this fork's `AGENTS.md` (§ Ticket model routing) or `CONTEXT.md` — and are applied on top of the heuristics above.
+These heuristics are template-generic. Project-specific routing rules live in project-owned surfaces — this fork's `manager` skill dispatch decision (reached from `AGENTS.md` § Ticket model routing) — and are applied on top of the heuristics above.
 
 Work the **frontier**: any ticket whose blockers are all done. For a purely linear chain that means top to bottom.
 
@@ -139,6 +139,6 @@ When the tickets went to a real tracker, publishing them (step 5) is not done un
 
 **Resolve the item before creating one.** An item whose Status is unset belongs to no column, so a column-based read cannot find the ticket — a filing puts a ticket in the repo, not in a column. Add an item only when the ticket has none: the step is a Status **set** on the item the ticket already has, never a second add. Read the field's option ids and each item's id fresh at use time, per that section's mechanics.
 
-A ticket filed outside this skill — a review round's defect ticket, a finding the QA role opens, the owner's own filing — arrives the same way, and the manager cards it: the manager owns every board move and no role subagent touches the board (`.agents/roles/README.md`).
+A ticket filed outside this skill — a review round's defect ticket, a finding the QA role opens, the owner's own filing — arrives the same way, and the manager cards it: the manager owns every board move and no role subagent touches the board (`manager` skill, § Project board — the ticket state surface).
 
 **Completion criterion:** every ticket filed in step 5 appears in a **complete** read (`gh project item-list <number> --owner <owner> --format json --limit <n>`, per that section's Board API mechanics — a fresh filing is appended last, so a truncated read hides the ticket it is meant to confirm) with its Status set.
