@@ -14,7 +14,7 @@
     "@app/infra": "workspace:*",
     "@app/kajianq-domain": "workspace:*",
     "@app/rag-core": "workspace:*",
-    "effect": "4.0.6",
+    "effect": "4.1.1",
     "valibot": "1.5.0"
   },
   "devDependencies": {
