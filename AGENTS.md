@@ -82,6 +82,8 @@ See `.agents/skills/ship/SKILL.md` — staging → tests → production → smok
 
 See `.agents/skills/guided-implementation/DEBUGGING.md` — tight, red feedback-loop-first debugging discipline.
 
+A fault on the deployed site (kajianq.ahaqqu.com — a 500, a hung endpoint, wrong or missing answers) goes to `.agents/skills/troubleshoot-prod/SKILL.md` — the outside-in probe ladder for the live box, and what each failure signature names.
+
 ## Ticket model routing
 
 Tickets carry model routing labels applied by the `to-tickets` skill and consumed by the `manager` skill's dispatch decision — the manager consumes labels, never invents them.
