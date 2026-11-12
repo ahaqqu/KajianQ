@@ -1,12 +1,8 @@
 {
-  "gemini:gemini-3.1-pro-preview": { "in": 2000000, "out": 12000000 },
-  "gemini:gemini-3-flash-preview": { "in": 500000, "out": 3000000 },
-  "gemini:gemini-embedding-001": { "in": 0, "out": 0 },
-  "gemini:gemini-embedding-2": { "in": 0, "out": 0 },
-  "gemini-paid:gemini-embedding-001": { "in": 200000, "out": 0 },
-  "gemini-paid:gemini-embedding-2": { "in": 200000, "out": 0 },
+  "openrouter:google/gemini-embedding-001": { "in": 150000, "out": 0 },
+  "openrouter:google/gemini-embedding-2": { "in": 200000, "out": 0 },
+  "openrouter:google/gemini-3-flash-preview": { "in": 500000, "out": 3000000 },
+  "openrouter:deepseek/deepseek-v4-flash": { "in": 90000, "out": 180000 },
   "qwen:qwen3.7-max": { "in": 2500000, "out": 7500000 },
-  "deepseek:deepseek-v4-flash": { "in": 300000, "out": 1200000 },
-  "ollama-cloud:deepseek-v4.1-flash": { "in": 300000, "out": 1200000 },
-  "typesafe:jev-1.13.0": { "in": 42000, "out": 0 }
+  "ollama-cloud:deepseek-v4.1-flash": { "in": 300000, "out": 1200000 }
 }

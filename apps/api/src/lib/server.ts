@@ -27,18 +27,16 @@ const PASSTHROUGH_KEYS = [
   "DATABASE_URL",
   "ALLOWED_ORIGINS",
   "SENTRY_DSN",
-  "GEMINI_API_KEY",
-  "GEMINI_PAID_API_KEY",
   "DASHSCOPE_API_KEY",
-  "DEEPSEEK_API_KEY",
   // The profile-selected chat vendor's key. Optional by default (the default chains
   // never reference it); with a profile that routes a serving role to this row and
   // the key dropped here, that role fails with a typed error naming the variable —
   // never a silent fallback to the default vendor.
   "OLLAMA_API_KEY",
-  // Optional (never a boot precondition), but it MUST be passed through: a key
-  // dropped here leaves the reviewer pre-gate silently dead in serving.
-  "JEV_API_KEY",
+  // The serving aggregator's key (ADR-0069): chat, embeddings and the decision seam
+  // all bind through it. Dropped here, every serving role reports it missing and the
+  // pre-gate silently dies — the posture report names it, never silence.
+  "OPENROUTER_API_KEY",
   // Optional config (absent = the default chains) that must ride this filtered view
   // or the profile switch is dead in serving; an unknown profile then fails the boot
   // provider-posture report with a typed config error.

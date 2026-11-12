@@ -23,12 +23,14 @@ import { CHAT_SERVING_ROLES } from "./chat-wiring";
  *      never a silent route to the free tier; the test walks the real `models.json`, so
  *      such an edit fails HERE. The `decision` role is in scope (it sends personal data).
  *
- * Trap cases: the `cheap` chain carries a keyed free-tier tail, so the flag must keep
- * personal-data calls on the paid head; a `freeTier: false` row with `personalDataAllowed:
- * false` is still disallowed (the rule keys on personal data, not price); an unkeyed
- * candidate is not a violation. Every profile the config declares is walked the same
- * way, plus the identity `default` profile, so no profile can reintroduce a free-tier
- * head or drop a serving role's paid candidate.
+ * The `cheap` chain's keyed free-tier tail — the filter's wired trap case — retired with
+ * the direct-Gemini rows (ADR-0069): no serving chain holds a free-tier candidate anymore,
+ * so the invariant holds structurally and the filter's own logic is pinned by its synthetic
+ * unit tests. A `freeTier: false` row with `personalDataAllowed: false` would still be
+ * disallowed (the rule keys on personal data, not price), and an unkeyed candidate is not
+ * a violation. Every profile the config declares is walked the same way, plus the identity
+ * `default` profile, so no profile can reintroduce a free-tier head or drop a serving
+ * role's paid candidate.
  */
 
 type VendorRow = { freeTier: boolean; personalDataAllowed: boolean };
@@ -51,21 +53,17 @@ const PROFILES = [...new Set(["default", ...Object.keys(MODELS.profiles ?? {})])
 
 /**
  * The env-name set every serving role is keyed with in a fully-configured deployment:
- * `GEMINI_PAID_API_KEY` (the paid-terms embedder head) is an owner-provisioned
- * precondition without which the embedder stage fails with a typed error.
+ * `OPENROUTER_API_KEY` (the aggregator row carrying chat, embeddings and the decision
+ * seam, ADR-0069) is an owner-provisioned precondition without which the serving roles
+ * fail with a typed error.
  */
 const DEPLOYED_KEYS = new Set([
-  "GEMINI_API_KEY",
-  "GEMINI_PAID_API_KEY",
-  "DEEPSEEK_API_KEY",
+  "OPENROUTER_API_KEY",
   "DASHSCOPE_API_KEY",
   // The switchable chat vendor's key: optional in the default profile, but a profile that
   // routes a serving role to this row must still carry a paid, personal-data-allowed
   // candidate when the key is bound (ADR-0059).
   "OLLAMA_API_KEY",
-  // The decision vendor's key: optional in serving, but when keyed this guard must judge
-  // the candidate it would wire.
-  "JEV_API_KEY",
 ]);
 
 const config = loadProviderConfig();
@@ -172,10 +170,10 @@ describe("serving personal-data precondition — every declared profile (ADR-005
     expect(failures).toEqual([]);
   });
 
-  it("overrides exactly the four serving roles and keeps the cheap free-tier tail", () => {
+  it("overrides exactly the four serving roles and keeps the cheap challenger tail", () => {
     // The profile is a chain-set switch, not a vendor-only rewrite: the roles it does
-    // not name must stay exactly the base chains, and the free-tier tail must stay in
-    // the cheap chain so the personal-data filter's trap case remains wired.
+    // not name must stay exactly the base chains, and the cheap challenger must stay
+    // in the cheap chain as the fallback after the switched head.
     expect(Object.keys(MODELS.profiles?.["ollama"] ?? {}).sort()).toEqual([
       "cheap",
       "generator",
@@ -191,8 +189,8 @@ describe("serving personal-data precondition — every declared profile (ADR-005
     const headVendor = cheap[0]!.slice(0, cheap[0]!.indexOf(":"));
     const tailVendor = cheap.at(-1)!.slice(0, cheap.at(-1)!.indexOf(":"));
     expect(MODELS.vendors[headVendor]?.personalDataAllowed).toBe(true);
-    expect(MODELS.vendors[tailVendor]?.freeTier).toBe(true);
-    expect(MODELS.vendors[tailVendor]?.personalDataAllowed).toBe(false);
+    expect(MODELS.vendors[tailVendor]?.freeTier).toBe(false);
+    expect(MODELS.vendors[tailVendor]?.personalDataAllowed).toBe(true);
   });
 
   it("the wiring parses every profile into the same chains the file declares", () => {

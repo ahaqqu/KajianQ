@@ -37,8 +37,10 @@ describe("provider config", () => {
     expect(serving).toHaveLength(1);
     expect(bench[0]?.vendor).toBe(serving[0]?.vendor);
     expect(bench[0]?.modelId).toBe(serving[0]?.modelId);
-    // The serving candidate must speak the decision protocol and price inputs.
-    expect(serving[0]?.vendorConfig.protocol).toBe("systemone");
+    // The serving candidate must speak the chat-completions protocol (ADR-0042's
+    // rewritten posture: the decision seam rides schema-constrained structured
+    // output) and price inputs.
+    expect(serving[0]?.vendorConfig.protocol).toBe("chat-completions");
     expect(serving[0]?.modelConfig.capabilities).toContain("decide");
     expect(serving[0]?.modelConfig.priceMicroUsdPerMTok.in).toBeGreaterThan(0);
     // Serving is adopted FROM the benched set — never a candidate the gate did

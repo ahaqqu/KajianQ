@@ -282,7 +282,9 @@ describe("PrivacyPage", () => {
     const privacy = screen.getByTestId("privacy-notice");
     expect(privacy.textContent).toContain("Who processes your data");
     expect(privacy.textContent).toContain("In use today");
-    expect(privacy.textContent).toContain("Not for personal data");
+    // The verdict column renders in English too; the register carries no
+    // free-tier row anymore, so the permitted verdict is the one on screen.
+    expect(privacy.textContent).toContain("May carry personal data");
     expect(within(privacy).getByTestId("privacy-notice-erasure").textContent).toContain(
       "no button for this yet",
     );

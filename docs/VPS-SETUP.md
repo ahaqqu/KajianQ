@@ -436,14 +436,15 @@ arrives as a new decision and a new host (ADR-0044's revisit trigger for a secon
 never an edit here.
 
 The chat path's **hard preconditions depend on the selected provider profile**
-(ADR-0059); the embedder is untouched by either:
+(ADR-0059); the embedder rides the aggregator key either way:
 
-- `default` (or no `PROVIDER_PROFILE`): `DEEPSEEK_API_KEY` — the
-  generator/router head and the reviewer
+- `default` (or no `PROVIDER_PROFILE`): `OPENROUTER_API_KEY` — the aggregator
+  row (ADR-0069) carries the generator/router head, the reviewer and the
+  embedder
 - `ollama`: `OLLAMA_API_KEY` — the generator/router head, the reviewer and the
   live reviewer; a missing key fails each such call with a typed provider error
-  naming `OLLAMA_API_KEY`, never a silent route back to DeepSeek
-- both: `GEMINI_PAID_API_KEY` — the embedder head
+  naming `OLLAMA_API_KEY`, never a silent route back to the aggregator
+- both: `OPENROUTER_API_KEY` — the embedder head
 
 Without the profile's key, a chat question fails its embedder, generator or
 reviewer stage with a typed error while `/v1/health` and anonymous session
@@ -476,13 +477,13 @@ The serving process reports its provider posture **once at startup**, as a
 - `reviewer: "wired"` / `"not_wired"` — whether the reviewer role resolved at
   all. `not_wired` means **every chat call answers 503** (the cross-vendor
   faithfulness check is mandatory, so the route fails closed), and
-  `missingKeys` names the env var to bind — normally `DEEPSEEK_API_KEY`.
+  `missingKeys` names the env var to bind — normally `OPENROUTER_API_KEY`.
 - `preGate: "active"` / `"not_wired"` — whether the reviewer pre-gate
-  (`JEV_API_KEY`, #168 / ADR-0042) is wired. `not_wired` means the reviewer
+  (`OPENROUTER_API_KEY`, #168 / ADR-0042) is wired. `not_wired` means the reviewer
   runs on every answer, exactly as before adoption; it is fail-open, so
   nothing else will complain.
 - `missingKeys` — the env var **names** whose keys were absent (including the
-  optional `JEV_API_KEY`), i.e. which key to bind.
+  optional `DASHSCOPE_API_KEY`), i.e. which key to bind.
 - `ineligibleKeys` — decision candidates the personal-data posture dropped
   (ADR-0043), keyed or not: `resolveDecider` filters on personal-data
   eligibility _before_ it checks the key, so an unkeyed ineligible candidate is
@@ -906,14 +907,14 @@ run that next.
 The engine is model-agnostic and the vendor/model selection is configuration, so
 you are not locked to any provider. What the default configuration expects:
 
-| Role                   | Default head      | Key                   | Required?                                                   |
-| ---------------------- | ----------------- | --------------------- | ----------------------------------------------------------- |
-| Embedder               | Gemini embeddings | `GEMINI_PAID_API_KEY` | **Yes** — chat fails without it                             |
-| Generator + router     | DeepSeek          | `DEEPSEEK_API_KEY`    | **Yes** — chat fails without it                             |
-| Reviewer               | DeepSeek          | `DEEPSEEK_API_KEY`    | **Yes** — shares the key above                              |
-| Generator challenger   | DashScope         | `DASHSCOPE_API_KEY`   | No                                                          |
-| Switchable chat vendor | Ollama Cloud      | `OLLAMA_API_KEY`      | No under `default`; **Yes** under `PROVIDER_PROFILE=ollama` |
-| Free-tier Gemini       | —                 | `GEMINI_API_KEY`      | No — non-personal calls only (ingestion)                    |
+| Role                   | Default head                        | Key                  | Required?                                                   |
+| ---------------------- | ----------------------------------- | -------------------- | ----------------------------------------------------------- |
+| Embedder               | Gemini embedding via the aggregator | `OPENROUTER_API_KEY` | **Yes** — chat fails without it                             |
+| Generator + router     | DeepSeek via the aggregator         | `OPENROUTER_API_KEY` | **Yes** — shares the key above                              |
+| Reviewer               | DeepSeek via the aggregator         | `OPENROUTER_API_KEY` | **Yes** — shares the key above                              |
+| Decision seam          | Gemini Flash via the aggregator     | `OPENROUTER_API_KEY` | No — both adoptions fail open without it (ADR-0042)         |
+| Generator challenger   | DashScope                           | `DASHSCOPE_API_KEY`  | No                                                          |
+| Switchable chat vendor | Ollama Cloud                        | `OLLAMA_API_KEY`     | No under `default`; **Yes** under `PROVIDER_PROFILE=ollama` |
 
 Prices live in `packages/infra/src/providers/models.json`, per model, in
 micro-USD per million tokens, and every query's cost is recorded on its trace.

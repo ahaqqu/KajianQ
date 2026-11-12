@@ -132,15 +132,11 @@ const retentionById = (id: string): RetentionItem => {
   return row;
 };
 
-/** The vendor catalog ids behind the notice rows that name an LLM vendor; the paid Gemini row
- * is a separate catalog vendor (`gemini-paid`) because the register rule keys on terms. */
+/** The vendor catalog ids behind the notice rows that name an LLM vendor. */
 const CATALOG_IDS: Record<string, string> = {
-  gemini: "gemini",
-  "gemini-paid": "gemini-paid",
-  deepseek: "deepseek",
+  openrouter: "openrouter",
   "ollama-cloud": "ollama-cloud",
   alibaba: "qwen",
-  typesafe: "typesafe",
 };
 
 const STATUS_KEY = {
@@ -152,7 +148,7 @@ const STATUS_KEY = {
 
 describe("privacy notice: the register mirrors the Art. 30 record", () => {
   it("parsed the record's register (so the drift guards below are not vacuous)", () => {
-    expect(REGISTER_ROWS.length).toBeGreaterThanOrEqual(7);
+    expect(REGISTER_ROWS.length).toBeGreaterThanOrEqual(6);
     expect(REGISTER_ROWS[0]!.vendor).toContain("netcup");
   });
 

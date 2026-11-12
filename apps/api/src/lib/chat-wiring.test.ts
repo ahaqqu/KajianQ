@@ -95,7 +95,7 @@ describe("parseScopeExpansionCap — ADR-0045's budget knob", () => {
   });
 
   it("wires the configured cap into the pipeline and states it absent when unset", () => {
-    const keyed = { DATABASE_URL: "postgres://x", DEEPSEEK_API_KEY: "k" };
+    const keyed = { DATABASE_URL: "postgres://x", OPENROUTER_API_KEY: "k" };
     expect(
       buildChatWiring({ ...keyed, SCOPE_EXPANSION_CAP: "7" }).pipeline.retrieval,
     ).toMatchObject({
@@ -110,7 +110,7 @@ describe("parseScopeExpansionCap — ADR-0045's budget knob", () => {
     expect(() =>
       buildChatWiring({
         DATABASE_URL: "postgres://x",
-        DEEPSEEK_API_KEY: "k",
+        OPENROUTER_API_KEY: "k",
         SCOPE_EXPANSION_CAP: "nope",
       }),
     ).toThrow(/SCOPE_EXPANSION_CAP/);
@@ -133,7 +133,7 @@ describe("parseScopeExpansionCap — ADR-0045's budget knob", () => {
   });
 
   it("wires the configured neighbourhood window into the pipeline and states it absent when unset", () => {
-    const keyed = { DATABASE_URL: "postgres://x", DEEPSEEK_API_KEY: "k" };
+    const keyed = { DATABASE_URL: "postgres://x", OPENROUTER_API_KEY: "k" };
     expect(
       buildChatWiring({
         ...keyed,
@@ -157,7 +157,7 @@ describe("parseScopeExpansionCap — ADR-0045's budget knob", () => {
     for (const bad of ["-1", "abc", "1.5", "12x"]) {
       expect(() => parseLabelLookupCap(bad)).toThrow(/LABEL_LOOKUP_CAP/);
     }
-    const keyed = { DATABASE_URL: "postgres://x", DEEPSEEK_API_KEY: "k" };
+    const keyed = { DATABASE_URL: "postgres://x", OPENROUTER_API_KEY: "k" };
     expect(buildChatWiring({ ...keyed, LABEL_LOOKUP_CAP: "5" }).pipeline.retrieval).toMatchObject({
       labelLookupCap: 5,
     });
@@ -179,7 +179,7 @@ describe("parseScopeExpansionCap — ADR-0045's budget knob", () => {
     // cannot be parsed back.
     expect(() => parseCallerPriorityK(String(CALLER_PRIORITY_K + 1))).toThrow(ChatConfigError);
     expect(() => parseCallerPriorityK(String(CALLER_PRIORITY_K + 1))).toThrow(/CALLER_PRIORITY_K/);
-    const keyed = { DATABASE_URL: "postgres://x", DEEPSEEK_API_KEY: "k" };
+    const keyed = { DATABASE_URL: "postgres://x", OPENROUTER_API_KEY: "k" };
     expect(buildChatWiring({ ...keyed, CALLER_PRIORITY_K: "2" }).pipeline.retrieval).toMatchObject({
       callerPriorityK: 2,
     });
@@ -207,7 +207,7 @@ describe("parseScopeExpansionCap — ADR-0045's budget knob", () => {
     for (const bad of ["-1", "abc", "1.5", "12x"]) {
       expect(() => parseChainEvidenceChainCap(bad)).toThrow(/CHAIN_EVIDENCE_CHAIN_CAP/);
     }
-    const keyed = { DATABASE_URL: "postgres://x", DEEPSEEK_API_KEY: "k" };
+    const keyed = { DATABASE_URL: "postgres://x", OPENROUTER_API_KEY: "k" };
     expect(
       buildChatWiring({ ...keyed, CHAIN_EVIDENCE_CHAIN_CAP: "2" }).pipeline.retrieval,
     ).toMatchObject({ chainEvidenceChainCap: 2 });

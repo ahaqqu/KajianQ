@@ -10,7 +10,7 @@
   },
   {
     "name": "vendor or model name outside config",
-    "pattern": "qwen|gemini|deepseek|kimi|moonshot|dashscope|anthropic|openai|cohere",
+    "pattern": "qwen|gemini|deepseek|kimi|moonshot|dashscope|anthropic|openai|cohere|openrouter|typesafe",
     "flags": "i",
     "exts": ["ts", "tsx", "mts", "cts"],
     "deps": true,

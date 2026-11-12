@@ -75,64 +75,26 @@ export const SUB_PROCESSORS: readonly SubProcessor[] = [
     },
   },
   {
-    id: "gemini",
-    name: "Google (Gemini API)",
+    id: "openrouter",
+    name: "OpenRouter",
     status: "current",
     role: {
-      // Not the reviewer: this free-tier row's verdict is not-for-personal-data, and every
-      // serving call site sets PromptSpec.personalData — so it can only be a fallback candidate
-      // on the cheap role and serve embeddings for non-personal calls.
-      id: "LLM: kandidat cadangan pada peran murah (kepala rantai dilayani DeepSeek) dan embedding untuk panggilan non-pribadi saja.",
-      en: "LLM: fallback candidate on the cheap role (DeepSeek heads the chain) and embeddings for non-personal calls only.",
+      // The serving aggregator (ADR-0069): one paid, DPA-covered row carries every
+      // chat serving role, the embedder, and the decision seam (schema-constrained
+      // structured output). The direct Gemini and DeepSeek rows retired with it.
+      id: "LLM: peran generator, reviewer, dan murah (router); embedding peran embedder saat pencarian; model keputusan untuk pratinjau sitasi dan pemingkatan ulang hasil pencarian.",
+      en: "LLM: the generator, reviewer and cheap (router) roles; the embedder role's embeddings at retrieval time; the decision model behind the citation pre-gate and the retrieval rerank.",
     },
     personalData: {
-      id: "Isi prompt/embedding dari panggilan yang ditandai sebagai data pribadi.",
-      en: "Prompt/embedding content of any call flagged personal.",
-    },
-    tier: "free",
-    verdict: "not-for-personal-data",
-    note: {
-      id: "Tingkat gratis: lalu lintasnya dapat dipakai vendor untuk meningkatkan modelnya — karena itu data pribadi tidak boleh lewat sini.",
-      en: "Free tier: its traffic may be used to improve the vendor's models — so personal data must not route through it.",
-    },
-  },
-  {
-    id: "gemini-paid",
-    name: "Google (Gemini API, paid)",
-    status: "current",
-    role: {
-      // Keyed separately from the free-tier row above because the register rule keys on TERMS,
-      // not on the model: the same API and model id on standard/paid terms may carry personal
-      // data, the free tier may not. The serving retriever embeds the user's sub-queries, so the
-      // embedder role rides this row.
-      id: "LLM: peran embedder — meng-embed sub-kueri pengguna saat pencarian.",
-      en: "LLM: the embedder role — embeds the user's sub-queries at retrieval time.",
-    },
-    personalData: {
-      id: "Sub-kueri pengguna yang di-embed oleh retriever saat melayani.",
-      en: "The user's sub-queries, embedded by the serving retriever.",
+      id: "Pertanyaan obrolan + konteks yang tersusun; sub-kueri pengguna yang di-embed; klaim dari jawaban dan petikan bukti saat pratinjau sitasi berjalan.",
+      en: "Chat question + assembled context; the user's embedded sub-queries; claim spans and cited passages while the citation screen runs.",
     },
     tier: "paid",
     verdict: "permitted",
     note: {
-      id: "Ketentuan berbayar/standar dengan DPA — inilah yang membuat data pribadi boleh lewat sini, bukan tingkat gratisnya (ADR-0009, aturan register).",
-      en: "Paid/standard terms with a DPA — that is what makes personal data permissible here, not the free tier (ADR-0009, the register rule).",
+      id: "Ketentuan berbayar (kredit prabayar) dengan DPA OpenRouter yang dipublikasikan (GDPR/CCPA) — diterima pemilik sebagai bagian dari penyiapan akun sebelum kunci produksi diikat (ADR-0069). OpenRouter bertindak sebagai agregator dan meneruskan panggilan ke penyedia model hulu di bawah rantai sub-prosesornya sendiri; mode nol-retensi tersedia pada akun.",
+      en: "Paid terms (prepaid credits) under OpenRouter's published DPA (GDPR/CCPA) — accepted by the owner as part of the account setup, before the production key binds (ADR-0069). OpenRouter acts as an aggregator and forwards calls to upstream model providers under its own sub-processor chain; a zero-retention mode is available on the account.",
     },
-  },
-  {
-    id: "deepseek",
-    name: "DeepSeek",
-    status: "current",
-    role: {
-      id: "LLM: generator — menerima pertanyaan dan konteks yang tersusun.",
-      en: "LLM: generator — receives the question and the assembled context.",
-    },
-    personalData: {
-      id: "Pertanyaan obrolan + konteks.",
-      en: "Chat question + context.",
-    },
-    tier: "paid",
-    verdict: "permitted",
   },
   {
     id: "ollama-cloud",
@@ -140,10 +102,10 @@ export const SUB_PROCESSORS: readonly SubProcessor[] = [
     status: "current",
     role: {
       // The switchable row: selected only by the `ollama` provider profile. The default
-      // chains (and the rollback) head the same roles with DeepSeek, so the row states
-      // the condition rather than claiming unconditional traffic.
-      id: "LLM: vendor obrolan yang dapat dipilih — rantai generator, reviewer, reviewer-live, dan murah saat profil penyedia `ollama` dipilih; profil default (dan rollback) memakai DeepSeek untuk peran yang sama.",
-      en: "LLM: the switchable chat vendor — the generator, reviewer, reviewer-live and cheap chains when the `ollama` provider profile is selected; the default profile (and the rollback) serves those roles with DeepSeek.",
+      // chains (and the rollback) head the same roles through OpenRouter, so the row
+      // states the condition rather than claiming unconditional traffic.
+      id: "LLM: vendor obrolan yang dapat dipilih — rantai generator, reviewer, reviewer-live, dan murah saat profil penyedia `ollama` dipilih; profil default (dan rollback) melayani peran yang sama melalui OpenRouter.",
+      en: "LLM: the switchable chat vendor — the generator, reviewer, reviewer-live and cheap chains when the `ollama` provider profile is selected; the default profile (and the rollback) serves those roles through OpenRouter.",
     },
     personalData: {
       id: "Pertanyaan obrolan + konteks yang tersusun; sub-kueri pengguna saat peran murah dilayani.",
@@ -170,25 +132,6 @@ export const SUB_PROCESSORS: readonly SubProcessor[] = [
     },
     tier: "paid",
     verdict: "permitted",
-  },
-  {
-    id: "typesafe",
-    name: "TypeSafe AI",
-    status: "current",
-    role: {
-      id: "Model keputusan: pratinjau sitasi (pre-gate) sebelum reviewer LLM — menilai apakah petikan yang dikutip benar-benar mendukung klaim jawaban (adopsi ADR-0042, #168).",
-      en: "Decision model: the citation pre-gate ahead of the LLM reviewer — judges whether each cited passage genuinely supports the answer's claim (ADR-0042 adoption, #168).",
-    },
-    personalData: {
-      id: "Klaim dari jawaban yang disusun dan petikan bukti yang dikutipnya — hanya saat pratinjau sitasi berjalan, satu panggilan batch per jawaban.",
-      en: "Claim spans from the drafted answer and the cited evidence passages — only while the citation screen runs, one batched call per answer.",
-    },
-    tier: "paid",
-    verdict: "permitted",
-    note: {
-      id: "Ketentuan berbayar/standar — aturan register (ADR-0009) mewajibkan perjanjian pemrosesan untuk data pribadi, dan perjanjian pemrosesan (Art. 28(3)) TypeSafe telah dikonfirmasi pemilik pada 2026-09-27: pengikatan kunci produksi tidak lagi ditahan. Rujukan perjanjiannya sendiri tidak tercatat di repositori ini. Panggilan yang gagal atau tidak terbaca tidak pernah menggantikan reviewer LLM: pratinjau ini hanya bisa melewati reviewer pada jawaban yang benar-benar lolos (fail-open, ADR-0042).",
-      en: "Paid/standard terms — the register rule (ADR-0009) requires a processing agreement for personal data, and TypeSafe's Art. 28(3) processing agreement was confirmed by the owner on 2026-09-27: binding the production key is no longer gated. The agreement's own reference is not recorded in this repo. A failed or unreadable screen never replaces the LLM reviewer: it can only skip it on an answer it affirmatively cleared (fail-open, ADR-0042).",
-    },
   },
 ];
 

@@ -25,7 +25,7 @@ import { buildChatWiring, ChatConfigError } from "./chat-wiring";
  * configured and widens nothing.
  */
 
-const KEYED_ENV = { DATABASE_URL: "postgres://x", DEEPSEEK_API_KEY: "k" };
+const KEYED_ENV = { DATABASE_URL: "postgres://x", OPENROUTER_API_KEY: "k" };
 
 /** A question naming no surah and no citation label: only the neighbour arm runs. */
 const PLAIN_QUESTION = "Apa yang dimaksud dengan ayat yang agung?";
