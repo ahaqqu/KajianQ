@@ -14,6 +14,7 @@ import {
   type ChatResponse,
   type FetchLike,
 } from "./chat-wire";
+import { createDecisionsDecider } from "./decisions-decider";
 import {
   resolveChain,
   type ModelConfig,
@@ -265,21 +266,29 @@ export function resolveDecider(
       }
       continue;
     }
-    if (candidate.vendorConfig.protocol !== "chat-completions") {
-      throw new Error(
-        `decider role "${role}": candidate ${candidate.vendor}:${candidate.modelId} does not speak the chat-completions protocol`,
-      );
-    }
+    // The protocol dispatch: the chat wire pins the answers schema on the
+    // request, the typed-questions wire carries the primitives natively —
+    // both construct a `Decider` over the same validated seam answers.
     deciders.push({
       modelId: candidate.modelId,
-      decider: createChatCompletionsDecider({
-        vendor: candidate.vendorConfig,
-        modelId: candidate.modelId,
-        model: candidate.modelConfig,
-        apiKey,
-        ...(opts.fetchImpl != null ? { fetchImpl: opts.fetchImpl } : {}),
-        ...(opts.timeoutMs != null ? { timeoutMs: opts.timeoutMs } : {}),
-      }),
+      decider:
+        candidate.vendorConfig.protocol === "chat-completions"
+          ? createChatCompletionsDecider({
+              vendor: candidate.vendorConfig,
+              modelId: candidate.modelId,
+              model: candidate.modelConfig,
+              apiKey,
+              ...(opts.fetchImpl != null ? { fetchImpl: opts.fetchImpl } : {}),
+              ...(opts.timeoutMs != null ? { timeoutMs: opts.timeoutMs } : {}),
+            })
+          : createDecisionsDecider({
+              vendor: candidate.vendorConfig,
+              modelId: candidate.modelId,
+              model: candidate.modelConfig,
+              apiKey,
+              ...(opts.fetchImpl != null ? { fetchImpl: opts.fetchImpl } : {}),
+              ...(opts.timeoutMs != null ? { timeoutMs: opts.timeoutMs } : {}),
+            }),
     });
   }
   return { deciders, missingKeys, ineligibleKeys };

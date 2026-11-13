@@ -36,19 +36,37 @@
           }
         },
         "deepseek/deepseek-v4.1-flash": {
-          "$comment": "Decision-bench challenger (ADR-0042): the `decide` capability marks this row a candidate the multilingual gate compares \u2014 under the rewritten seam the typing rides schema-constrained chat output, so the capability list \u2014 not a vendor protocol \u2014 decides what the decider may construct. Not wired to any serving role. Priced at the vendor's published peak rate ($0.30 in / $1.20 out per MTok), the same listing the ollama-cloud row records for this model.",
-          "capabilities": ["decide"],
+          "$comment": "Priced at the vendor's published peak rate ($0.30 in / $1.20 out per MTok), the same listing the ollama-cloud row records for this model. Serves the generator, reviewer and cheap heads and rides the decision bench: the `decide` capability marks the row a candidate the multilingual gate compares \u2014 under the rewritten seam the typing rides schema-constrained chat output, so the capability list \u2014 not a vendor protocol \u2014 decides what the decider may construct.",
+          "capabilities": ["generate", "stream", "decide"],
           "priceMicroUsdPerMTok": {
             "in": 300000,
             "out": 1200000
           }
-        },
-        "deepseek/deepseek-v4-flash": {
-          "$comment": "Priced at the DeepInfra listing ($0.09 in / $0.18 out per MTok), inside the aggregator's $0.05\u2013$0.21 in / $0.10\u2013$0.56 out endpoint spread; routing is per request unless pinned by a provider preference.",
-          "capabilities": ["generate", "stream"],
+        }
+      }
+    },
+    "openrouter-decisions": {
+      "$comment": "ADR-0042: the aggregator's typed decisions wire (alpha) \u2014 the same account, key and DPA as the openrouter row; the wire the decision models the chat wire rejects serve on. The question objects pass through verbatim (the wire's primitives are the seam's noul/choice/score types) and the state rides as a one-element array of strings. Priced on input tokens only (output free); the input rate below is the rate the wire's recorded usage costs reproduce exactly. Backs the bench-only `decision-candidates` role \u2014 gate fixture text, never personal data.",
+      "baseUrl": "https://openrouter.ai/api/alpha",
+      "apiKeyEnv": "OPENROUTER_API_KEY",
+      "protocol": "decisions",
+      "freeTier": false,
+      "personalDataAllowed": true,
+      "models": {
+        "~typesafe/jev-latest": {
+          "$comment": "The newest Jev release alias \u2014 resolves server-side to a dated build, named in the reply's model field. $0.042 per input MTok, output free.",
+          "capabilities": ["decide"],
           "priceMicroUsdPerMTok": {
-            "in": 90000,
-            "out": 180000
+            "in": 42000,
+            "out": 0
+          }
+        },
+        "~perplexity/pplx-decider-latest": {
+          "$comment": "The newest pplx-decider release alias \u2014 resolves server-side to a dated build, named in the reply's model field. $0.02 per input MTok, output free.",
+          "capabilities": ["decide"],
+          "priceMicroUsdPerMTok": {
+            "in": 20000,
+            "out": 0
           }
         }
       }
@@ -91,20 +109,20 @@
   },
   "roles": {
     "generator": {
-      "$comment": "Cost posture decided 2026-09-12 (ADR-0009): the answer generator runs on the cheap tier \u2014 DeepSeek V4-Flash through the aggregator at $0.09/$0.18 per MTok vs Qwen3.7-Max's $2.50/$7.50 \u2014 because the trust invariant is carried by the deterministic citation gate and the reviewer gate, not by generator price. The Qwen3.7-Max tail was REMOVED 2026-09-12 (owner decision): DashScope is not provisioned and will not be, and resolveRole silently filters candidates whose apiKeyEnv is unset \u2014 so the chain advertised a failover that could never be wired. Single candidate, accepted single point of failure: a generator failure costs one <=$1 smoke re-run, not data. Re-adding a fallback means adding a candidate whose key is actually bound.",
-      "chain": ["openrouter:deepseek/deepseek-v4-flash"]
+      "$comment": "Cost posture decided 2026-09-12 (ADR-0009): the answer generator runs on the cheap tier \u2014 DeepSeek V4.1-Flash through the aggregator at $0.30/$1.20 per MTok vs Qwen3.7-Max's $2.50/$7.50 \u2014 because the trust invariant is carried by the deterministic citation gate and the reviewer gate, not by generator price. The Qwen3.7-Max tail was REMOVED 2026-09-12 (owner decision): DashScope is not provisioned and will not be, and resolveRole silently filters candidates whose apiKeyEnv is unset \u2014 so the chain advertised a failover that could never be wired. Single candidate, accepted single point of failure: a generator failure costs one <=$1 smoke re-run, not data. Re-adding a fallback means adding a candidate whose key is actually bound.",
+      "chain": ["openrouter:deepseek/deepseek-v4.1-flash"]
     },
     "reviewer": {
       "$comment": "Personal-data posture (ADR-0043 decision 3, #181; reviewer re-headed 2026-09-21 per owner): the serving reviewer's prompt embeds the user's question and the drafted answer, so with PromptSpec.personalData required on every serving call only a paid candidate may serve. The designed head was kimi:kimi-k2.6 (cross-vendor, ADR-0009/ADR-0015), but the owner holds no Moonshot key and elected (issue #181 thread) to head the reviewer with the generator model instead. This accepts same-vendor review \u2014 the property ADR-0015 named 'anti-self-review' is relaxed for the current key set, recorded as a deliberate trade-off rather than drifted into. Revisit when a second paid vendor key (kimi, qwen) is provisioned.",
-      "chain": ["openrouter:deepseek/deepseek-v4-flash"]
+      "chain": ["openrouter:deepseek/deepseek-v4.1-flash"]
     },
     "reviewer-live": {
       "$comment": "Same head as the reviewer chain.",
-      "chain": ["openrouter:deepseek/deepseek-v4-flash"]
+      "chain": ["openrouter:deepseek/deepseek-v4.1-flash"]
     },
     "cheap": {
       "$comment": "Router stages 1-3, tagging, cleaning. Both candidates ride the aggregator row (ADR-0069): the DeepSeek head answers the personal-data calls, the Gemini Flash tail is the cheap challenger. The retired free-tier tail was the personal-data filter's wired trap case; the filter's correctness is carried by its synthetic unit tests, and no serving chain holds a free-tier candidate anymore (ADR-0009's free-tier policy stays policy, not config).",
-      "chain": ["openrouter:deepseek/deepseek-v4-flash", "openrouter:google/gemini-3.8-flash"]
+      "chain": ["openrouter:deepseek/deepseek-v4.1-flash", "openrouter:google/gemini-3.8-flash"]
     },
     "translation": {
       "chain": ["qwen:qwen3.7-max"]
@@ -118,8 +136,13 @@
       "chain": ["openrouter:google/gemini-embedding-001", "openrouter:google/gemini-embedding-2"]
     },
     "decision-candidates": {
-      "$comment": "ADR-0042 decision-bench role (mirrors embedder-candidates): every decision-model candidate the multilingual gate compares \u2014 schema-constrained chat candidates through the aggregator's structured output since the ADR-0042 rewrite. Not for serving \u2014 the bench resolves each candidate directly. Absent key = the bench reports NOT RUN and exits 0 (CI has no OPENROUTER_API_KEY).",
-      "chain": ["openrouter:google/gemini-3.8-flash", "openrouter:deepseek/deepseek-v4.1-flash"]
+      "$comment": "ADR-0042 decision-bench role (mirrors embedder-candidates): every decision-model candidate the multilingual gate compares \u2014 chat candidates through the aggregator's structured output and typed-questions candidates through the decisions wire. Not for serving \u2014 the bench resolves each candidate directly. Absent key = the bench reports NOT RUN and exits 0 (CI has no OPENROUTER_API_KEY).",
+      "chain": [
+        "openrouter:google/gemini-3.8-flash",
+        "openrouter:deepseek/deepseek-v4.1-flash",
+        "openrouter-decisions:~typesafe/jev-latest",
+        "openrouter-decisions:~perplexity/pplx-decider-latest"
+      ]
     },
     "decision": {
       "$comment": "The decision-model SERVING role (ADR-0042 adoption): the candidate behind the reviewer pre-gate and the retrieval rerank \u2014 the model a committed multilingual gate report adopted. Separate from the bench-only `decision-candidates` role so a re-bench can add challengers without changing what serves. The head is PROVISIONAL at the aggregator migration (ADR-0069): the ADR-0042 re-pass bench is the owner's hand-run gate, and its committed report is what flips `benchAdoption` to \"committed\". Until then the boot posture report names the gate provisional at every boot. Always active wherever OPENROUTER_API_KEY is bound; absent key = neither adoption is wired and the reviewer and retrieval behave as they did before adoption \u2014 no enable/disable flag exists. Batched: one call per answer for the pre-gate, one per retrieval whose fused set has two or more candidates for the rerank, input-priced.",
