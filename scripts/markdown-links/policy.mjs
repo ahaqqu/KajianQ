@@ -330,6 +330,7 @@ export const ROOTS = [
   "NOTICES",
   ".agents",
   "packages",
+  "benchmarks",
 ];
 
 /**
@@ -356,6 +357,7 @@ export const CLAIM_ROOTS = [
   "provision",
   "tests",
   "NOTICES",
+  "benchmarks",
 ];
 
 /** Directories and files whose code spans are records of a moment. */
