@@ -37,9 +37,8 @@ as policy and seam enforcement, not as wired config.
 ## Consequences
 
 - The register and the notice carry one aggregator row (paid terms under the
-  published DPA; the owner's recorded acceptance is the precondition for
-  binding the production key); its row states the upstream routing and the
-  zero-retention option.
+  published DPA, accepted by the owner, zero-retention enabled); its row
+  states the upstream routing.
 - The personal-data filter's wired trap case retires with the free-tier tail;
   the filter's correctness stays pinned by its synthetic unit tests and the
   no-free-tier walk, which judges every chain position.
