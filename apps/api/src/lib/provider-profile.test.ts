@@ -26,7 +26,7 @@ const DEFAULT_CHAINS = {
   generator: ["openrouter:deepseek/deepseek-v4-flash"],
   reviewer: ["openrouter:deepseek/deepseek-v4-flash"],
   "reviewer-live": ["openrouter:deepseek/deepseek-v4-flash"],
-  cheap: ["openrouter:deepseek/deepseek-v4-flash", "openrouter:google/gemini-3-flash-preview"],
+  cheap: ["openrouter:deepseek/deepseek-v4-flash", "openrouter:google/gemini-3.8-flash"],
   translation: ["qwen:qwen3.7-max"],
   embedder: ["openrouter:google/gemini-embedding-001"],
   "embedder-candidates": [
@@ -34,10 +34,10 @@ const DEFAULT_CHAINS = {
     "openrouter:google/gemini-embedding-2",
   ],
   "decision-candidates": [
-    "openrouter:google/gemini-3-flash-preview",
-    "openrouter:deepseek/deepseek-v4-flash",
+    "openrouter:google/gemini-3.8-flash",
+    "openrouter:deepseek/deepseek-v4.1-flash",
   ],
-  decision: ["openrouter:google/gemini-3-flash-preview"],
+  decision: ["openrouter:google/gemini-3.8-flash"],
 } as const;
 
 /** The four serving roles the `ollama` profile re-heads, and their replacement chains. */
@@ -45,7 +45,7 @@ const OLLAMA_CHAINS = {
   generator: ["ollama-cloud:deepseek-v4.1-flash"],
   reviewer: ["ollama-cloud:deepseek-v4.1-flash"],
   "reviewer-live": ["ollama-cloud:deepseek-v4.1-flash"],
-  cheap: ["ollama-cloud:deepseek-v4.1-flash", "openrouter:google/gemini-3-flash-preview"],
+  cheap: ["ollama-cloud:deepseek-v4.1-flash", "openrouter:google/gemini-3.8-flash"],
 } as const;
 
 const PROMPT = { turns: [{ role: "user", content: "hi" }] };

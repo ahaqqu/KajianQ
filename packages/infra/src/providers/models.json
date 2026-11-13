@@ -27,17 +27,25 @@
             "out": 0
           }
         },
-        "google/gemini-3-flash-preview": {
-          "$comment": "Mid-tier listing ($0.50 in / $3.00 out per MTok) matching the retired direct row's price; endpoint listings range $0.25\u2013$0.90 in / $1.50\u2013$5.40 out. Also the provisional `decision` head pending the ADR-0042 bench re-pass \u2014 serving flips to the bench's winner by config alone.",
+        "google/gemini-3.8-flash": {
+          "$comment": "Mid-tier listing ($0.825 in / $4.125 out per MTok). The cheap-role challenger tail and the provisional `decision` head pending the ADR-0042 bench re-pass \u2014 serving flips to the bench's winner by config alone.",
           "capabilities": ["generate", "stream", "decide"],
           "priceMicroUsdPerMTok": {
-            "in": 500000,
-            "out": 3000000
+            "in": 825000,
+            "out": 4125000
+          }
+        },
+        "deepseek/deepseek-v4.1-flash": {
+          "$comment": "Decision-bench challenger (ADR-0042): the `decide` capability marks this row a candidate the multilingual gate compares \u2014 under the rewritten seam the typing rides schema-constrained chat output, so the capability list \u2014 not a vendor protocol \u2014 decides what the decider may construct. Not wired to any serving role. Priced at the vendor's published peak rate ($0.30 in / $1.20 out per MTok), the same listing the ollama-cloud row records for this model.",
+          "capabilities": ["decide"],
+          "priceMicroUsdPerMTok": {
+            "in": 300000,
+            "out": 1200000
           }
         },
         "deepseek/deepseek-v4-flash": {
-          "$comment": "Priced at the DeepInfra listing ($0.09 in / $0.18 out per MTok), inside the aggregator's $0.05\u2013$0.21 in / $0.10\u2013$0.56 out endpoint spread; routing is per request unless pinned by a provider preference. The `decide` capability marks this row a decision-bench candidate (ADR-0042): under the rewritten seam the typing rides schema-constrained chat output, so the capability list \u2014 not a vendor protocol \u2014 decides what the decider may construct.",
-          "capabilities": ["generate", "stream", "decide"],
+          "$comment": "Priced at the DeepInfra listing ($0.09 in / $0.18 out per MTok), inside the aggregator's $0.05\u2013$0.21 in / $0.10\u2013$0.56 out endpoint spread; routing is per request unless pinned by a provider preference.",
+          "capabilities": ["generate", "stream"],
           "priceMicroUsdPerMTok": {
             "in": 90000,
             "out": 180000
@@ -96,7 +104,7 @@
     },
     "cheap": {
       "$comment": "Router stages 1-3, tagging, cleaning. Both candidates ride the aggregator row (ADR-0069): the DeepSeek head answers the personal-data calls, the Gemini Flash tail is the cheap challenger. The retired free-tier tail was the personal-data filter's wired trap case; the filter's correctness is carried by its synthetic unit tests, and no serving chain holds a free-tier candidate anymore (ADR-0009's free-tier policy stays policy, not config).",
-      "chain": ["openrouter:deepseek/deepseek-v4-flash", "openrouter:google/gemini-3-flash-preview"]
+      "chain": ["openrouter:deepseek/deepseek-v4-flash", "openrouter:google/gemini-3.8-flash"]
     },
     "translation": {
       "chain": ["qwen:qwen3.7-max"]
@@ -111,11 +119,11 @@
     },
     "decision-candidates": {
       "$comment": "ADR-0042 decision-bench role (mirrors embedder-candidates): every decision-model candidate the multilingual gate compares \u2014 schema-constrained chat candidates through the aggregator's structured output since the ADR-0042 rewrite. Not for serving \u2014 the bench resolves each candidate directly. Absent key = the bench reports NOT RUN and exits 0 (CI has no OPENROUTER_API_KEY).",
-      "chain": ["openrouter:google/gemini-3-flash-preview", "openrouter:deepseek/deepseek-v4-flash"]
+      "chain": ["openrouter:google/gemini-3.8-flash", "openrouter:deepseek/deepseek-v4.1-flash"]
     },
     "decision": {
       "$comment": "The decision-model SERVING role (ADR-0042 adoption): the candidate behind the reviewer pre-gate and the retrieval rerank \u2014 the model a committed multilingual gate report adopted. Separate from the bench-only `decision-candidates` role so a re-bench can add challengers without changing what serves. The head is PROVISIONAL at the aggregator migration (ADR-0069): the ADR-0042 re-pass bench is the owner's hand-run gate, and its committed report is what flips `benchAdoption` to \"committed\". Until then the boot posture report names the gate provisional at every boot. Always active wherever OPENROUTER_API_KEY is bound; absent key = neither adoption is wired and the reviewer and retrieval behave as they did before adoption \u2014 no enable/disable flag exists. Batched: one call per answer for the pre-gate, one per retrieval whose fused set has two or more candidates for the rerank, input-priced.",
-      "chain": ["openrouter:google/gemini-3-flash-preview"],
+      "chain": ["openrouter:google/gemini-3.8-flash"],
       "benchAdoption": "provisional"
     }
   },
@@ -124,7 +132,7 @@
       "generator": ["ollama-cloud:deepseek-v4.1-flash"],
       "reviewer": ["ollama-cloud:deepseek-v4.1-flash"],
       "reviewer-live": ["ollama-cloud:deepseek-v4.1-flash"],
-      "cheap": ["ollama-cloud:deepseek-v4.1-flash", "openrouter:google/gemini-3-flash-preview"]
+      "cheap": ["ollama-cloud:deepseek-v4.1-flash", "openrouter:google/gemini-3.8-flash"]
     }
   }
 }
