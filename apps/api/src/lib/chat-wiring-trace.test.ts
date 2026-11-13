@@ -35,7 +35,7 @@ vi.mock("pg", () => ({
   },
 }));
 
-const KEYED_ENV = { DATABASE_URL: "postgres://x", DEEPSEEK_API_KEY: "k" };
+const KEYED_ENV = { DATABASE_URL: "postgres://x", OPENROUTER_API_KEY: "k" };
 
 const ARABIC = "اللَّهُ لَا إِلَٰهَ إِلَّا هُوَ الْحَيُّ الْقَيُّومُ";
 const TRANSLATION = "Allah, tidak ada tuhan selain Dia, Yang Mahahidup.";

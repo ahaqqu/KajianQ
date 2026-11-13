@@ -23,15 +23,21 @@ import { createProvidersFromEnv } from "./chat-wiring";
 
 /** The chains the checked-in config ships with no profile selected. */
 const DEFAULT_CHAINS = {
-  generator: ["deepseek:deepseek-v4-flash"],
-  reviewer: ["deepseek:deepseek-v4-flash"],
-  "reviewer-live": ["deepseek:deepseek-v4-flash"],
-  cheap: ["deepseek:deepseek-v4-flash", "gemini:gemini-3-flash-preview"],
+  generator: ["openrouter:deepseek/deepseek-v4-flash"],
+  reviewer: ["openrouter:deepseek/deepseek-v4-flash"],
+  "reviewer-live": ["openrouter:deepseek/deepseek-v4-flash"],
+  cheap: ["openrouter:deepseek/deepseek-v4-flash", "openrouter:google/gemini-3-flash-preview"],
   translation: ["qwen:qwen3.7-max"],
-  embedder: ["gemini-paid:gemini-embedding-001"],
-  "embedder-candidates": ["gemini:gemini-embedding-001", "gemini:gemini-embedding-2"],
-  "decision-candidates": ["typesafe:jev-1.13.0"],
-  decision: ["typesafe:jev-1.13.0"],
+  embedder: ["openrouter:google/gemini-embedding-001"],
+  "embedder-candidates": [
+    "openrouter:google/gemini-embedding-001",
+    "openrouter:google/gemini-embedding-2",
+  ],
+  "decision-candidates": [
+    "openrouter:google/gemini-3-flash-preview",
+    "openrouter:deepseek/deepseek-v4-flash",
+  ],
+  decision: ["openrouter:google/gemini-3-flash-preview"],
 } as const;
 
 /** The four serving roles the `ollama` profile re-heads, and their replacement chains. */
@@ -39,7 +45,7 @@ const OLLAMA_CHAINS = {
   generator: ["ollama-cloud:deepseek-v4.1-flash"],
   reviewer: ["ollama-cloud:deepseek-v4.1-flash"],
   "reviewer-live": ["ollama-cloud:deepseek-v4.1-flash"],
-  cheap: ["ollama-cloud:deepseek-v4.1-flash", "gemini:gemini-3-flash-preview"],
+  cheap: ["ollama-cloud:deepseek-v4.1-flash", "openrouter:google/gemini-3-flash-preview"],
 } as const;
 
 const PROMPT = { turns: [{ role: "user", content: "hi" }] };
@@ -74,13 +80,14 @@ describe("provider profile — `ollama` re-heads exactly the serving roles", () 
     });
     expect(switched.generator.modelId).toBe("deepseek-v4.1-flash");
     expect(switched.reviewer?.modelId).toBe("deepseek-v4.1-flash");
-    // The cheap chain's head is switched too; the free-tier tail stays in the
-    // chain so the personal-data filter's trap case remains wired.
+    // The cheap chain's head is switched too; the aggregator tail stays in the
+    // chain as the cheap challenger (its key is not bound in this env record,
+    // so resolveRole skips it rather than wiring it).
     expect(switched.router.modelId).toBe("deepseek-v4.1-flash");
 
-    const rolledBack = createProvidersFromEnv({ DEEPSEEK_API_KEY: "sk-deepseek" });
-    expect(rolledBack.generator.modelId).toBe("deepseek-v4-flash");
-    expect(rolledBack.reviewer?.modelId).toBe("deepseek-v4-flash");
+    const rolledBack = createProvidersFromEnv({ OPENROUTER_API_KEY: "sk-openrouter" });
+    expect(rolledBack.generator.modelId).toBe("deepseek/deepseek-v4-flash");
+    expect(rolledBack.reviewer?.modelId).toBe("deepseek/deepseek-v4-flash");
   });
 });
 
@@ -115,7 +122,7 @@ describe("provider profile — resolveRole under `ollama`", () => {
     expect(missingKeys).toEqual([]);
     expect(provider.modelId).toBe("deepseek-v4.1-flash");
     // The selected chain contains no other vendor, so a failure cannot walk on
-    // to DeepSeek — that is the difference between a switch and a fallback.
+    // to the aggregator — that is the difference between a switch and a fallback.
     expect(resolveChain(config, "generator").map((c) => `${c.vendor}:${c.modelId}`)).toEqual([
       "ollama-cloud:deepseek-v4.1-flash",
     ]);
@@ -131,12 +138,12 @@ describe("provider profile — resolveRole under `ollama`", () => {
     });
   });
 
-  it("with the key absent: fails typed naming OLLAMA_API_KEY, never DeepSeek", async () => {
-    // The DeepSeek key is bound and still must not be reached: the selected
-    // profile's chain does not contain a DeepSeek candidate, and no implicit
+  it("with the key absent: fails typed naming OLLAMA_API_KEY, never the aggregator", async () => {
+    // The aggregator key is bound and still must not be reached: the selected
+    // profile's chain does not contain an aggregator candidate, and no implicit
     // fallback is added on a missing key.
     const { provider, missingKeys } = resolveRole(config, "generator", {
-      env: { DEEPSEEK_API_KEY: "sk-deepseek" },
+      env: { OPENROUTER_API_KEY: "sk-openrouter" },
     });
     expect(missingKeys).toEqual(["OLLAMA_API_KEY"]);
     // No wired candidate — the provider's modelId falls back to the role name
@@ -146,7 +153,7 @@ describe("provider profile — resolveRole under `ollama`", () => {
     const err = await runFail(provider.generate(PROMPT));
     expect(err.kind).toBe("bad_request");
     expect(err.message).toContain("OLLAMA_API_KEY");
-    expect(err.message).not.toContain("DEEPSEEK_API_KEY");
+    expect(err.message).not.toContain("OPENROUTER_API_KEY");
   });
 });
 
@@ -157,5 +164,12 @@ describe("provider profile — rollback", () => {
     expect(chains(loadProviderConfig(undefined))).toEqual(DEFAULT_CHAINS);
     // An empty env value is "unset" too (a systemd `PROVIDER_PROFILE=` line).
     expect(chains(loadProviderConfig(""))).toEqual(DEFAULT_CHAINS);
+  });
+
+  it("reports a missing key once even when a chain keys two candidates to it", () => {
+    // The cheap chain's head and tail share the aggregator key (ADR-0069): the
+    // posture report and the typed error name variables, not candidates.
+    const { missingKeys } = resolveRole(loadProviderConfig(), "cheap", { env: {} });
+    expect(missingKeys).toEqual(["OPENROUTER_API_KEY"]);
   });
 });

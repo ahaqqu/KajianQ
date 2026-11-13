@@ -8,7 +8,7 @@
  * Env (validated by loadEmbedBenchConfig before any spend):
  *   DATABASE_URL     optional (validated URL-shape when set; the run is
  *                         source-based and DB-free — thermo B5)
- *   GEMINI_API_KEY        the vendor key every candidate needs (absent =
+ *   OPENROUTER_API_KEY    the vendor key every candidate needs (absent =
  *                         fail fast, never silently skip a candidate)
  *   EVAL_BUDGET_MICRO_USD optional hard spend cap in micro-USD
  *   BENCH_SURAHS / BENCH_HADITH_COLLECTIONS      optional corpus caps

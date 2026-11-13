@@ -5,8 +5,8 @@
  *
  *   bun run provider:smoke
  *
- * Vendors whose api-key env (GEMINI_API_KEY, DASHSCOPE_API_KEY,
- * DEEPSEEK_API_KEY) is absent are reported NOT RUN and do
+ * Vendors whose api-key env (OPENROUTER_API_KEY, DASHSCOPE_API_KEY)
+ * is absent are reported NOT RUN and do
  * NOT fail the script — CI stays green before the keys exist. A keyed vendor
  * that fails its call exits non-zero. NOTE: the role drill intentionally makes
  * real (billable) API calls when keys are present.

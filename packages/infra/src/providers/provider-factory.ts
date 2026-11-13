@@ -271,7 +271,11 @@ export function resolveRole(
   for (const candidate of candidates) {
     const key = opts.env[candidate.vendorConfig.apiKeyEnv];
     if (!key) {
-      missingKeys.push(candidate.vendorConfig.apiKeyEnv);
+      // Distinct names only: a chain can key two candidates to one env (the
+      // aggregator does), and this reports variables, not candidates.
+      if (!missingKeys.includes(candidate.vendorConfig.apiKeyEnv)) {
+        missingKeys.push(candidate.vendorConfig.apiKeyEnv);
+      }
       continue;
     }
     wired.push({

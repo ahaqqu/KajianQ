@@ -11,6 +11,25 @@ import {
  * names here: everything arrives as config data, and vendor-reaching failures
  * keep their spend on the cost trail. */
 
+/** Injectable fetch, so tests fake the wire and the smoke script uses the real one. */
+export type FetchLike = (
+  input: string,
+  init: {
+    method: string;
+    headers: Record<string, string>;
+    body: string;
+    signal?: AbortSignal;
+  },
+) => Promise<Response>;
+
+/** How an HTTP failure maps onto ProviderError kinds (shared by the chat and
+ * decision adapters). */
+export function errorKindForStatus(status: number): "rate_limited" | "server" | "bad_request" {
+  if (status === 429) return "rate_limited";
+  if (status >= 500) return "server";
+  return "bad_request";
+}
+
 /** Chat-completions wire request body (one shape for generate/stream). */
 export interface ChatRequest {
   model: string;

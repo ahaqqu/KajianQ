@@ -23,12 +23,15 @@ import { CHAT_SERVING_ROLES } from "./chat-wiring";
  *      never a silent route to the free tier; the test walks the real `models.json`, so
  *      such an edit fails HERE. The `decision` role is in scope (it sends personal data).
  *
- * Trap cases: the `cheap` chain carries a keyed free-tier tail, so the flag must keep
- * personal-data calls on the paid head; a `freeTier: false` row with `personalDataAllowed:
- * false` is still disallowed (the rule keys on personal data, not price); an unkeyed
- * candidate is not a violation. Every profile the config declares is walked the same
- * way, plus the identity `default` profile, so no profile can reintroduce a free-tier
- * head or drop a serving role's paid candidate.
+ * The `cheap` chain's keyed free-tier tail — the filter's wired trap case — retired with
+ * the direct-Gemini rows (ADR-0069): no serving chain holds a free-tier candidate anymore,
+ * so the invariant holds structurally and the filter's own logic is pinned by its synthetic
+ * unit tests. A `freeTier: false` row with `personalDataAllowed: false` would still be
+ * disallowed (the rule keys on personal data, not price), and an unkeyed candidate is not
+ * a violation. Every profile the config declares is walked the same way, plus the identity
+ * `default` profile, and the walk judges every chain position — so no profile can
+ * reintroduce a free-tier candidate anywhere in a serving chain or drop a serving role's
+ * paid candidate.
  */
 
 type VendorRow = { freeTier: boolean; personalDataAllowed: boolean };
@@ -51,21 +54,17 @@ const PROFILES = [...new Set(["default", ...Object.keys(MODELS.profiles ?? {})])
 
 /**
  * The env-name set every serving role is keyed with in a fully-configured deployment:
- * `GEMINI_PAID_API_KEY` (the paid-terms embedder head) is an owner-provisioned
- * precondition without which the embedder stage fails with a typed error.
+ * `OPENROUTER_API_KEY` (the aggregator row carrying chat, embeddings and the decision
+ * seam, ADR-0069) is an owner-provisioned precondition without which the serving roles
+ * fail with a typed error.
  */
 const DEPLOYED_KEYS = new Set([
-  "GEMINI_API_KEY",
-  "GEMINI_PAID_API_KEY",
-  "DEEPSEEK_API_KEY",
+  "OPENROUTER_API_KEY",
   "DASHSCOPE_API_KEY",
   // The switchable chat vendor's key: optional in the default profile, but a profile that
   // routes a serving role to this row must still carry a paid, personal-data-allowed
   // candidate when the key is bound (ADR-0059).
   "OLLAMA_API_KEY",
-  // The decision vendor's key: optional in serving, but when keyed this guard must judge
-  // the candidate it would wire.
-  "JEV_API_KEY",
 ]);
 
 const config = loadProviderConfig();
@@ -104,19 +103,20 @@ describe("serving personal-data precondition (ADR-0043 gap, #181)", () => {
     }
   });
 
-  it("no free-tier vendor is wired into a serving role's chain head (defense in depth)", () => {
-    // Defense in depth: a free-tier CHAIN HEAD on a serving role is one dropped flag
-    // away from personal data riding the free tier.
+  it("no free-tier candidate is wired anywhere in a serving role's chain (defense in depth)", () => {
+    // Defense in depth, at every chain position: since ADR-0069 no serving chain may
+    // hold a free-tier candidate at all — head or tail — so the walk judges the whole
+    // chain, not only the head the personal-data filter would try first.
     for (const role of SERVING_ROLES) {
       const chain = MODELS.roles[role]?.chain ?? [];
-      const head = chain[0];
-      if (head === undefined) continue;
-      const vendor = head.slice(0, head.indexOf(":"));
-      const row = MODELS.vendors[vendor];
-      expect(
-        { role, freeTier: row?.freeTier ?? false, personalDataAllowed: row?.personalDataAllowed },
-        role,
-      ).not.toEqual({ role, freeTier: true, personalDataAllowed: false });
+      for (const candidate of chain) {
+        const vendor = candidate.slice(0, candidate.indexOf(":"));
+        const row = MODELS.vendors[vendor];
+        expect(
+          { role, candidate, freeTier: row?.freeTier ?? false },
+          `${role} chain candidate ${candidate}`,
+        ).not.toEqual({ role, candidate, freeTier: true });
+      }
     }
   });
 });
@@ -154,28 +154,28 @@ describe("serving personal-data precondition — every declared profile (ADR-005
     expect(failures).toEqual([]);
   });
 
-  it("keeps every serving role's chain head off a free-tier vendor under every profile", () => {
-    // Defense in depth: a free-tier CHAIN HEAD on a serving role is one dropped flag
-    // away from personal data riding the free tier.
+  it("keeps every serving role's chain free of a free-tier vendor under every profile", () => {
+    // Defense in depth, at every chain position: since ADR-0069 no serving chain may
+    // hold a free-tier candidate at all, under any profile.
     const failures: string[] = [];
     for (const profile of PROFILES) {
       const parsed = loadProviderConfig(profile);
       for (const role of SERVING_ROLES) {
-        const head = parsed.roles[role]?.chain[0];
-        if (head === undefined) continue;
-        const row = MODELS.vendors[head.slice(0, head.indexOf(":"))];
-        if (row?.freeTier === true && row.personalDataAllowed === false) {
-          failures.push(`profile "${profile}" role "${role}" head ${head}`);
+        for (const candidate of parsed.roles[role]?.chain ?? []) {
+          const row = MODELS.vendors[candidate.slice(0, candidate.indexOf(":"))];
+          if (row?.freeTier === true) {
+            failures.push(`profile "${profile}" role "${role}" candidate ${candidate}`);
+          }
         }
       }
     }
     expect(failures).toEqual([]);
   });
 
-  it("overrides exactly the four serving roles and keeps the cheap free-tier tail", () => {
+  it("overrides exactly the four serving roles and keeps the cheap challenger tail", () => {
     // The profile is a chain-set switch, not a vendor-only rewrite: the roles it does
-    // not name must stay exactly the base chains, and the free-tier tail must stay in
-    // the cheap chain so the personal-data filter's trap case remains wired.
+    // not name must stay exactly the base chains, and the cheap challenger must stay
+    // in the cheap chain as the fallback after the switched head.
     expect(Object.keys(MODELS.profiles?.["ollama"] ?? {}).sort()).toEqual([
       "cheap",
       "generator",
@@ -191,8 +191,8 @@ describe("serving personal-data precondition — every declared profile (ADR-005
     const headVendor = cheap[0]!.slice(0, cheap[0]!.indexOf(":"));
     const tailVendor = cheap.at(-1)!.slice(0, cheap.at(-1)!.indexOf(":"));
     expect(MODELS.vendors[headVendor]?.personalDataAllowed).toBe(true);
-    expect(MODELS.vendors[tailVendor]?.freeTier).toBe(true);
-    expect(MODELS.vendors[tailVendor]?.personalDataAllowed).toBe(false);
+    expect(MODELS.vendors[tailVendor]?.freeTier).toBe(false);
+    expect(MODELS.vendors[tailVendor]?.personalDataAllowed).toBe(true);
   });
 
   it("the wiring parses every profile into the same chains the file declares", () => {

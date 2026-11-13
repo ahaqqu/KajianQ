@@ -67,6 +67,11 @@ export type ChatProviders = {
    * question, and the filter runs before the key check, so an unkeyed candidate
    * lands here too. */
   ineligibleKeys: readonly string[];
+  /** The decision role's ADR-0042 bench-adoption state from config: "provisional"
+   * while the committed bench report is pending (the aggregator migration ships
+   * the head provisional), "committed" once one passes for the serving head. The
+   * boot posture report names it — visibility at every boot, never silence. */
+  benchAdoption: "provisional" | "committed";
 };
 
 function roleHasKey(
@@ -127,6 +132,9 @@ export function createProvidersFromEnv(
     embedder: resolve("embedder"),
     missingKeys: [...missing],
     ineligibleKeys: decisionRole.ineligibleKeys,
+    // ADR-0042's gate state from config; absent reads as provisional, so an
+    // unmarked decision role can never report itself adopted.
+    benchAdoption: config.roles.decision?.benchAdoption ?? "provisional",
   };
 }
 

@@ -14,12 +14,18 @@ import {
   buildChatRequest,
   computeCost,
   embedWire,
+  errorKindForStatus,
   estimateTokens,
   isGenerationMetered,
   readError,
   withAttemptCost,
   type ChatResponse,
+  type FetchLike,
 } from "./chat-wire";
+
+// The wire-level helpers live in chat-wire.ts; re-exported here so the
+// adapter's existing importers keep one import site.
+export { errorKindForStatus, type FetchLike };
 
 /**
  * The generic chat-completions REST adapter (ADR-0022): one protocol
@@ -28,24 +34,6 @@ import {
  * prices all arrive as config data. `fetch` is injectable so tests drive the
  * wire without a network.
  */
-
-/** Injectable fetch, so tests fake the wire and the smoke script uses the real one. */
-export type FetchLike = (
-  input: string,
-  init: {
-    method: string;
-    headers: Record<string, string>;
-    body: string;
-    signal?: AbortSignal;
-  },
-) => Promise<Response>;
-
-/** How the adapter maps an HTTP failure onto ProviderError kinds. */
-export function errorKindForStatus(status: number): "rate_limited" | "server" | "bad_request" {
-  if (status === 429) return "rate_limited";
-  if (status >= 500) return "server";
-  return "bad_request";
-}
 
 /** True when the fallback wrapper should try the next candidate. */
 export function isRetryable(kind: string): boolean {

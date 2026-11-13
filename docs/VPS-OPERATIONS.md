@@ -269,27 +269,25 @@ is the single explicit exception and is visible in the invocation that ran.
 entry's, which reads the same `DATABASE_URL`). The authoritative template is
 `kajianq/env/api.env.example` in [ahaqqu/vps](https://github.com/ahaqqu/vps); the
 serving code binds `APP_ENV`, `DATABASE_URL`, `ALLOWED_ORIGINS`,
-`KAJIANQ_WEB_ROOT`, `SENTRY_DSN`, the provider keys (`GEMINI_API_KEY`,
-`GEMINI_PAID_API_KEY`, `DASHSCOPE_API_KEY`, `DEEPSEEK_API_KEY`,
-`OLLAMA_API_KEY`, `JEV_API_KEY`), `PROVIDER_PROFILE`, the tuning knobs
+`KAJIANQ_WEB_ROOT`, `SENTRY_DSN`, the provider keys (`OPENROUTER_API_KEY`,
+`DASHSCOPE_API_KEY`, `OLLAMA_API_KEY`), `PROVIDER_PROFILE`, the tuning knobs
 (`SCOPE_EXPANSION_CAP`, `NEIGHBOUR_EXPANSION_RADIUS`, `NEIGHBOUR_EXPANSION_CAP`,
 `LABEL_LOOKUP_CAP`, `CALLER_PRIORITY_K`, `CHAIN_EVIDENCE_CHILD_CAP`,
-`CHAIN_EVIDENCE_CHAIN_CAP`) and `ADMIN_PASSWORD`. Two keys are
-chat-path preconditions rather than optional under the default profile:
-`DEEPSEEK_API_KEY` (the generator/router chain head **and** the reviewer, per
-the 2026-09-21 same-vendor owner decision; ADR-0044 decision 7) and
-`GEMINI_PAID_API_KEY` (the embedder head). Without them the reviewer or
-embedder stage fails with a typed error while `/v1/health` and anonymous
-minting stay green — so the deploy's smokes alone do not prove they are present.
+`CHAIN_EVIDENCE_CHAIN_CAP`) and `ADMIN_PASSWORD`. One key is a chat-path
+precondition rather than optional under the default profile: `OPENROUTER_API_KEY`
+— the aggregator row (ADR-0069) carries the generator, the reviewer, the router,
+the embedder and the decision seam alike. Without it every serving stage fails
+with a typed error while `/v1/health` and anonymous minting stay green — so the
+deploy's smokes alone do not prove it is present.
 
 **The switchable chat profile (ADR-0059).** `PROVIDER_PROFILE` selects a named
-chain set from `models.json`; absent or `default` is the DeepSeek mix above.
+chain set from `models.json`; absent or `default` is the aggregator mix above.
 With `PROVIDER_PROFILE=ollama`, the generator, reviewer, reviewer-live and
 cheap chains re-head on Ollama Cloud and `OLLAMA_API_KEY` becomes the
-precondition in place of `DEEPSEEK_API_KEY` for those roles (the embedder still
-needs `GEMINI_PAID_API_KEY`). A missing `OLLAMA_API_KEY` under that profile
+precondition in place of `OPENROUTER_API_KEY` for those roles (the embedder
+still rides the aggregator key). A missing `OLLAMA_API_KEY` under that profile
 fails each call with a typed error naming it — never a silent route back to
-DeepSeek. Switch with `sudoedit /etc/kajianq/api.env` plus
+the aggregator. Switch with `sudoedit /etc/kajianq/api.env` plus
 `sudo systemctl restart kajianq-api`; roll back by removing the
 `PROVIDER_PROFILE` line and restarting. Confirm which vendor answered from the
 answer trace's model identity.
@@ -338,10 +336,10 @@ deployment is provisioned (ADR-0044 decision 2; deferred 2026-10-03).
 
 **Repository level — the reader-less entries:**
 
-| Kind   | Name                                 | Note                                          |
-| ------ | ------------------------------------ | --------------------------------------------- |
-| var    | `PROD_URL`                           | legacy, the same origin; no workflow reads it |
-| secret | `DEEPSEEK_API_KEY`, `GEMINI_API_KEY` | no workflow job reads them                    |
+| Kind   | Name                 | Note                                          |
+| ------ | -------------------- | --------------------------------------------- |
+| var    | `PROD_URL`           | legacy, the same origin; no workflow reads it |
+| secret | `OPENROUTER_API_KEY` | no workflow job reads them                    |
 
 **The deploy key's name is load-bearing; its value is not.** The deploy job
 receives `VPS_DEPLOY_SSH_KEY` through `staging.yml`'s caller job, and a job that

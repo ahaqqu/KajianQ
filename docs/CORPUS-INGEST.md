@@ -24,8 +24,7 @@ every key; the serving process never reads this file). Three groups matter:
 | Variable                                                      | Why                                                                                                                                                                                          |
 | ------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `DATABASE_URL`                                                | the store the pass writes to. Against the VPS: **an ssh tunnel** (§2.8 of the operations manual) with the URL at the **tunnel port** (`127.0.0.1:15433` locally, matching the CI convention) |
-| `GEMINI_PAID_API_KEY`                                         | the embedder role's key — embeddings ride the **paid** `gemini-paid` row (`models.json`); the free tier's ~1,000 items/day wall is infeasible for corpus runs (ADR-0036)                     |
-| `DEEPSEEK_API_KEY`                                            | the `cheap` role's key — parent section summaries bill here                                                                                                                                  |
+| `OPENROUTER_API_KEY`                                          | the embedder and `cheap` roles' key — embeddings and parent-section summaries ride the aggregator row (`models.json`, ADR-0069)                                                              |
 | `R2_ACCOUNT_ID` / `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` | the raw-source archive and the snapshot dumps (ADR-0038). Absent ⇒ the pass reports `archiveStored: false` and the ADR-0038 provenance precondition fails                                    |
 
 Verify each before spending:

@@ -13,29 +13,27 @@ describe("bindingsFromEnv", () => {
     const bindings = bindingsFromEnv({
       APP_ENV: "production",
       DATABASE_URL: "postgres://u:p@127.0.0.1:5432/kajianq",
-      DEEPSEEK_API_KEY: "sk-deepseek",
+      OPENROUTER_API_KEY: "sk-openrouter",
       SENTRY_DSN: "https://key@o0.ingest.sentry.io/1",
-      GEMINI_PAID_API_KEY: "sk-gemini-paid",
     });
     expect(bindings.APP_ENV).toBe("production");
     expect(bindings.DATABASE_URL).toBe("postgres://u:p@127.0.0.1:5432/kajianq");
-    expect(bindings.DEEPSEEK_API_KEY).toBe("sk-deepseek");
+    expect(bindings.OPENROUTER_API_KEY).toBe("sk-openrouter");
     expect(bindings.SENTRY_DSN).toBe("https://key@o0.ingest.sentry.io/1");
-    expect(bindings.GEMINI_PAID_API_KEY).toBe("sk-gemini-paid");
   });
 
   it("omits an absent key rather than binding an empty string", () => {
     const bindings = bindingsFromEnv({ APP_ENV: "staging" });
-    expect("DEEPSEEK_API_KEY" in bindings).toBe(false);
+    expect("OPENROUTER_API_KEY" in bindings).toBe(false);
     expect("DATABASE_URL" in bindings).toBe(false);
     expect(bindings.APP_ENV).toBe("staging");
   });
 
   it("treats an empty value as absent", () => {
-    // A systemd EnvironmentFile line like `DEEPSEEK_API_KEY=` yields an empty
+    // A systemd EnvironmentFile line like `OPENROUTER_API_KEY=` yields an empty
     // string; that must mean "not configured", not "configured as nothing".
-    const bindings = bindingsFromEnv({ DEEPSEEK_API_KEY: "" });
-    expect("DEEPSEEK_API_KEY" in bindings).toBe(false);
+    const bindings = bindingsFromEnv({ OPENROUTER_API_KEY: "" });
+    expect("OPENROUTER_API_KEY" in bindings).toBe(false);
   });
 
   it("always supplies an ASSETS handle (the SPA catch-all needs one)", () => {
@@ -110,11 +108,10 @@ describe("reportProviderPosture — the boot ops report (#226)", () => {
 
   it("names an absent decision key and states the pre-gate is not wired", async () => {
     const key = await decisionKeyEnv();
-    // Every other key is bound (and secret); only the optional decision key is absent.
-    // The report must name the var to bind and state the pre-gate is not wired.
-    const { lines, fields } = emit(
-      createProvidersFromEnv({ GEMINI_PAID_API_KEY: SECRET, DEEPSEEK_API_KEY: SECRET }),
-    );
+    // A non-serving key (the translation role's) is bound and secret; the serving
+    // aggregator key — the decision role's key too, since ADR-0069 — is absent. The
+    // report must name the var to bind and state the pre-gate is not wired.
+    const { lines, fields } = emit(createProvidersFromEnv({ DASHSCOPE_API_KEY: SECRET }));
     expect(fields["preGate"]).toBe("not_wired");
     expect(String(fields["missingKeys"])).toContain(key);
     expect(fields["ineligibleKeys"]).toBe("none");
@@ -123,13 +120,7 @@ describe("reportProviderPosture — the boot ops report (#226)", () => {
 
   it("reports the active posture when the decision key is bound", async () => {
     const key = await decisionKeyEnv();
-    const { lines, fields } = emit(
-      createProvidersFromEnv({
-        GEMINI_PAID_API_KEY: SECRET,
-        DEEPSEEK_API_KEY: SECRET,
-        [key]: SECRET,
-      }),
-    );
+    const { lines, fields } = emit(createProvidersFromEnv({ [key]: SECRET }));
     expect(fields["preGate"]).toBe("active");
     expect(String(fields["missingKeys"])).not.toContain(key);
     expect(lines).not.toContain(SECRET);
@@ -157,7 +148,7 @@ describe("reportProviderPosture — the boot ops report (#226)", () => {
         free: {
           baseUrl: "https://example.invalid/v1",
           apiKeyEnv: "FREE_KEY",
-          protocol: "systemone",
+          protocol: "chat-completions",
           freeTier: true,
           personalDataAllowed: false,
           models: {
@@ -167,7 +158,7 @@ describe("reportProviderPosture — the boot ops report (#226)", () => {
         decpaid: {
           baseUrl: "https://example.invalid/v1",
           apiKeyEnv: "DEC_KEY",
-          protocol: "systemone",
+          protocol: "chat-completions",
           freeTier: false,
           personalDataAllowed: true,
           models: {
@@ -196,13 +187,7 @@ describe("reportProviderPosture — the boot ops report (#226)", () => {
     const key = await decisionKeyEnv();
     // Fully bound: both surfaces are empty, and the report must still not echo a value.
     const { lines, fields } = emit(
-      createProvidersFromEnv({
-        GEMINI_API_KEY: SECRET,
-        GEMINI_PAID_API_KEY: SECRET,
-        DASHSCOPE_API_KEY: SECRET,
-        DEEPSEEK_API_KEY: SECRET,
-        [key]: SECRET,
-      }),
+      createProvidersFromEnv({ DASHSCOPE_API_KEY: SECRET, [key]: SECRET }),
     );
     // Load-bearing: an unkeyed chat-role candidate in the checked-in config must fail
     // this test rather than silently weaken the posture it claims.
@@ -231,7 +216,7 @@ describe("reportProviderPosture — the boot ops report (#226)", () => {
         >[0]["api"],
         hostname: "127.0.0.1",
         port: 0,
-        env: { GEMINI_PAID_API_KEY: SECRET, DEEPSEEK_API_KEY: SECRET },
+        env: { OPENROUTER_API_KEY: SECRET },
       });
       expect(serve).toHaveBeenCalledTimes(1);
       await stop();
@@ -243,8 +228,14 @@ describe("reportProviderPosture — the boot ops report (#226)", () => {
     const postureLines = logged.filter((line) => line.includes("providers.posture"));
     expect(postureLines).toHaveLength(1);
     expect(logged[0]).toContain("providers.posture");
-    expect(postureLines[0]).toContain('"preGate":"not_wired"');
-    expect(postureLines[0]).toContain(key);
+    // The bound key keys every serving role — the decision seam included — so
+    // the boot report shows the pre-gate wired, and still names no secret.
+    expect(postureLines[0]).toContain('"preGate":"active"');
+    expect(postureLines[0]).toContain('"missingKeys":"none"');
+    // ADR-0042's bench gate state rides the same report: the aggregator
+    // migration ships the decision head provisional, and the committed re-bench
+    // report is what flips it.
+    expect(postureLines[0]).toContain('"decisionGate":"provisional"');
     expect(logged.join("\n")).not.toContain(SECRET);
   });
 

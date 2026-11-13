@@ -153,11 +153,13 @@ When("I see the privacy notice rendered from the register", async ({ page }) => 
   await expect(notice.getByTestId("privacy-notice-controller")).toContainText("Angga (@ahaqqu)");
   // Every register row is its own card; the count is a floor, not the register size.
   const processors = notice.getByTestId("privacy-notice-processor");
-  expect(await processors.count()).toBeGreaterThanOrEqual(7);
+  expect(await processors.count()).toBeGreaterThanOrEqual(6);
   await expect(notice).toContainText("netcup GmbH");
   await expect(notice).toContainText("Neon, Inc.");
   await expect(notice).toContainText("data pribadi tidak pernah lewat tingkat gratis");
-  await expect(notice).toContainText("Bukan untuk data pribadi");
+  // Every row — current and the retired history rows — carries the permitted
+  // verdict, so that is the verdict on screen.
+  await expect(notice).toContainText("Boleh membawa data pribadi");
 });
 
 Then(
@@ -206,7 +208,7 @@ Then("the erasure card names the endpoint that erases the data", async ({ page }
 Then("I see the privacy notice in English", async ({ page }) => {
   const notice = page.getByTestId("privacy-notice");
   await expect(notice).toContainText("Who processes your data");
-  await expect(notice).toContainText("Not for personal data");
+  await expect(notice).toContainText("May carry personal data");
   await expect(notice.getByTestId("privacy-notice-erasure")).toContainText(
     "no button for this yet",
   );
