@@ -118,6 +118,10 @@ export function reportProviderPosture(providers: ChatProviders, logger: Logger):
   logger.info("providers.posture", {
     reviewer: providers.reviewer === null ? "not_wired" : "wired",
     preGate: providers.decider === null ? "not_wired" : "active",
+    // ADR-0042's bench gate state: "provisional" = the head serves pending the
+    // committed bench report (the aggregator migration ships it so); the
+    // committed report is what flips it. Visible at every boot, never silent.
+    decisionGate: providers.benchAdoption,
     missingKeys: providers.missingKeys.join(", ") || "none",
     ineligibleKeys: providers.ineligibleKeys.join(", ") || "none",
   });

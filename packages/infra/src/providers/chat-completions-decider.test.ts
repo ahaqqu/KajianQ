@@ -186,6 +186,57 @@ describe("chat-completions decider — every doubtful answer is a refusal", () =
     expect(err.kind).toBe("server");
     expect(err.attemptCosts?.[0]?.estimated).toBe(true);
   });
+
+  it("refuses a score above the rubric's highest level", async () => {
+    // A probability-weighted level position lives in [0, levels - 1]: 3.5 on a
+    // three-level rubric (positions 0..2) is out of range, so the call fails.
+    const d = decider(
+      chatReply(
+        JSON.stringify({
+          answers: {
+            supported: { noul: 0.5 },
+            pick: { choice: "chat", probabilities: { chat: 1 }, confidence: 0.9 },
+            grade: { score: 3.5, probabilities: { "0": 1 }, confidence: 0.9 },
+          },
+        }),
+      ),
+    );
+    const err = await runFail(d.decide(spec));
+    expect(err.message).toContain('"grade"');
+  });
+
+  it("refuses a negative score", async () => {
+    const d = decider(
+      chatReply(
+        JSON.stringify({
+          answers: {
+            supported: { noul: 0.5 },
+            pick: { choice: "chat", probabilities: { chat: 1 }, confidence: 0.9 },
+            grade: { score: -0.5, probabilities: { "0": 1 }, confidence: 0.9 },
+          },
+        }),
+      ),
+    );
+    const err = await runFail(d.decide(spec));
+    expect(err.message).toContain('"grade"');
+  });
+
+  it("refuses a probability outside [0, 1]", async () => {
+    const d = decider(
+      chatReply(
+        JSON.stringify({
+          answers: {
+            supported: { noul: 0.5 },
+            pick: { choice: "chat", probabilities: { chat: 1.5, other: -0.5 }, confidence: 0.9 },
+            grade: { score: 1, probabilities: { "0": 1 }, confidence: 0.9 },
+          },
+        }),
+      ),
+    );
+    const err = await runFail(d.decide(spec));
+    expect(err.kind).toBe("transport");
+    expect(err.message).toContain('"pick"');
+  });
 });
 
 describe("chat-completions decider — the seam guards and posture", () => {
@@ -240,5 +291,22 @@ describe("chat-completions decider — the seam guards and posture", () => {
     // The ineligible drop is not a missing key: the key is present, the posture refuses.
     expect(resolved.missingKeys).toEqual([]);
     expect(resolved.ineligibleKeys).toEqual(["FORBIDDEN_KEY"]);
+  });
+
+  it("reports a missing key once even when the chain keys two candidates to it", () => {
+    // The aggregator keys a chain's head and tail to the same env: the report
+    // names variables, not candidates.
+    const config = {
+      vendors: {
+        allowed: {
+          ...VENDOR,
+          apiKeyEnv: "SHARED_KEY",
+          models: { "decider-1": MODEL, "decider-2": MODEL },
+        },
+      },
+      roles: { decision: { chain: ["allowed:decider-1", "allowed:decider-2"] } },
+    };
+    const resolved = resolveDecider(config, "decision", { env: {} });
+    expect(resolved.missingKeys).toEqual(["SHARED_KEY"]);
   });
 });

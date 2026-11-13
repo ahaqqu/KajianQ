@@ -54,6 +54,36 @@ describe("provider config", () => {
     ).toBe(true);
   });
 
+  it("ships a bench role the decider can actually construct — every candidate decides", () => {
+    // The ADR-0042 bench resolves every keyed candidate through the decider,
+    // whose constructor refuses a model without the `decide` capability — a
+    // bench candidate without it would crash the owner's hand-run bench before
+    // any candidate runs. The walk keeps the whole bench chain constructible.
+    const config = loadProviderConfig();
+    for (const candidate of resolveChain(config, "decision-candidates")) {
+      expect(
+        candidate.modelConfig.capabilities,
+        `${candidate.vendor}:${candidate.modelId} must carry "decide"`,
+      ).toContain("decide");
+    }
+  });
+
+  it("carries the decision role's bench-adoption state (ADR-0042's provisional posture)", () => {
+    const config = loadProviderConfig();
+    // The aggregator migration ships the serving head provisional; the committed
+    // re-bench report is what flips the marker. The boot posture report reads it.
+    expect(config.roles.decision?.benchAdoption).toBe("provisional");
+  });
+
+  it("rejects an unknown bench-adoption value", () => {
+    expect(() =>
+      parseProviderConfig({
+        vendors: { test: testVendor },
+        roles: { cheap: { chain: ["test:m-chat"], benchAdoption: "nope" } },
+      }),
+    ).toThrow();
+  });
+
   it("rejects a malformed or dangling config", () => {
     expect(() =>
       parseProviderConfig({

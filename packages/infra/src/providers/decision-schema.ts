@@ -10,8 +10,8 @@ import type { DecisionAnswer, DecisionSpec } from "@app/rag-core";
 export const DECISION_SYSTEM_PROMPT = [
   "You answer typed questions about a provided state.",
   'Type "noul": answer with `noul`, the probability from 0 to 1 that the answer is yes.',
-  'Type "choice": answer with `choice`, the id of the one best option, plus `probabilities` (one number per option id) and `confidence` (0 to 1).',
-  'Type "score": answer with `score`, the probability-weighted level position, plus `probabilities` (one number per level index) and `confidence` (0 to 1).',
+  'Type "choice": answer with `choice`, the id of the one best option, plus `probabilities` (one number per option id, each 0 to 1) and `confidence` (0 to 1).',
+  'Type "score": answer with `score`, the probability-weighted level position between 0 and the highest level index, plus `probabilities` (one number per level index, each 0 to 1) and `confidence` (0 to 1).',
   'Reply with JSON only, shaped {"answers": {"<question id>": {...}}}, one entry per question, using the exact ids given.',
 ].join(" ");
 
@@ -74,9 +74,13 @@ export function answersSchema(spec: DecisionSpec): Record<string, unknown> {
 }
 
 /** Turn the model's raw answer object into the seam's typed answer, refusing
- * anything doubtful: a wrong shape, an out-of-range probability, or a choice
- * outside the option set is a failed call (ADR-0042's fail-open reads it as
- * such), never a coerced answer. */
+ * anything doubtful — ADR-0042: "malformed, out of range, or off the option
+ * set fails the call", never a coerced answer. The ranges this validator
+ * enforces, exactly: `noul` and `confidence` in [0, 1]; a `choice` on the
+ * option set with every probability value in [0, 1]; a `score` in
+ * [0, levels − 1] (a probability-weighted level position) with every
+ * probability value in [0, 1]. Anything else is undefined, and the adapter
+ * fails the call. */
 export function toDecisionAnswer(
   id: string,
   raw: Record<string, unknown>,
@@ -88,7 +92,7 @@ export function toDecisionAnswer(
     if (typeof v !== "object" || v === null) return undefined;
     const out: Record<string, number> = {};
     for (const [key, p] of Object.entries(v as Record<string, unknown>)) {
-      if (typeof p !== "number" || !Number.isFinite(p)) return undefined;
+      if (!isUnit(p)) return undefined;
       out[key] = p;
     }
     return out;
@@ -107,6 +111,8 @@ export function toDecisionAnswer(
     return { type: "choice", choice: raw.choice, probabilities, confidence: raw.confidence };
   }
   if (typeof raw.score !== "number" || !Number.isFinite(raw.score)) return undefined;
+  const levels = question.criteria.length;
+  if (raw.score < 0 || raw.score > levels - 1) return undefined;
   const probabilities = asProbabilityMap(raw.probabilities);
   if (probabilities === undefined || !isUnit(raw.confidence)) return undefined;
   // The legend is the question's own rubric (deterministic config data), never

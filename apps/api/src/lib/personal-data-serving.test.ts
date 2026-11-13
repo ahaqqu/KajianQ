@@ -29,8 +29,9 @@ import { CHAT_SERVING_ROLES } from "./chat-wiring";
  * unit tests. A `freeTier: false` row with `personalDataAllowed: false` would still be
  * disallowed (the rule keys on personal data, not price), and an unkeyed candidate is not
  * a violation. Every profile the config declares is walked the same way, plus the identity
- * `default` profile, so no profile can reintroduce a free-tier head or drop a serving
- * role's paid candidate.
+ * `default` profile, and the walk judges every chain position — so no profile can
+ * reintroduce a free-tier candidate anywhere in a serving chain or drop a serving role's
+ * paid candidate.
  */
 
 type VendorRow = { freeTier: boolean; personalDataAllowed: boolean };
@@ -102,19 +103,20 @@ describe("serving personal-data precondition (ADR-0043 gap, #181)", () => {
     }
   });
 
-  it("no free-tier vendor is wired into a serving role's chain head (defense in depth)", () => {
-    // Defense in depth: a free-tier CHAIN HEAD on a serving role is one dropped flag
-    // away from personal data riding the free tier.
+  it("no free-tier candidate is wired anywhere in a serving role's chain (defense in depth)", () => {
+    // Defense in depth, at every chain position: since ADR-0069 no serving chain may
+    // hold a free-tier candidate at all — head or tail — so the walk judges the whole
+    // chain, not only the head the personal-data filter would try first.
     for (const role of SERVING_ROLES) {
       const chain = MODELS.roles[role]?.chain ?? [];
-      const head = chain[0];
-      if (head === undefined) continue;
-      const vendor = head.slice(0, head.indexOf(":"));
-      const row = MODELS.vendors[vendor];
-      expect(
-        { role, freeTier: row?.freeTier ?? false, personalDataAllowed: row?.personalDataAllowed },
-        role,
-      ).not.toEqual({ role, freeTier: true, personalDataAllowed: false });
+      for (const candidate of chain) {
+        const vendor = candidate.slice(0, candidate.indexOf(":"));
+        const row = MODELS.vendors[vendor];
+        expect(
+          { role, candidate, freeTier: row?.freeTier ?? false },
+          `${role} chain candidate ${candidate}`,
+        ).not.toEqual({ role, candidate, freeTier: true });
+      }
     }
   });
 });
@@ -152,18 +154,18 @@ describe("serving personal-data precondition — every declared profile (ADR-005
     expect(failures).toEqual([]);
   });
 
-  it("keeps every serving role's chain head off a free-tier vendor under every profile", () => {
-    // Defense in depth: a free-tier CHAIN HEAD on a serving role is one dropped flag
-    // away from personal data riding the free tier.
+  it("keeps every serving role's chain free of a free-tier vendor under every profile", () => {
+    // Defense in depth, at every chain position: since ADR-0069 no serving chain may
+    // hold a free-tier candidate at all, under any profile.
     const failures: string[] = [];
     for (const profile of PROFILES) {
       const parsed = loadProviderConfig(profile);
       for (const role of SERVING_ROLES) {
-        const head = parsed.roles[role]?.chain[0];
-        if (head === undefined) continue;
-        const row = MODELS.vendors[head.slice(0, head.indexOf(":"))];
-        if (row?.freeTier === true && row.personalDataAllowed === false) {
-          failures.push(`profile "${profile}" role "${role}" head ${head}`);
+        for (const candidate of parsed.roles[role]?.chain ?? []) {
+          const row = MODELS.vendors[candidate.slice(0, candidate.indexOf(":"))];
+          if (row?.freeTier === true) {
+            failures.push(`profile "${profile}" role "${role}" candidate ${candidate}`);
+          }
         }
       }
     }

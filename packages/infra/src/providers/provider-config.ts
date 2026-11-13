@@ -59,7 +59,19 @@ const ProfilesSchema = v.record(v.string(), v.record(v.string(), v.array(v.strin
 export const ProviderConfigSchema = v.object({
   vendors: v.record(v.string(), VendorSchema),
   /** Role → ordered fallback chain of "vendor:model" candidate keys. */
-  roles: v.record(v.string(), v.object({ chain: v.array(v.string()) })),
+  roles: v.record(
+    v.string(),
+    v.object({
+      chain: v.array(v.string()),
+      /** The ADR-0042 bench gate's adoption state, carried by a serving role that
+       * rides a bench gate (only `decision`): "provisional" = the head ships pending
+       * the committed bench report; "committed" = a committed report passed for this
+       * head. The boot posture report names the state — visibility for the operator,
+       * never a wiring switch (ADR-0042 has no enable flag). Absent reads as
+       * "provisional" wherever a gate is judged. */
+      benchAdoption: v.optional(v.picklist(["provisional", "committed"])),
+    }),
+  ),
   /** Named override sets selected by `PROVIDER_PROFILE`; the default profile is `roles`. */
   profiles: v.optional(ProfilesSchema),
 });

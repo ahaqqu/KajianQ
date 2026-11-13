@@ -482,6 +482,11 @@ The serving process reports its provider posture **once at startup**, as a
   (`OPENROUTER_API_KEY`, #168 / ADR-0042) is wired. `not_wired` means the reviewer
   runs on every answer, exactly as before adoption; it is fail-open, so
   nothing else will complain.
+- `decisionGate: "provisional"` / `"committed"` — the ADR-0042 bench gate's
+  adoption state from config: `provisional` = the serving head is in place
+  pending the hand-run re-bench whose committed report adopts it (the
+  aggregator migration ships it so); `committed` = a committed report passed
+  for this head. Visibility only — it never gates the wiring.
 - `missingKeys` — the env var **names** whose keys were absent (including the
   optional `DASHSCOPE_API_KEY`), i.e. which key to bind.
 - `ineligibleKeys` — decision candidates the personal-data posture dropped

@@ -2,7 +2,7 @@
   "$comment": "Provider config \u2014 the single source of truth for the ADR-0009 vendor allowlist: endpoints, model ids, api-key env names, prices per MTok, per-role fallback chains (ADR-0022), and the named role-chain profiles selected by PROVIDER_PROFILE (ADR-0059). The default profile is the base `roles` block and is deliberately NOT declared here: a non-empty `default` entry is a load-time config fault, since the loader returns the base roles before consulting it. Vendor data lives ONLY here (and the model_configs DB mirror); no .ts file in the engine may name a vendor \u2014 the boundary gate enforces it by scanning .ts and not .json. Prices are micro-USD per MTok (1 USD = 1e6 micro-USD, so a $0.50/MTok input price is 500000), PR-reviewed like any model decision. Defaults from SPECS.md \u00a73.4 (2026-08).",
   "vendors": {
     "openrouter": {
-      "$comment": "ADR-0069: OpenAI-compatible aggregator at /v1 \u2014 chat completions, embeddings, and (via schema-constrained structured output, the response_format json_schema strict beta) the decision seam of ADR-0042 all ride one key. Paid prepaid-credit terms with a DPA on file; the register row (docs/GDPR-ARTICLE-30-RECORD.md \u00a78) records the DPA and the aggregator's upstream routing. Listed prices below are the adopted listings at migration; the aggregator routes per request across upstream endpoints, so some models carry a listing spread \u2014 the recorded price names the adopted listing, and an off-listing answer over- or under-records visibly on the trace.",
+      "$comment": "ADR-0069: OpenAI-compatible aggregator at /v1 \u2014 chat completions, embeddings, and (via schema-constrained structured output, the response_format json_schema strict beta) the decision seam of ADR-0042 all ride one key. Paid prepaid-credit terms under the aggregator's published DPA: the owner's acceptance of that DPA is the precondition for binding the production key and is recorded (dated) in the register row (docs/GDPR-ARTICLE-30-RECORD.md \u00a78) at account setup \u2014 until that record exists, no production key binds and no personal data routes through this row. Listed prices below are the adopted listings at migration; the aggregator routes per request across upstream endpoints, so some models carry a listing spread \u2014 the recorded price names the adopted listing, and an off-listing answer over- or under-records visibly on the trace.",
       "baseUrl": "https://openrouter.ai/api/v1",
       "apiKeyEnv": "OPENROUTER_API_KEY",
       "protocol": "chat-completions",
@@ -36,8 +36,8 @@
           }
         },
         "deepseek/deepseek-v4-flash": {
-          "$comment": "Priced at the DeepInfra listing ($0.09 in / $0.18 out per MTok), inside the aggregator's $0.05\u2013$0.21 in / $0.10\u2013$0.56 out endpoint spread; routing is per request unless pinned by a provider preference.",
-          "capabilities": ["generate", "stream"],
+          "$comment": "Priced at the DeepInfra listing ($0.09 in / $0.18 out per MTok), inside the aggregator's $0.05\u2013$0.21 in / $0.10\u2013$0.56 out endpoint spread; routing is per request unless pinned by a provider preference. The `decide` capability marks this row a decision-bench candidate (ADR-0042): under the rewritten seam the typing rides schema-constrained chat output, so the capability list \u2014 not a vendor protocol \u2014 decides what the decider may construct.",
+          "capabilities": ["generate", "stream", "decide"],
           "priceMicroUsdPerMTok": {
             "in": 90000,
             "out": 180000
@@ -114,8 +114,9 @@
       "chain": ["openrouter:google/gemini-3-flash-preview", "openrouter:deepseek/deepseek-v4-flash"]
     },
     "decision": {
-      "$comment": "The decision-model SERVING role (ADR-0042 adoption): the candidate behind the reviewer pre-gate and the retrieval rerank \u2014 the model a committed multilingual gate report adopted. Separate from the bench-only `decision-candidates` role so a re-bench can add challengers without changing what serves. The head is PROVISIONAL at the aggregator migration (ADR-0069): the ADR-0042 re-pass bench is the owner's hand-run gate before this serves production. Always active wherever OPENROUTER_API_KEY is bound; absent key = neither adoption is wired and the reviewer and retrieval behave as they did before adoption \u2014 no enable/disable flag exists. Batched: one call per answer for the pre-gate, one per retrieval whose fused set has two or more candidates for the rerank, input-priced.",
-      "chain": ["openrouter:google/gemini-3-flash-preview"]
+      "$comment": "The decision-model SERVING role (ADR-0042 adoption): the candidate behind the reviewer pre-gate and the retrieval rerank \u2014 the model a committed multilingual gate report adopted. Separate from the bench-only `decision-candidates` role so a re-bench can add challengers without changing what serves. The head is PROVISIONAL at the aggregator migration (ADR-0069): the ADR-0042 re-pass bench is the owner's hand-run gate, and its committed report is what flips `benchAdoption` to \"committed\". Until then the boot posture report names the gate provisional at every boot. Always active wherever OPENROUTER_API_KEY is bound; absent key = neither adoption is wired and the reviewer and retrieval behave as they did before adoption \u2014 no enable/disable flag exists. Batched: one call per answer for the pre-gate, one per retrieval whose fused set has two or more candidates for the rerank, input-priced.",
+      "chain": ["openrouter:google/gemini-3-flash-preview"],
+      "benchAdoption": "provisional"
     }
   },
   "profiles": {

@@ -157,8 +157,8 @@ When("I see the privacy notice rendered from the register", async ({ page }) => 
   await expect(notice).toContainText("netcup GmbH");
   await expect(notice).toContainText("Neon, Inc.");
   await expect(notice).toContainText("data pribadi tidak pernah lewat tingkat gratis");
-  // The register carries no free-tier row anymore, so the permitted verdict
-  // is the one on screen.
+  // Every row — current and the retired history rows — carries the permitted
+  // verdict, so that is the verdict on screen.
   await expect(notice).toContainText("Boleh membawa data pribadi");
 });
 

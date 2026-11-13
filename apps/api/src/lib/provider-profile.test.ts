@@ -165,4 +165,11 @@ describe("provider profile — rollback", () => {
     // An empty env value is "unset" too (a systemd `PROVIDER_PROFILE=` line).
     expect(chains(loadProviderConfig(""))).toEqual(DEFAULT_CHAINS);
   });
+
+  it("reports a missing key once even when a chain keys two candidates to it", () => {
+    // The cheap chain's head and tail share the aggregator key (ADR-0069): the
+    // posture report and the typed error name variables, not candidates.
+    const { missingKeys } = resolveRole(loadProviderConfig(), "cheap", { env: {} });
+    expect(missingKeys).toEqual(["OPENROUTER_API_KEY"]);
+  });
 });

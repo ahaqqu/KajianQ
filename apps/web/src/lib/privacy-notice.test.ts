@@ -132,7 +132,8 @@ const retentionById = (id: string): RetentionItem => {
   return row;
 };
 
-/** The vendor catalog ids behind the notice rows that name an LLM vendor. */
+/** The vendor catalog ids behind the notice rows that name an LLM vendor in use;
+ * a retired vendor's history row has none — no vendor backs it anymore. */
 const CATALOG_IDS: Record<string, string> = {
   openrouter: "openrouter",
   "ollama-cloud": "ollama-cloud",

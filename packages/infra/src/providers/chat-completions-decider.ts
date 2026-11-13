@@ -161,26 +161,24 @@ export function createChatCompletionsDecider(opts: ChatCompletionsDeciderOptions
       };
     };
     const content = json.choices?.[0]?.message?.content ?? "";
+    /** The error a post-200 refusal carries: the vendor was reached and billed
+     * the attempt, so the spend stays on the trail (estimated output — the
+     * answer still cost what it cost), and the caller's fail-open path reads
+     * the transport failure like any vendor failure. */
+    const contentRefusal = (message: string) =>
+      withAttemptCost(
+        new ProviderError({ kind: "transport", message }),
+        settle({}, estimateTokens(content.length)).cost,
+      );
     let parsed: { answers?: RawAnswers };
     try {
       parsed = JSON.parse(content) as { answers?: RawAnswers };
     } catch {
-      // The vendor was reached and billed the attempt: the spend stays on the
-      // trail (estimated output — the malformed text still cost what it cost).
-      throw withAttemptCost(
-        new ProviderError({
-          kind: "transport",
-          message: "decision call returned content that is not JSON",
-        }),
-        settle({}, estimateTokens(content.length)).cost,
-      );
+      throw contentRefusal("decision call returned content that is not JSON");
     }
     const rawAnswers = parsed.answers;
     if (typeof rawAnswers !== "object" || rawAnswers === null) {
-      throw withAttemptCost(
-        new ProviderError({ kind: "transport", message: "decision call has no answers object" }),
-        settle({}, estimateTokens(content.length)).cost,
-      );
+      throw contentRefusal("decision call has no answers object");
     }
     const answers: Record<string, DecisionAnswer> = {};
     for (const id of Object.keys(spec.questions)) {
@@ -190,12 +188,8 @@ export function createChatCompletionsDecider(opts: ChatCompletionsDeciderOptions
           ? toDecisionAnswer(id, raw as Record<string, unknown>, spec)
           : undefined;
       if (answer === undefined) {
-        throw withAttemptCost(
-          new ProviderError({
-            kind: "transport",
-            message: `decision answer for "${id}" is malformed, out of range, or off the option set`,
-          }),
-          settle({}, estimateTokens(content.length)).cost,
+        throw contentRefusal(
+          `decision answer for "${id}" is malformed, out of range, or off the option set`,
         );
       }
       answers[id] = answer;
@@ -257,12 +251,18 @@ export function resolveDecider(
   const ineligibleKeys: string[] = [];
   for (const candidate of resolveChain(config, role)) {
     if (opts.personalData === true && !candidate.vendorConfig.personalDataAllowed) {
-      ineligibleKeys.push(candidate.vendorConfig.apiKeyEnv);
+      if (!ineligibleKeys.includes(candidate.vendorConfig.apiKeyEnv)) {
+        ineligibleKeys.push(candidate.vendorConfig.apiKeyEnv);
+      }
       continue;
     }
     const apiKey = opts.env[candidate.vendorConfig.apiKeyEnv];
     if (!apiKey) {
-      missingKeys.push(candidate.vendorConfig.apiKeyEnv);
+      // Distinct names only: a chain can key two candidates to one env (the
+      // aggregator does), and the report names variables, not candidates.
+      if (!missingKeys.includes(candidate.vendorConfig.apiKeyEnv)) {
+        missingKeys.push(candidate.vendorConfig.apiKeyEnv);
+      }
       continue;
     }
     if (candidate.vendorConfig.protocol !== "chat-completions") {

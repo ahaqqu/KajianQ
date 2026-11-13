@@ -75,13 +75,71 @@ export const SUB_PROCESSORS: readonly SubProcessor[] = [
     },
   },
   {
+    id: "gemini",
+    name: "Google (Gemini API)",
+    status: "no-serving-role",
+    role: {
+      id: "LLM: kandidat cadangan pada peran murah dan embedding untuk panggilan non-pribadi — dipensiunkan oleh migrasi agregator (ADR-0069); tidak ada lalu lintas lagi.",
+      en: "LLM: fallback candidate on the cheap role and embeddings for non-personal calls — retired at the aggregator migration (ADR-0069); no traffic routes here anymore.",
+    },
+    personalData: {
+      id: "Tidak ada lagi — sebelumnya: konten prompt/embedding dari panggilan non-pribadi (ingest, tagging) saja.",
+      en: "None anymore — previously: prompt/embedding content of non-personal calls (ingestion, tagging) only.",
+    },
+    tier: "free",
+    verdict: "permitted",
+    note: {
+      id: "Baris dipertahankan untuk riwayat register. Saat dipakai, lalu lintas tingkat gratis dapat dipakai vendor untuk meningkatkan modelnya — karena itu data pribadi tidak pernah lewat sini; peran-perannya pindah ke baris OpenRouter.",
+      en: "The row is kept for the register's history. While in use, the free tier's traffic could be used to improve the vendor's models — so personal data never routed through it; its roles moved to the OpenRouter row.",
+    },
+  },
+  {
+    id: "gemini-paid",
+    name: "Google (Gemini API, paid)",
+    status: "no-serving-role",
+    role: {
+      id: "LLM: peran embedder — meng-embed sub-kueri pengguna saat pencarian — dipensiunkan oleh migrasi agregator (ADR-0069); embedder kini melayani lewat baris OpenRouter pada id model yang sama.",
+      en: "LLM: the embedder role — embedded the user's sub-queries at retrieval time — retired at the aggregator migration (ADR-0069); the embedder now serves through the OpenRouter row on the same model id.",
+    },
+    personalData: {
+      id: "Tidak ada lagi — sebelumnya: sub-kueri pengguna yang di-embed oleh retriever saat melayani.",
+      en: "None anymore — previously: the user's sub-queries, embedded by the serving retriever.",
+    },
+    tier: "paid",
+    verdict: "permitted",
+    note: {
+      id: "Baris dipertahankan untuk riwayat register: vendor memproses data pribadi (sub-kueri) sampai migrasi agregator; ruang embedding tidak berubah.",
+      en: "The row is kept for the register's history: the vendor processed personal data (the sub-queries) until the aggregator migration; the embedding space is unchanged.",
+    },
+  },
+  {
+    id: "deepseek",
+    name: "DeepSeek",
+    status: "no-serving-role",
+    role: {
+      id: "LLM: generator dan reviewer (tinjauan sesama-vendor diterima keputusan pemilik, ADR-0044 keputusan 7) — dipensiunkan oleh migrasi agregator (ADR-0069); id model yang sama kini melayani lewat baris OpenRouter.",
+      en: "LLM: the generator and the reviewer (same-vendor review accepted by owner decision, ADR-0044 decision 7) — retired at the aggregator migration (ADR-0069); the same model id now serves through the OpenRouter row.",
+    },
+    personalData: {
+      id: "Tidak ada lagi — sebelumnya: pertanyaan obrolan + konteks (kedua tahap).",
+      en: "None anymore — previously: chat question + context (both stages).",
+    },
+    tier: "paid",
+    verdict: "permitted",
+    note: {
+      id: "Baris dipertahankan untuk riwayat register: vendor memproses data pribadi sampai migrasi agregator.",
+      en: "The row is kept for the register's history: the vendor processed personal data until the aggregator migration.",
+    },
+  },
+  {
     id: "openrouter",
     name: "OpenRouter",
     status: "current",
     role: {
       // The serving aggregator (ADR-0069): one paid, DPA-covered row carries every
       // chat serving role, the embedder, and the decision seam (schema-constrained
-      // structured output). The direct Gemini and DeepSeek rows retired with it.
+      // structured output). The direct Gemini, DeepSeek and TypeSafe rows remain
+      // as the struck-through history rows.
       id: "LLM: peran generator, reviewer, dan murah (router); embedding peran embedder saat pencarian; model keputusan untuk pratinjau sitasi dan pemingkatan ulang hasil pencarian.",
       en: "LLM: the generator, reviewer and cheap (router) roles; the embedder role's embeddings at retrieval time; the decision model behind the citation pre-gate and the retrieval rerank.",
     },
@@ -92,8 +150,8 @@ export const SUB_PROCESSORS: readonly SubProcessor[] = [
     tier: "paid",
     verdict: "permitted",
     note: {
-      id: "Ketentuan berbayar (kredit prabayar) dengan DPA OpenRouter yang dipublikasikan (GDPR/CCPA) — diterima pemilik sebagai bagian dari penyiapan akun sebelum kunci produksi diikat (ADR-0069). OpenRouter bertindak sebagai agregator dan meneruskan panggilan ke penyedia model hulu di bawah rantai sub-prosesornya sendiri; mode nol-retensi tersedia pada akun.",
-      en: "Paid terms (prepaid credits) under OpenRouter's published DPA (GDPR/CCPA) — accepted by the owner as part of the account setup, before the production key binds (ADR-0069). OpenRouter acts as an aggregator and forwards calls to upstream model providers under its own sub-processor chain; a zero-retention mode is available on the account.",
+      id: "Ketentuan berbayar (kredit prabayar) dengan DPA OpenRouter yang dipublikasikan (GDPR/CCPA); penerimaan pemilik atas DPA itu adalah prasyarat pengikatan kunci produksi dan dicatat (bertanggal) di baris ini saat penyiapan akun — sampai catatan itu ada, tidak ada kunci produksi yang diikat dan tidak ada data pribadi yang lewat sini (ADR-0069). OpenRouter bertindak sebagai agregator dan meneruskan panggilan ke penyedia model hulu di bawah rantai sub-prosesornya sendiri; mode nol-retensi tersedia pada akun.",
+      en: "Paid terms (prepaid credits) under OpenRouter's published DPA (GDPR/CCPA); the owner's acceptance of that DPA is the precondition for binding the production key and is recorded (dated) in this row at account setup — until that record exists, no production key binds and no personal data routes through here (ADR-0069). OpenRouter acts as an aggregator and forwards calls to upstream model providers under its own sub-processor chain; a zero-retention mode is available on the account.",
     },
   },
   {
@@ -132,6 +190,25 @@ export const SUB_PROCESSORS: readonly SubProcessor[] = [
     },
     tier: "paid",
     verdict: "permitted",
+  },
+  {
+    id: "typesafe",
+    name: "TypeSafe AI",
+    status: "no-serving-role",
+    role: {
+      id: "Model keputusan: pratinjau sitasi (pre-gate) sebelum reviewer LLM (adopsi ADR-0042) — dipensiunkan oleh migrasi agregator (ADR-0069); seam keputusan kini melayani keluaran terstruktur skema ketat baris OpenRouter.",
+      en: "Decision model: the citation pre-gate ahead of the LLM reviewer (ADR-0042 adoption) — retired at the aggregator migration (ADR-0069); the decision seam now serves on the OpenRouter row's schema-constrained structured output.",
+    },
+    personalData: {
+      id: "Tidak ada lagi — sebelumnya: klaim dari jawaban yang disusun dan petikan bukti yang dikutipnya, satu panggilan batch per jawaban.",
+      en: "None anymore — previously: claim spans from the drafted answer and the cited evidence passages, one batched call per answer.",
+    },
+    tier: "paid",
+    verdict: "permitted",
+    note: {
+      id: "Baris dipertahankan untuk riwayat register: perjanjian pemrosesan (Art. 28(3)) vendor dikonfirmasi pemilik pada 2026-09-27; vendor pensiun pada migrasi agregator (ADR-0069).",
+      en: "The row is kept for the register's history: the vendor's Art. 28(3) processing agreement was confirmed by the owner on 2026-09-27; the vendor retired at the aggregator migration (ADR-0069).",
+    },
   },
 ];
 

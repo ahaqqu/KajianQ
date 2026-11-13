@@ -37,16 +37,17 @@ All database access goes through the `RagStore` adapter; blob storage through
 the `ObjectStore` adapter (ADR-0008). The vendor allowlist is policy, enforced
 by the gate: **OpenRouter** (the serving aggregator — one paid, DPA-covered row
 carrying every serving role, ADR-0069), **Ollama Cloud** (a switchable
-paid chat vendor, selected by a named provider profile — ADR-0059), **Qwen**,
-and **TypeSafe AI** (decision-model only, bench-gated) as of the 2026-09-21
-reviewer re-head; **Moonshot/Kimi was removed** then, and ADR-0009's original
-allowlist text is history (ADR-0044 decision 7 is the operative record).
+paid chat vendor, selected by a named provider profile — ADR-0059), and
+**Qwen** (ingestion translation). The aggregator migration retired the direct
+Gemini, DeepSeek and TypeSafe rows (ADR-0069); **Moonshot/Kimi was removed**
+at the 2026-09-21 reviewer re-head, and ADR-0009's original allowlist text is
+history (ADR-0044 decision 7 is the operative record).
 
 **The reviewer's cross-vendor separation is deliberately relaxed for the
 current key set.** ADR-0009/ADR-0015 named a cross-vendor reviewer to prevent an
-answer being graded by the model that wrote it. With no Moonshot key and
-TypeSafe's catalogued capability `decide`-only, the reviewer chain is headed by
-the same DeepSeek model as the generator. That is accepted by owner decision and
+answer being graded by the model that wrote it. The reviewer chain is headed by
+the same DeepSeek model id the generator uses, served through the aggregator
+row. That is accepted by owner decision and
 recorded with its revisit trigger (re-editing the chain the moment a second paid
 vendor key exists — config only, no code change), rather than left to drift.
 

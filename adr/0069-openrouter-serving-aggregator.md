@@ -36,12 +36,16 @@ as policy and seam enforcement, not as wired config.
 
 ## Consequences
 
-- The register and the notice carry one aggregator row (paid, DPA on file);
-  its row states the upstream routing and the zero-retention option.
+- The register and the notice carry one aggregator row (paid terms under the
+  published DPA; the owner's recorded acceptance is the precondition for
+  binding the production key); its row states the upstream routing and the
+  zero-retention option.
 - The personal-data filter's wired trap case retires with the free-tier tail;
   the filter's correctness stays pinned by its synthetic unit tests and the
-  no-free-tier-head walk.
-- Rollback is `PROVIDER_PROFILE=ollama` (still wired) or a config re-add of a
-  direct row.
+  no-free-tier walk, which judges every chain position.
+- Rollback: `PROVIDER_PROFILE=ollama` (still wired) recovers the four chat
+  chains only — the embedder and the decision seam ride the aggregator under
+  every profile — so the only rollback that restores serving through an
+  aggregator outage is a config re-add of a direct row.
 - The ADR-0042 re-bench on the aggregator's candidates is the gate before the
   decision seam serves production; both of its adoptions fail open.

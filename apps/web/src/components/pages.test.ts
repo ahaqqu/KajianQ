@@ -282,8 +282,10 @@ describe("PrivacyPage", () => {
     const privacy = screen.getByTestId("privacy-notice");
     expect(privacy.textContent).toContain("Who processes your data");
     expect(privacy.textContent).toContain("In use today");
-    // The verdict column renders in English too; the register carries no
-    // free-tier row anymore, so the permitted verdict is the one on screen.
+    // The verdict column renders in English too. Every row on screen — current
+    // and retired — carries the permitted verdict: the retired vendors' rows are
+    // struck-through history whose processing ended, so no row claims a live
+    // not-for-personal-data verdict.
     expect(privacy.textContent).toContain("May carry personal data");
     expect(within(privacy).getByTestId("privacy-notice-erasure").textContent).toContain(
       "no button for this yet",
