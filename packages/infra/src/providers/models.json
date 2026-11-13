@@ -46,7 +46,7 @@
       }
     },
     "openrouter-decisions": {
-      "$comment": "ADR-0042: the aggregator's typed decisions wire (alpha) \u2014 the same account, key and DPA as the openrouter row; the wire the decision models the chat wire rejects serve on. The question objects pass through verbatim (the wire's primitives are the seam's noul/choice/score types) and the state rides as a one-element array of strings. Priced on input tokens only (output free); the input rate below is the rate the wire's recorded usage costs reproduce exactly. Backs the bench-only `decision-candidates` role \u2014 gate fixture text, never personal data.",
+      "$comment": "ADR-0042: the aggregator's typed decisions wire (alpha) \u2014 the same account, key and DPA as the openrouter row; the wire the decision models the chat wire rejects serve on. The question objects pass through verbatim (the wire's primitives are the seam's noul/choice/score types) and the state rides as a one-element array of strings. Priced on input tokens only (output free); the input rate below is the adopted listing. Backs the bench-only `decision-candidates` role \u2014 gate fixture text, never personal data.",
       "baseUrl": "https://openrouter.ai/api/alpha",
       "apiKeyEnv": "OPENROUTER_API_KEY",
       "protocol": "decisions",
@@ -61,8 +61,8 @@
             "out": 0
           }
         },
-        "~perplexity/pplx-decider-latest": {
-          "$comment": "The newest pplx-decider release alias \u2014 resolves server-side to a dated build, named in the reply's model field. $0.02 per input MTok, output free.",
+        "perplexity/pplx-decider-v1.3": {
+          "$comment": "Decider v1.3 on the rolling listing id \u2014 the reply's model field names the concrete build. $0.02 per input MTok, output free \u2014 the vendor's published rate.",
           "capabilities": ["decide"],
           "priceMicroUsdPerMTok": {
             "in": 20000,
@@ -141,7 +141,7 @@
         "openrouter:google/gemini-3.8-flash",
         "openrouter:deepseek/deepseek-v4.1-flash",
         "openrouter-decisions:~typesafe/jev-latest",
-        "openrouter-decisions:~perplexity/pplx-decider-latest"
+        "openrouter-decisions:perplexity/pplx-decider-v1.3"
       ]
     },
     "decision": {

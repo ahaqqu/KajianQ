@@ -38,7 +38,7 @@ const DEFAULT_CHAINS = {
     "openrouter:google/gemini-3.8-flash",
     "openrouter:deepseek/deepseek-v4.1-flash",
     "openrouter-decisions:~typesafe/jev-latest",
-    "openrouter-decisions:~perplexity/pplx-decider-latest",
+    "openrouter-decisions:perplexity/pplx-decider-v1.3",
   ],
   decision: ["openrouter:google/gemini-3.8-flash"],
 } as const;
@@ -186,7 +186,7 @@ describe("provider profile — rollback", () => {
       "google/gemini-3.8-flash",
       "deepseek/deepseek-v4.1-flash",
       "~typesafe/jev-latest",
-      "~perplexity/pplx-decider-latest",
+      "perplexity/pplx-decider-v1.3",
     ]);
   });
 
