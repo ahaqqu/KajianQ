@@ -129,7 +129,11 @@ export {
   type EmbedBenchConfig,
 } from "./eval-config";
 export {
+  DECISION_BENCH_DEFAULT_DIR,
   DECISION_BENCH_DEFAULT_FIXTURE_PATH,
+  DECISION_BENCH_DEFAULT_REPORT_PATH,
+  DECISION_BENCH_DEFAULT_RUNS_DIR,
+  DECISION_BENCH_DEFAULT_SEAL_PATH,
   loadDecisionBenchConfig,
   loadDecisionBenchFixtureJson,
   parseDecisionBenchFixture,
@@ -149,3 +153,16 @@ export {
   type DecisionBenchPrompts,
   type DecisionGate,
 } from "./decision-bench";
+export {
+  countSupersededResults,
+  decisionBenchPromptsPin,
+  decisionBenchRunFilePath,
+  decisionBenchRunSlug,
+  decisionBenchSamplesPin,
+  loadDecisionBenchRuns,
+  loadDecisionBenchSeal,
+  writeDecisionBenchRun,
+  DecisionBenchStoreError,
+  type DecisionBenchSeal,
+} from "./decision-bench-store";
+export { renderDecisionBenchReport } from "./decision-bench-report";

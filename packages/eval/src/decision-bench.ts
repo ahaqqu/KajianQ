@@ -24,6 +24,8 @@ export type CaseOutcome = {
   expected: string | number | boolean;
   got: string | number | boolean;
   passed: boolean;
+  /** The call's metered spend — a run file carries it verbatim per record. */
+  cost?: CostRecord;
 };
 
 /** The gate floors (ADR-0042): overall ≥ 0.85 AND every language ≥ 0.75. */
@@ -125,6 +127,7 @@ export async function runDecisionBench({
   fixture,
   prompts,
   onCost,
+  onOutcome,
   wouldExceed,
   log,
 }: {
@@ -132,10 +135,16 @@ export async function runDecisionBench({
   fixture: DecisionBenchFixture;
   prompts: DecisionBenchPrompts;
   onCost: (cost: CostRecord) => void;
+  /** Surfaced per scored case so a caller can preserve partial evidence. */
+  onOutcome?: (outcome: CaseOutcome) => void;
   wouldExceed: () => boolean;
   log?: { warn: (msg: string, fields?: Record<string, unknown>) => void };
 }): Promise<CaseOutcome[]> {
   const outcomes: CaseOutcome[] = [];
+  const record = (outcome: CaseOutcome) => {
+    outcomes.push(outcome);
+    onOutcome?.(outcome);
+  };
 
   // One Noul question per case; the answer is read through the seam's typed
   // union — no re-cast of the wire shape.
@@ -167,13 +176,14 @@ export async function runDecisionBench({
     onCost(result.cost);
     const answer = result.answers[key];
     const noul = answer?.type === "noul" ? answer.noul : undefined;
-    outcomes.push({
+    record({
       caseId: c.id,
       task,
       language: c.language,
       expected,
       got: noul ?? "n/a",
       passed: score(noul),
+      cost: result.cost,
     });
   };
 
@@ -215,13 +225,14 @@ export async function runDecisionBench({
     onCost(result.cost);
     const answer = result.answers.best;
     const choice = answer?.type === "choice" ? answer.choice : undefined;
-    outcomes.push({
+    record({
       caseId: c.id,
       task: "rerank",
       language: c.language,
       expected: `c${c.bestIndex}`,
       got: choice ?? "n/a",
       passed: scoreRerankAnswer(choice, c.bestIndex),
+      cost: result.cost,
     });
   }
 

@@ -1,0 +1,29 @@
+{
+  "schema": 1,
+  "task": "decision-bench",
+  "version": 1,
+  "created": "2026-11-13T23:04:04Z",
+  "fixture": {
+    "id": "decision-bench-v0",
+    "status": "v0-draft"
+  },
+  "counts": {
+    "cases": 21,
+    "relevance": 12,
+    "rerank": 3,
+    "citation": 6
+  },
+  "languages": {
+    "ar": 7,
+    "en": 7,
+    "id": 7
+  },
+  "hashes": {
+    "cases": "sha256:830df54ff7e62b1d56e9ae07d47f2bab04606a6fa9b8ce33a08f30870e954394"
+  },
+  "notes": [
+    "The seal covers the case fixture only. Each run file additionally pins the prompt-wording hash it measured (promptsSha256), so a wording change after this seal is visible per run without re-sealing the cases.",
+    "The result under superseded/pre-seal/ (jev-1.13.0, 2026-09-18, chat-wire era) predates the seal: it pins nothing, is frozen history, and the report never scores it.",
+    "A re-seal (any byte of cases.json changed) bumps version and archives runs/ to superseded/v<n>/ — the store refuses a run whose cases hash does not match the committed seal, so staleness is loud, never silent."
+  ]
+}
