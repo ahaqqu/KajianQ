@@ -150,8 +150,8 @@ export const SUB_PROCESSORS: readonly SubProcessor[] = [
     tier: "paid",
     verdict: "permitted",
     note: {
-      id: "Ketentuan berbayar (kredit prabayar) dengan DPA OpenRouter yang dipublikasikan (GDPR/CCPA); penerimaan pemilik atas DPA itu adalah prasyarat pengikatan kunci produksi dan dicatat (bertanggal) di baris ini saat penyiapan akun — sampai catatan itu ada, tidak ada kunci produksi yang diikat dan tidak ada data pribadi yang lewat sini (ADR-0069). OpenRouter bertindak sebagai agregator dan meneruskan panggilan ke penyedia model hulu di bawah rantai sub-prosesornya sendiri; mode nol-retensi tersedia pada akun.",
-      en: "Paid terms (prepaid credits) under OpenRouter's published DPA (GDPR/CCPA); the owner's acceptance of that DPA is the precondition for binding the production key and is recorded (dated) in this row at account setup — until that record exists, no production key binds and no personal data routes through here (ADR-0069). OpenRouter acts as an aggregator and forwards calls to upstream model providers under its own sub-processor chain; a zero-retention mode is available on the account.",
+      id: "Ketentuan berbayar (kredit prabayar) dengan DPA OpenRouter yang dipublikasikan (GDPR/CCPA) — diterima pemilik pada 2026-11-14 (catatan bertanggal ada di register Art. 30). Nol-retensi diaktifkan pada akun (pelatihan dinonaktifkan). OpenRouter bertindak sebagai agregator dan meneruskan panggilan ke penyedia model hulu di bawah rantai sub-prosesornya sendiri.",
+      en: "Paid terms (prepaid credits) under OpenRouter's published DPA (GDPR/CCPA) — accepted by the owner on 2026-11-14 (the dated record lives in the Art. 30 register). Zero-retention is enabled on the account (training opted out). OpenRouter acts as an aggregator and forwards calls to upstream model providers under its own sub-processor chain.",
     },
   },
   {
