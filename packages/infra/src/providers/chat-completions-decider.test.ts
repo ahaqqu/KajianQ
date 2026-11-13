@@ -3,7 +3,8 @@ import { Effect } from "effect";
 import type { DecisionSpec } from "@app/rag-core";
 import { runFail } from "@app/rag-core/testing";
 import type { FetchLike } from "./chat-completions-adapter";
-import { createChatCompletionsDecider, resolveDecider } from "./chat-completions-decider";
+import { createChatCompletionsDecider } from "./chat-completions-decider";
+import { resolveDecider } from "./decider-resolve";
 import type { ModelConfig, VendorConfig } from "./provider-config";
 
 /**

@@ -47,9 +47,9 @@ export { resolveRole, type ResolvedRole, type ResolveOptions } from "./providers
 export { computeCost } from "./providers/chat-wire";
 export {
   createChatCompletionsDecider,
-  resolveDecider,
   type ChatCompletionsDeciderOptions,
 } from "./providers/chat-completions-decider";
+export { resolveDecider } from "./providers/decider-resolve";
 export {
   createDecisionsDecider,
   type DecisionsDeciderOptions,
