@@ -5,7 +5,7 @@ import { routerCallFor } from "./chat-router-prompt";
 import { fallbackRouting, recordRouting, routingOf } from "./chat-router-routing";
 
 export { extractJsonObject } from "./chat-router-output";
-export { ROUTER_SYSTEM_PROMPT } from "./chat-router-prompt";
+export { ROUTER_FOLLOW_UP_RULE, ROUTER_SYSTEM_PROMPT, routerCallFor } from "./chat-router-prompt";
 
 /**
  * KajianQRouter — Smart Router stages 1–3 (spec §3.3, CONTEXT.md "Smart

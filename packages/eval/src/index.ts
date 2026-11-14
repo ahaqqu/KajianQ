@@ -112,6 +112,7 @@ export {
   type BenchCell,
   type BenchDirection,
   type BenchDoc,
+  type BenchProbeOutcome,
   type BenchQuery,
   type ExpansionCase,
   type ExpansionOutcome,
@@ -122,12 +123,64 @@ export {
   type BenchProbeSet,
   type ExpansionCaseSet,
 } from "./embed-bench-fixtures";
+export { embedDirectionStats, embedExpansionAccuracy } from "@app/contracts";
+export { parseRouterBenchFixture, parseSummarizerBenchFixture } from "@app/contracts";
 export {
+  EMBED_BENCH_DEFAULT_DIR,
   EMBED_BENCH_DEFAULT_EXPANSION_PATH,
   EMBED_BENCH_DEFAULT_PROBE_PATH,
+  EMBED_BENCH_DEFAULT_REPORT_PATH,
+  EMBED_BENCH_DEFAULT_RUNS_DIR,
+  EMBED_BENCH_DEFAULT_SEAL_PATH,
   loadEmbedBenchConfig,
   type EmbedBenchConfig,
 } from "./eval-config";
+export {
+  buildEmbedBenchRun,
+  embedBenchRunFilePath,
+  embedBenchRunSlug,
+  embedBenchSamplesPin,
+  loadEmbedBenchRuns,
+  loadEmbedBenchSeal,
+  writeEmbedBenchRun,
+  EmbedBenchStoreError,
+  type EmbedBenchSeal,
+} from "./embed-bench-store";
+export { renderEmbedBenchReport } from "./embed-bench-report";
+export {
+  runRouterBench,
+  scoreRouterCase,
+  type RouterBenchAdapters,
+  type RouterCaseOutcome,
+} from "./router-bench";
+export {
+  loadRouterBenchRuns,
+  loadRouterBenchSeal,
+  RouterBenchStoreError,
+  routerBenchPromptsPin,
+  routerBenchRunFilePath,
+  routerBenchSamplesPin,
+  writeRouterBenchRun,
+  type RouterBenchSeal,
+} from "./router-bench-store";
+export { renderRouterBenchReport } from "./router-bench-report";
+export {
+  checkSummarizerCase,
+  runSummarizerBench,
+  type SummarizerBenchAdapters,
+  type SummarizerCaseOutcome,
+} from "./summarizer-bench";
+export {
+  loadSummarizerBenchRuns,
+  loadSummarizerBenchSeal,
+  SummarizerBenchStoreError,
+  summarizerBenchPromptsPin,
+  summarizerBenchRunFilePath,
+  summarizerBenchSamplesPin,
+  writeSummarizerBenchRun,
+  type SummarizerBenchSeal,
+} from "./summarizer-bench-store";
+export { renderSummarizerBenchReport } from "./summarizer-bench-report";
 export {
   DECISION_BENCH_DEFAULT_DIR,
   DECISION_BENCH_DEFAULT_FIXTURE_PATH,

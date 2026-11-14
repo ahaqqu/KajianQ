@@ -1,0 +1,24 @@
+{
+  "schema": 1,
+  "task": "summarizer-bench",
+  "version": 1,
+  "created": "2026-11-13T23:40:28Z",
+  "fixture": {
+    "id": "summarizer-bench-v0",
+    "status": "v0-draft"
+  },
+  "counts": {
+    "cases": 5
+  },
+  "languages": {
+    "id": 5
+  },
+  "hashes": {
+    "cases": "sha256:dcc936e8451f1fbc835639ea406baa06266c035e5dfeb125e4d58d1082f06db4"
+  },
+  "notes": [
+    "The seal covers the case fixture only. Each run file additionally pins the summarizer prompt-wording hash it measured (promptsSha256), so a wording change after this seal is visible per run without re-sealing the cases.",
+    "The gate scores what is deterministic — format bounds and faithfulness grounding — and prints every summary; theme quality stays the owner's human call, made from the report's side-by-side artifacts.",
+    "A re-seal (any byte of cases.json changed) bumps version and archives runs/ to superseded/v<n>/ — the store refuses a run whose cases hash does not match the committed seal, so staleness is loud, never silent."
+  ]
+}

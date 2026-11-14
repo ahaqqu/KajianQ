@@ -1,0 +1,26 @@
+{
+  "schema": 1,
+  "task": "router-bench",
+  "version": 1,
+  "created": "2026-11-13T23:40:28Z",
+  "fixture": {
+    "id": "router-bench-v0",
+    "status": "v0-draft"
+  },
+  "counts": {
+    "cases": 25
+  },
+  "languages": {
+    "ar": 8,
+    "en": 8,
+    "id": 9
+  },
+  "hashes": {
+    "cases": "sha256:e06d9a040a7bc2eecbb58fdfd523d9a95e4e142f44e0f80e2886bbb64378316e"
+  },
+  "notes": [
+    "The seal covers the case fixture only. Each run file additionally pins the router prompt-wording hash it measured (promptsSha256), so a wording change after this seal is visible per run without re-sealing the cases.",
+    "Cases assert the classification fields the router's own vocabulary narrows (intent always; category and needsPrinciple where unambiguous); the deterministic decomposition layer is never scored — only the model's reply is.",
+    "A re-seal (any byte of cases.json changed) bumps version and archives runs/ to superseded/v<n>/ — the store refuses a run whose cases hash does not match the committed seal, so staleness is loud, never silent."
+  ]
+}

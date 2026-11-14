@@ -1,0 +1,88 @@
+{
+  "id": "summarizer-bench-v0",
+  "status": "v0-draft",
+  "$comment": "Summarizer-bench fixture: hand-assembled parent excerpts for the cheap-role ingest summarizers (quran-llm.ts surahSummarizer / hadith-llm.ts hadithSectionSummarizer, wired by scripts/ingest-quran.mjs and scripts/ingest-hadith.mjs). Production feeds the summarizer parent.children's Arabic primary text (rag-ingest pipeline: childTexts = textPrimary), so every excerpt here is Arabic primary text only — Quran ayahs verbatim from the Tanzil Uthmani edition via the hangsbreaker/quran-json mirror (fetched 2026-11-13, verbatim distribution permitted with attribution to tanzil.net), hadith Arabic from fawazahmed0/hadith-api (The Unlicense) reusing the decision fixture's committed passages. Indonesian and English Quran translation wording is deliberately NOT used (Kemenag licensing gate). The gate scores what is deterministic — format bounds (the prompt's own 1-3 sentence rule) and faithfulness (Arabic-script tokens and numerals in the summary must ground in the excerpt, title, or source key; token normalization strips tashkeel and unifies alef forms) — and the report prints every summary so theme quality stays the owner's human call. Source keys mirror the editions' numbering for prompt context; the fixture stays v0-draft until the owner signs the content off.",
+  "cases": [
+    {
+      "id": "sm-q-01",
+      "kind": "surah",
+      "language": "id",
+      "sourceKey": "quran/tanzil-uthmani/surah/1",
+      "title": "سُورَةُ الْفَاتِحَة",
+      "excerpt": [
+        "بِسْمِ اللّٰهِ الرَّحْمٰنِ الرَّحِيْمِ",
+        "اَلْحَمْدُ لِلّٰهِ رَبِّ الْعٰلَمِيْنَۙ",
+        "الرَّحْمٰنِ الرَّحِيْمِۙ",
+        "مٰلِكِ يَوْمِ الدِّيْنِۗ",
+        "اِيَّاكَ نَعْبُدُ وَاِيَّاكَ نَسْتَعِيْنُۗ",
+        "اِهْدِنَا الصِّرَاطَ الْمُسْتَقِيْمَۙ",
+        "صِرَاطَ الَّذِيْنَ اَنْعَمْتَ عَلَيْهِمْ ەۙ غَيْرِ الْمَغْضُوْبِ عَلَيْهِمْ وَلَا الضَّاۤلِّيْنَ ࣖ"
+      ],
+      "expected": {
+        "minSentences": 1,
+        "maxSentences": 3
+      }
+    },
+    {
+      "id": "sm-q-02",
+      "kind": "surah",
+      "language": "id",
+      "sourceKey": "quran/tanzil-uthmani/surah/107",
+      "title": "سُورَةُ الْمَاعُون",
+      "excerpt": [
+        "اَرَءَيْتَ الَّذِيْ يُكَذِّبُ بِالدِّيْنِۗ",
+        "فَذٰلِكَ الَّذِيْ يَدُعُّ الْيَتِيْمَۙ",
+        "وَلَا يَحُضُّ عَلٰى طَعَامِ الْمِسْكِيْنِۗ",
+        "فَوَيْلٌ لِّلْمُصَلِّيْنَۙ",
+        "الَّذِيْنَ هُمْ عَنْ صَلَاتِهِمْ سَاهُوْنَۙ",
+        "الَّذِيْنَ هُمْ يُرَاۤءُوْنَۙ",
+        "وَيَمْنَعُوْنَ الْمَاعُوْنَ ࣖ"
+      ],
+      "expected": {
+        "minSentences": 1,
+        "maxSentences": 3
+      }
+    },
+    {
+      "id": "sm-q-03",
+      "kind": "surah",
+      "language": "id",
+      "sourceKey": "quran/tanzil-uthmani/surah/112",
+      "title": "سُورَةُ الْاِخْلَاص",
+      "excerpt": ["قُلْ هُوَ اللّٰهُ اَحَدٌۚ", "اَللّٰهُ الصَّمَدُۚ", "لَمْ يَلِدْ وَلَمْ يُوْلَدْۙ", "وَلَمْ يَكُنْ لَّهٗ كُفُوًا اَحَدٌ ࣖ"],
+      "expected": {
+        "minSentences": 1,
+        "maxSentences": 3
+      }
+    },
+    {
+      "id": "sm-h-01",
+      "kind": "hadith-section",
+      "language": "id",
+      "sourceKey": "hadith/bukhari/1",
+      "title": "كِتَاب بَدْءِ الْوَحْي",
+      "excerpt": [
+        "سَمِعْتُ رَسُولَ اللَّهِ صَلَّى اللَّهُ عَلَيْهِ وَسَلَّمَ، يَقُولُ : \" إِنَّمَا الْأَعْمَالُ بِالنِّيَّاتِ، وَإِنَّمَا لِكُلِّ امْرِئٍ مَا نَوَى، فَمَنْ كَانَتْ هِجْرَتُهُ إِلَى دُنْيَا يُصِيبُهَا أَوْ إِلَى امْرَأَةٍ يَنْكِحُهَا، فَهِجْرَتُهُ إِلَى مَا هَاجَرَ إِلَيْهِ",
+        "سَمِعْتُ عُمَرَ بْنَ الْخَطَّابِ رَضِيَ اللَّهُ عَنْهُ عَلَى الْمِنْبَرِ، قَالَ : سَمِعْتُ رَسُولَ اللَّهِ صَلَّى اللَّهُ عَلَيْهِ وَسَلَّمَ، يَقُولُ : \" إِنَّمَا الْأَعْمَالُ بِالنِّيَّاتِ، وَإِنَّمَا لِكُلِّ امْرِئٍ مَا نَوَى، فَمَنْ كَانَتْ هِجْرَتُهُ إِلَى دُنْيَا يُصِيبُهَا أَوْ إِلَى امْرَأَةٍ يَنْكِحُهَا، فَهِجْرَتُهُ إِلَى مَا هَاجَرَ إِلَيْهِ"
+      ],
+      "expected": {
+        "minSentences": 1,
+        "maxSentences": 3
+      }
+    },
+    {
+      "id": "sm-h-02",
+      "kind": "hadith-section",
+      "language": "id",
+      "sourceKey": "hadith/abudawud/1",
+      "title": "كِتَاب الطَّهَار",
+      "excerpt": [
+        "قَالَتْ عَائِشَةُ رضى الله عنها وَلَقَدْ رَأَيْتُهُ يَنْزِلُ عَلَيْهِ الْوَحْىُ فِي الْيَوْمِ الشَّدِيدِ الْبَرْدِ، فَيَفْصِمُ عَنْهُ وَإِنَّ جَبِينَهُ لَيَتَفَصَّدُ عَرَقًا"
+      ],
+      "expected": {
+        "minSentences": 1,
+        "maxSentences": 3
+      }
+    }
+  ]
+}
