@@ -75,7 +75,7 @@ export type ChatTraceReviewer = v.InferOutput<typeof ChatTraceReviewerSchema>;
  * `id` is the opaque `model_configs` identity; `roles` are product vocabulary
  * (the API assigns them from the call's stage and purpose), so the panel can
  * say what the model did — `router`, `generator`, `embedding`, `reranker`,
- * `citation_check` — instead of showing a bare id. One entry per model, roles
+ * `citation_check`, `reviewer` — instead of showing a bare id. One entry per model, roles
  * in first-call order and deduplicated, so a model that serves two stages is
  * still one row; the panel labels the roles it knows and shows any other
  * verbatim.
