@@ -90,7 +90,7 @@ re-run, never re-scored against later data, and never silently replaced.
 
 ```sh
 bun run eval:decision-bench                     # all keyed decision candidates
-bun run eval:decision-bench -- --model 'perplexity/pplx-decider-v1.3'   # one arm (additive)
+bun run eval:decision-bench -- --model 'perplexity/pplx-decider-v1.2-20261016'   # one arm (additive)
 bun run eval:decision-bench -- --force --model '~typesafe/jev-latest'   # deliberate re-run
 bun run eval:decision-bench -- --report-only    # regenerate report.md — no key, no network
 

@@ -33,12 +33,27 @@ const DEFAULT_CHAINS = {
   "embedder-candidates": [
     "openrouter:google/gemini-embedding-001",
     "openrouter:google/gemini-embedding-2",
+    "openrouter:qwen/qwen3-embedding-8b",
+  ],
+  "cheap-candidates": [
+    "openrouter:google/gemini-3.8-flash",
+    "openrouter:deepseek/deepseek-v4.1-flash",
+    "openrouter:z-ai/glm-5.3-flash",
+    "openrouter:qwen/qwen3.7-flash",
+    "openrouter:openai/gpt-5-nano",
+  ],
+  "generator-candidates": [
+    "openrouter:google/gemini-3.8-flash",
+    "openrouter:deepseek/deepseek-v4.1-flash",
+    "openrouter:z-ai/glm-5.3-flash",
+    "openrouter:qwen/qwen3.7-flash",
+    "openrouter:openai/gpt-5-nano",
   ],
   "decision-candidates": [
     "openrouter:google/gemini-3.8-flash",
     "openrouter:deepseek/deepseek-v4.1-flash",
     "openrouter-decisions:~typesafe/jev-latest",
-    "openrouter-decisions:perplexity/pplx-decider-v1.3",
+    "openrouter-decisions:perplexity/pplx-decider-v1.2-20261016",
   ],
   decision: ["openrouter:google/gemini-3.8-flash"],
 } as const;
@@ -186,7 +201,7 @@ describe("provider profile — rollback", () => {
       "google/gemini-3.8-flash",
       "deepseek/deepseek-v4.1-flash",
       "~typesafe/jev-latest",
-      "perplexity/pplx-decider-v1.3",
+      "perplexity/pplx-decider-v1.2-20261016",
     ]);
   });
 
