@@ -232,10 +232,9 @@ describe("reportProviderPosture — the boot ops report (#226)", () => {
     // the boot report shows the pre-gate wired, and still names no secret.
     expect(postureLines[0]).toContain('"preGate":"active"');
     expect(postureLines[0]).toContain('"missingKeys":"none"');
-    // ADR-0042's bench gate state rides the same report: the aggregator
-    // migration ships the decision head provisional, and the committed re-bench
-    // report is what flips it.
-    expect(postureLines[0]).toContain('"decisionGate":"provisional"');
+    // ADR-0042's bench gate state rides the same report: the committed
+    // re-bench report flipped the marker to committed.
+    expect(postureLines[0]).toContain('"decisionGate":"committed"');
     expect(logged.join("\n")).not.toContain(SECRET);
   });
 

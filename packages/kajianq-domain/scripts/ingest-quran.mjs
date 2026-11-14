@@ -115,12 +115,14 @@ const { provider: embedder } = app.resolveRole(config, "embedder", {
   env: process.env,
   retrySchedule: app.batchRetrySchedule,
 });
-const { provider: summarizerProvider, missingKeys } = app.resolveRole(config, "cheap", {
+const { provider: summarizerProvider, missingKeys } = app.resolveRole(config, "summarizer", {
   env: process.env,
   retrySchedule: app.batchRetrySchedule,
 });
 if (missingKeys.length > 0) {
-  fail(`no API key for the cheap role (needed for surah summaries): ${missingKeys.join(", ")}`);
+  fail(
+    `no API key for the summarizer role (needed for surah summaries): ${missingKeys.join(", ")}`,
+  );
 }
 
 // Archive raw bytes before persisting derived rows.

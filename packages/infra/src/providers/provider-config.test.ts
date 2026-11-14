@@ -35,12 +35,10 @@ describe("provider config", () => {
     // committed bench report covers. A re-bench can add challengers to the
     // bench-only role without silently changing what serves.
     expect(serving).toHaveLength(1);
-    expect(bench[0]?.vendor).toBe(serving[0]?.vendor);
-    expect(bench[0]?.modelId).toBe(serving[0]?.modelId);
-    // The serving candidate must speak the chat-completions protocol (ADR-0042's
-    // rewritten posture: the decision seam rides schema-constrained structured
-    // output) and price inputs.
-    expect(serving[0]?.vendorConfig.protocol).toBe("chat-completions");
+    // The serving candidate must speak the decisions wire's typed-questions
+    // protocol (ADR-0042's adoption over the aggregator's decisions transport)
+    // and price inputs.
+    expect(serving[0]?.vendorConfig.protocol).toBe("decisions");
     expect(serving[0]?.modelConfig.capabilities).toContain("decide");
     expect(serving[0]?.modelConfig.priceMicroUsdPerMTok.in).toBeGreaterThan(0);
     // Serving is adopted FROM the benched set — never a candidate the gate did
@@ -68,11 +66,11 @@ describe("provider config", () => {
     }
   });
 
-  it("carries the decision role's bench-adoption state (ADR-0042's provisional posture)", () => {
+  it("carries the decision role's bench-adoption state (ADR-0042's committed posture)", () => {
     const config = loadProviderConfig();
-    // The aggregator migration ships the serving head provisional; the committed
-    // re-bench report is what flips the marker. The boot posture report reads it.
-    expect(config.roles.decision?.benchAdoption).toBe("provisional");
+    // The committed re-bench report flipped the marker; a re-bench that finds a
+    // better candidate flips it again. The boot posture report reads it.
+    expect(config.roles.decision?.benchAdoption).toBe("committed");
   });
 
   it("rejects an unknown bench-adoption value", () => {

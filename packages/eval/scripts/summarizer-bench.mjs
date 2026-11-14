@@ -1,8 +1,9 @@
 #!/usr/bin/env bun
 /**
  * summarizer-bench.mjs — the ingest-summarizer gate CLI (ADR-0042
- * discipline over the cheap-role parent summarizers the ingestion pipeline
- * wires: scripts/ingest-quran.mjs and scripts/ingest-hadith.mjs).
+ * discipline over the parent summarizers the ingestion pipeline wires
+ * through the summarizer role: scripts/ingest-quran.mjs and
+ * scripts/ingest-hadith.mjs).
  *
  *   bun run eval:summarizer-bench [--model <config row id>] [--force] [--report-only]
  *

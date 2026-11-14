@@ -28,6 +28,7 @@ const DEFAULT_CHAINS = {
   reviewer: ["openrouter:deepseek/deepseek-v4.1-flash"],
   "reviewer-live": ["openrouter:deepseek/deepseek-v4.1-flash"],
   cheap: ["openrouter:deepseek/deepseek-v4.1-flash", "openrouter:google/gemini-3.8-flash"],
+  summarizer: ["openrouter:z-ai/glm-5.3-flash"],
   translation: ["qwen:qwen3.7-max"],
   embedder: ["openrouter:google/gemini-embedding-001"],
   "embedder-candidates": [
@@ -39,14 +40,12 @@ const DEFAULT_CHAINS = {
     "openrouter:google/gemini-3.8-flash",
     "openrouter:deepseek/deepseek-v4.1-flash",
     "openrouter:z-ai/glm-5.3-flash",
-    "openrouter:qwen/qwen3.7-flash",
     "openrouter:openai/gpt-5-nano",
   ],
   "generator-candidates": [
     "openrouter:google/gemini-3.8-flash",
     "openrouter:deepseek/deepseek-v4.1-flash",
     "openrouter:z-ai/glm-5.3-flash",
-    "openrouter:qwen/qwen3.7-flash",
     "openrouter:openai/gpt-5-nano",
   ],
   "decision-candidates": [
@@ -55,7 +54,7 @@ const DEFAULT_CHAINS = {
     "openrouter-decisions:~typesafe/jev-latest",
     "openrouter-decisions:perplexity/pplx-decider-v1.2-20261016",
   ],
-  decision: ["openrouter:google/gemini-3.8-flash"],
+  decision: ["openrouter-decisions:perplexity/pplx-decider-v1.2-20261016"],
 } as const;
 
 /** The four serving roles the `ollama` profile re-heads, and their replacement chains. */
