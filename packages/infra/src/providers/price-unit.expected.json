@@ -2,6 +2,7 @@
   "openrouter:google/gemini-embedding-001": { "in": 150000, "out": 0 },
   "openrouter:google/gemini-embedding-2": { "in": 200000, "out": 0 },
   "openrouter:qwen/qwen3-embedding-8b": { "in": 10000, "out": 0 },
+  "openrouter:perplexity/pplx-embed-v1-4b": { "in": 30000, "out": 0 },
   "openrouter:google/gemini-3.8-flash": { "in": 825000, "out": 4125000 },
   "openrouter:deepseek/deepseek-v4.1-flash": { "in": 300000, "out": 1200000 },
   "openrouter:z-ai/glm-5.3-flash": { "in": 39900, "out": 78400 },

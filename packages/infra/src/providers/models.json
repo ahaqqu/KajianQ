@@ -36,6 +36,15 @@
             "out": 0
           }
         },
+        "perplexity/pplx-embed-v1-4b": {
+          "$comment": "Benchmark challenger for the embedder-candidates role: Perplexity's Embed V1 4B served on the embeddings wire (one-call probe under benchmarks/embeddings/probes/), 2560 native dims, $0.03 in per MTok \u2014 the probe's own cost verification. Embedding-space-incompatible with embedding-001, so adopting it is a clean-slate re-embed, never an upgrade. Input-priced only.",
+          "capabilities": ["embed"],
+          "dimensions": 2560,
+          "priceMicroUsdPerMTok": {
+            "in": 30000,
+            "out": 0
+          }
+        },
         "google/gemini-3.8-flash": {
           "$comment": "Mid-tier listing ($0.825 in / $4.125 out per MTok). The cheap-role challenger tail and the provisional `decision` head pending the ADR-0042 bench re-pass \u2014 serving flips to the bench's winner by config alone.",
           "capabilities": ["generate", "stream", "decide"],
@@ -161,7 +170,8 @@
       "chain": [
         "openrouter:google/gemini-embedding-001",
         "openrouter:google/gemini-embedding-2",
-        "openrouter:qwen/qwen3-embedding-8b"
+        "openrouter:qwen/qwen3-embedding-8b",
+        "openrouter:perplexity/pplx-embed-v1-4b"
       ]
     },
     "decision-candidates": {
