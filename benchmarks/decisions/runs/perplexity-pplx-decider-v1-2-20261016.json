@@ -1,0 +1,371 @@
+{
+  "schema": 1,
+  "task": "decision-bench",
+  "model": "perplexity/pplx-decider-v1.2-20261016",
+  "samples": {
+    "version": 1,
+    "casesSha256": "sha256:830df54ff7e62b1d56e9ae07d47f2bab04606a6fa9b8ce33a08f30870e954394"
+  },
+  "promptsSha256": "sha256:ae1a4b358cb9d69a4be46bdc128646548c86f9cb1d7b8c2c1ed2e62ddd284153",
+  "budget": {
+    "capMicroUsd": 1000000,
+    "plannedCases": 21,
+    "totalMicroUsd": 97
+  },
+  "totals": {
+    "cases": 21,
+    "scored": 21,
+    "passed": 21,
+    "accuracy": 1
+  },
+  "gate": {
+    "gatePass": true,
+    "overallAccuracy": 1,
+    "failedLanguages": [],
+    "floors": {
+      "overall": 0.85,
+      "perLanguage": 0.75,
+      "minCasesPerLanguage": 3
+    }
+  },
+  "startedAt": "2026-11-14T00:06:21.663Z",
+  "finishedAt": "2026-11-14T00:06:35.505Z",
+  "records": [
+    {
+      "caseId": "rel-ar-01",
+      "task": "relevance",
+      "language": "ar",
+      "expected": true,
+      "got": 0.949999884621136,
+      "passed": true,
+      "cost": {
+        "modelId": "perplexity/pplx-decider-v1.2-20261016",
+        "tokensIn": 247,
+        "tokensOut": 1,
+        "latencyMs": 632,
+        "costMicroUsd": 5,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "rel-ar-02",
+      "task": "relevance",
+      "language": "ar",
+      "expected": false,
+      "got": 0.0017702044486341475,
+      "passed": true,
+      "cost": {
+        "modelId": "perplexity/pplx-decider-v1.2-20261016",
+        "tokensIn": 246,
+        "tokensOut": 1,
+        "latencyMs": 606,
+        "costMicroUsd": 5,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "rel-ar-03",
+      "task": "relevance",
+      "language": "ar",
+      "expected": true,
+      "got": 0.9972854160307233,
+      "passed": true,
+      "cost": {
+        "modelId": "perplexity/pplx-decider-v1.2-20261016",
+        "tokensIn": 348,
+        "tokensOut": 1,
+        "latencyMs": 601,
+        "costMicroUsd": 7,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "rel-ar-04",
+      "task": "relevance",
+      "language": "ar",
+      "expected": false,
+      "got": 0.00359066703949051,
+      "passed": true,
+      "cost": {
+        "modelId": "perplexity/pplx-decider-v1.2-20261016",
+        "tokensIn": 148,
+        "tokensOut": 1,
+        "latencyMs": 534,
+        "costMicroUsd": 3,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "rel-id-01",
+      "task": "relevance",
+      "language": "id",
+      "expected": true,
+      "got": 0.9572994045798899,
+      "passed": true,
+      "cost": {
+        "modelId": "perplexity/pplx-decider-v1.2-20261016",
+        "tokensIn": 209,
+        "tokensOut": 1,
+        "latencyMs": 571,
+        "costMicroUsd": 5,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "rel-id-02",
+      "task": "relevance",
+      "language": "id",
+      "expected": false,
+      "got": 0.0020631194991450608,
+      "passed": true,
+      "cost": {
+        "modelId": "perplexity/pplx-decider-v1.2-20261016",
+        "tokensIn": 210,
+        "tokensOut": 1,
+        "latencyMs": 579,
+        "costMicroUsd": 5,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "rel-id-03",
+      "task": "relevance",
+      "language": "id",
+      "expected": true,
+      "got": 0.9971758822947466,
+      "passed": true,
+      "cost": {
+        "modelId": "perplexity/pplx-decider-v1.2-20261016",
+        "tokensIn": 224,
+        "tokensOut": 1,
+        "latencyMs": 540,
+        "costMicroUsd": 5,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "rel-id-04",
+      "task": "relevance",
+      "language": "id",
+      "expected": false,
+      "got": 0.0028562841314153245,
+      "passed": true,
+      "cost": {
+        "modelId": "perplexity/pplx-decider-v1.2-20261016",
+        "tokensIn": 136,
+        "tokensOut": 1,
+        "latencyMs": 544,
+        "costMicroUsd": 3,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "rel-en-01",
+      "task": "relevance",
+      "language": "en",
+      "expected": true,
+      "got": 0.9905533284497969,
+      "passed": true,
+      "cost": {
+        "modelId": "perplexity/pplx-decider-v1.2-20261016",
+        "tokensIn": 188,
+        "tokensOut": 1,
+        "latencyMs": 575,
+        "costMicroUsd": 4,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "rel-en-02",
+      "task": "relevance",
+      "language": "en",
+      "expected": false,
+      "got": 0.0035016876535049215,
+      "passed": true,
+      "cost": {
+        "modelId": "perplexity/pplx-decider-v1.2-20261016",
+        "tokensIn": 185,
+        "tokensOut": 1,
+        "latencyMs": 1836,
+        "costMicroUsd": 4,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "rel-en-03",
+      "task": "relevance",
+      "language": "en",
+      "expected": true,
+      "got": 0.9937722655758974,
+      "passed": true,
+      "cost": {
+        "modelId": "perplexity/pplx-decider-v1.2-20261016",
+        "tokensIn": 222,
+        "tokensOut": 1,
+        "latencyMs": 564,
+        "costMicroUsd": 5,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "rel-en-04",
+      "task": "relevance",
+      "language": "en",
+      "expected": false,
+      "got": 0.0026683435851811077,
+      "passed": true,
+      "cost": {
+        "modelId": "perplexity/pplx-decider-v1.2-20261016",
+        "tokensIn": 138,
+        "tokensOut": 1,
+        "latencyMs": 545,
+        "costMicroUsd": 3,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "rr-ar-01",
+      "task": "rerank",
+      "language": "ar",
+      "expected": "c1",
+      "got": "c1",
+      "passed": true,
+      "cost": {
+        "modelId": "perplexity/pplx-decider-v1.2-20261016",
+        "tokensIn": 349,
+        "tokensOut": 1,
+        "latencyMs": 664,
+        "costMicroUsd": 7,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "rr-id-01",
+      "task": "rerank",
+      "language": "id",
+      "expected": "c2",
+      "got": "c2",
+      "passed": true,
+      "cost": {
+        "modelId": "perplexity/pplx-decider-v1.2-20261016",
+        "tokensIn": 224,
+        "tokensOut": 1,
+        "latencyMs": 539,
+        "costMicroUsd": 5,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "rr-en-01",
+      "task": "rerank",
+      "language": "en",
+      "expected": "c0",
+      "got": "c0",
+      "passed": true,
+      "cost": {
+        "modelId": "perplexity/pplx-decider-v1.2-20261016",
+        "tokensIn": 231,
+        "tokensOut": 1,
+        "latencyMs": 568,
+        "costMicroUsd": 5,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "cit-ar-01",
+      "task": "citation",
+      "language": "ar",
+      "expected": true,
+      "got": 0.9947592421382132,
+      "passed": true,
+      "cost": {
+        "modelId": "perplexity/pplx-decider-v1.2-20261016",
+        "tokensIn": 233,
+        "tokensOut": 1,
+        "latencyMs": 616,
+        "costMicroUsd": 5,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "cit-ar-02",
+      "task": "citation",
+      "language": "ar",
+      "expected": false,
+      "got": 0.0734814266424601,
+      "passed": true,
+      "cost": {
+        "modelId": "perplexity/pplx-decider-v1.2-20261016",
+        "tokensIn": 213,
+        "tokensOut": 1,
+        "latencyMs": 542,
+        "costMicroUsd": 5,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "cit-id-01",
+      "task": "citation",
+      "language": "id",
+      "expected": true,
+      "got": 0.9966605801176516,
+      "passed": true,
+      "cost": {
+        "modelId": "perplexity/pplx-decider-v1.2-20261016",
+        "tokensIn": 207,
+        "tokensOut": 1,
+        "latencyMs": 1131,
+        "costMicroUsd": 5,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "cit-id-02",
+      "task": "citation",
+      "language": "id",
+      "expected": false,
+      "got": 0.0009577874981512309,
+      "passed": true,
+      "cost": {
+        "modelId": "perplexity/pplx-decider-v1.2-20261016",
+        "tokensIn": 159,
+        "tokensOut": 1,
+        "latencyMs": 557,
+        "costMicroUsd": 4,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "cit-en-01",
+      "task": "citation",
+      "language": "en",
+      "expected": true,
+      "got": 0.9915877781907848,
+      "passed": true,
+      "cost": {
+        "modelId": "perplexity/pplx-decider-v1.2-20261016",
+        "tokensIn": 169,
+        "tokensOut": 1,
+        "latencyMs": 538,
+        "costMicroUsd": 4,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "cit-en-02",
+      "task": "citation",
+      "language": "en",
+      "expected": false,
+      "got": 0.0012557840414328424,
+      "passed": true,
+      "cost": {
+        "modelId": "perplexity/pplx-decider-v1.2-20261016",
+        "tokensIn": 147,
+        "tokensOut": 1,
+        "latencyMs": 551,
+        "costMicroUsd": 3,
+        "estimated": false
+      }
+    }
+  ]
+}

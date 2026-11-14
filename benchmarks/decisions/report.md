@@ -1,6 +1,6 @@
 # Decision benchmark report
 
-Generated offline from the committed samples (`benchmarks/decisions/samples/`) and run files (`benchmarks/decisions/runs/`) at 2026-11-13T23:15:42.740Z — never hand-edited. Gate floors (ADR-0042): overall ≥ 0.85 AND every language ≥ 0.75 (≥ 3 scored cases per language); an arm that aborts is never a pass.
+Generated offline from the committed samples (`benchmarks/decisions/samples/`) and run files (`benchmarks/decisions/runs/`) at 2026-11-14T00:23:23.160Z — never hand-edited. Gate floors (ADR-0042): overall ≥ 0.85 AND every language ≥ 0.75 (≥ 3 scored cases per language); an arm that aborts is never a pass.
 
 ## Samples
 
@@ -12,11 +12,25 @@ Generated offline from the committed samples (`benchmarks/decisions/samples/`) a
 
 ## Arms
 
-No runs at the committed seal yet. Each keyed `eval:decision-bench` invocation appends one run file per candidate here; adding a model never re-runs the others.
+| Model                                   | Run file                                                               | Scored | Accuracy | ar        | en        | id        | Gate                                                                                              | Cost             | p50 latency | Finished                 |
+| --------------------------------------- | ---------------------------------------------------------------------- | ------ | -------- | --------- | --------- | --------- | ------------------------------------------------------------------------------------------------- | ---------------- | ----------- | ------------------------ |
+| `deepseek/deepseek-v4.1-flash`          | `benchmarks/decisions/runs/deepseek-deepseek-v4-1-flash.json`          | 12/21  | 100.0%   | ar 100.0% | en 100.0% | id 100.0% | **pass** ⚠ aborted (decision answer for "best" is malformed, out of range, or off the option set) | 2593 µUSD total  | 969 ms      | 2026-11-14T00:06:57.527Z |
+| `google/gemini-3.8-flash`               | `benchmarks/decisions/runs/google-gemini-3-8-flash.json`               | 21/21  | 100.0%   | ar 100.0% | en 100.0% | id 100.0% | **pass**                                                                                          | 22509 µUSD total | 2711 ms     | 2026-11-14T00:01:23.013Z |
+| `perplexity/pplx-decider-v1.2-20261016` | `benchmarks/decisions/runs/perplexity-pplx-decider-v1-2-20261016.json` | 21/21  | 100.0%   | ar 100.0% | en 100.0% | id 100.0% | **pass**                                                                                          | 97 µUSD total    | 568 ms      | 2026-11-14T00:06:35.505Z |
+| `~typesafe/jev-latest`                  | `benchmarks/decisions/runs/typesafe-jev-latest.json`                   | 21/21  | 100.0%   | ar 100.0% | en 100.0% | id 100.0% | **pass**                                                                                          | 432 µUSD total   | 447 ms      | 2026-11-14T00:02:18.328Z |
+
+Accuracy, per-language accuracy and the gate verdict are recomputed from each run's records; the run's own totals are never trusted. Cost is the sum of per-case `costMicroUsd`; p50 latency covers the records that carry one. A run that aborts keeps its partial records and names the failure — it is evidence, never a gate result.
+
+## Misses
+
+- `deepseek/deepseek-v4.1-flash`: none.
+- `google/gemini-3.8-flash`: none.
+- `perplexity/pplx-decider-v1.2-20261016`: none.
+- `~typesafe/jev-latest`: none.
 
 ## Selection
 
-No arm passes the gate at this seal.
+Gate-passing arms at this seal: `google/gemini-3.8-flash`, `perplexity/pplx-decider-v1.2-20261016`, `~typesafe/jev-latest`.
 
 Adoption is a `benchAdoption` config change made by a reviewed PR; this report supplies evidence and never switches a serving row by itself.
 
