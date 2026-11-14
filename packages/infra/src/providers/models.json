@@ -61,8 +61,8 @@
             "out": 0
           }
         },
-        "perplexity/pplx-decider-v1.3": {
-          "$comment": "Decider v1.3 on the rolling listing id \u2014 the reply's model field names the concrete build. $0.02 per input MTok, output free \u2014 the vendor's published rate.",
+        "perplexity/pplx-decider-v1.2-20261016": {
+          "$comment": "Pinned to the DATED v1.2 listing (v1.2-20261016): the v1.3 listing (plain and dated) has no serving endpoints on the decisions wire yet \u2014 404 'No endpoints found' probed 2026-11-14, evidence under benchmarks/decisions/probes/. Re-pin to v1.3 when the wire serves it. Input-priced only.",
           "capabilities": ["decide"],
           "priceMicroUsdPerMTok": {
             "in": 20000,
@@ -141,7 +141,7 @@
         "openrouter:google/gemini-3.8-flash",
         "openrouter:deepseek/deepseek-v4.1-flash",
         "openrouter-decisions:~typesafe/jev-latest",
-        "openrouter-decisions:perplexity/pplx-decider-v1.3"
+        "openrouter-decisions:perplexity/pplx-decider-v1.2-20261016"
       ]
     },
     "decision": {

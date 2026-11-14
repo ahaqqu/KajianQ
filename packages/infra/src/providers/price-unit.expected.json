@@ -4,7 +4,7 @@
   "openrouter:google/gemini-3.8-flash": { "in": 825000, "out": 4125000 },
   "openrouter:deepseek/deepseek-v4.1-flash": { "in": 300000, "out": 1200000 },
   "openrouter-decisions:~typesafe/jev-latest": { "in": 42000, "out": 0 },
-  "openrouter-decisions:perplexity/pplx-decider-v1.3": { "in": 20000, "out": 0 },
+  "openrouter-decisions:perplexity/pplx-decider-v1.2-20261016": { "in": 20000, "out": 0 },
   "qwen:qwen3.7-max": { "in": 2500000, "out": 7500000 },
   "ollama-cloud:deepseek-v4.1-flash": { "in": 300000, "out": 1200000 }
 }
