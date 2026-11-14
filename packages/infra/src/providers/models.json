@@ -27,6 +27,15 @@
             "out": 0
           }
         },
+        "qwen/qwen3-embedding-8b": {
+          "$comment": "Benchmark challenger for the embedder-candidates role (RumaQ's gate measured 98.8% recall@1 at a fraction of embedding-001's cost): served on the embeddings wire (Nebius, one-call probe under benchmarks/embeddings/probes/). Embedding-space-incompatible with embedding-001 \u2014 native 4096 dims (MRL-adjustable) \u2014 so adopting it is a clean-slate re-embed, never an upgrade. Input-priced only.",
+          "capabilities": ["embed"],
+          "dimensions": 4096,
+          "priceMicroUsdPerMTok": {
+            "in": 10000,
+            "out": 0
+          }
+        },
         "google/gemini-3.8-flash": {
           "$comment": "Mid-tier listing ($0.825 in / $4.125 out per MTok). The cheap-role challenger tail and the provisional `decision` head pending the ADR-0042 bench re-pass \u2014 serving flips to the bench's winner by config alone.",
           "capabilities": ["generate", "stream", "decide"],
@@ -157,7 +166,11 @@
     },
     "embedder-candidates": {
       "$comment": "#9 gate benchmark role: every candidate the benchmark compares, in one chain. Not for serving \u2014 the benchmark resolves each candidate directly from this chain (ADR-0022). The benchmark embeds gate-fixture text, never personal data.",
-      "chain": ["openrouter:google/gemini-embedding-001", "openrouter:google/gemini-embedding-2"]
+      "chain": [
+        "openrouter:google/gemini-embedding-001",
+        "openrouter:google/gemini-embedding-2",
+        "openrouter:qwen/qwen3-embedding-8b"
+      ]
     },
     "decision-candidates": {
       "$comment": "ADR-0042 decision-bench role (mirrors embedder-candidates): every decision-model candidate the multilingual gate compares \u2014 chat candidates through the aggregator's structured output and typed-questions candidates through the decisions wire. Not for serving \u2014 the bench resolves each candidate directly. Absent key = the bench reports NOT RUN and exits 0 (CI has no OPENROUTER_API_KEY).",

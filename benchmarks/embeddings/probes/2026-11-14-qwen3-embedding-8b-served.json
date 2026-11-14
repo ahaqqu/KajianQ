@@ -1,0 +1,30 @@
+{
+  "schema": 1,
+  "probedAt": "2026-11-14T00:30:39.377Z",
+  "endpoint": "POST https://openrouter.ai/api/v1/embeddings",
+  "purpose": "The third embedder-candidates arm: is a Qwen embedding model served on the embeddings wire, and at what native dimensionality?",
+  "results": [
+    {
+      "model": "qwen/qwen3-embedding-8b",
+      "status": 200,
+      "nativeDimensions": 4096,
+      "usage": {
+        "prompt_tokens": 2,
+        "total_tokens": 2,
+        "cost": 2e-8
+      },
+      "note": "cost 2e-8 USD for 2 prompt tokens verifies the 0.01 USD/MTok input price the config row pins; served by the Nebius endpoint listing (context 40960)"
+    },
+    {
+      "model": "qwen/qwen3-embedding-0.6b",
+      "status": 404,
+      "body": {
+        "error": {
+          "message": "No endpoints found for qwen/qwen3-embedding-0.6b.",
+          "code": 404
+        }
+      },
+      "note": "account identifiers redacted before writing this evidence"
+    }
+  ]
+}
