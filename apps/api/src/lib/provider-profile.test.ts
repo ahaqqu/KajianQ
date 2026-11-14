@@ -24,10 +24,10 @@ import { createProvidersFromEnv } from "./chat-wiring";
 
 /** The chains the checked-in config ships with no profile selected. */
 const DEFAULT_CHAINS = {
-  generator: ["openrouter:deepseek/deepseek-v4.1-flash"],
+  generator: ["openrouter:google/gemini-3.8-flash", "openrouter:z-ai/glm-5.3-flash"],
   reviewer: ["openrouter:deepseek/deepseek-v4.1-flash"],
   "reviewer-live": ["openrouter:deepseek/deepseek-v4.1-flash"],
-  cheap: ["openrouter:deepseek/deepseek-v4.1-flash", "openrouter:google/gemini-3.8-flash"],
+  cheap: ["openrouter:google/gemini-3.8-flash", "openrouter:deepseek/deepseek-v4.1-flash"],
   summarizer: ["openrouter:z-ai/glm-5.3-flash"],
   translation: ["qwen:qwen3.7-max"],
   embedder: ["openrouter:google/gemini-embedding-001"],
@@ -104,7 +104,7 @@ describe("provider profile — `ollama` re-heads exactly the serving roles", () 
     expect(switched.router.modelId).toBe("deepseek-v4.1-flash");
 
     const rolledBack = createProvidersFromEnv({ OPENROUTER_API_KEY: "sk-openrouter" });
-    expect(rolledBack.generator.modelId).toBe("deepseek/deepseek-v4.1-flash");
+    expect(rolledBack.generator.modelId).toBe("google/gemini-3.8-flash");
     expect(rolledBack.reviewer?.modelId).toBe("deepseek/deepseek-v4.1-flash");
   });
 });
