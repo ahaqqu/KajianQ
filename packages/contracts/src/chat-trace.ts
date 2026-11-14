@@ -82,16 +82,34 @@ export const ChatTraceChainSchema = v.object({
 export type ChatTraceChain = v.InferOutput<typeof ChatTraceChainSchema>;
 
 /**
+ * One model that served the answer, with the short roles its calls served.
+ * `id` is the opaque `model_configs` identity; `roles` are product vocabulary
+ * (the API assigns them from the call's stage and purpose), so the panel can
+ * say what the model did — `router`, `generator`, `embedding`, `reranker`,
+ * `citation_check` — instead of showing a bare id. One entry per model, roles
+ * in first-call order and deduplicated, so a model that serves two stages is
+ * still one row; the panel labels the roles it knows and shows any other
+ * verbatim.
+ */
+export const ChatTraceModelSchema = v.object({
+  id: v.pipe(v.string(), v.minLength(1)),
+  roles: v.array(v.pipe(v.string(), v.minLength(1))),
+});
+
+export type ChatTraceModel = v.InferOutput<typeof ChatTraceModelSchema>;
+
+/**
  * The user-facing Trace payload: how an answer was built, in two layers, both
  * derived SERVER-SIDE from the answer's persisted trace (`answer_traces`) — the
  * client renders the frame, never reconstructing pipeline machinery. The top
  * `sources` layer lists the sources consulted in plain language (retrieval
  * order, deduplicated); `technical` carries the router intent, the sub-queries,
- * the scored chunks, the model identities (opaque `modelId` strings from
- * `model_configs`), and the reviewer pre-gate's verdict when the trace recorded
- * one. Emitted live as the SSE `trace` frame (after `citations`, before `done`)
- * and per assistant message on the rehydration transcript; `messageId` names
- * the message it renders for, in both views.
+ * the scored chunks, the models that served the answer (opaque `modelId`
+ * strings from `model_configs`, each with the short roles it served), and the
+ * reviewer pre-gate's verdict when the trace recorded one. Emitted live as the
+ * SSE `trace` frame (after `citations`, before `done`) and per assistant
+ * message on the rehydration transcript; `messageId` names the message it
+ * renders for, in both views.
  */
 export const ChatTraceFrameSchema = v.object({
   messageId: v.pipe(v.string(), v.minLength(1)),
@@ -126,8 +144,8 @@ export const ChatTraceFrameSchema = v.object({
     ),
     subQueries: v.array(v.pipe(v.string(), v.minLength(1))),
     chunks: v.array(ChatTraceChunkSchema),
-    /** Distinct model identities, in first-call order (opaque ids). */
-    models: v.array(v.pipe(v.string(), v.minLength(1))),
+    /** Distinct models in first-call order, each with the roles it served. */
+    models: v.array(ChatTraceModelSchema),
     /** The reviewer pre-gate's verdict, when the persisted trace recorded one. */
     reviewer: v.optional(ChatTraceReviewerSchema),
     /**

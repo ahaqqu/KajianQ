@@ -20,7 +20,7 @@ const frame: ChatTraceFrame = {
   ],
   technical: {
     subQueries: [],
-    models: ["jev-1.13.0"],
+    models: [{ id: "jev-1.13.0", roles: ["reranker"] }],
     chunks: [
       { id: "c2", source: "Al-Muwatta", score: 0.031, rerankScore: 0.71 },
       { id: "c1", source: "Al-Baqarah", score: 0.03, rerankScore: 0.08 },
@@ -51,6 +51,12 @@ describe("TracePanel — the scores explain the order they render", () => {
     // The list is reranked: c2 (fused 0.031) leads c1 (fused 0.03) only
     // because the decision model scored it higher.
     expect(texts("trace-rerank-score")).toEqual(["skor rerank 0,71", "skor rerank 0,08"]);
+  });
+
+  it("labels each model with the role it served, never a bare id", () => {
+    renderTechnical(frame);
+
+    expect(screen.getByTestId("trace-models").textContent).toContain("Reranker: jev-1.13.0");
   });
 
   it("renders no rerank score for a frame a pre-rerank trace produced", () => {

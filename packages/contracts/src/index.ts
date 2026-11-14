@@ -44,11 +44,13 @@ export {
   ChatTraceChainSchema,
   ChatTraceChunkSchema,
   ChatTraceFrameSchema,
+  ChatTraceModelSchema,
   ChatTraceReviewerItemSchema,
   ChatTraceReviewerSchema,
   type ChatTraceChain,
   type ChatTraceChunk,
   type ChatTraceFrame,
+  type ChatTraceModel,
   type ChatTraceReviewer,
   type ChatTraceReviewerItem,
 } from "./chat-trace";

@@ -1,15 +1,31 @@
 import { useState } from "react";
 import type { ChatTraceFrame } from "@app/contracts";
-import { t, useLocale, type Locale } from "../../lib/i18n";
+import { t, useLocale, type Locale, type MessageKey } from "../../lib/i18n";
 import { MonoLabel } from "../ui";
 import { ChainsSection, ChunkRow, ReviewerSection, SourceRow, Step } from "./TraceSections";
+
+/** The role labels the panel localizes; an unknown role (a stage this map does
+ * not name yet) renders verbatim rather than disappearing. */
+const ROLE_KEYS: Readonly<Record<string, MessageKey>> = {
+  router: "traceRoleRouter",
+  generator: "traceRoleGenerator",
+  embedding: "traceRoleEmbedding",
+  reranker: "traceRoleReranker",
+  citation_check: "traceRoleCitationCheck",
+  reviewer: "traceRoleReviewer",
+};
+
+function roleLabel(locale: Locale, role: string): string {
+  const key = ROLE_KEYS[role];
+  return key === undefined ? role : t(locale, key);
+}
 
 /**
  * The user-facing Trace panel (ADR-0007): every answer expands to show how it
  * was built, in two layers. The default view lists the sources consulted in
  * plain language — readable by a non-technical user. One tap deeper, the
  * technical layer shows the router intent, sub-queries, the retrieved passages
- * with their scores, the model identities, and the reviewer pre-gate's verdict
+ * with their scores, the models and the roles they served, and the reviewer pre-gate's verdict
  * when the trace recorded one — all server-derived from the persisted answer
  * trace and rendered as-is; the client never reconstructs pipeline machinery. ADR-0007's warning stands: this panel is the feedback
  * instrument, not UI clutter — do not clean it up.
@@ -193,8 +209,10 @@ export function TraceBody({
                   <MonoLabel>{t(locale, "traceModelsLabel")}</MonoLabel>
                   <ul className="mt-1 space-y-0.5">
                     {technical.models.map((model) => (
-                      <li key={model} className="font-mono text-xs text-card-foreground">
-                        {model}
+                      <li key={model.id} className="font-mono text-xs text-card-foreground">
+                        {model.roles.length > 0 &&
+                          `${model.roles.map((role) => roleLabel(locale, role)).join(", ")}: `}
+                        {model.id}
                       </li>
                     ))}
                   </ul>

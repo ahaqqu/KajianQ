@@ -110,7 +110,7 @@ What the router routes to when no model reading routes the query: one factual Su
 _Avoid_: default route, degraded mode (implies a configuration state rather than a per-reply failure)
 
 **Trace**:
-The per-answer record of how it was built — router intent and Query category, Sub-queries with their roles, retrieved chunks with scores, model identity, tokens, cost. User-visible in expanded form per ADR-0007; a fuller version lives in admin.
+The per-answer record of how it was built — router intent and Query category, Sub-queries with their roles, retrieved chunks with scores, the models that served it with what each did, tokens, cost. User-visible in expanded form per ADR-0007; a fuller version lives in admin.
 _Avoid_: log, debug info
 
 **Admin access log**:

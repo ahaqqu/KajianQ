@@ -587,7 +587,10 @@ describe("ChatTraceFrameSchema", () => {
       confidence: 0.9,
       subQueries: ["ayat kursi", "QS 2:255 terjemahan"],
       chunks: [CHUNK],
-      models: ["router-model", "generator-model"],
+      models: [
+        { id: "router-model", roles: ["router"] },
+        { id: "generator-model", roles: ["generator"] },
+      ],
     },
   };
 
@@ -633,7 +636,11 @@ describe("ChatTraceFrameSchema", () => {
     const parsed = v.parse(ChatTraceFrameSchema, {
       messageId: "m2",
       sources: [],
-      technical: { subQueries: [], chunks: [], models: ["router-model"] },
+      technical: {
+        subQueries: [],
+        chunks: [],
+        models: [{ id: "router-model", roles: ["router"] }],
+      },
     });
     expect(parsed.sources).toEqual([]);
   });

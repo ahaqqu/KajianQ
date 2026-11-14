@@ -13,6 +13,7 @@ import {
   traceChainsOf,
   type NarratorNames,
 } from "./chat-chain-frame";
+import { traceModelsOf } from "./chat-trace-models";
 export {
   citationEvidenceFor,
   narratorFetcher,
@@ -175,11 +176,7 @@ export function deriveTraceFrame(input: {
       (event): event is Extract<typeof event, { kind: "subquery" }> => event.kind === "subquery",
     )
     .map((event) => event.detail.text);
-  const models: string[] = [];
-  for (const event of trace.events) {
-    const modelId = event.cost?.modelId;
-    if (modelId !== undefined && !models.includes(modelId)) models.push(modelId);
-  }
+  const models = traceModelsOf(trace);
   // The routing decision, projected verbatim from the persisted trace:
   // which sources the route selected and the filter record it decided retrieval
   // should run with. Opaque strings — this module names neither a source type

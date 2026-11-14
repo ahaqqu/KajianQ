@@ -33,7 +33,7 @@ const ANSWER_FIXTURE = [
   "event: delta\ndata: Allah Mahahidup sebagaimana firman-Nya ",
   `event: delta\ndata: [QS. 2:255].\ndata: \ndata: ${DISCLAIMER}\n\n`,
   `event: citations\ndata: {"messageId":"${STREAM_MESSAGE_ID}","refusal":false,"dhaifWarning":false,"citations":[{"label":"QS. 2:255","arabic":"اللَّهُ لَا إِلَٰهَ إِلَّا هُوَ","translation":"Allah, tidak ada tuhan selain Dia.","machineTranslated":true,"source":"Al-Baqarah"}]}\n\n`,
-  `event: trace\ndata: {"messageId":"${STREAM_MESSAGE_ID}","sources":[{"id":"chunk-1","source":"Al-Baqarah"}],"technical":{"intent":"ruling","routing":{"sources":[],"filters":{}},"subQueries":["apa itu ayat kursi"],"chunks":[{"id":"chunk-1","source":"Al-Baqarah","score":0.03125}],"models":["router-stub","generator-stub"]}}\n\n`,
+  `event: trace\ndata: {"messageId":"${STREAM_MESSAGE_ID}","sources":[{"id":"chunk-1","source":"Al-Baqarah"}],"technical":{"intent":"ruling","routing":{"sources":[],"filters":{}},"subQueries":["apa itu ayat kursi"],"chunks":[{"id":"chunk-1","source":"Al-Baqarah","score":0.03125}],"models":[{"id":"router-stub","roles":["router"]},{"id":"generator-stub","roles":["generator"]}]}}\n\n`,
   "event: done\ndata: {}\n\n",
 ].join("");
 

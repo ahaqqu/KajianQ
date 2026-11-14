@@ -177,6 +177,7 @@ export {
   type SubQueryRole,
 } from "./taxonomy";
 export {
+  EMBED_PURPOSE,
   createKajianQRetriever,
   type KajianQRetrieverDeps,
   type RetrieverEmbedder,

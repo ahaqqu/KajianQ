@@ -71,10 +71,17 @@ const SUBQ = (text: string) => ({
   detail: { text },
   at: 1,
 });
+const COST = (modelId: string) => ({
+  modelId,
+  tokensIn: 10,
+  tokensOut: 5,
+  latencyMs: 100,
+  costMicroUsd: 7,
+});
 const CALL = (modelId: string) => ({
   stage: "generator" as const,
   kind: "llm_call" as const,
-  cost: { modelId, tokensIn: 10, tokensOut: 5, latencyMs: 100, costMicroUsd: 7 },
+  cost: COST(modelId),
   at: 3,
 });
 
@@ -199,7 +206,50 @@ describe("deriveTraceFrame — the technical layer", () => {
         rankSparse: 3,
       },
     ]);
-    expect(frame.technical.models).toEqual(["model-a", "model-b"]);
+    expect(frame.technical.models).toEqual([
+      { id: "model-a", roles: ["generator"] },
+      { id: "model-b", roles: ["generator"] },
+    ]);
+  });
+
+  it("labels each model with the roles its calls served, deduped, in first-call order", () => {
+    const frame = derive(
+      traceOf(
+        [],
+        [
+          { stage: "router", kind: "llm_call", cost: COST("router-model"), at: 1 },
+          {
+            stage: "retriever",
+            kind: "llm_call",
+            detail: { purpose: "embed" },
+            cost: COST("embed-model"),
+            at: 2,
+          },
+          {
+            stage: "retriever",
+            kind: "llm_call",
+            detail: { purpose: "rerank" },
+            cost: COST("decider-model"),
+            at: 3,
+          },
+          { stage: "generator", kind: "llm_call", cost: COST("generator-model"), at: 4 },
+          {
+            stage: "reviewer",
+            kind: "decision",
+            detail: { purpose: "citation_support", outcome: "skip", items: [] },
+            cost: COST("decider-model"),
+            at: 5,
+          },
+        ],
+      ),
+      [],
+    );
+    expect(frame.technical.models).toEqual([
+      { id: "router-model", roles: ["router"] },
+      { id: "embed-model", roles: ["embedding"] },
+      { id: "decider-model", roles: ["reranker", "citation_check"] },
+      { id: "generator-model", roles: ["generator"] },
+    ]);
   });
 
   it("omits intent and confidence when the trace recorded none (older traces stay readable)", () => {
@@ -207,7 +257,7 @@ describe("deriveTraceFrame — the technical layer", () => {
     expect(frame.technical).toEqual({
       subQueries: [],
       chunks: [],
-      models: ["model-a"],
+      models: [{ id: "model-a", roles: ["generator"] }],
     });
     expect("intent" in frame.technical).toBe(false);
   });
