@@ -245,8 +245,12 @@ Then("I see the model identity and cost consistency of every provider call", asy
 Then("the Trace panel shows the answer's sources", async ({ page }) => {
   await expect(page.getByTestId("trace-body")).toBeVisible();
   await expect(page.getByTestId("trace-sources")).toContainText("Al-Baqarah");
-  // Read-only: the panel's feedback flags are a write, and this surface writes nothing.
-  await expect(page.getByTestId("trace-flag-chunk-1")).toHaveCount(0);
+  // Read-only: the panel's feedback flags are a write, and this surface writes
+  // nothing. The flags live on the consulted-passage rows inside the technical
+  // layer, so the check opens it and sees the row render without its flag.
+  await page.getByTestId("trace-tech-toggle").click();
+  await expect(page.getByTestId("trace-chunks")).toContainText("Al-Baqarah");
+  await expect(page.getByTestId("trace-chunk-flag-chunk-1")).toHaveCount(0);
 });
 
 Then("the stored trace downloads as JSON", async ({ page }) => {
