@@ -112,7 +112,12 @@ function detailOf(item: typeof rulingItem) {
         intent: item.intent,
         subQueries: ["apa itu"],
         chunks: [{ id: "chunk-1", source: "Al-Baqarah", score: 0.03125 }],
-        models: item.models,
+        // The frame's roles, matching the calls above: the list's bare ids are a
+        // different projection and do not carry them.
+        models: [
+          { id: "embedder-stub", roles: ["embedding"] },
+          { id: "generator-stub", roles: ["generator"] },
+        ],
       },
     },
   };
