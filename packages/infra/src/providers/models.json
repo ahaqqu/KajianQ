@@ -42,6 +42,30 @@
             "in": 300000,
             "out": 1200000
           }
+        },
+        "z-ai/glm-5.3-flash": {
+          "$comment": "Benchmark candidate for the cheap-candidates and generator-candidates roles (aggregator listing, fetched 2026-11-13): the cheapest chat-capable row in the catalog ($0.0399 in / $0.0784 out per MTok). Not for serving until a bench pass adopts it.",
+          "capabilities": ["generate", "stream"],
+          "priceMicroUsdPerMTok": {
+            "in": 39900,
+            "out": 78400
+          }
+        },
+        "qwen/qwen3.7-flash": {
+          "$comment": "Benchmark candidate for the cheap-candidates and generator-candidates roles (aggregator listing, fetched 2026-11-13: $0.03 in / $0.13 out per MTok). Not for serving until a bench pass adopts it.",
+          "capabilities": ["generate", "stream"],
+          "priceMicroUsdPerMTok": {
+            "in": 30000,
+            "out": 130000
+          }
+        },
+        "openai/gpt-5-nano": {
+          "$comment": "Benchmark candidate for the cheap-candidates and generator-candidates roles (aggregator listing, fetched 2026-11-13: $0.05 in / $0.40 out per MTok). Not for serving until a bench pass adopts it.",
+          "capabilities": ["generate", "stream"],
+          "priceMicroUsdPerMTok": {
+            "in": 50000,
+            "out": 400000
+          }
         }
       }
     },
@@ -148,6 +172,26 @@
       "$comment": "The decision-model SERVING role (ADR-0042 adoption): the candidate behind the reviewer pre-gate and the retrieval rerank \u2014 the model a committed multilingual gate report adopted. Separate from the bench-only `decision-candidates` role so a re-bench can add challengers without changing what serves. The head is PROVISIONAL at the aggregator migration (ADR-0069): the ADR-0042 re-pass bench is the owner's hand-run gate, and its committed report is what flips `benchAdoption` to \"committed\". Until then the boot posture report names the gate provisional at every boot. Always active wherever OPENROUTER_API_KEY is bound; absent key = neither adoption is wired and the reviewer and retrieval behave as they did before adoption \u2014 no enable/disable flag exists. Batched: one call per answer for the pre-gate, one per retrieval whose fused set has two or more candidates for the rerank, input-priced.",
       "chain": ["openrouter:google/gemini-3.8-flash"],
       "benchAdoption": "provisional"
+    },
+    "cheap-candidates": {
+      "$comment": "Bench-only role for the cheap tier's tasks (router classification, ingest summarizers): every chat candidate the router and summarizer benches compare, resolved candidate-by-candidate like decision-candidates. Not for serving \u2014 the serving `cheap` head flips only through a bench-passed adoption.",
+      "chain": [
+        "openrouter:google/gemini-3.8-flash",
+        "openrouter:deepseek/deepseek-v4.1-flash",
+        "openrouter:z-ai/glm-5.3-flash",
+        "openrouter:qwen/qwen3.7-flash",
+        "openrouter:openai/gpt-5-nano"
+      ]
+    },
+    "generator-candidates": {
+      "$comment": "Bench-only role for the Golden Set generator sweep: the five candidates the end-to-end bench compares against the incumbent. Not for serving \u2014 the serving `generator` head flips only through a bench-passed adoption.",
+      "chain": [
+        "openrouter:google/gemini-3.8-flash",
+        "openrouter:deepseek/deepseek-v4.1-flash",
+        "openrouter:z-ai/glm-5.3-flash",
+        "openrouter:qwen/qwen3.7-flash",
+        "openrouter:openai/gpt-5-nano"
+      ]
     }
   },
   "profiles": {
@@ -156,6 +200,21 @@
       "reviewer": ["ollama-cloud:deepseek-v4.1-flash"],
       "reviewer-live": ["ollama-cloud:deepseek-v4.1-flash"],
       "cheap": ["ollama-cloud:deepseek-v4.1-flash", "openrouter:google/gemini-3.8-flash"]
+    },
+    "bench-generator-deepseek-v4-1-flash": {
+      "generator": ["openrouter:deepseek/deepseek-v4.1-flash"]
+    },
+    "bench-generator-gemini-3-8-flash": {
+      "generator": ["openrouter:google/gemini-3.8-flash"]
+    },
+    "bench-generator-glm-5-3-flash": {
+      "generator": ["openrouter:z-ai/glm-5.3-flash"]
+    },
+    "bench-generator-qwen3-7-flash": {
+      "generator": ["openrouter:qwen/qwen3.7-flash"]
+    },
+    "bench-generator-gpt-5-nano": {
+      "generator": ["openrouter:openai/gpt-5-nano"]
     }
   }
 }
