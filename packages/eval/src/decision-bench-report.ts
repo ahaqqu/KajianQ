@@ -1,11 +1,23 @@
-import type { DecisionBenchRun, DecisionBenchRunRecord } from "@app/contracts";
+import type { DecisionBenchRun } from "@app/contracts";
 import {
   DECISION_GATE_FLOORS,
   accuracyByLanguage,
   evaluateDecisionGate,
   meanAccuracy,
+  type GateOutcome,
 } from "./decision-bench";
 import { decisionBenchRunSlug, type DecisionBenchSeal } from "./decision-bench-store";
+import {
+  benchArmsTable,
+  benchCostCell,
+  benchGateCell,
+  benchMissSection,
+  benchReportHead,
+  benchSelectionSection,
+  benchSupersededSection,
+  fmtPct,
+  p50LatencyMs,
+} from "./bench-report";
 
 /**
  * The decision-bench report renderer (ADR-0042): the offline derivation of
@@ -18,57 +30,32 @@ import { decisionBenchRunSlug, type DecisionBenchSeal } from "./decision-bench-s
  * change made by a reviewed PR.
  */
 
-/** Records back to the outcome shape the metric helpers consume. */
-function asOutcomes(records: readonly DecisionBenchRunRecord[]) {
-  return records.map((r) => ({
-    caseId: r.caseId,
-    task: r.task,
-    language: r.language,
-    expected: r.expected,
-    got: r.got,
-    passed: r.passed,
-  }));
+/** Records back to the minimal outcome the gate helpers read. */
+function outcomesOf(records: readonly { language: string; passed: boolean }[]): GateOutcome[] {
+  return records.map((r) => ({ language: r.language, passed: r.passed }));
 }
 
-/** p50 of the per-record latencies that exist (a record without cost leaves the sample). */
-function p50LatencyMs(records: readonly DecisionBenchRunRecord[]): number | null {
-  const xs = records
-    .map((r) => r.cost?.latencyMs)
-    .filter((x): x is number => typeof x === "number")
-    .sort((a, b) => a - b);
-  if (xs.length === 0) return null;
-  return xs[Math.floor((xs.length - 1) / 2)]!;
-}
-
-function fmtPct(x: number | null): string {
-  return x === null ? "—" : `${(x * 100).toFixed(1)}%`;
-}
-
-function fmtCost(run: DecisionBenchRun): string {
-  const perCase = run.records.map((r) => r.cost?.costMicroUsd ?? 0).reduce((a, b) => a + b, 0);
-  return `${perCase} µUSD total${run.budget.totalMicroUsd !== perCase ? ` (budget bookkeeping ${run.budget.totalMicroUsd})` : ""}`;
-}
-
-function armRow(runsDir: string, run: DecisionBenchRun): string {
-  const outcomes = asOutcomes(run.records);
+function armCells(runsDir: string, run: DecisionBenchRun, languages: readonly string[]): string[] {
+  const outcomes = outcomesOf(run.records);
   const gate = evaluateDecisionGate(outcomes);
   const perLanguage = accuracyByLanguage(outcomes);
-  const languages = Object.keys(perLanguage).sort();
-  const disagree = gate.gatePass !== run.gate.gatePass ? " (pinned gate disagrees)" : "";
-  const aborted = run.aborted === true ? ` ⚠ aborted (${run.error ?? "unnamed failure"})` : "";
   const p50 = p50LatencyMs(run.records);
-  const cells = [
+  return [
     `\`${run.model}\``,
     `\`${runsDir}/${decisionBenchRunSlug(run.model)}.json\``,
     `${run.totals.scored}/${run.totals.cases}`,
     fmtPct(meanAccuracy(outcomes)),
     ...languages.map((l) => `${l} ${fmtPct(perLanguage[l]?.accuracy ?? null)}`),
-    `**${gate.gatePass ? "pass" : "fail"}**${disagree}${aborted}`,
-    fmtCost(run),
+    benchGateCell({
+      pass: gate.gatePass,
+      pinnedPass: run.gate.gatePass,
+      aborted: run.aborted === true,
+      error: run.error,
+    }),
+    benchCostCell(run.records, run.budget.totalMicroUsd),
     p50 === null ? "—" : `${p50} ms`,
     run.finishedAt,
   ];
-  return `| ${cells.join(" | ")} |`;
 }
 
 /** The markdown report body — written to `report.md`, never edited by hand. */
@@ -81,20 +68,15 @@ export function renderDecisionBenchReport(opts: {
 }): string {
   const { seal, runs, runsDir, generatedAt } = opts;
   const languages = Object.keys(seal.languages).sort();
-  const lines: string[] = [
-    "# Decision benchmark report",
-    "",
-    `Generated offline from the committed samples (\`benchmarks/decisions/samples/\`) and run files (\`${runsDir}/\`) at ${generatedAt} — never hand-edited. Gate floors (ADR-0042): overall ≥ ${DECISION_GATE_FLOORS.overall} AND every language ≥ ${DECISION_GATE_FLOORS.perLanguage} (≥ ${DECISION_GATE_FLOORS.minCasesPerLanguage} scored cases per language); an arm that aborts is never a pass.`,
-    "",
-    "## Samples",
-    "",
-    `- Seal **v${seal.version}** (created ${seal.created}): **${seal.counts.cases}** cases — ${seal.counts.relevance} relevance, ${seal.counts.rerank} rerank, ${seal.counts.citation} citation — across ${languages.map((l) => `${l} (${seal.languages[l]})`).join(", ")}.`,
-    `- Fixture \`${seal.fixture.id}\` (${seal.fixture.status}); cases pinned at \`${seal.hashes.cases}\`.`,
-    ...(seal.notes ?? []).map((n) => `- ${n}`),
-    "",
-    "## Arms",
-    "",
-  ];
+  const lines = benchReportHead({
+    title: "Decision benchmark report",
+    intro: `Generated offline from the committed samples (\`benchmarks/decisions/samples/\`) and run files (\`${runsDir}/\`) at ${generatedAt} — never hand-edited. Gate floors (ADR-0042): overall ≥ ${DECISION_GATE_FLOORS.overall} AND every language ≥ ${DECISION_GATE_FLOORS.perLanguage} (≥ ${DECISION_GATE_FLOORS.minCasesPerLanguage} scored cases per language); an arm that aborts is never a pass.`,
+    samples: [
+      `- Seal **v${seal.version}** (created ${seal.created}): **${seal.counts.cases}** cases — ${seal.counts.relevance} relevance, ${seal.counts.rerank} rerank, ${seal.counts.citation} citation — across ${languages.map((l) => `${l} (${seal.languages[l]})`).join(", ")}.`,
+      `- Fixture \`${seal.fixture.id}\` (${seal.fixture.status}); cases pinned at \`${seal.hashes.cases}\`.`,
+      ...(seal.notes ?? []).map((n) => `- ${n}`),
+    ],
+  });
 
   if (runs.length === 0) {
     lines.push(
@@ -103,55 +85,52 @@ export function renderDecisionBenchReport(opts: {
     );
   } else {
     const languagesSeen = [
-      ...new Set(runs.flatMap((r) => Object.keys(accuracyByLanguage(asOutcomes(r.records))))),
+      ...new Set(runs.flatMap((r) => Object.keys(accuracyByLanguage(outcomesOf(r.records))))),
     ].sort();
     lines.push(
-      `| Model | Run file | Scored | Accuracy | ${languagesSeen.join(" | ")} | Gate | Cost | p50 latency | Finished |`,
-      `| --- | --- | --- | --- | ${languagesSeen.map(() => "---").join(" | ")} | --- | --- | --- | --- |`,
-      ...runs.map((run) => armRow(runsDir, run)),
+      ...benchArmsTable(
+        [
+          "Model",
+          "Run file",
+          "Scored",
+          "Accuracy",
+          ...languagesSeen,
+          "Gate",
+          "Cost",
+          "p50 latency",
+          "Finished",
+        ],
+        runs.map((run) => armCells(runsDir, run, languagesSeen)),
+      ),
       "",
       "Accuracy, per-language accuracy and the gate verdict are recomputed from each run's records; the run's own totals are never trusted. Cost is the sum of per-case `costMicroUsd`; p50 latency covers the records that carry one. A run that aborts keeps its partial records and names the failure — it is evidence, never a gate result.",
       "",
-      "## Misses",
-      "",
     );
-    const missLines = runs.flatMap((run) => {
-      const misses = run.records.filter((r) => !r.passed);
-      if (misses.length === 0) return [`- \`${run.model}\`: none.`];
-      return [
-        `- \`${run.model}\` (${misses.length}):`,
-        ...misses.map(
-          (m) =>
-            `  - \`${m.task}/${m.caseId}\` (${m.language}): expected \`${String(m.expected)}\`, got \`${String(m.got)}\``,
-        ),
-      ];
-    });
-    lines.push(...missLines, "");
-  }
-
-  const passing = runs.filter((run) => {
-    const gate = evaluateDecisionGate(asOutcomes(run.records));
-    return gate.gatePass && run.aborted !== true;
-  });
-  lines.push(
-    "## Selection",
-    "",
-    passing.length === 0
-      ? "No arm passes the gate at this seal."
-      : `Gate-passing arms at this seal: ${passing.map((r) => `\`${r.model}\``).join(", ")}.`,
-    "",
-    "Adoption is a `benchAdoption` config change made by a reviewed PR; this report supplies evidence and never switches a serving row by itself.",
-    "",
-  );
-
-  if ((opts.supersededCount ?? 0) > 0) {
     lines.push(
-      "## Superseded",
-      "",
-      `${opts.supersededCount} frozen result(s) under \`superseded/\` predate the committed seal or an earlier one — kept as history, never scored.`,
-      "",
+      ...benchMissSection(
+        runs.map((run) => ({
+          model: run.model,
+          details: run.records
+            .filter((r) => !r.passed)
+            .map(
+              (m) =>
+                `\`${m.task}/${m.caseId}\` (${m.language}): expected \`${String(m.expected)}\`, got \`${String(m.got)}\``,
+            ),
+        })),
+      ),
     );
   }
+
+  const passing = runs
+    .filter((run) => evaluateDecisionGate(outcomesOf(run.records)).gatePass && run.aborted !== true)
+    .map((run) => run.model);
+  lines.push(
+    ...benchSelectionSection(
+      passing,
+      "Adoption is a `benchAdoption` config change made by a reviewed PR; this report supplies evidence and never switches a serving row by itself.",
+    ),
+    ...benchSupersededSection(opts.supersededCount),
+  );
 
   return lines.join("\n");
 }

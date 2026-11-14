@@ -122,11 +122,16 @@ if (reportOnly) {
   process.exit(0);
 }
 
-const promptsSha256 = evalpkg.decisionBenchPromptsPin(domain.DECISION_BENCH_PROMPTS_IDENTITY);
+const promptsSha256 = evalpkg.decisionBenchPromptsPin(
+  evalpkg.decisionBenchPromptsIdentity(
+    domain.DECISION_BENCH_PROMPTS_IDENTITY,
+    app.DECISION_SYSTEM_PROMPT,
+  ),
+);
 const samplesPin = evalpkg.decisionBenchSamplesPin(seal);
 
 /** Build the run record for one candidate arm — the run file's whole body. */
-const buildRun = (modelId, startedAt, outcomes, failure) => {
+const buildRun = (modelId, startedAt, armStartMicroUsd, outcomes, failure) => {
   const scored = outcomes.length;
   const passed = outcomes.filter((o) => o.passed).length;
   const gate = evalpkg.evaluateDecisionGate(outcomes);
@@ -139,7 +144,7 @@ const buildRun = (modelId, startedAt, outcomes, failure) => {
     budget: {
       capMicroUsd: config.budgetCapMicroUsd ?? null,
       plannedCases: caseCount,
-      totalMicroUsd: budget.total,
+      totalMicroUsd: budget.total - armStartMicroUsd,
     },
     totals: {
       cases: caseCount,
@@ -203,6 +208,7 @@ const gateResults = [];
 for (const { modelId, decider } of selected) {
   logger.info("running candidate", { modelId });
   const startedAt = new Date().toISOString();
+  const armStartMicroUsd = budget.total;
   const outcomes = [];
   let failure = null;
   try {
@@ -229,7 +235,7 @@ for (const { modelId, decider } of selected) {
         : String(err?.message ?? err);
     logger.error("candidate aborted", { modelId, error: failure });
   }
-  const run = buildRun(modelId, startedAt, outcomes, failure);
+  const run = buildRun(modelId, startedAt, armStartMicroUsd, outcomes, failure);
   try {
     const runPath = evalpkg.writeDecisionBenchRun(fromCwd(config.runsDir), run, { force });
     logger.info("run file written", { runPath, scored: run.totals.scored });

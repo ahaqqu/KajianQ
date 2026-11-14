@@ -1,18 +1,21 @@
-import { readFileSync } from "node:fs";
 import {
   parseDecisionBenchRun,
   type DecisionBenchFixture,
   type DecisionBenchRun,
 } from "@app/contracts";
 import {
+  assertSealCount,
+  assertSealHash,
+  BenchStoreError,
+  benchFail,
   benchRunFilePath,
   benchRunSlug,
   countSupersededResults,
   loadBenchRuns,
-  sha256Hex,
+  readBenchSeal,
   sha256Text,
+  staleSamplesReason,
   writeBenchRun,
-  type BenchStoreFailure,
 } from "./bench-store";
 
 /**
@@ -28,16 +31,9 @@ import {
  * is the seal and the pins it hands out.
  */
 
-export class DecisionBenchStoreError extends Error {
-  constructor(
-    readonly source: string,
-    message: string,
-  ) {
-    super(`decision-bench store (${source}): ${message}`);
-  }
-}
+export { BenchStoreError as DecisionBenchStoreError };
 
-const fail: BenchStoreFailure = (source, message) => new DecisionBenchStoreError(source, message);
+const fail = benchFail("decision-bench store");
 
 /** The samples seal (`benchmarks/decisions/samples/version.json`). */
 export type DecisionBenchSeal = {
@@ -84,30 +80,24 @@ export function loadDecisionBenchSeal(
   casesPath: string,
   fixture: DecisionBenchFixture,
 ): DecisionBenchSeal {
-  let raw: unknown;
-  try {
-    raw = JSON.parse(readFileSync(sealPath, "utf8"));
-  } catch (cause) {
-    throw new DecisionBenchStoreError(sealPath, `unreadable seal: ${String(cause)}`);
-  }
-  const seal = raw as DecisionBenchSeal;
-  if (seal.task !== "decision-bench") {
-    throw new DecisionBenchStoreError(sealPath, `seal task "${seal.task}" is not "decision-bench"`);
-  }
-  const actual = sha256Hex(readFileSync(casesPath));
-  if (seal.hashes?.cases !== actual) {
-    throw new DecisionBenchStoreError(
-      sealPath,
-      `cases hash mismatch: seal pins ${seal.hashes?.cases ?? "nothing"}, cases.json is ${actual} — re-seal before running`,
-    );
-  }
+  const seal = readBenchSeal<DecisionBenchSeal>({ sealPath, task: "decision-bench", fail });
+  assertSealHash({
+    fail,
+    sealPath,
+    name: "cases",
+    pinned: seal.hashes?.cases,
+    path: casesPath,
+    actualLabel: "cases.json",
+  });
   const caseCount = fixture.relevance.length + fixture.rerank.length + fixture.citation.length;
-  if (seal.counts?.cases !== caseCount) {
-    throw new DecisionBenchStoreError(
-      sealPath,
-      `counts.cases ${seal.counts?.cases ?? "missing"} does not match the fixture's ${caseCount} cases`,
-    );
-  }
+  assertSealCount({
+    fail,
+    sealPath,
+    name: "cases",
+    pinned: seal.counts?.cases,
+    actual: caseCount,
+    unit: " cases",
+  });
   return seal;
 }
 
@@ -121,15 +111,26 @@ export function loadDecisionBenchRuns(
   runsDir: string,
   seal: DecisionBenchSeal,
 ): DecisionBenchRun[] {
+  const pin = decisionBenchSamplesPin(seal);
   return loadBenchRuns({
     runsDir,
     fail,
     parse: parseDecisionBenchRun,
-    staleReason: (run) =>
-      run.samples.version !== seal.version || run.samples.casesSha256 !== seal.hashes.cases
-        ? `run pins samples v${run.samples.version} (${run.samples.casesSha256.slice(0, 20)}…) but the committed seal is v${seal.version} — archive it under superseded/ or re-run at the current seal`
-        : null,
+    staleReason: (run) => staleSamplesReason(run.samples, pin),
   });
+}
+
+/**
+ * The full wording the decision bench sends: the case wording plus the
+ * transport's system prompt. Pinning both makes a change to either visible
+ * per run without re-sealing the case data; a decisions-wire arm does not send
+ * the system prompt, so its pin is deliberately conservative.
+ */
+export function decisionBenchPromptsIdentity(
+  casesIdentity: string,
+  transportPrompt: string,
+): string {
+  return JSON.stringify({ cases: casesIdentity, transport: transportPrompt });
 }
 
 /** The prompts pin a run carries: the sha256 of the wording identity string. */

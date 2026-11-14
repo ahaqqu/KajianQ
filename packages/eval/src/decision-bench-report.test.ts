@@ -154,6 +154,17 @@ describe("decision-bench report", () => {
     expect(md).toContain("an arm that aborts is never a pass");
   });
 
+  it("an aborted arm whose records would pass still never renders as a pass", () => {
+    const aborted = {
+      ...runOf("d/aborted", PASSING_RECORDS, true),
+      aborted: true,
+      error: "vendor 500",
+    };
+    const md = render([aborted]);
+    expect(md).toContain("**abort** ⚠ aborted (vendor 500)");
+    expect(md).not.toContain("**pass** ⚠ aborted");
+  });
+
   it("the superseded history line renders when the archive is non-empty", () => {
     const md = render([], 1);
     expect(md).toContain("## Superseded");

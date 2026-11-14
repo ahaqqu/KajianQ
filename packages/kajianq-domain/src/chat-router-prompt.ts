@@ -186,3 +186,14 @@ export const ROUTER_SYSTEM_PROMPT = [
   "Mix the question's language with its classical terms, and use different angles rather than repeating the question.",
   'Use "" or [] for filters the question does not constrain. No prose outside the JSON.',
 ].join("\n");
+
+/**
+ * The full wording a routing-bench run measures, serialized for pinning: the
+ * base system prompt plus the follow-up rule the sealed multi-turn cases ride
+ * — the two pieces `routerCallFor` composes, so a wording change in either is
+ * visible per run without re-sealing the case data.
+ */
+export const ROUTER_BENCH_PROMPTS_IDENTITY = JSON.stringify({
+  system: ROUTER_SYSTEM_PROMPT,
+  followUpRule: ROUTER_FOLLOW_UP_RULE,
+});

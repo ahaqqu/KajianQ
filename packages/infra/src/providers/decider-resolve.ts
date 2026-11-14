@@ -1,8 +1,32 @@
-import type { Decider } from "@app/rag-core";
-import { createChatCompletionsDecider } from "./chat-completions-decider";
-import { createDecisionsDecider } from "./decisions-decider";
-import { resolveChain, type ProviderConfig } from "./provider-config";
+import { ProviderError, type Decider } from "@app/rag-core";
+import {
+  createChatCompletionsDecider,
+  type ChatCompletionsDeciderOptions,
+} from "./chat-completions-decider";
+import { createDecisionsDecider, type DecisionsDeciderOptions } from "./decisions-decider";
+import { resolveChain, type ProviderConfig, type VendorConfig } from "./provider-config";
 import type { FetchLike } from "./chat-wire";
+
+/** The protocol dispatch: every wire is named here, and an unknown one fails. */
+function deciderFor(
+  vendor: string,
+  protocol: VendorConfig["protocol"],
+  opts: DecisionsDeciderOptions | ChatCompletionsDeciderOptions,
+): Decider {
+  switch (protocol) {
+    case "chat-completions":
+      return createChatCompletionsDecider(opts);
+    case "decisions":
+      return createDecisionsDecider(opts);
+    default:
+      // A new wire must add its adapter here. Silently defaulting would score
+      // a vendor's answers through a wire it does not speak.
+      throw new ProviderError({
+        kind: "bad_request",
+        message: `vendor "${vendor}" names unsupported decide protocol "${String(protocol)}"`,
+      });
+  }
+}
 
 /**
  * Role resolution for the decision seam (ADR-0022 discipline, ADR-0042): the
@@ -70,10 +94,7 @@ export function resolveDecider(
     };
     deciders.push({
       modelId: candidate.modelId,
-      decider:
-        candidate.vendorConfig.protocol === "chat-completions"
-          ? createChatCompletionsDecider(adapterOptions)
-          : createDecisionsDecider(adapterOptions),
+      decider: deciderFor(candidate.vendor, candidate.vendorConfig.protocol, adapterOptions),
     });
   }
   return { deciders, missingKeys, ineligibleKeys };

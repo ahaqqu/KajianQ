@@ -79,42 +79,51 @@ const summaryOf = (over: Partial<SummarizerBenchRun> = {}): SummarizerBenchRun =
 });
 
 describe("summarizer-bench deterministic checks", () => {
+  /** The faithfulness read is a caller-supplied hook; these tests stub it. */
+  const grounded = () => [];
+
   it("a clean 1-3 sentence summary with grounded content passes", () => {
     expect(
       checkSummarizerCase(
         caseOf(),
         "Surah ini menegaskan keesaan Allah sebagai tempat bergantung.",
+        grounded,
       ),
     ).toBeNull();
   });
 
   it("sentence bounds fail the case in both directions", () => {
-    expect(checkSummarizerCase(caseOf(), "")).toMatch(/empty summary/);
+    expect(checkSummarizerCase(caseOf(), "", grounded)).toMatch(/empty summary/);
     expect(
       checkSummarizerCase(
         caseOf({ expected: { minSentences: 2, maxSentences: 3 } }),
         "Satu kalimat saja.",
+        grounded,
       ),
     ).toMatch(/too few sentences/);
     expect(
       checkSummarizerCase(
         caseOf({ expected: { minSentences: 1, maxSentences: 1 } }),
         "Kalimat pertama. Kalimat kedua! Kalimat ketiga?",
+        grounded,
       ),
     ).toMatch(/too many sentences/);
   });
 
-  it("Arabic tokens the excerpt never carries are ungrounded, diacritics notwithstanding", () => {
-    expect(checkSummarizerCase(caseOf(), "Menyebut كِتَابٌ حَكِيمٌ tanpa dasar.")).toMatch(
-      /ungrounded Arabic token/,
+  it("the caller's faithfulness read decides script-specific grounding", () => {
+    const ungrounded = (_c: unknown, summary: string) =>
+      summary.includes("invented") ? ['ungrounded token "invented"'] : [];
+    expect(checkSummarizerCase(caseOf(), "Menyebut invented tanpa dasar.", ungrounded)).toMatch(
+      /ungrounded token "invented"/,
     );
-    // the same token WITH its tashkeel grounded in the excerpt passes
-    expect(checkSummarizerCase(caseOf(), "Tema: اَحَدٌ.")).toBeNull();
+    expect(
+      checkSummarizerCase(caseOf(), "Surah ini menegaskan keesaan Allah.", ungrounded),
+    ).toBeNull();
   });
 
   it("numerals must ground in the excerpt or the case metadata", () => {
-    expect(checkSummarizerCase(caseOf(), "Bagian 112 tentang keesaan.")).toBeNull();
-    expect(checkSummarizerCase(caseOf(), "Terbagi atas 5 rukun.")).toMatch(
+    expect(checkSummarizerCase(caseOf(), "Bagian 112 tentang keesaan.", grounded)).toBeNull();
+    expect(checkSummarizerCase(caseOf(), "Terbagi atas 5 rukun.", grounded)).toMatch(
       /ungrounded numeral "5"/,
     );
   });
@@ -124,12 +133,14 @@ describe("summarizer-bench deterministic checks", () => {
       checkSummarizerCase(
         caseOf({ expected: { minSentences: 1, maxSentences: 3, mustMention: ["tawhid"] } }),
         "Tema tawhid.",
+        grounded,
       ),
     ).toBeNull();
     expect(
       checkSummarizerCase(
         caseOf({ expected: { minSentences: 1, maxSentences: 3, mustMention: ["tawhid"] } }),
         "Tema lain.",
+        grounded,
       ),
     ).toMatch(/missing required term/);
   });
@@ -145,7 +156,10 @@ describe("summarizer-bench deterministic checks", () => {
         generate: () => Effect.succeed({ text: "Surah ini menegaskan keesaan Allah.", cost: COST }),
       } as never,
       fixture,
-      adapters: { buildPrompt: (c) => ({ turns: [{ role: "user", content: c.title }] }) },
+      adapters: {
+        buildPrompt: (c) => ({ turns: [{ role: "user", content: c.title }] }),
+        ungrounded: grounded,
+      },
       onCost: () => {},
       wouldExceed: () => false,
     });

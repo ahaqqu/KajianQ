@@ -4,18 +4,19 @@ import { Effect } from "effect";
 
 /**
  * Summarizer-bench case loop: the domain-agnostic measurement machinery for
- * the ingest summarizer gate. The engine owns the deterministic checks and
- * the case loop; the excerpt corpora, titles, and source keys arrive from
- * the domain pack's fixture, and the prompt construction arrives as an
- * adapter — this module never names a vendor, a model, or an Islamic source,
- * and never re-implements the production prompt.
+ * the ingest summarizer gate. The engine owns the deterministic format checks
+ * and the case loop; the excerpt corpora, titles, and source keys arrive from
+ * the domain pack's fixture, and the prompt construction and the
+ * script-specific faithfulness read arrive as adapters — this module never
+ * names a vendor, a model, a script, or an Islamic source, and never
+ * re-implements the production prompt.
  *
  * The gate scores what is deterministic: the prompt's own format rule
- * (sentence bounds) and faithfulness (Arabic-script tokens and numerals the
- * summary carries must ground in the excerpt, title, or source key, under
- * diacritic-stripping normalization). Theme quality is deliberately NOT
- * scored here — the report prints every summary, and that judgment stays
- * the owner's human call.
+ * (sentence bounds), the fixture's required terms and numerals, and the
+ * caller's faithfulness read — the domain pack decides which script carries
+ * citable content and how it folds for comparison; the engine only fails a
+ * case the read reports. Theme quality is deliberately NOT scored here — the
+ * report prints every summary, and that judgment stays the owner's human call.
  *
  * Gate floors are the decision bench's (ADR-0042), applied per case.
  */
@@ -32,6 +33,13 @@ export type SummarizerBenchAdapters = {
     turns: readonly { role: string; content: string }[];
     options?: Record<string, unknown>;
   };
+  /**
+   * The faithfulness read: the reasons a summary's script-specific content
+   * does not ground in the case (excerpt, title, source key), empty when it
+   * does. The rule and its normalization belong to the domain pack; the
+   * engine never decides which script counts as citable content.
+   */
+  ungrounded: (c: SummarizerCase, summary: string) => string[];
 };
 
 /** One scored case: the asserted bounds, the summary verbatim, the verdict. */
@@ -44,16 +52,6 @@ export type SummarizerCaseOutcome = {
   cost?: CostRecord;
 };
 
-/** Strip tashkeel and unify alef/ya variants so Arabic tokens compare fairly. */
-function normalizeArabic(text: string): string {
-  return text
-    .replace(/[\u064B-\u0652\u0670\u0640]/g, "")
-    .replace(/[أإآ]/g, "ا")
-    .replace(/ى/g, "ي");
-}
-
-const ARABIC_TOKEN = /[\u0600-\u06FF]{3,}/g;
-
 /** Sentence segments: split on sentence punctuation or line breaks. */
 function sentenceCount(text: string): number {
   return text
@@ -62,13 +60,17 @@ function sentenceCount(text: string): number {
     .filter((s) => s.length > 0).length;
 }
 
-/** The grounding corpus: excerpt lines plus the title and source key the prompt carries. */
-function groundingOf(c: SummarizerCase): string {
-  return normalizeArabic([c.title, c.sourceKey, ...c.excerpt].join("\n"));
-}
-
-/** Checks a summary against one case; returns a failure reason, or null when it passes. */
-export function checkSummarizerCase(c: SummarizerCase, summary: string): string | null {
+/**
+ * Checks a summary against one case; returns a failure reason, or null when
+ * it passes. `ungrounded` is the caller's script-specific faithfulness read —
+ * the engine supplies the format bounds, the required terms and the numerals,
+ * and asks the read for the rest.
+ */
+export function checkSummarizerCase(
+  c: SummarizerCase,
+  summary: string,
+  ungrounded: SummarizerBenchAdapters["ungrounded"],
+): string | null {
   const trimmed = summary.trim();
   if (trimmed.length === 0) return "empty summary";
   const sentences = sentenceCount(trimmed);
@@ -84,16 +86,11 @@ export function checkSummarizerCase(c: SummarizerCase, summary: string): string 
       if (!lowered.includes(term.toLowerCase())) return `missing required term "${term}"`;
     }
   }
-  const grounding = groundingOf(c);
-  for (const token of trimmed.match(ARABIC_TOKEN) ?? []) {
-    if (!grounding.includes(normalizeArabic(token))) {
-      return `ungrounded Arabic token "${token}"`;
-    }
-  }
+  const corpus = [c.title, c.sourceKey, ...c.excerpt].join("\n");
   for (const num of trimmed.match(/\d+/g) ?? []) {
-    if (!grounding.includes(num)) return `ungrounded numeral "${num}"`;
+    if (!corpus.includes(num)) return `ungrounded numeral "${num}"`;
   }
-  return null;
+  return ungrounded(c, trimmed)[0] ?? null;
 }
 
 /** Run one full summarizer bench through a Provider; every call's cost is surfaced. */
@@ -134,7 +131,7 @@ export async function runSummarizerBench({
       }),
     );
     onCost(result.cost);
-    const reason = checkSummarizerCase(c, result.text);
+    const reason = checkSummarizerCase(c, result.text, adapters.ungrounded);
     const outcome: SummarizerCaseOutcome = {
       caseId: c.id,
       language: c.language,

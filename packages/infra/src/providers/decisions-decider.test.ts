@@ -172,6 +172,29 @@ describe("decisions decider — the wire carries the typing", () => {
     expect(cost.estimated).toBe(false);
   });
 
+  it("traces the model the reply names, not the requested alias", async () => {
+    const d = decider(
+      decisionsReply({
+        model: "decider-2026-08-14",
+        answers: validAnswers(),
+        usage: { input_tokens: 5000, output_tokens: 200 },
+      }),
+    );
+    const { cost } = await Effect.runPromise(d.decide(spec));
+    expect(cost.modelId).toBe("decider-2026-08-14");
+  });
+
+  it("falls back to the requested id when the reply names no model", async () => {
+    const d = decider(
+      decisionsReply({
+        answers: validAnswers(),
+        usage: { input_tokens: 5000, output_tokens: 200 },
+      }),
+    );
+    const { cost } = await Effect.runPromise(d.decide(spec));
+    expect(cost.modelId).toBe("decider-1");
+  });
+
   it("estimates the spend when the reply carries no usage block", async () => {
     const d = decider(decisionsReply({ model: "decider-1", answers: validAnswers() }));
     const { cost } = await Effect.runPromise(d.decide(spec));

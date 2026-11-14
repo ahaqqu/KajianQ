@@ -109,9 +109,7 @@ if (reportOnly) {
   process.exit(0);
 }
 
-const promptsSha256 = evalpkg.routerBenchPromptsPin(
-  JSON.stringify({ system: domain.ROUTER_SYSTEM_PROMPT }),
-);
+const promptsSha256 = evalpkg.routerBenchPromptsPin(domain.ROUTER_BENCH_PROMPTS_IDENTITY);
 const samplesPin = evalpkg.routerBenchSamplesPin(seal);
 
 const providerConfig = app.loadProviderConfig(process.env.PROVIDER_PROFILE);
@@ -171,23 +169,11 @@ logger.info("budget configured", {
 });
 
 /** Build the run record for one candidate arm — the run file's whole body. */
-const buildRun = (modelId, startedAt, outcomes, failure) => {
+const buildRun = (modelId, startedAt, armStartMicroUsd, outcomes, failure) => {
   const scored = outcomes.length;
   const passed = outcomes.filter((o) => o.passed).length;
   const overall = scored === 0 ? null : passed / scored;
-  const perLanguage = {};
-  for (const o of outcomes) {
-    perLanguage[o.language] ??= { passed: 0, total: 0 };
-    perLanguage[o.language].total += 1;
-    if (o.passed) perLanguage[o.language].passed += 1;
-  }
-  const floors = evalpkg.DECISION_GATE_FLOORS;
-  const failedLanguages = Object.entries(perLanguage)
-    .filter(
-      ([, cell]) =>
-        cell.total >= floors.minCasesPerLanguage && cell.passed / cell.total < floors.perLanguage,
-    )
-    .map(([lang]) => lang);
+  const gate = evalpkg.evaluateDecisionGate(outcomes);
   return {
     schema: 1,
     task: "router-bench",
@@ -197,14 +183,14 @@ const buildRun = (modelId, startedAt, outcomes, failure) => {
     budget: {
       capMicroUsd: config.cap ?? null,
       plannedCases: caseCount,
-      totalMicroUsd: budget.total,
+      totalMicroUsd: budget.total - armStartMicroUsd,
     },
     totals: { cases: caseCount, scored, passed, accuracy: overall },
     gate: {
-      gatePass: overall !== null && overall >= floors.overall && failedLanguages.length === 0,
-      overallAccuracy: overall,
-      failedLanguages,
-      floors,
+      gatePass: gate.gatePass,
+      overallAccuracy: evalpkg.meanAccuracy(outcomes),
+      failedLanguages: gate.failedLanguages,
+      floors: evalpkg.DECISION_GATE_FLOORS,
     },
     ...(failure ? { aborted: true, error: failure } : {}),
     startedAt,
@@ -237,6 +223,7 @@ const gateResults = [];
 for (const { modelId, provider } of selected) {
   logger.info("running candidate", { modelId });
   const startedAt = new Date().toISOString();
+  const armStartMicroUsd = budget.total;
   const outcomes = [];
   let failure = null;
   try {
@@ -262,7 +249,7 @@ for (const { modelId, provider } of selected) {
         : String(err?.message ?? err);
     logger.error("candidate aborted", { modelId, error: failure });
   }
-  const run = buildRun(modelId, startedAt, outcomes, failure);
+  const run = buildRun(modelId, startedAt, armStartMicroUsd, outcomes, failure);
   try {
     const runPath = evalpkg.writeRouterBenchRun(fromCwd(`${config.dir}/runs`), run, { force });
     logger.info("run file written", { runPath, scored: run.totals.scored });

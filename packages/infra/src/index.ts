@@ -54,6 +54,9 @@ export {
   createDecisionsDecider,
   type DecisionsDeciderOptions,
 } from "./providers/decisions-decider";
+// The typed-questions wire's system prompt, exported for the decision bench's
+// wording pin: both transports send it, so a change to it must move the pin.
+export { DECISION_SYSTEM_PROMPT } from "./providers/decision-schema";
 // Retry policies for the two call-site shapes: interactive (default) and
 // offline batch jobs, which must ride out a vendor's per-minute window
 // instead of giving up after ≈1.5 s (see retry-schedule.ts).

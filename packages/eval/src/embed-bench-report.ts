@@ -7,6 +7,15 @@ import {
 } from "@app/contracts";
 import { GATE_FLOORS, evaluateGate, type BenchCell, type BenchDirection } from "./embed-bench";
 import { embedBenchRunSlug, type EmbedBenchSeal } from "./embed-bench-store";
+import {
+  benchArmsTable,
+  benchGateCell,
+  benchMissSection,
+  benchReportHead,
+  benchSelectionSection,
+  benchSupersededSection,
+  fmtPct,
+} from "./bench-report";
 
 /**
  * The embed-bench report renderer (issue #9, ADR-0013/0014): the offline
@@ -34,10 +43,6 @@ function gateOf(stats: Record<string, EmbedDirectionStats>): { gatePass: boolean
   return evaluateGate({ cells: [cellOf("secondary→primary"), cellOf("primary→primary")] });
 }
 
-function fmtPct(x: number | null): string {
-  return x === null ? "—" : `${(x * 100).toFixed(1)}%`;
-}
-
 function fmtMrr(x: number | null): string {
   return x === null ? "—" : x.toFixed(3);
 }
@@ -54,20 +59,22 @@ function directionCell(
   return `${fmtPct(s.recallAt10)} (${fmtMrr(s.mrr)})`;
 }
 
-function armRow(runsDir: string, run: EmbedBenchRun, columns: readonly string[]): string {
+function armCells(runsDir: string, run: EmbedBenchRun, columns: readonly string[]): string[] {
   const stats = embedDirectionStats(run.records);
   const gate = gateOf(stats);
-  const disagree = gate.gatePass !== run.gate.gatePass ? " (pinned gate disagrees)" : "";
-  const aborted = run.aborted === true ? ` ⚠ aborted (${run.error ?? "unnamed failure"})` : "";
-  const cells = [
+  return [
     `\`${run.model}\``,
     `\`${runsDir}/${embedBenchRunSlug(run.model)}.json\``,
     ...columns.map((d) => directionCell(run, d, stats)),
-    `**${gate.gatePass ? "pass" : "fail"}**${disagree}${aborted}`,
+    benchGateCell({
+      pass: gate.gatePass,
+      pinnedPass: run.gate.gatePass,
+      aborted: run.aborted === true,
+      error: run.error,
+    }),
     `${run.budget.totalMicroUsd} µUSD`,
     run.finishedAt,
   ];
-  return `| ${cells.join(" | ")} |`;
 }
 
 /** The markdown report body — written to `report.md`, never edited by hand. */
@@ -79,20 +86,15 @@ export function renderEmbedBenchReport(opts: {
   supersededCount?: number;
 }): string {
   const { seal, runs, runsDir, generatedAt } = opts;
-  const lines: string[] = [
-    "# Embedding benchmark report",
-    "",
-    `Generated offline from the committed samples (\`benchmarks/embeddings/samples/\`) and run files (\`${runsDir}/\`) at ${generatedAt} — never hand-edited. Gate floors (ADR-0013): cross-lingual \`secondary→primary\` recall@10 ≥ ${GATE_FLOORS.crossLingual} AND monolingual \`primary→primary\` recall@10 ≥ ${GATE_FLOORS.monolingual}; an arm that aborts is never a pass.`,
-    "",
-    "## Samples",
-    "",
-    `- Seal **v${seal.version}** (created ${seal.created}): **${seal.counts.crossLingual + seal.counts.monolingual}** retrieval probes — ${seal.counts.crossLingual} cross-lingual, ${seal.counts.monolingual} monolingual — plus **${seal.counts.expansion}** expansion cases.`,
-    `- Fixtures \`${seal.fixtures.probes.id}\` (${seal.fixtures.probes.status}) + \`${seal.fixtures.expansion.id}\` (${seal.fixtures.expansion.status}); probes pinned at \`${seal.hashes.probes}\`, expansion at \`${seal.hashes.expansion}\`; corpus fingerprint \`${seal.fingerprints.corpus}\`.`,
-    ...(seal.notes ?? []).map((n) => `- ${n}`),
-    "",
-    "## Arms",
-    "",
-  ];
+  const lines = benchReportHead({
+    title: "Embedding benchmark report",
+    intro: `Generated offline from the committed samples (\`benchmarks/embeddings/samples/\`) and run files (\`${runsDir}/\`) at ${generatedAt} — never hand-edited. Gate floors (ADR-0013): cross-lingual \`secondary→primary\` recall@10 ≥ ${GATE_FLOORS.crossLingual} AND monolingual \`primary→primary\` recall@10 ≥ ${GATE_FLOORS.monolingual}; an arm that aborts is never a pass.`,
+    samples: [
+      `- Seal **v${seal.version}** (created ${seal.created}): **${seal.counts.crossLingual + seal.counts.monolingual}** retrieval probes — ${seal.counts.crossLingual} cross-lingual, ${seal.counts.monolingual} monolingual — plus **${seal.counts.expansion}** expansion cases.`,
+      `- Fixtures \`${seal.fixtures.probes.id}\` (${seal.fixtures.probes.status}) + \`${seal.fixtures.expansion.id}\` (${seal.fixtures.expansion.status}); probes pinned at \`${seal.hashes.probes}\`, expansion at \`${seal.hashes.expansion}\`; corpus fingerprint \`${seal.fingerprints.corpus}\`.`,
+      ...(seal.notes ?? []).map((n) => `- ${n}`),
+    ],
+  });
 
   if (runs.length === 0) {
     lines.push(
@@ -105,51 +107,39 @@ export function renderEmbedBenchReport(opts: {
       (a, b) => (order.get(a) ?? Infinity) - (order.get(b) ?? Infinity),
     );
     lines.push(
-      `| Model | Run file | ${seen.join(" | ")} | Gate | Cost | Finished |`,
-      `| --- | --- | ${seen.map(() => "---").join(" | ")} | --- | --- | --- |`,
-      ...runs.map((run) => armRow(runsDir, run, seen)),
+      ...benchArmsTable(
+        ["Model", "Run file", ...seen, "Gate", "Cost", "Finished"],
+        runs.map((run) => armCells(runsDir, run, seen)),
+      ),
       "",
       "Direction cells show recall@10 with MRR in parentheses, recomputed from each run's records; the run's own totals are never trusted. The expansion cell is the mean pass rate over the run's expansion records. Cost is the run's budget bookkeeping (its total metered spend); per-call cost records cover the expansion calls. A run that aborts keeps its partial records and names the failure — it is evidence, never a gate result.",
       "",
-      "## Misses",
-      "",
     );
-    const missLines = runs.flatMap((run) => {
-      const misses = run.records.filter((r) => !r.passed);
-      if (misses.length === 0) return [`- \`${run.model}\`: none.`];
-      return [
-        `- \`${run.model}\` (${misses.length}):`,
-        ...misses.map((m) => {
-          const expected = Array.isArray(m.expected) ? m.expected.join(", ") : m.expected;
-          return `  - \`${m.direction}/${m.probeId}\`: expected \`${expected}\`, got \`${m.got.join(", ")}\``;
-        }),
-      ];
-    });
-    lines.push(...missLines, "");
-  }
-
-  const passing = runs.filter(
-    (run) => gateOf(embedDirectionStats(run.records)).gatePass && run.aborted !== true,
-  );
-  lines.push(
-    "## Selection",
-    "",
-    passing.length === 0
-      ? "No arm passes the gate at this seal."
-      : `Gate-passing arms at this seal: ${passing.map((r) => `\`${r.model}\``).join(", ")}.`,
-    "",
-    "Adoption is an `embedder` role change made by a reviewed PR; this report supplies evidence and never switches a serving row by itself.",
-    "",
-  );
-
-  if ((opts.supersededCount ?? 0) > 0) {
     lines.push(
-      "## Superseded",
-      "",
-      `${opts.supersededCount} frozen result(s) under \`superseded/\` predate the committed seal or an earlier one — kept as history, never scored.`,
-      "",
+      ...benchMissSection(
+        runs.map((run) => ({
+          model: run.model,
+          details: run.records
+            .filter((r) => !r.passed)
+            .map((m) => {
+              const expected = Array.isArray(m.expected) ? m.expected.join(", ") : m.expected;
+              return `\`${m.direction}/${m.probeId}\`: expected \`${expected}\`, got \`${m.got.join(", ")}\``;
+            }),
+        })),
+      ),
     );
   }
+
+  const passing = runs
+    .filter((run) => gateOf(embedDirectionStats(run.records)).gatePass && run.aborted !== true)
+    .map((run) => run.model);
+  lines.push(
+    ...benchSelectionSection(
+      passing,
+      "Adoption is an `embedder` role change made by a reviewed PR; this report supplies evidence and never switches a serving row by itself.",
+    ),
+    ...benchSupersededSection(opts.supersededCount),
+  );
 
   return lines.join("\n");
 }

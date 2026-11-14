@@ -36,6 +36,13 @@ export const DECISION_GATE_FLOORS = {
   minCasesPerLanguage: 3,
 } as const;
 
+/**
+ * The minimal outcome the gate math reads. Every bench that reuses the
+ * floors (decision, router, summarizer) maps its records onto this shape
+ * rather than fabricating a task label it does not have.
+ */
+export type GateOutcome = { language: string; passed: boolean };
+
 export type DecisionGate = {
   overallPass: boolean;
   failedLanguages: string[];
@@ -43,14 +50,14 @@ export type DecisionGate = {
 };
 
 /** Mean accuracy over outcomes (null when the list is empty). */
-export function meanAccuracy(outcomes: readonly CaseOutcome[]): number | null {
+export function meanAccuracy(outcomes: readonly GateOutcome[]): number | null {
   if (outcomes.length === 0) return null;
   return outcomes.filter((o) => o.passed).length / outcomes.length;
 }
 
 /** Group accuracy per language label, for the per-language floor. */
 export function accuracyByLanguage(
-  outcomes: readonly CaseOutcome[],
+  outcomes: readonly GateOutcome[],
 ): Record<string, { cases: number; accuracy: number }> {
   const byLang = new Map<string, { passed: number; total: number }>();
   for (const o of outcomes) {
@@ -90,7 +97,7 @@ export function accuracyByTask(
  * language would make the floor a coin flip) — but they are reported, so a
  * fixture that silently drops a language is visible in the report.
  */
-export function evaluateDecisionGate(outcomes: readonly CaseOutcome[]): DecisionGate {
+export function evaluateDecisionGate(outcomes: readonly GateOutcome[]): DecisionGate {
   const overall = meanAccuracy(outcomes);
   const perLanguage = accuracyByLanguage(outcomes);
   const failedLanguages = Object.entries(perLanguage)

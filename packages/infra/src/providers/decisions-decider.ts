@@ -138,12 +138,17 @@ export function createDecisionsDecider(opts: DecisionsDeciderOptions): Decider {
     const usage = json.usage ?? {};
     const isMetered = Number.isInteger(usage.input_tokens);
     const tokensIn = isMetered ? (usage.input_tokens as number) : estimateTokens(promptChars);
+    // The identity the cost record carries is the build that answered: a
+    // vendor that resolves an alias names the dated model in its reply, and
+    // tracing the requested alias instead would hide which build was measured.
+    const servedModelId =
+      typeof json.model === "string" && json.model.length > 0 ? json.model : modelId;
     /** The billed spend of this round trip: input-priced, output free — the
      * row's `out: 0` is what makes the output tokens free, and a reply that
      * fails validation still cost what it cost. */
     const billedCost = (outTokens: number) =>
       computeCost(
-        modelId,
+        servedModelId,
         model.priceMicroUsdPerMTok,
         tokensIn,
         outTokens,

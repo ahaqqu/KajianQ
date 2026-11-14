@@ -126,6 +126,7 @@ export {
 } from "./embed-bench-corpus";
 export { EXPANSION_SYSTEM_PROMPT, expansionUserPrompt } from "./embed-bench-prompts";
 export { DECISION_BENCH_PROMPTS, DECISION_BENCH_PROMPTS_IDENTITY } from "./decision-bench-prompts";
+export { ungroundedArabicTokens } from "./summarizer-bench-grounding";
 
 // -- Chat pipeline: Smart Router stages over the DARS seams ----------------
 // (Filter vocabulary stays exported from the top of this barrel — chat stages
@@ -137,6 +138,7 @@ export { DECISION_BENCH_PROMPTS, DECISION_BENCH_PROMPTS_IDENTITY } from "./decis
 export {
   createKajianQRouter,
   extractJsonObject,
+  ROUTER_BENCH_PROMPTS_IDENTITY,
   ROUTER_FOLLOW_UP_RULE,
   ROUTER_SYSTEM_PROMPT,
   routerCallFor,

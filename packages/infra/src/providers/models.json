@@ -2,7 +2,7 @@
   "$comment": "Provider config \u2014 the single source of truth for the ADR-0009 vendor allowlist: endpoints, model ids, api-key env names, prices per MTok, per-role fallback chains (ADR-0022), and the named role-chain profiles selected by PROVIDER_PROFILE (ADR-0059). The default profile is the base `roles` block and is deliberately NOT declared here: a non-empty `default` entry is a load-time config fault, since the loader returns the base roles before consulting it. Vendor data lives ONLY here (and the model_configs DB mirror); no .ts file in the engine may name a vendor \u2014 the boundary gate enforces it by scanning .ts and not .json. Prices are micro-USD per MTok (1 USD = 1e6 micro-USD, so a $0.50/MTok input price is 500000), PR-reviewed like any model decision. Defaults from SPECS.md \u00a73.4 (2026-08).",
   "vendors": {
     "openrouter": {
-      "$comment": "ADR-0069: OpenAI-compatible aggregator at /v1 \u2014 chat completions, embeddings, and (via schema-constrained structured output, the response_format json_schema strict beta) the decision seam of ADR-0042 all ride one key. Paid prepaid-credit terms under the aggregator's published DPA, accepted by the owner 2026-11-14 with zero-retention enabled (dated record: docs/GDPR-ARTICLE-30-RECORD.md \u00a78). Listed prices below are the adopted listings at migration; the aggregator routes per request across upstream endpoints, so some models carry a listing spread \u2014 the recorded price names the adopted listing, and an off-listing answer over- or under-records visibly on the trace.",
+      "$comment": "ADR-0069: OpenAI-compatible aggregator at /v1 \u2014 chat completions, embeddings, and the decision seam of ADR-0042 (both transports: the chat wire's response_format json_schema strict beta and the typed decisions wire) all ride one key. Paid prepaid-credit terms under the aggregator's published DPA, accepted by the owner 2026-11-14 with zero-retention enabled (dated record: docs/GDPR-ARTICLE-30-RECORD.md \u00a78). Listed prices below are the adopted listings at migration; the aggregator routes per request across upstream endpoints, so some models carry a listing spread \u2014 the recorded price names the adopted listing, and an off-listing answer over- or under-records visibly on the trace.",
       "baseUrl": "https://openrouter.ai/api/v1",
       "apiKeyEnv": "OPENROUTER_API_KEY",
       "protocol": "chat-completions",
@@ -80,7 +80,7 @@
       }
     },
     "openrouter-decisions": {
-      "$comment": "ADR-0042: the aggregator's typed decisions wire (alpha) \u2014 the same account, key and DPA as the openrouter row; the wire the decision models the chat wire rejects serve on. The question objects pass through verbatim (the wire's primitives are the seam's noul/choice/score types) and the state rides as a one-element array of strings. Priced on input tokens only (output free); the input rate below is the adopted listing. Backs the bench-only `decision-candidates` role \u2014 gate fixture text, never personal data.",
+      "$comment": "ADR-0042: the aggregator's typed decisions wire (alpha) \u2014 the same account, key and DPA as the openrouter row; the wire the decision models the chat wire rejects serve on. The question objects pass through verbatim (the wire's primitives are the seam's noul/choice/score types) and the state rides as a one-element array of strings. Priced on input tokens only (output free); the input rate below is the adopted listing. Backs both the bench-only `decision-candidates` role and the serving `decision` role, on the same paid, DPA-covered account: the serving calls carry personal data, so this row is never a free tier (ADR-0043).",
       "baseUrl": "https://openrouter.ai/api/alpha",
       "apiKeyEnv": "OPENROUTER_API_KEY",
       "protocol": "decisions",
@@ -186,7 +186,7 @@
       ]
     },
     "decision": {
-      "$comment": "The decision-model SERVING role (ADR-0042 adoption): the candidate behind the reviewer pre-gate and the retrieval rerank \u2014 the model a committed multilingual gate report adopted. Separate from the bench-only `decision-candidates` role so a re-bench can add challengers without changing what serves. The head is the committed gate winner: Perplexity's dated Decider v1.2 listing on the decisions wire, 21/21 at three orders of magnitude below the chat-wire alternatives, input-priced. Always active wherever OPENROUTER_API_KEY is bound; absent key = neither adoption is wired and the reviewer and retrieval behave as they did before adoption \u2014 no enable/disable flag exists. Batched: one call per answer for the pre-gate, one per retrieval whose fused set has two or more candidates for the rerank.",
+      "$comment": "The decision-model SERVING role (ADR-0042 adoption): the candidate behind the reviewer pre-gate and the retrieval rerank \u2014 the model a committed multilingual gate report adopted. Separate from the bench-only `decision-candidates` role so a re-bench can add challengers without changing what serves. The head is the committed gate winner: Perplexity's dated Decider v1.2 listing on the decisions wire, 21/21 and the cheapest passing arm at its seal (benchmarks/decisions/report.md), input-priced. Always active wherever OPENROUTER_API_KEY is bound; absent key = neither adoption is wired and the reviewer and retrieval behave as they did before adoption \u2014 no enable/disable flag exists. Batched: one call per answer for the pre-gate, one per retrieval whose fused set has two or more candidates for the rerank.",
       "chain": ["openrouter-decisions:perplexity/pplx-decider-v1.2-20261016"],
       "benchAdoption": "committed"
     },
@@ -200,7 +200,7 @@
       ]
     },
     "summarizer": {
-      "$comment": "The ingest parent summarizer role (surah and hadith-section theme summaries in scripts/ingest-quran.mjs and scripts/ingest-hadith.mjs): the committed summarizer-gate winner, GLM 5.3 Flash \u2014 5/5 deterministic checks at a fraction of every other arm's cost \u2014 kept separate from the cheap role so the router stages keep their own serving head. The role carries corpus text only, never personal data (ADR-0043).",
+      "$comment": "The ingest parent summarizer role (surah and hadith-section theme summaries in scripts/ingest-quran.mjs and scripts/ingest-hadith.mjs): GLM 5.3 Flash, adopted on cost \u2014 the deterministic gate tied every arm at 5/5, so it measured format and grounding compliance, not a quality margin (benchmarks/summarization/report.md; theme quality is the owner's read of the printed summaries). Kept separate from the cheap role so the router stages keep their own serving head. The role carries corpus text only, never personal data (ADR-0043).",
       "chain": ["openrouter:z-ai/glm-5.3-flash"]
     },
     "generator-candidates": {

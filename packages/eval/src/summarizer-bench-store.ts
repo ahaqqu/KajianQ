@@ -1,28 +1,35 @@
-import { createHash } from "node:crypto";
-import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
 import {
   parseSummarizerBenchRun,
   type SummarizerBenchFixture,
   type SummarizerBenchRun,
 } from "@app/contracts";
 import {
+  assertSealCount,
+  assertSealHash,
+  BenchStoreError,
+  benchFail,
+  benchRunFilePath,
+  benchRunSlug,
   countSupersededResults,
-  decisionBenchRunFilePath,
-  decisionBenchRunSlug,
-  DecisionBenchStoreError,
-} from "./decision-bench-store";
+  loadBenchRuns,
+  readBenchSeal,
+  sha256Text,
+  staleSamplesReason,
+  writeBenchRun,
+} from "./bench-store";
 
 /**
  * The summarizer-bench store: the same append-only discipline as the other
  * bench stores — a run file is written once (an overwrite is refused
  * without force), every run pins the samples seal it measured, and loading
- * refuses any run whose pin does not match the committed seal. The
- * slug/file-path/count helpers are the decision store's — one naming scheme
- * across the whole benchmark store.
+ * refuses any run whose pin does not match the committed seal. The run-file
+ * mechanics and the seal checks are the shared bench-store helpers; what is
+ * summarizer-specific is the seal and the pins it hands out.
  */
 
-export { DecisionBenchStoreError as SummarizerBenchStoreError, decisionBenchRunSlug };
+export { BenchStoreError as SummarizerBenchStoreError };
+
+const fail = benchFail("summarizer-bench store");
 
 /** The samples seal (`benchmarks/summarization/samples/version.json`). */
 export type SummarizerBenchSeal = {
@@ -36,12 +43,12 @@ export type SummarizerBenchSeal = {
   notes?: string[];
 };
 
-function sha256Hex(bytes: Buffer): string {
-  return createHash("sha256").update(bytes).digest("hex");
+export function summarizerBenchRunFilePath(runsDir: string, modelId: string): string {
+  return benchRunFilePath(runsDir, modelId, fail);
 }
 
-export function summarizerBenchRunFilePath(runsDir: string, modelId: string): string {
-  return decisionBenchRunFilePath(runsDir, modelId);
+export function summarizerBenchRunSlug(modelId: string): string {
+  return benchRunSlug(modelId, fail);
 }
 
 /**
@@ -54,15 +61,7 @@ export function writeSummarizerBenchRun(
   run: SummarizerBenchRun,
   opts: { force?: boolean } = {},
 ): string {
-  const path = summarizerBenchRunFilePath(runsDir, run.model);
-  if (existsSync(path) && opts.force !== true) {
-    throw new DecisionBenchStoreError(
-      path,
-      `run file for "${run.model}" already exists — pass --force to replace a committed measurement deliberately`,
-    );
-  }
-  writeFileSync(path, JSON.stringify(run, null, 2) + "\n");
-  return path;
+  return writeBenchRun(runsDir, run, opts, fail);
 }
 
 /**
@@ -76,32 +75,23 @@ export function loadSummarizerBenchSeal(
   casesPath: string,
   fixture: SummarizerBenchFixture,
 ): SummarizerBenchSeal {
-  let raw: unknown;
-  try {
-    raw = JSON.parse(readFileSync(sealPath, "utf8"));
-  } catch (cause) {
-    throw new DecisionBenchStoreError(sealPath, `unreadable seal: ${String(cause)}`);
-  }
-  const seal = raw as SummarizerBenchSeal;
-  if (seal.task !== "summarizer-bench") {
-    throw new DecisionBenchStoreError(
-      sealPath,
-      `seal task "${seal.task}" is not "summarizer-bench"`,
-    );
-  }
-  const actual = `sha256:${sha256Hex(readFileSync(casesPath))}`;
-  if (seal.hashes?.cases !== actual) {
-    throw new DecisionBenchStoreError(
-      sealPath,
-      `cases hash mismatch: seal pins ${seal.hashes?.cases ?? "nothing"}, cases.json is ${actual} — re-seal before running`,
-    );
-  }
-  if (seal.counts?.cases !== fixture.cases.length) {
-    throw new DecisionBenchStoreError(
-      sealPath,
-      `counts.cases ${seal.counts?.cases ?? "missing"} does not match the fixture's ${fixture.cases.length} cases`,
-    );
-  }
+  const seal = readBenchSeal<SummarizerBenchSeal>({ sealPath, task: "summarizer-bench", fail });
+  assertSealHash({
+    fail,
+    sealPath,
+    name: "cases",
+    pinned: seal.hashes?.cases,
+    path: casesPath,
+    actualLabel: "cases.json",
+  });
+  assertSealCount({
+    fail,
+    sealPath,
+    name: "cases",
+    pinned: seal.counts?.cases,
+    actual: fixture.cases.length,
+    unit: " cases",
+  });
   return seal;
 }
 
@@ -117,35 +107,18 @@ export function loadSummarizerBenchRuns(
   runsDir: string,
   seal: SummarizerBenchSeal,
 ): SummarizerBenchRun[] {
-  let files: string[];
-  try {
-    files = readdirSync(runsDir)
-      .filter((f) => f.endsWith(".json"))
-      .sort();
-  } catch (cause) {
-    throw new DecisionBenchStoreError(runsDir, `unreadable runs directory: ${String(cause)}`);
-  }
-  return files.map((file) => {
-    const path = join(runsDir, file);
-    let run: SummarizerBenchRun;
-    try {
-      run = parseSummarizerBenchRun(JSON.parse(readFileSync(path, "utf8")));
-    } catch (cause) {
-      throw new DecisionBenchStoreError(path, `invalid run file: ${String(cause)}`);
-    }
-    if (run.samples.version !== seal.version || run.samples.casesSha256 !== seal.hashes.cases) {
-      throw new DecisionBenchStoreError(
-        path,
-        `run pins samples v${run.samples.version} (${run.samples.casesSha256.slice(0, 20)}…) but the committed seal is v${seal.version} — archive it under superseded/ or re-run at the current seal`,
-      );
-    }
-    return run;
+  const pin = summarizerBenchSamplesPin(seal);
+  return loadBenchRuns({
+    runsDir,
+    fail,
+    parse: parseSummarizerBenchRun,
+    staleReason: (run) => staleSamplesReason(run.samples, pin),
   });
 }
 
-/** The prompts pin a run carries: the sha256 of the summarizer prompt identity. */
+/** The prompts pin a run carries: the sha256 of the summarizer wording identity. */
 export function summarizerBenchPromptsPin(identity: string): string {
-  return `sha256:${sha256Hex(Buffer.from(identity, "utf8"))}`;
+  return sha256Text(identity);
 }
 
 export { countSupersededResults };

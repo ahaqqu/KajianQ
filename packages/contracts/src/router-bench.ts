@@ -103,11 +103,20 @@ export const RouterBenchRunSchema = v.object({
 export type RouterBenchRun = v.InferOutput<typeof RouterBenchRunSchema>;
 
 /**
- * Parse an untrusted fixture payload with the cross-field check the schema
+ * Parse an untrusted fixture payload with the cross-field check the item
+ * schema cannot state: case ids are unique. A duplicate id would let one
+ * case's records shadow another's in every report and miss list, so the
+ * fixture fails here, before any spend, rather than scoring a case twice.
  */
 export function parseRouterBenchFixture(raw: unknown): RouterBenchFixture {
   const fixture = v.parse(RouterBenchFixtureSchema, raw);
-  fixture.cases.forEach((c, i) => {});
+  const seen = new Set<string>();
+  for (const c of fixture.cases) {
+    if (seen.has(c.id)) {
+      throw new Error(`router-bench fixture: duplicate case id "${c.id}"`);
+    }
+    seen.add(c.id);
+  }
   return fixture;
 }
 

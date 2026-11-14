@@ -1,4 +1,3 @@
-import { readFileSync } from "node:fs";
 import {
   EMBED_BENCH_GATE_FLOOR_KEY,
   embedDirectionStats,
@@ -10,12 +9,15 @@ import {
   type EmbedDirectionStats,
 } from "@app/contracts";
 import {
+  assertSealCount,
+  assertSealHash,
+  BenchStoreError,
+  benchFail,
   benchRunFilePath,
   benchRunSlug,
   loadBenchRuns,
-  sha256Hex,
+  readBenchSeal,
   writeBenchRun,
-  type BenchStoreFailure,
 } from "./bench-store";
 import type { BenchCell } from "./embed-bench";
 import type { BenchProbeSet, ExpansionCaseSet } from "./embed-bench-fixtures";
@@ -32,16 +34,9 @@ import type { BenchProbeSet, ExpansionCaseSet } from "./embed-bench-fixtures";
  * helpers; what is embed-specific is the seal and the pins it hands out.
  */
 
-export class EmbedBenchStoreError extends Error {
-  constructor(
-    readonly source: string,
-    message: string,
-  ) {
-    super(`embed-bench store (${source}): ${message}`);
-  }
-}
+export { BenchStoreError as EmbedBenchStoreError };
 
-const fail: BenchStoreFailure = (source, message) => new EmbedBenchStoreError(source, message);
+const fail = benchFail("embed-bench store");
 
 /** The samples seal (`benchmarks/embeddings/samples/version.json`). */
 export type EmbedBenchSeal = {
@@ -94,47 +89,25 @@ export function loadEmbedBenchSeal(
   probes: BenchProbeSet,
   expansion: ExpansionCaseSet,
 ): EmbedBenchSeal {
-  let raw: unknown;
-  try {
-    raw = JSON.parse(readFileSync(sealPath, "utf8"));
-  } catch (cause) {
-    throw new EmbedBenchStoreError(sealPath, `unreadable seal: ${String(cause)}`);
-  }
-  const seal = raw as EmbedBenchSeal;
-  if (seal.task !== "embed-bench") {
-    throw new EmbedBenchStoreError(sealPath, `seal task "${seal.task}" is not "embed-bench"`);
-  }
-  const hashChecks = [
-    { name: "probes", pinned: seal.hashes?.probes, path: probesPath },
-    { name: "expansion", pinned: seal.hashes?.expansion, path: expansionPath },
-  ] as const;
-  for (const { name, pinned, path } of hashChecks) {
-    const actual = sha256Hex(readFileSync(path));
-    if (pinned !== actual) {
-      throw new EmbedBenchStoreError(
-        sealPath,
-        `${name} hash mismatch: seal pins ${pinned ?? "nothing"}, ${path} is ${actual} — re-seal before running`,
-      );
-    }
+  const seal = readBenchSeal<EmbedBenchSeal>({ sealPath, task: "embed-bench", fail });
+  for (const [name, pinned, path] of [
+    ["probes", seal.hashes?.probes, probesPath],
+    ["expansion", seal.hashes?.expansion, expansionPath],
+  ] as const) {
+    assertSealHash({ fail, sealPath, name, pinned, path, actualLabel: path });
   }
   if (seal.fingerprints?.corpus !== probes.corpusFingerprint) {
-    throw new EmbedBenchStoreError(
+    throw fail(
       sealPath,
       `corpus fingerprint mismatch: seal pins ${seal.fingerprints?.corpus ?? "nothing"}, the probe fixture pins ${probes.corpusFingerprint} — re-seal before running`,
     );
   }
-  const counts = [
-    { name: "crossLingual", sealed: seal.counts?.crossLingual, actual: probes.crossLingual.length },
-    { name: "monolingual", sealed: seal.counts?.monolingual, actual: probes.monolingual.length },
-    { name: "expansion", sealed: seal.counts?.expansion, actual: expansion.cases.length },
-  ] as const;
-  for (const { name, sealed, actual } of counts) {
-    if (sealed !== actual) {
-      throw new EmbedBenchStoreError(
-        sealPath,
-        `counts.${name} ${sealed ?? "missing"} does not match the fixture's ${actual}`,
-      );
-    }
+  for (const [name, pinned, actual] of [
+    ["crossLingual", seal.counts?.crossLingual, probes.crossLingual.length],
+    ["monolingual", seal.counts?.monolingual, probes.monolingual.length],
+    ["expansion", seal.counts?.expansion, expansion.cases.length],
+  ] as const) {
+    assertSealCount({ fail, sealPath, name, pinned, actual, unit: "" });
   }
   return seal;
 }

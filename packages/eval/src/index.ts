@@ -205,9 +205,11 @@ export {
   type CaseOutcome,
   type DecisionBenchPrompts,
   type DecisionGate,
+  type GateOutcome,
 } from "./decision-bench";
 export {
   countSupersededResults,
+  decisionBenchPromptsIdentity,
   decisionBenchPromptsPin,
   decisionBenchRunFilePath,
   decisionBenchRunSlug,
