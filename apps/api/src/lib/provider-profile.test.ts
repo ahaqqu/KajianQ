@@ -35,6 +35,7 @@ const DEFAULT_CHAINS = {
     "openrouter:google/gemini-embedding-001",
     "openrouter:google/gemini-embedding-2",
     "openrouter:qwen/qwen3-embedding-8b",
+    "openrouter:perplexity/pplx-embed-v1-4b",
   ],
   "cheap-candidates": [
     "openrouter:google/gemini-3.8-flash",
