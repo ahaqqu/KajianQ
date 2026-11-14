@@ -35,19 +35,12 @@ import type { KajianQFilters } from "./filters";
  */
 
 /**
- * The **presentation order** (spec §3.3 item 5): Principles → Quran → Tafsir → Hadith →
+ * The **presentation order** (spec §3.3 item 5): Quran → Tafsir → Hadith →
  * Kitab — *how the Generator's turn is laid out*, deliberately NOT the usul **authority
- * order** the system prompt enforces. The Principle lens comes first because it is the
- * reading frame for everything after it. `tafsir` sits after `quran` (commentary with the
+ * order** the system prompt enforces. `tafsir` sits after `quran` (commentary with the
  * text it explains), and an unlisted source type sorts LAST, below every named source.
  */
-export const PRESENTATION_ORDER: readonly string[] = [
-  "principle",
-  "quran",
-  "tafsir",
-  "hadith",
-  "kitab",
-];
+export const PRESENTATION_ORDER: readonly string[] = ["quran", "tafsir", "hadith", "kitab"];
 
 function presentationRank(chunk: Chunk): number {
   const meta = (chunk.metadata ?? {}) as Record<string, unknown>;

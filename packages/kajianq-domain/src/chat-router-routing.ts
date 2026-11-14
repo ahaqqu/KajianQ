@@ -60,8 +60,6 @@ export function routingOf(
   // selected for a part the route dropped, nor missed for a part it runs.
   const subQueries = decomposeQuery({
     question,
-    needsPrinciple: reading.needsPrinciple,
-    principleTags: reading.principleTags,
     ...(reading.category !== undefined ? { category: reading.category } : {}),
     modelSubQueries: reading.modelSubQueries,
   });
@@ -93,7 +91,6 @@ function routingInputOf(
   return {
     intent: reading.intent,
     ...(reading.category !== undefined ? { category: reading.category } : {}),
-    needsPrinciple: reading.needsPrinciple,
     filters: reading.filters,
     subQueries,
   };

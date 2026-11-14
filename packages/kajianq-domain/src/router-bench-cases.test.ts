@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vite-plus/test";
 import { parseRouterBenchFixture, type RouterBenchFixture } from "@app/contracts";
-import { INTENTS, PRINCIPLE_TAGS, SUBJECT_AREAS } from "./taxonomy";
+import { INTENTS, SUBJECT_AREAS } from "./taxonomy";
 
 /**
  * The bench store's sealed routing cases must stay valid against the shared
@@ -34,11 +34,6 @@ describe("router-bench fixture", () => {
       if (c.expected.category !== undefined) {
         expect(SUBJECT_AREAS, `${c.id} category`).toContain(c.expected.category);
       }
-      if (c.expected.principleTags !== undefined) {
-        for (const tag of c.expected.principleTags) {
-          expect(PRINCIPLE_TAGS, `${c.id} tag`).toContain(tag);
-        }
-      }
     }
   });
 
@@ -52,15 +47,6 @@ describe("router-bench fixture", () => {
     for (const count of perLanguage.values()) {
       expect(count).toBeGreaterThanOrEqual(3);
     }
-  });
-
-  it("asserts needsPrinciple both ways — a fixture that only ever asserts true lies", () => {
-    const set = loadFixture();
-    const asserted = set.cases
-      .filter((c) => c.expected.needsPrinciple !== undefined)
-      .map((c) => c.expected.needsPrinciple);
-    expect(asserted).toContain(true);
-    expect(asserted).toContain(false);
   });
 
   it("every intent in the vocabulary is exercised by at least one case", () => {

@@ -4,7 +4,7 @@ import { CostRecordSchema } from "./trace-primitives";
 /**
  * Router-bench contracts: the fixture shape and committed run-file shape for
  * the router-classification bench — the cheap-role Smart Router stage 1–2
- * (intent, subject area, principle need) over hand-authored questions in
+ * (intent, subject area) over hand-authored questions in
  * each content language. Domain-agnostic like the decision bench: the
  * intent/category/tag vocabularies are opaque strings the domain pack
  * validates against its own taxonomy; only the classification's shape is
@@ -21,8 +21,6 @@ export const RouterPriorTurnSchema = v.object({
 export const RouterExpectedSchema = v.object({
   intent: v.pipe(v.string(), v.minLength(1)),
   category: v.optional(v.pipe(v.string(), v.minLength(1))),
-  needsPrinciple: v.optional(v.boolean()),
-  principleTags: v.optional(v.pipe(v.array(v.pipe(v.string(), v.minLength(1))), v.maxLength(3))),
 });
 
 export const RouterCaseSchema = v.object({
@@ -106,19 +104,10 @@ export type RouterBenchRun = v.InferOutput<typeof RouterBenchRunSchema>;
 
 /**
  * Parse an untrusted fixture payload with the cross-field check the schema
- * cannot express: a case asserting `principleTags` must also assert
- * `needsPrinciple: true` — tags without the flag contradict the one field
- * that routes retrieval to the Principle Index.
  */
 export function parseRouterBenchFixture(raw: unknown): RouterBenchFixture {
   const fixture = v.parse(RouterBenchFixtureSchema, raw);
-  fixture.cases.forEach((c, i) => {
-    if (c.expected.principleTags !== undefined && c.expected.needsPrinciple !== true) {
-      throw new Error(
-        `router-bench fixture: case ${i} ("${c.id}") asserts principleTags without needsPrinciple: true`,
-      );
-    }
-  });
+  fixture.cases.forEach((c, i) => {});
   return fixture;
 }
 

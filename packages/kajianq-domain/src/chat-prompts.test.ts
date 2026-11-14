@@ -153,14 +153,6 @@ describe("the usul authority order", () => {
     expect(chatSystemPrompt("id")).toMatch(/Bila konteks memuat lebih dari satu jenis sumber/);
     expect(chatSystemPrompt("en")).toMatch(/When the context carries more than one kind of source/);
   });
-
-  it("keeps the lens out of the authority order — the two orderings are distinct", () => {
-    // The presentation order's first slot must NOT be the prompt's first
-    // authority, and the prompt must not present the lens as governing
-    // evidence; it frames the reading of it.
-    expect(chatSystemPrompt("id")).toMatch(/bukan dalil yang berdiri sendiri/);
-    expect(chatSystemPrompt("en")).toMatch(/not evidence standing on their own/);
-  });
 });
 
 /**

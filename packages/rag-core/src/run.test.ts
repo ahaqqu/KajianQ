@@ -126,7 +126,7 @@ describe("runPipeline", () => {
             intent: "analogy",
             subQueries: [
               { text: "sub one", role: "factual", origin: "model" },
-              { text: "sub two", role: "principle", origin: "rule" },
+              { text: "sub two", role: "evidence", origin: "rule" },
             ],
             filters: { scope: "all" },
             confidence: 0.5,
@@ -164,7 +164,7 @@ describe("runPipeline", () => {
       {
         stage: "router",
         kind: "subquery",
-        detail: { text: "sub two", role: "principle", origin: "rule" },
+        detail: { text: "sub two", role: "evidence", origin: "rule" },
         at: 3,
       },
     ]);

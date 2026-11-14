@@ -9,7 +9,7 @@ export { ROUTER_FOLLOW_UP_RULE, ROUTER_SYSTEM_PROMPT, routerCallFor } from "./ch
 
 /**
  * KajianQRouter — Smart Router stages 1–3 (spec §3.3, CONTEXT.md "Smart
- * Router"): intent & Principle detection, query decomposition, and source
+ * Router"): intent detection, query decomposition, and source
  * routing with metadata filters. Model choice comes from the wiring's
  * injected Provider (config, never here); the call's cost is recorded to the
  * run's trace sink (ADR-0021).

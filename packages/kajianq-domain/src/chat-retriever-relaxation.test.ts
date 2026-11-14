@@ -217,14 +217,14 @@ describe("filter relaxation gives up one dimension at a time", () => {
     const { store, calls } = makeStore(["sourceType", "grade"]);
     const recorded: { kind: string }[] = [];
     const chunks = await runWith<{ id: string }[]>(store, recorded, {
-      sourceType: ["principle"],
+      sourceType: ["kitab"],
       grade: ["mutawatir"],
     });
 
     // The probes run in the declared order, each omitting exactly one dimension.
     expect(calls.slice(0, 4)).toEqual([
-      { sourceType: ["principle"], grade: ["mutawatir"] },
-      { sourceType: ["principle"] },
+      { sourceType: ["kitab"], grade: ["mutawatir"] },
+      { sourceType: ["kitab"] },
       { grade: ["mutawatir"] },
       {},
     ]);
@@ -243,9 +243,9 @@ describe("filter relaxation gives up one dimension at a time", () => {
     }[];
     expect(relaxed.map((e) => [e.detail.dropped, e.detail.adopted])).toEqual([
       [{ grade: ["mutawatir"] }, false],
-      [{ sourceType: ["principle"] }, false],
+      [{ sourceType: ["kitab"] }, false],
       // Every live dimension at once: the record-level last resort.
-      [{ sourceType: ["principle"], grade: ["mutawatir"] }, true],
+      [{ sourceType: ["kitab"], grade: ["mutawatir"] }, true],
     ]);
     expect(relaxed.at(-1)?.detail.retained).toEqual({});
     expect(relaxed.at(-1)?.detail.hits).toBeGreaterThan(0);
@@ -258,10 +258,10 @@ describe("filter relaxation gives up one dimension at a time", () => {
   it("gives up only the dimension that matched nothing, and records what survived", async () => {
     const { store, calls } = makeStore(["sourceType"]);
     const recorded: { kind: string }[] = [];
-    await runWith(store, recorded, { sourceType: ["principle"], grade: ["sahih"] });
+    await runWith(store, recorded, { sourceType: ["kitab"], grade: ["sahih"] });
 
-    expect(calls[0]).toEqual({ sourceType: ["principle"], grade: ["sahih"] });
-    expect(calls[1]).toEqual({ sourceType: ["principle"] }); // probe: drop grade
+    expect(calls[0]).toEqual({ sourceType: ["kitab"], grade: ["sahih"] });
+    expect(calls[1]).toEqual({ sourceType: ["kitab"] }); // probe: drop grade
     expect(calls[2]).toEqual({ grade: ["sahih"] }); // probe: drop sourceType — hits
     for (const call of calls.slice(2)) expect(call).toEqual({ grade: ["sahih"] });
 
@@ -276,7 +276,7 @@ describe("filter relaxation gives up one dimension at a time", () => {
     // The probe that changed nothing is on the trace beside the adopted drop.
     expect(relaxed.map((e) => [e.detail.dropped, e.detail.adopted])).toEqual([
       [{ grade: ["sahih"] }, false],
-      [{ sourceType: ["principle"] }, true],
+      [{ sourceType: ["kitab"] }, true],
     ]);
     expect(relaxed[1]?.detail.retained).toEqual({ grade: ["sahih"] });
     expect(relaxed[1]?.detail.hits).toBeGreaterThan(0);
@@ -298,10 +298,10 @@ describe("filter relaxation gives up one dimension at a time", () => {
     // is adopted. A blind whole-record retry could not tell the two apart.
     const { store, calls } = makeStore(["sourceType"]);
     const recorded: { kind: string }[] = [];
-    await runWith(store, recorded, { sourceType: ["principle"], grade: ["sahih"] });
+    await runWith(store, recorded, { sourceType: ["kitab"], grade: ["sahih"] });
 
-    expect(calls[0]).toEqual({ sourceType: ["principle"], grade: ["sahih"] });
-    expect(calls[1]).toEqual({ sourceType: ["principle"] }); // probe: drop grade
+    expect(calls[0]).toEqual({ sourceType: ["kitab"], grade: ["sahih"] });
+    expect(calls[1]).toEqual({ sourceType: ["kitab"] }); // probe: drop grade
     expect(calls[2]).toEqual({ grade: ["sahih"] }); // probe: drop sourceType — hits
 
     const relaxed = recorded.filter((e) => e.kind === "filter_relaxed") as unknown as {
@@ -314,7 +314,7 @@ describe("filter relaxation gives up one dimension at a time", () => {
     }[];
     expect(relaxed.map((e) => [e.detail.dropped, e.detail.adopted, e.detail.hits])).toEqual([
       [{ grade: ["sahih"] }, false, 0],
-      [{ sourceType: ["principle"] }, true, 1],
+      [{ sourceType: ["kitab"] }, true, 1],
     ]);
     // The probe that changed nothing is still machinery on the trace.
     expect(relaxed[1]?.detail.retained).toEqual({ grade: ["sahih"] });

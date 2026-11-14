@@ -358,7 +358,7 @@ describe("the source vocabulary the routing decision selects from", () => {
     expect(values).toContain("quran");
     expect(values).toContain("hadith");
     expect(values).toContain("kitab");
-    expect(values).toContain("principle");
+    expect(values).not.toContain("principle");
     expect(new Set(values).size).toBe(values.length);
   });
 });

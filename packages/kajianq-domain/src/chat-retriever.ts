@@ -196,9 +196,8 @@ export function createKajianQRetriever(deps: KajianQRetrieverDeps): Retriever<Ka
               if (i === callerIndex) callerLists.push(list);
             }
           }
-          // The hierarchy bonuses are the spec's; the Principle bonus applies only on an
-          // analogy question, so the fuse is told the intent the route read.
-          const fused = rrfFuse(lists, (chunk) => hierarchyBonus(chunk, routed.intent));
+          // The hierarchy bonuses are the spec's — properties of the chunk alone.
+          const fused = rrfFuse(lists, (chunk) => hierarchyBonus(chunk));
           const scopeCap = deps.scopeExpansionCap ?? DEFAULT_SCOPE_EXPANSION_CAP;
           // Detection runs on the verbatim question, not on a sub-query, so the
           // router's paraphrase cannot flip the scope (ADR-0045).

@@ -6,21 +6,20 @@ The router's third stage selects the sources a question is answered from, and th
 
 **Route-wide coverage.** The selection is the **union** of what the route's category implies and what **every sub-query's own role** implies, derived from the sub-queries retrieval actually fans out over:
 
-| reading or part                                           | sources selected            |
-| --------------------------------------------------------- | --------------------------- |
-| `category: quran` or `tafsir`                             | `quran`, `tafsir`, `hadith` |
-| `category: hadith`                                        | `hadith`                    |
-| `category: fikih`                                         | `quran`, `hadith`, `kitab`  |
-| a `dalil` or `sanad` part                                 | `hadith`                    |
-| a `principle` part, `intent: analogy`, a needed principle | `principle`                 |
-| a `factual` part                                          | nothing of its own          |
-| no subject area settled                                   | none — every source         |
+| reading or part               | sources selected            |
+| ----------------------------- | --------------------------- |
+| `category: quran` or `tafsir` | `quran`, `tafsir`, `hadith` |
+| `category: hadith`            | `hadith`                    |
+| `category: fikih`             | `quran`, `hadith`, `kitab`  |
+| a `dalil` or `sanad` part     | `hadith`                    |
+| a `factual` part              | nothing of its own          |
+| no subject area settled       | none — every source         |
 
 The two scriptural areas share **one** breadth, because a question about the Quran is answered from the Quran, its commentary, and the Sunnah that carries the practice the question asks about; which of the two the reading settles is a distinction the evidence does not draw. **A category is a sample, so no row may decide whether the Sunnah is in reach:** every non-empty selection names it.
 
-Both maps are exhaustive records over the vocabulary that owns them, so a category or role added without a decision here is a typecheck failure, and a role the mapping cannot express fails the run that must turn it into a filter. An empty category selection stays empty: a role or a lens may widen a selection, never turn "every source" into a filter. Every dimension is a **set** behind one exhaustive map.
+Both maps are exhaustive records over the vocabulary that owns them, so a category or role added without a decision here is a typecheck failure, and a role the mapping cannot express fails the run that must turn it into a filter. An empty category selection stays empty: a role may widen a selection, never turn "every source" into a filter. Every dimension is a **set** behind one exhaustive map. The route selects **no** source the corpus cannot one day carry by ingestion alone — a knowledge layer that retrieval should consult becomes a row here with the layer that seeds it, never through a model's say-so.
 
-The **authority order** — Quran, then hadith by grade, then tafsir, then kitab — is the generator's system prompt; the **presentation order** is the assembler's, deliberately distinct, with principles first and unnamed sources last.
+The **authority order** — Quran, then hadith by grade, then tafsir, then kitab — is the generator's system prompt; the **presentation order** is the assembler's, deliberately distinct, with unnamed sources last.
 
 ## Why
 

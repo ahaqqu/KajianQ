@@ -7,14 +7,7 @@ import {
   type Madzhab,
   type TextLayer,
 } from "./filters";
-import {
-  isIntent,
-  isPrincipleTag,
-  isSubjectArea,
-  type Intent,
-  type PrincipleTag,
-  type SubjectArea,
-} from "./taxonomy";
+import { isIntent, isSubjectArea, type Intent, type SubjectArea } from "./taxonomy";
 import type { ModelSubQuery } from "./chat-router-decompose";
 
 /**
@@ -34,8 +27,8 @@ import type { ModelSubQuery } from "./chat-router-decompose";
  *   and "no subject area was settled" is a real state the Trace can show,
  *   unlike a fabricated one.
  *
- * **A classification is not a filter.** Madzhab, TextLayer and Principle are
- * read and recorded on the Trace, but they are not `KajianQFilters`
+ * **A classification is not a filter.** Madzhab and TextLayer are read and
+ * recorded on the Trace, but they are not `KajianQFilters`
  * dimensions: the corpus carries no row for them, so turning one into a
  * filter would ask the store for a match that can never exist. Only the
  * dimensions in `FILTER_DIMENSIONS` reach `filters`.
@@ -58,8 +51,6 @@ export const RouterReplySchema = v.object({
   grade: v.optional(v.string()),
   chainGrade: v.optional(v.string()),
   textLayer: v.optional(v.string()),
-  needsPrinciple: v.optional(v.boolean()),
-  principleTags: v.optional(v.array(v.string())),
   confidence: v.optional(v.number()),
   reasoning: v.optional(v.string()),
   subQueries: v.optional(v.array(SubQueryReplySchema)),
@@ -67,8 +58,6 @@ export const RouterReplySchema = v.object({
 
 export type RouterReply = v.InferOutput<typeof RouterReplySchema>;
 
-/** The most Principle tags one reply may contribute (a bound on model output). */
-const MAX_PRINCIPLE_TAGS = 3;
 /** The longest rationale kept on the Trace (a bound on model output). */
 const MAX_REASONING_CHARS = 600;
 
@@ -99,8 +88,6 @@ export type RouterReading = {
   madzhab?: Madzhab;
   /** The model's TextLayer classification, when it is usable — Trace content only. */
   textLayer?: TextLayer;
-  needsPrinciple: boolean;
-  principleTags: readonly PrincipleTag[];
   /** The model's sub-queries, in its own order. */
   modelSubQueries: readonly ModelSubQuery[];
   /** Effective retrieval filters: the caller's overrides win over the hints. */
@@ -111,7 +98,7 @@ export type RouterReading = {
   reasoning?: string;
   /**
    * The Trace's opaque classification payload: the subject area, the Madzhab /
-   * TextLayer / Principle classifications, and the effective filters. Built
+   * TextLayer classifications, and the effective filters. Built
    * once here so the trace and the routing decision can never disagree about
    * what was understood. The filter record retrieval runs with is the
    * `source_routing` event, and only `FILTER_DIMENSIONS` members can reach it.
@@ -139,17 +126,6 @@ export function readRouterReply(
 
   const category =
     reply.category !== undefined && isSubjectArea(reply.category) ? reply.category : undefined;
-
-  const principleTags: PrincipleTag[] = [];
-  for (const raw of reply.principleTags ?? []) {
-    if (!isPrincipleTag(raw) || principleTags.includes(raw)) continue;
-    principleTags.push(raw);
-    if (principleTags.length === MAX_PRINCIPLE_TAGS) break;
-  }
-  // A tag is itself the model's statement that this question turns on a lens:
-  // a reply that names one needs the Principle sub-query even if it left the
-  // flag out.
-  const needsPrinciple = reply.needsPrinciple === true || principleTags.length > 0;
 
   // The caller's explicit filters ride through untouched. A key outside the
   // filter vocabulary — a retired dimension included — is rejected downstream
@@ -183,11 +159,10 @@ export function readRouterReply(
       : undefined;
   const reasoning = normalizeReasoning(reply.reasoning);
 
-  const attributes: Record<string, unknown> = { needsPrinciple };
+  const attributes: Record<string, unknown> = {};
   if (category !== undefined) attributes["category"] = category;
   if (madzhab !== undefined) attributes["madzhab"] = madzhab;
   if (textLayer !== undefined) attributes["textLayer"] = textLayer;
-  if (principleTags.length > 0) attributes["principleTags"] = principleTags;
   Object.assign(attributes, filters);
 
   return {
@@ -195,8 +170,6 @@ export function readRouterReply(
     ...(category !== undefined ? { category } : {}),
     ...(madzhab !== undefined ? { madzhab } : {}),
     ...(textLayer !== undefined ? { textLayer } : {}),
-    needsPrinciple,
-    principleTags,
     modelSubQueries: (reply.subQueries ?? []).map((entry) =>
       typeof entry === "string"
         ? { text: entry }

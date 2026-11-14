@@ -13,8 +13,6 @@ const QUESTION = "Kenapa shalat orang sakit boleh diringankan?";
 
 const input = (overrides: Partial<Parameters<typeof decomposeQuery>[0]> = {}) => ({
   question: QUESTION,
-  needsPrinciple: false,
-  principleTags: [],
   modelSubQueries: [],
   ...overrides,
 });
@@ -44,14 +42,14 @@ describe("decomposeQuery", () => {
       input({
         modelSubQueries: [
           { text: "hukum shalat orang sakit", role: "factual" },
-          { text: "keringanan dalam ibadah", role: "principle" },
+          { text: "keringanan dalam ibadah", role: "dalil" },
         ],
       }),
     );
     expect(subs).toEqual([
       { text: QUESTION, role: "factual", origin: "rule" },
       { text: "hukum shalat orang sakit", role: "factual", origin: "model" },
-      { text: "keringanan dalam ibadah", role: "principle", origin: "model" },
+      { text: "keringanan dalam ibadah", role: "dalil", origin: "model" },
     ]);
   });
 
@@ -62,23 +60,6 @@ describe("decomposeQuery", () => {
       { text: "keringanan shalat", origin: "model" },
     ]);
     expect(subs).toHaveLength(MIN_SUB_QUERIES);
-  });
-
-  it("adds a principle sub-query when the question needs a lens", () => {
-    const subs = decomposeQuery(
-      input({
-        needsPrinciple: true,
-        principleTags: ["yusr", "rahmah"],
-        modelSubQueries: [
-          { text: "hukum shalat orang sakit", role: "factual" },
-          { text: "hadits keringanan shalat", role: "sanad" },
-        ],
-      }),
-    );
-    const principle = subs.find((s) => s.role === "principle");
-    expect(principle?.origin).toBe("rule");
-    expect(principle?.text).toContain("yusr, rahmah");
-    expect(principle?.text).toContain(QUESTION);
   });
 
   it("adds the dalil rule for fikih and the sanad rule for hadith", () => {
@@ -105,26 +86,25 @@ describe("decomposeQuery", () => {
   it("never duplicates a rule's sub-query when the model already covered the role", () => {
     const subs = decomposeQuery(
       input({
-        needsPrinciple: true,
-        principleTags: ["yusr"],
         category: "hadith",
         modelSubQueries: [
           { text: "hukum shalat", role: "factual" },
-          { text: "prinsip yusr", role: "principle" },
+          { text: "dalil keringanan shalat", role: "dalil" },
           { text: "sanad hadits shalat", role: "sanad" },
         ],
       }),
     );
     // The `factual` rule's entry is the caller's question, added ahead of the
     // reply; the reply's factual paraphrase is a second distinct text, not a
-    // replacement. No rule adds a duplicate: principle and sanad are already
-    // labelled by the model.
+    // replacement. No rule adds a duplicate: sanad is already labelled by the
+    // model, and `dalil` — a declared role no rule fired here — is kept as the
+    // model wrote it.
     expect(subs.map((s) => s.origin)).toEqual(["rule", "model", "model", "model"]);
-    expect(subs.map((s) => s.role)).toEqual(["factual", "factual", "principle", "sanad"]);
+    expect(subs.map((s) => s.role)).toEqual(["factual", "factual", "dalil", "sanad"]);
     expect(subs.map((s) => s.text)).toEqual([
       QUESTION,
       "hukum shalat",
-      "prinsip yusr",
+      "dalil keringanan shalat",
       "sanad hadits shalat",
     ]);
   });
@@ -132,8 +112,6 @@ describe("decomposeQuery", () => {
   it("keeps the reply inside the bound when the model over-produces", () => {
     const subs = decomposeQuery(
       input({
-        needsPrinciple: true,
-        principleTags: ["yusr"],
         category: "fikih",
         modelSubQueries: [
           { text: "sudut satu", role: "factual" },
@@ -145,18 +123,26 @@ describe("decomposeQuery", () => {
       }),
     );
     expect(subs).toHaveLength(MAX_SUB_QUERIES);
-    // The caller's question and the rule-derived sub-queries survive; the model's
-    // extra angles are what the ceiling spends.
-    expect(subs.map((s) => s.role)).toEqual(["factual", "principle", "dalil", "factual"]);
+    // The caller's question and the rule-derived dalil sub-query survive; the
+    // model's extra angles are what the ceiling spends.
     expect(subs[0]).toEqual({ text: QUESTION, role: "factual", origin: "rule" });
-    expect(subs.at(-1)).toEqual({ text: "sudut satu", role: "factual", origin: "model" });
+    expect(subs[1]).toEqual({
+      text: `dalil Al-Quran tentang: ${QUESTION}`,
+      role: "dalil",
+      origin: "rule",
+    });
+    expect(subs.map((s) => s.text)).toEqual([
+      QUESTION,
+      `dalil Al-Quran tentang: ${QUESTION}`,
+      "sudut satu",
+      "sudut dua",
+    ]);
   });
 
   it("does not let repeated roles crowd out a rule-derived sub-query", () => {
     const subs = decomposeQuery(
       input({
-        needsPrinciple: true,
-        principleTags: ["yusr"],
+        category: "fikih",
         modelSubQueries: [
           { text: "satu", role: "factual" },
           { text: "dua", role: "factual" },
@@ -167,8 +153,8 @@ describe("decomposeQuery", () => {
     );
     expect(subs).toHaveLength(MAX_SUB_QUERIES);
     // One sub-query per role is what the budget is spent on first, so the
-    // rule-derived principle survives and the last extra angle is what goes.
-    expect(subs.filter((s) => s.role === "principle")).toHaveLength(1);
+    // rule-derived dalil survives and the last extra angles are what go.
+    expect(subs.filter((s) => s.role === "dalil")).toHaveLength(1);
     expect(subs.some((s) => s.role === "factual")).toBe(true);
     expect(subs.map((s) => s.text)).not.toContain("empat");
   });
@@ -327,13 +313,13 @@ describe("decomposeQuery — what it keeps from the reply (#450)", () => {
           question: Q,
           modelSubQueries: [
             { text: "", role: "dalil" },
-            { text: "   ", role: "principle" },
+            { text: "   ", role: "sanad" },
             { text: "\t\n", role: "sanad" },
             { text: "!", role: "dalil" },
-            { text: '"', role: "principle" },
-            { text: "—…?!", role: "principle" },
+            { text: '"', role: "sanad" },
+            { text: "—…?!", role: "sanad" },
             { text: "\u0000\u0007", role: "dalil" },
-            { text: "🎉🎉", role: "principle" },
+            { text: "🎉🎉", role: "sanad" },
           ],
         }),
       ),
@@ -373,16 +359,16 @@ describe("decomposeQuery — what it keeps from the reply (#450)", () => {
     // is `spaced   text`. Refusing a padded text would be over-normalisation; keeping it
     // untrimmed is what the repair's own idempotence forbids.
     const subs = decomposeQuery(
-      input({ question: Q, modelSubQueries: [{ text: "  spaced   text  ", role: "principle" }] }),
+      input({ question: Q, modelSubQueries: [{ text: "  spaced   text  ", role: "sanad" }] }),
     );
     expect(subs.map((sub) => sub.text)).toEqual([Q, "spaced   text"]);
   });
 
   it("keeps the entry a fired rule's coverage lives in when the ceiling spends its budget", () => {
     // The stand-in path: the reply over-produces and the `sanad` rule's own text
-    // arrives under `principle` — a declared role the repair never overwrites, so
+    // arrives under `dalil` — a declared role the repair never overwrites, so
     // `sanad` stays uncovered and that entry is the rule's only evidence. The entry
-    // repeats `principle`, so it is an extra like `b` and `c`; the ceiling keeps it
+    // repeats `dalil`, so it is an extra like `b` and `c`; the ceiling keeps it
     // anyway, ahead of both, or the budget is spent on them and the rule's text is
     // gone. That is also why the second pass must keep the same set: a dropped
     // stand-in makes the next pass re-add the `sanad` entry and change the answer.
@@ -390,18 +376,18 @@ describe("decomposeQuery — what it keeps from the reply (#450)", () => {
       question: Q,
       category: "hadith",
       modelSubQueries: [
-        { text: "a", role: "principle" },
-        { text: "b", role: "principle" },
-        { text: "c", role: "principle" },
-        { text: "sanad dan derajat hadis tentang: hukum riba?", role: "principle" },
+        { text: "a", role: "dalil" },
+        { text: "b", role: "dalil" },
+        { text: "c", role: "dalil" },
+        { text: "sanad dan derajat hadis tentang: hukum riba?", role: "dalil" },
       ],
     });
     const subs = decomposeQuery(source);
     expect(subs).toEqual([
       { text: Q, role: "factual", origin: "rule" },
-      { text: "a", role: "principle", origin: "model" },
-      { text: "sanad dan derajat hadis tentang: hukum riba?", role: "principle", origin: "model" },
-      { text: "b", role: "principle", origin: "model" },
+      { text: "a", role: "dalil", origin: "model" },
+      { text: "sanad dan derajat hadis tentang: hukum riba?", role: "dalil", origin: "model" },
+      { text: "b", role: "dalil", origin: "model" },
     ]);
     // The headline law as an example: the second pass keeps the same set.
     expect(again(source, subs)).toEqual(shape(subs));
@@ -413,16 +399,16 @@ describe("decomposeQuery — what it keeps from the reply (#450)", () => {
       modelSubQueries: [
         { text: "!", role: "dalil" },
         { text: "hukum riba", role: "sanad" },
-        { text: "  spaced   text  ", role: "principle" },
+        { text: "  spaced   text  ", role: "dalil" },
         { text: Q, role: "sanad" },
-        { text: '"', role: "principle" },
+        { text: '"', role: "dalil" },
       ],
     });
     const subs = decomposeQuery(source);
     expect(subs).toEqual([
       { text: Q, role: "factual", origin: "rule" },
       { text: "hukum riba", role: "sanad", origin: "model" },
-      { text: "spaced   text", role: "principle", origin: "model" },
+      { text: "spaced   text", role: "dalil", origin: "model" },
     ]);
     expect(again(source, subs)).toEqual(shape(subs));
   });
@@ -494,7 +480,7 @@ describe("decomposeQuery — a text with no letter and no digit is never a sub-q
   ] as const;
 
   it("fans out over nothing for the zero-width question, with or without the reply's echo", () => {
-    // The shape: `needsPrinciple: false` and no fikih/hadith category, so the `factual`
+    // The shape: no fikih/hadith category, so the `factual`
     // rule is the only one that fired and its text *is* this content-free question. This
     // pins the pure decomposer's range for such a question; on the serving path the route
     // declines it before this stage (`chat-router.ts`), so a route's empty fan-out is the
@@ -576,15 +562,15 @@ describe("decomposeQuery — a text with no letter and no digit is never a sub-q
   it("keeps a rule's own template when the template's words carry the content", () => {
     // The content test is on the text, not on the question it was built from, and
     // this is the boundary that follows: the `factual` rule's text is the bare
-    // question, so it is dropped, while the principle/dalil/sanad templates carry
-    // their own words ("prinsip … dalam menjawab") and stay searchable. Asserted
-    // rather than left implicit, because it is a deliberate reading of the
-    // invariant — "a text that carries no letter and no digit" — and not an
-    // accident of which rule fired.
-    expect(decomposeQuery(input({ question: ZERO_WIDTH_QUESTION, needsPrinciple: true }))).toEqual([
+    // question, so it is dropped, while the dalil/sanad templates carry
+    // their own words ("dalil Al-Quran tentang", "sanad dan derajat hadis") and
+    // stay searchable. Asserted rather than left implicit, because it is a
+    // deliberate reading of the invariant — "a text that carries no letter and no
+    // digit" — and not an accident of which rule fired.
+    expect(decomposeQuery(input({ question: ZERO_WIDTH_QUESTION, category: "fikih" }))).toEqual([
       {
-        text: `prinsip syariat dalam menjawab: ${ZERO_WIDTH_QUESTION}`,
-        role: "principle",
+        text: `dalil Al-Quran tentang: ${ZERO_WIDTH_QUESTION}`,
+        role: "dalil",
         origin: "rule",
       },
     ]);

@@ -213,10 +213,11 @@ describe("the presentation order", () => {
     score,
   });
 
-  it("lays the context out Principles → Quran → Tafsir → Hadith → Kitab", () => {
+  it("lays the context out Quran → Tafsir → Hadith → Kitab, unnamed last", () => {
     // Deliberately fed in the reverse of the expected output, with scores that
     // would sort it the other way: the order must come from the slot, not from
-    // whatever retrieval happened to score highest.
+    // whatever retrieval happened to score highest. A source type the order no
+    // longer names rides in the unnamed-last bucket.
     const chunks = [
       chunkOf("kitab", "kitab", 9),
       chunkOf("hadith", "hadith", 8),
@@ -225,13 +226,13 @@ describe("the presentation order", () => {
       chunkOf("principle", "principle", 1),
     ];
     expect(assemble(chunks).chunks.map((c) => c.id)).toEqual([
-      "principle",
       "quran",
       "tafsir",
       "hadith",
       "kitab",
+      "principle",
     ]);
-    expect(PRESENTATION_ORDER).toEqual(["principle", "quran", "tafsir", "hadith", "kitab"]);
+    expect(PRESENTATION_ORDER).toEqual(["quran", "tafsir", "hadith", "kitab"]);
   });
 
   it("sorts a source type the order does not name BELOW every named source", () => {

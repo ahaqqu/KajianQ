@@ -39,12 +39,10 @@ const ROLE_SOURCES_EXPECTED: Readonly<Record<SubQueryRole, readonly RoutableSour
   factual: [],
   dalil: ["hadith"],
   sanad: ["hadith"],
-  principle: ["principle"],
 };
 
 const reading = (overrides: Partial<SourceRoutingInput> = {}): SourceRoutingInput => ({
   intent: "ruling",
-  needsPrinciple: false,
   filters: {},
   subQueries: [],
   ...overrides,
@@ -92,32 +90,15 @@ describe("source routing reads the subject area into an index selection", () => 
   });
 
   it("keeps an unlisted category unfiltered — a part's role can only widen a filter, never create one", () => {
-    // A lens filter on an unrouted category is the same narrowing by another route.
+    // A role filter on an unrouted category is the same narrowing by another route.
     expect(
       sourceTypesOf(reading({ category: "general", subQueries: [part("h", "sanad")] })),
     ).toEqual([]);
     expect(sourceTypesOf(reading({ subQueries: [part("h", "dalil")] }))).toEqual([]);
-    expect(sourceTypesOf(reading({ category: "general", needsPrinciple: true }))).toEqual([]);
-    expect(
-      sourceTypesOf(reading({ intent: "analogy", subQueries: [part("p", "principle")] })),
-    ).toEqual([]);
   });
 
-  it("adds the Principle Index when a lens is needed, and on an analogy", () => {
-    // The lens is only reachable from the Principle Index, so needing one selects
-    // it; an analogy implies a lens whether or not the reply said so.
-    expect(sourceTypesOf(reading({ category: "fikih", needsPrinciple: true }))).toEqual([
-      "quran",
-      "hadith",
-      "kitab",
-      "principle",
-    ]);
-    expect(sourceTypesOf(reading({ intent: "analogy", category: "fikih" }))).toEqual([
-      "quran",
-      "hadith",
-      "kitab",
-      "principle",
-    ]);
+  it("keeps a question outside every rule's reach unfiltered", () => {
+    // An intent no category rule covers widens nothing on its own.
     expect(sourceTypesOf(reading({ intent: "aqidah" }))).toEqual([]);
   });
 });
@@ -141,10 +122,10 @@ describe("route-wide coverage: the category's sources union every part's own rol
   it.each([...SUB_QUERY_ROLES])("maps the %s role to its own sources, and nothing else", (role) => {
     // Pinned on the role map itself, because a routing result cannot see most of
     // it: every non-empty category row already names the Sunnah, so a lost or
-    // added `dalil`/`sanad` source changes no selection today, and only
-    // `principle` is observable downstream. What this buys is the map's
-    // declaration staying exactly as decided — a role widened or narrowed here is
-    // a deliberate edit against this test rather than a silent one no reader sees.
+    // added `dalil`/`sanad` source changes no selection today. What this buys is
+    // the map's declaration staying exactly as decided — a role widened or
+    // narrowed here is a deliberate edit against this test rather than a silent
+    // one no reader sees.
     expect(roleSources(role)).toEqual(ROLE_SOURCES_EXPECTED[role]);
   });
 
@@ -174,8 +155,7 @@ describe("route-wide coverage: the category's sources union every part's own rol
       reading({
         intent: "analogy",
         category: "fikih",
-        needsPrinciple: true,
-        subQueries: [part("a", "sanad"), part("b", "factual"), part("c", "principle")],
+        subQueries: [part("a", "sanad"), part("b", "factual"), part("c", "dalil")],
       });
     expect(sourceTypesOf(readingOnce())).toEqual(sourceTypesOf(readingOnce()));
   });
@@ -231,33 +211,28 @@ describe("the sampled reading cannot decide whether scriptural evidence is searc
   /** The two areas whose readings differ only in a distinction retrieval does not draw. */
   const SCRIPTURAL_AREAS = ["quran", "tafsir"] as const;
 
-  it("selects the same sources for the two scriptural areas, for every intent, part and lens", () => {
+  it("selects the same sources for the two scriptural areas, for every intent and part", () => {
     const roleSets = [
       [],
       ["factual"],
       ["dalil"],
       ["sanad"],
-      ["principle"],
       ["factual", "dalil"],
-      ["factual", "principle"],
+      ["dalil", "sanad"],
     ] as const;
     for (const intent of INTENTS) {
-      for (const needsPrinciple of [false, true]) {
-        for (const roles of roleSets) {
-          const selectionOf = (category: (typeof SCRIPTURAL_AREAS)[number]) =>
-            sourceTypesOf(
-              reading({
-                category,
-                intent,
-                needsPrinciple,
-                subQueries: roles.map((role, i) => part(`p${i}`, role)),
-              }),
-            );
-          expect(
-            selectionOf("quran"),
-            `${intent} / needsPrinciple=${needsPrinciple} / ${roles.join("+") || "no part"}`,
-          ).toEqual(selectionOf("tafsir"));
-        }
+      for (const roles of roleSets) {
+        const selectionOf = (category: (typeof SCRIPTURAL_AREAS)[number]) =>
+          sourceTypesOf(
+            reading({
+              category,
+              intent,
+              subQueries: roles.map((role, i) => part(`p${i}`, role)),
+            }),
+          );
+        expect(selectionOf("quran"), `${intent} / ${roles.join("+") || "no part"}`).toEqual(
+          selectionOf("tafsir"),
+        );
       }
     }
   });
@@ -353,11 +328,9 @@ describe("routeFilters decides, the reply only hints", () => {
     });
   });
 
-  it("sets the source selection a lens puts in play", () => {
-    // `needsPrinciple` selects the Principle Index; the tags themselves are a
-    // classification on the intent event, not a filter dimension.
-    expect(routeFilters(reading({ category: "hadith", needsPrinciple: true }))).toEqual({
-      sourceType: ["hadith", "principle"],
+  it("derives the source selection the category puts in play", () => {
+    expect(routeFilters(reading({ category: "hadith" }))).toEqual({
+      sourceType: ["hadith"],
     });
   });
 
@@ -366,36 +339,27 @@ describe("routeFilters decides, the reply only hints", () => {
     expect(
       routeFilters(reading({ category: "fikih", filters: { sourceType: ["quran"] } })),
     ).toEqual({ sourceType: ["quran"] });
-    // A caller-pinned filter does not pin the source selection: the lens still puts
-    // the Principle Index in play beside the caller's grade screen.
+    // A caller-pinned filter does not pin the source selection: the category's own
+    // breadth is still derived beside the caller's grade screen.
     expect(
       routeFilters(
         reading({
           category: "quran",
-          needsPrinciple: true,
           filters: { grade: ["sahih"] },
         }),
       ),
     ).toEqual({
       grade: ["sahih"],
-      sourceType: ["quran", "tafsir", "hadith", "principle"],
+      sourceType: ["quran", "tafsir", "hadith"],
     });
-  });
-
-  it("never turns a lens into a tag filter", () => {
-    // A lens selects the source but filters no tag: a `principleTags` filter would
-    // ask the store for a metadata key no row carries.
-    const filters = routeFilters(reading({ category: "fikih", needsPrinciple: true }));
-    expect(filters).not.toHaveProperty("principleTags");
-    expect(filters.sourceType).toEqual(["quran", "hadith", "kitab", "principle"]);
   });
 });
 
 describe("the decision the trace publishes is the record retrieval runs with", () => {
   it("hands the retriever the very record the trace published", async () => {
-    const filters = routeFilters(reading({ category: "fikih", needsPrinciple: true }));
+    const filters = routeFilters(reading({ category: "fikih" }));
     const detail = sourceRoutingDetail(filters);
-    expect(detail.sources).toEqual(["quran", "hadith", "kitab", "principle"]);
+    expect(detail.sources).toEqual(["quran", "hadith", "kitab"]);
 
     // The coupling asserted across the seam: the REAL retriever's first store
     // call must carry the record the trace published.

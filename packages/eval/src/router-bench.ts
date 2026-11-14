@@ -37,8 +37,6 @@ export type RouterBenchAdapters = {
     | {
         intent?: string;
         category?: string;
-        needsPrinciple?: boolean;
-        principleTags?: readonly string[];
       }
     | undefined;
 };
@@ -63,15 +61,6 @@ export function scoreRouterCase(
   if (reply === undefined) return false;
   if (reply.intent !== expected.intent) return false;
   if (expected.category !== undefined && reply.category !== expected.category) return false;
-  if (expected.needsPrinciple !== undefined && reply.needsPrinciple !== expected.needsPrinciple) {
-    return false;
-  }
-  if (expected.principleTags !== undefined) {
-    const got = reply.principleTags ?? [];
-    for (const tag of expected.principleTags) {
-      if (!got.includes(tag)) return false;
-    }
-  }
   return true;
 }
 
@@ -119,8 +108,6 @@ export async function runRouterBench({
         : JSON.stringify({
             intent: reply.intent ?? null,
             category: reply.category ?? null,
-            needsPrinciple: reply.needsPrinciple ?? null,
-            principleTags: reply.principleTags ?? null,
           });
     const outcome: RouterCaseOutcome = {
       caseId: c.id,

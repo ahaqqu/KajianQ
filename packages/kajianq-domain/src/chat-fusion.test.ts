@@ -50,18 +50,13 @@ describe("rrfFuse — the order is total", () => {
 
 /**
  * The hierarchy bonuses (spec §3.3 item 4): Quran +0.3, Sahih +0.25, Hasan
- * +0.15, Kitab +0.1, Principle +0.2 **on an analogy**.
- *
- * The Principle bonus is the trap: it is a property of the *question*, not of
- * the chunk. Applying it unconditionally would let a maxim
- * outrank a direct dalil on a factual ruling question, which is a retrieval
- * defect that produces a fluent, well-cited, wrongly-weighted answer and no
- * error anywhere. The behavioural half below is the one that would catch it:
- * it asserts the fused ORDER flips, not merely that a number changed.
+ * +0.15, Kitab +0.1. Each is a property of the chunk alone — its source type
+ * and grade — so the fused order never depends on the question: the function
+ * takes no question input a caller could vary.
  */
 describe("hierarchyBonus — the spec's magnitudes, including the two that were missing", () => {
-  const bonus = (metadata: Record<string, unknown>, intent?: string): number =>
-    hierarchyBonus({ id: "c", text: "t", metadata }, intent);
+  const bonus = (metadata: Record<string, unknown>): number =>
+    hierarchyBonus({ id: "c", text: "t", metadata });
 
   it("scores each named source and grade exactly once", () => {
     expect(bonus({ sourceType: "quran" })).toBe(HIERARCHY_BONUS.quran);
@@ -137,43 +132,12 @@ describe("hierarchyBonus — the spec's magnitudes, including the two that were 
     expect(hierarchyBonus(bukhari)).toBe(HIERARCHY_BONUS.sahih);
   });
 
-  it("boosts a Principle only on an analogy question", () => {
-    expect(bonus({ sourceType: "principle" }, "analogy")).toBe(HIERARCHY_BONUS.principleOnAnalogy);
-    for (const intent of ["factual", "ruling", "comparison", "history", "aqidah", undefined]) {
-      expect(bonus({ sourceType: "principle" }, intent)).toBe(0);
-    }
+  it("boosts nothing for a source type outside the bonus map", () => {
+    expect(bonus({ sourceType: "principle" })).toBe(0);
   });
 
   it("does not touch a chunk whose metadata carries no source type or grade", () => {
     expect(bonus({})).toBe(0);
     expect(bonus({ sourceType: "concept_link" })).toBe(0);
-  });
-
-  it("flips the fused order on an analogy, and only there", () => {
-    // Mirrored ranks: the hadith is rank 1 on one track, the principle rank 1 on
-    // the other, so without the analogy bonus the principle loses the tie on
-    // id and with it wins on score. This is the observable consequence — a
-    // ranking change, not an arithmetic one.
-    const principle: Chunk = {
-      id: "p",
-      text: "principle",
-      metadata: { sourceType: "principle" },
-    };
-    const hadith: Chunk = { id: "h", text: "hadith", metadata: { sourceType: "hadith" } };
-    const lists: TrackHit[][] = [
-      [
-        { chunk: hadith, rank: 1 },
-        { chunk: principle, rank: 2 },
-      ],
-      [
-        { chunk: principle, rank: 1 },
-        { chunk: hadith, rank: 2 },
-      ],
-    ];
-    const orderOn = (intent: string): string[] =>
-      rrfFuse(lists, (c) => hierarchyBonus(c, intent)).map((c) => c.id);
-
-    expect(orderOn("factual")).toEqual(["h", "p"]);
-    expect(orderOn("analogy")).toEqual(["p", "h"]);
   });
 });

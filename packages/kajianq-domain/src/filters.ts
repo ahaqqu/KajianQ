@@ -4,11 +4,10 @@
  * Source routing). Re-exported from the pack's barrel so chat stages and callers
  * share one type.
  *
- * **Only dimensions the corpus carries are filters.** Madzhab, TextLayer and
- * Principle stay in the router's vocabulary — the classification is trace
- * content — but no stored row carries their metadata keys, so they are not
- * filter dimensions: a route may not ask for a constraint the corpus cannot
- * satisfy.
+ * **Only dimensions the corpus carries are filters.** Madzhab and TextLayer
+ * stay in the router's vocabulary — the classification is trace content — but
+ * no stored row carries their metadata keys, so they are not filter
+ * dimensions: a route may not ask for a constraint the corpus cannot satisfy.
  *
  * **Every dimension is a set** (spec §3.3 item 3 binds `sourceType` and `grade`
  * as exact value matches). A one-value dimension is a one-element set, so the
@@ -33,12 +32,12 @@ export type TextLayer = (typeof TEXT_LAYERS)[number];
  * The source types **source routing may select** among — the labels the
  * `sourceType` filter binds. Distinct from the per-ingester `SourceType`
  * (`quran-source.ts`), which is the single label one ingester writes onto its
- * rows: this is the closed set a route chooses from, and it names two sources
- * the corpus does not carry yet (`principle` is the Principle Index; `kitab`
- * is the classical-works corpus) so routing, the filter map and the
- * presentation order read one list rather than three.
+ * rows: this is the closed set a route chooses from, and it names one source
+ * the corpus does not carry yet (`kitab` is the classical-works corpus) so
+ * routing, the filter map and the presentation order read one list rather than
+ * three.
  */
-export const ROUTABLE_SOURCES = ["quran", "hadith", "tafsir", "kitab", "principle"] as const;
+export const ROUTABLE_SOURCES = ["quran", "hadith", "tafsir", "kitab"] as const;
 export type RoutableSource = (typeof ROUTABLE_SOURCES)[number];
 
 /**

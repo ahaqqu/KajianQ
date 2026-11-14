@@ -18,33 +18,33 @@ re-run, never re-scored against later data, and never silently replaced.
 
 ## Layout
 
-| Path                                      | What it is                                                                                                                                 |
-| ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| `decisions/samples/cases.json`            | The sealed case fixture — the full source data, committed bytes (21 multilingual relevance/rerank/citation cases, `decision-bench-v0`)     |
-| `decisions/samples/version.json`          | The seal: version, counts, languages, the cases sha256 pin, and the notes that make re-seals honest                                        |
-| `decisions/runs/`                         | Append-only run files, one per candidate arm, named by the model's slug                                                                    |
-| `decisions/probes/`                       | One-call probe evidence (endpoint acceptance, rolling-id checks)                                                                           |
-| `decisions/superseded/`                   | Frozen results that predate the committed seal or an earlier one — history, never scored                                                   |
-| `decisions/report.md`                     | The generated report — derived offline from the committed files, **never hand-edited**                                                     |
-| `embeddings/samples/probes.json`          | The sealed probe fixture — retrieval probes per direction with their relevant ids (`embed-bench-probes-v0`)                                |
-| `embeddings/samples/expansion-cases.json` | The sealed expansion fixture — the ADR-0014 term-selection micro-task cases (`expansion-cases-v0`)                                         |
-| `embeddings/samples/version.json`         | The seal: version, counts, both sha256 pins, the corpus fingerprint the probes pin, and the notes                                          |
-| `embeddings/runs/`                        | Append-only run files, one per candidate arm, named by the model's slug                                                                    |
-| `embeddings/probes/`                      | Probe evidence (one-call checks)                                                                                                           |
-| `embeddings/superseded/`                  | Frozen results that predate the store or an earlier seal — history, never scored                                                           |
-| `embeddings/report.md`                    | The generated report — derived offline from the committed files, **never hand-edited**                                                     |
-| `routing/samples/cases.json`              | The sealed case fixture — the full source data, committed bytes (25 multilingual intent/category/needs-principle cases, `router-bench-v0`) |
-| `routing/samples/version.json`            | The seal: version, counts, languages, the cases sha256 pin, and the notes                                                                  |
-| `routing/runs/`                           | Append-only run files, one per candidate arm, named by the model's slug                                                                    |
-| `routing/probes/`                         | One-call probe evidence (endpoint or reply-format checks)                                                                                  |
-| `routing/superseded/`                     | Frozen results that predate the committed seal or an earlier one — history, never scored                                                   |
-| `routing/report.md`                       | The generated report — derived offline from the committed files, **never hand-edited**                                                     |
-| `summarization/samples/cases.json`        | The sealed case fixture — the full source data, committed bytes (5 ingest-summarizer cases over Arabic primary excerpts)                   |
-| `summarization/samples/version.json`      | The seal: version, counts, languages, the cases sha256 pin, and the notes                                                                  |
-| `summarization/runs/`                     | Append-only run files, one per candidate arm, named by the model's slug                                                                    |
-| `summarization/probes/`                   | One-call probe evidence (prompt or reply-format checks)                                                                                    |
-| `summarization/superseded/`               | Frozen results that predate the committed seal or an earlier one — history, never scored                                                   |
-| `summarization/report.md`                 | The generated report — derived offline from the committed files, **never hand-edited**                                                     |
+| Path                                      | What it is                                                                                                                             |
+| ----------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `decisions/samples/cases.json`            | The sealed case fixture — the full source data, committed bytes (21 multilingual relevance/rerank/citation cases, `decision-bench-v0`) |
+| `decisions/samples/version.json`          | The seal: version, counts, languages, the cases sha256 pin, and the notes that make re-seals honest                                    |
+| `decisions/runs/`                         | Append-only run files, one per candidate arm, named by the model's slug                                                                |
+| `decisions/probes/`                       | One-call probe evidence (endpoint acceptance, rolling-id checks)                                                                       |
+| `decisions/superseded/`                   | Frozen results that predate the committed seal or an earlier one — history, never scored                                               |
+| `decisions/report.md`                     | The generated report — derived offline from the committed files, **never hand-edited**                                                 |
+| `embeddings/samples/probes.json`          | The sealed probe fixture — retrieval probes per direction with their relevant ids (`embed-bench-probes-v0`)                            |
+| `embeddings/samples/expansion-cases.json` | The sealed expansion fixture — the ADR-0014 term-selection micro-task cases (`expansion-cases-v0`)                                     |
+| `embeddings/samples/version.json`         | The seal: version, counts, both sha256 pins, the corpus fingerprint the probes pin, and the notes                                      |
+| `embeddings/runs/`                        | Append-only run files, one per candidate arm, named by the model's slug                                                                |
+| `embeddings/probes/`                      | Probe evidence (one-call checks)                                                                                                       |
+| `embeddings/superseded/`                  | Frozen results that predate the store or an earlier seal — history, never scored                                                       |
+| `embeddings/report.md`                    | The generated report — derived offline from the committed files, **never hand-edited**                                                 |
+| `routing/samples/cases.json`              | The sealed case fixture — the full source data, committed bytes (25 multilingual intent/category cases, `router-bench-v0`)             |
+| `routing/samples/version.json`            | The seal: version, counts, languages, the cases sha256 pin, and the notes                                                              |
+| `routing/runs/`                           | Append-only run files, one per candidate arm, named by the model's slug                                                                |
+| `routing/probes/`                         | One-call probe evidence (endpoint or reply-format checks)                                                                              |
+| `routing/superseded/`                     | Frozen results that predate the committed seal or an earlier one — history, never scored                                               |
+| `routing/report.md`                       | The generated report — derived offline from the committed files, **never hand-edited**                                                 |
+| `summarization/samples/cases.json`        | The sealed case fixture — the full source data, committed bytes (5 ingest-summarizer cases over Arabic primary excerpts)               |
+| `summarization/samples/version.json`      | The seal: version, counts, languages, the cases sha256 pin, and the notes                                                              |
+| `summarization/runs/`                     | Append-only run files, one per candidate arm, named by the model's slug                                                                |
+| `summarization/probes/`                   | One-call probe evidence (prompt or reply-format checks)                                                                                |
+| `summarization/superseded/`               | Frozen results that predate the committed seal or an earlier one — history, never scored                                               |
+| `summarization/report.md`                 | The generated report — derived offline from the committed files, **never hand-edited**                                                 |
 
 ## Invariants
 

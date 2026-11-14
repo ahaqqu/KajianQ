@@ -32,7 +32,7 @@ const COST = {
 };
 
 const replyOf = (overrides: Record<string, unknown>) =>
-  JSON.stringify({ intent: "ruling", category: "fikih", needsPrinciple: false, ...overrides });
+  JSON.stringify({ intent: "ruling", category: "theme-a", ...overrides });
 
 /** A self-consistent run for one arm, overridable per test. */
 const runOf = (model: string, over: Partial<RouterBenchRun> = {}): RouterBenchRun => ({
@@ -81,12 +81,8 @@ describe("router-bench scoring", () => {
     expect(scoreRouterCase({ intent: "ruling" }, { intent: "ruling" })).toBe(true);
     expect(
       scoreRouterCase(
-        { intent: "ruling", category: "fikih", needsPrinciple: false },
-        {
-          intent: "ruling",
-          category: "fikih",
-          needsPrinciple: false,
-        },
+        { intent: "ruling", category: "theme-a" },
+        { intent: "ruling", category: "theme-a" },
       ),
     ).toBe(true);
   });
@@ -100,32 +96,17 @@ describe("router-bench scoring", () => {
     expect(scoreRouterCase({ intent: "ruling" }, { intent: "ruling", category: "theme-a" })).toBe(
       true,
     );
-    // needsPrinciple asserted: a mismatch fails
+    // category asserted: it must match exactly
     expect(
       scoreRouterCase(
-        { intent: "ruling", needsPrinciple: true },
-        { intent: "ruling", needsPrinciple: false },
-      ),
-    ).toBe(false);
-    // principleTags: the expected tags must be a subset of the reply's
-    expect(
-      scoreRouterCase(
-        { intent: "ruling", needsPrinciple: true, principleTags: ["yusr"] },
-        {
-          intent: "ruling",
-          needsPrinciple: true,
-          principleTags: ["yusr", "rahmah"],
-        },
+        { intent: "ruling", category: "theme-a" },
+        { intent: "ruling", category: "theme-a" },
       ),
     ).toBe(true);
     expect(
       scoreRouterCase(
-        { intent: "ruling", needsPrinciple: true, principleTags: ["yusr"] },
-        {
-          intent: "ruling",
-          needsPrinciple: true,
-          principleTags: ["rahmah"],
-        },
+        { intent: "ruling", category: "theme-a" },
+        { intent: "ruling", category: "theme-b" },
       ),
     ).toBe(false);
   });
@@ -171,7 +152,7 @@ describe("router-bench store — the committed seal", () => {
 
   it("the committed seal verifies against the committed case bytes", () => {
     const seal = loadRouterBenchSeal(SEAL_PATH, CASES_PATH, fixture);
-    expect(seal.version).toBe(1);
+    expect(seal.version).toBe(2);
     expect(seal.task).toBe("router-bench");
     expect(seal.counts.cases).toBe(fixture.cases.length);
   });

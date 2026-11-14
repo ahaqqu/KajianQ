@@ -33,7 +33,7 @@ import type { Intent, SubjectArea, SubQueryRole } from "./taxonomy";
  *
  * An **empty category selection stays empty**, so a role may add to it but never
  * turn "every source" into a filter; and selecting a source is **not** filtering
- * by a Principle tag — the tag is the model's classification and stays on the
+ * by a model hint — a hint is the model's classification and stays on the
  * Trace, the selection is which index to read, and a trace reader must tell them
  * apart.
  */
@@ -41,7 +41,6 @@ import type { Intent, SubjectArea, SubQueryRole } from "./taxonomy";
 export type SourceRoutingInput = {
   intent: Intent;
   category?: SubjectArea;
-  needsPrinciple: boolean;
   filters: KajianQFilters;
   /**
    * The parts retrieval will actually fan out over — `decomposeQuery`'s output,
@@ -85,14 +84,12 @@ const CATEGORY_SOURCES: Readonly<Record<SubjectArea, readonly RoutableSource[]>>
 /**
  * The sources one sub-query role implies, on top of the category's own set.
  * `factual` implies none — the category states what the question is about — while
- * `dalil` and `sanad` parts are the evidence the corpus carries as `hadith`, and a
- * `principle` part is the lens, reachable only from the Principle Index.
+ * `dalil` and `sanad` parts are the evidence the corpus carries as `hadith`.
  */
 const ROLE_SOURCES: Readonly<Record<SubQueryRole, readonly RoutableSource[]>> = {
   factual: [],
   dalil: ["hadith"],
   sanad: ["hadith"],
-  principle: ["principle"],
 };
 
 export class SourceRoleNotExpressibleError extends Error {
@@ -157,9 +154,6 @@ export function sourceTypesOf(input: SourceRoutingInput): readonly RoutableSourc
     if (sub.role === undefined) continue;
     for (const source of roleSources(sub.role)) selected.add(source);
   }
-  // A lens is reachable only from the Principle Index, so needing one selects that
-  // source; `analogy` implies a lens whether or not the reply said so.
-  if (input.needsPrinciple || input.intent === "analogy") selected.add("principle");
   return [...selected];
 }
 

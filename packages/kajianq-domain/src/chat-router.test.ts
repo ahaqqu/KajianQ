@@ -6,7 +6,7 @@ import { createKajianQRouter, type RouterProvider } from "./chat-router";
 import { ROUTER_FOLLOW_UP_RULE, ROUTER_SYSTEM_PROMPT } from "./chat-router-prompt";
 import type { KajianQFilters } from "./filters";
 import { GRADES, MADZHABS, TEXT_LAYERS } from "./filters";
-import { INTENTS, PRINCIPLE_TAGS, SUBJECT_AREAS, SUB_QUERY_ROLES } from "./taxonomy";
+import { INTENTS, SUBJECT_AREAS, SUB_QUERY_ROLES } from "./taxonomy";
 
 /**
  * The router stage — Smart Router stages 1–2 at the seam. Every case here is about
@@ -97,27 +97,29 @@ describe("createKajianQRouter", () => {
     expect(routed.confidence).toBe(0.9);
     expect(routed.reasoning).toBe("the question asks why the rule is lenient");
     // Stage 3's decision, not the reply's hints: a fikih question is answered from
-    // Quran, Sunnah and Kitab, and `needsPrinciple` puts the Principle Index in
-    // play. Madzhab, TextLayer and Principle stay classifications: the corpus
-    // carries no row for their keys, so they are not filters.
+    // Quran, Sunnah and Kitab. Madzhab and TextLayer stay classifications: the
+    // corpus carries no row for their keys, so they are not filters. The reply's
+    // retired `needsPrinciple`/`principleTags` hints are tolerated on the wire and
+    // read as nothing — no principle field reaches the reading or the attributes.
     expect(routed.filters).toEqual({
-      sourceType: ["quran", "hadith", "kitab", "principle"],
+      sourceType: ["quran", "hadith", "kitab"],
     });
     expect(routed.attributes).toMatchObject({
       category: "fikih",
-      needsPrinciple: true,
-      principleTags: ["yusr"],
       madzhab: "syafii",
-      sourceType: ["quran", "hadith", "kitab", "principle"],
+      sourceType: ["quran", "hadith", "kitab"],
     });
-    // The caller's question keeps the `factual` slot; the reply's factual
-    // paraphrase is the extra the ceiling spends, while its sanad entry and the
-    // fired principle/dalil rules keep their slots.
+    expect("needsPrinciple" in routed.attributes).toBe(false);
+    expect("principleTags" in routed.attributes).toBe(false);
+    // The caller's question keeps the `factual` slot, the reply's sanad entry
+    // keeps its label, and the fired dalil rule fills the only slot no entry
+    // covers — the reply's factual paraphrase is one angle inside a set that
+    // now lands exactly on the ceiling.
     expect(routed.subQueries.map((s) => [s.role, s.origin])).toEqual([
       ["factual", "rule"],
-      ["principle", "rule"],
-      ["dalil", "rule"],
+      ["factual", "model"],
       ["sanad", "model"],
+      ["dalil", "rule"],
     ]);
   });
 
@@ -161,17 +163,16 @@ describe("createKajianQRouter", () => {
     });
   });
 
-  it("puts a role's source in the filter where no category row names it", async () => {
-    // The role union made load-bearing: no row names `principle`, so the reply's
-    // own `principle` part is the only thing that can select it — deleting the
-    // union loop reddens this case, and no row widening can rescue it. The
-    // invariant is route-wide coverage: every part the route decomposed is
-    // searchable.
+  it("degrades a reply part labelled with a retired role, keeping the part searchable", async () => {
+    // A model that learned the old vocabulary can still send a role it no longer
+    // declares. The label is dropped — never force-matched, never a filter of its
+    // own — while the part's text stays in the fan-out, searched under the
+    // category's own breadth. A stale label cannot invent a source the routing
+    // table does not name.
     const h = harness(
       JSON.stringify({
         intent: "ruling",
         category: "hadith",
-        needsPrinciple: false,
         subQueries: [{ text: "kaidah yusr dalam ibadah", role: "principle" }],
       }),
     );
@@ -184,15 +185,15 @@ describe("createKajianQRouter", () => {
     // the caller's question and the `hadith` category's own `sanad` rule included.
     expect(routed.subQueries.map((s) => [s.role, s.origin])).toEqual([
       ["factual", "rule"],
-      ["principle", "model"],
+      [undefined, "model"],
       ["sanad", "rule"],
     ]);
-    expect(routed.filters.sourceType).toEqual(["hadith", "principle"]);
+    expect(routed.filters.sourceType).toEqual(["hadith"]);
     expect(h.events.at(-1)).toMatchObject({
       kind: "source_routing",
       detail: {
-        sources: ["hadith", "principle"],
-        filters: { sourceType: ["hadith", "principle"] },
+        sources: ["hadith"],
+        filters: { sourceType: ["hadith"] },
       },
     });
   });
@@ -214,13 +215,13 @@ describe("createKajianQRouter", () => {
         stage: "router",
         kind: "source_routing",
         detail: {
-          sources: ["quran", "hadith", "kitab", "principle"],
+          sources: ["quran", "hadith", "kitab"],
           // The record retrieval is handed, keyed as the store binds it — the
           // routing decision is on the trace, not only in the router's prose.
           // Only corpus-backed dimensions are here; the classifications ride the
           // intent event's attributes instead.
           filters: {
-            sourceType: ["quran", "hadith", "kitab", "principle"],
+            sourceType: ["quran", "hadith", "kitab"],
           },
         },
         at: 7,
@@ -392,7 +393,7 @@ describe("createKajianQRouter", () => {
     //
     // The reverse direction — a vocabulary value in the prompt that no list declares —
     // is not asserted here, and this loop cannot assert it: the prompt's one
-    // hand-written line (the `subQueries` rules) names `factual`, `principle`, `dalil`,
+    // hand-written line (the `subQueries` rules) names `factual`, `dalil`,
     // `sanad` and the two subject areas it keys on as prose. What ties those names to
     // their lists is the compiler, not this test: `chat-router-output.ts` names each
     // through the owner's own type, so renaming one there fails the build. A vocabulary
@@ -400,7 +401,6 @@ describe("createKajianQRouter", () => {
     for (const value of [
       ...INTENTS,
       ...SUBJECT_AREAS,
-      ...PRINCIPLE_TAGS,
       ...SUB_QUERY_ROLES,
       ...MADZHABS,
       ...GRADES,

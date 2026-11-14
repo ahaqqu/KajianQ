@@ -19,6 +19,9 @@ const reply = (overrides: Record<string, unknown> = {}) =>
 
 describe("readRouterText", () => {
   it("reads a full reply into the routing vocabularies", () => {
+    // The reply still carries the retired `needsPrinciple`/`principleTags` keys a
+    // model trained on the old prompt may send: the reader ignores unknown fields
+    // rather than failing the reply, and nothing of them reaches the reading.
     const reading = readRouterText(
       JSON.stringify({
         intent: "analogy",
@@ -32,7 +35,7 @@ describe("readRouterText", () => {
         reasoning: "  the question asks why the rule is lenient  ",
         subQueries: [
           { text: "hukum shalat orang sakit", role: "factual" },
-          { text: "prinsip kemudahan dalam ibadah", role: "principle" },
+          { text: "hadits keringanan dalam ibadah", role: "sanad" },
         ],
       }),
       {},
@@ -42,26 +45,26 @@ describe("readRouterText", () => {
     expect(reading?.category).toBe("fikih");
     expect(reading?.madzhab).toBe("syafii");
     expect(reading?.textLayer).toBe("matn");
-    expect(reading?.needsPrinciple).toBe(true);
-    expect(reading?.principleTags).toEqual(["yusr", "rahmah"]);
-    // Only the corpus-backed dimensions become filters. Madzhab, TextLayer and
-    // Principle are classifications: the corpus carries no row for their keys,
-    // so a filter on one could never match.
+    expect(reading).not.toHaveProperty("needsPrinciple");
+    expect(reading).not.toHaveProperty("principleTags");
+    // Only the corpus-backed dimensions become filters. Madzhab and TextLayer are
+    // classifications: the corpus carries no row for their keys, so a filter on
+    // one could never match.
     expect(reading?.filters).toEqual({ grade: ["sahih"] });
     expect(reading?.confidence).toBe(0.82);
     expect(reading?.reasoning).toBe("the question asks why the rule is lenient");
     expect(reading?.modelSubQueries).toEqual([
       { text: "hukum shalat orang sakit", role: "factual" },
-      { text: "prinsip kemudahan dalam ibadah", role: "principle" },
+      { text: "hadits keringanan dalam ibadah", role: "sanad" },
     ]);
     expect(reading?.attributes).toEqual({
-      needsPrinciple: true,
       category: "fikih",
       madzhab: "syafii",
       textLayer: "matn",
-      principleTags: ["yusr", "rahmah"],
       grade: ["sahih"],
     });
+    expect(reading?.attributes).not.toHaveProperty("needsPrinciple");
+    expect(reading?.attributes).not.toHaveProperty("principleTags");
   });
 
   it("returns undefined when the reply carries no JSON object", () => {
@@ -86,20 +89,6 @@ describe("readRouterReply narrowing", () => {
     expect(reading?.attributes).not.toHaveProperty("category");
   });
 
-  it("drops unknown and duplicate Principle tags, and keeps the first three", () => {
-    const reading = reply({
-      needsPrinciple: true,
-      principleTags: ["yusr", "ease", "yusr", "rahmah", "dharar", "istihsan"],
-    });
-    expect(reading?.principleTags).toEqual(["yusr", "rahmah", "dharar"]);
-  });
-
-  it("reads a named Principle tag as needing a lens even without the flag", () => {
-    expect(reply({ principleTags: ["rahmah"] })?.needsPrinciple).toBe(true);
-    expect(reply({ needsPrinciple: true })?.needsPrinciple).toBe(true);
-    expect(reply({})?.needsPrinciple).toBe(false);
-  });
-
   it("drops a confidence that is not a probability, and keeps one that is", () => {
     expect(reply({ confidence: 90 })?.confidence).toBeUndefined();
     expect(reply({ confidence: -0.1 })?.confidence).toBeUndefined();
@@ -119,7 +108,7 @@ describe("readRouterReply narrowing", () => {
     expect(reading?.filters).toEqual({});
     expect(reading?.madzhab).toBeUndefined();
     expect(reading?.textLayer).toBeUndefined();
-    expect(reading?.attributes).toEqual({ needsPrinciple: false, category: "fikih" });
+    expect(reading?.attributes).toEqual({ category: "fikih" });
   });
 
   it("records the Madzhab and TextLayer classifications without making them filters", () => {

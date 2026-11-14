@@ -1,13 +1,13 @@
 /**
  * KajianQ's classification vocabularies — the single source of truth.
  *
- * Everything that names a subject area, an intent, a Principle tag, a
+ * Everything that names a subject area, an intent, a
  * sub-query role or origin, or a Golden Set label reads it from here: the
  * router's prompt, the router's narrowing of the model's reply, the Golden Set
  * fixture, and the eval CLI's trap marker. Changing a vocabulary is a change
  * to one list in this file, never a second list or a second spelling.
  *
- * These are domain terms (CONTEXT.md: Query category, Intent, Principle tag,
+ * These are domain terms (CONTEXT.md: Query category, Intent,
  * Sub-query), so they live in the domain pack. The engine packages carry the
  * router's output opaquely and name none of them.
  */
@@ -35,33 +35,17 @@ export const INTENTS = ["factual", "ruling", "analogy", "comparison", "history",
 export type Intent = (typeof INTENTS)[number];
 
 /**
- * Principle tag (CONTEXT.md) — the interpretive lens a why-question or an
- * analogy needs. The Principle Index seeds its rows with these exact slugs, so
- * the router's tags and the index's rows line up by construction.
- */
-export const PRINCIPLE_TAGS = [
-  "yusr",
-  "rahmah",
-  "masyaqqah",
-  "dharar",
-  "umum_balwa",
-  "istihsan",
-  "sad_zari",
-] as const;
-export type PrincipleTag = (typeof PRINCIPLE_TAGS)[number];
-
-/**
  * Sub-query role (CONTEXT.md "Sub-query") — what a decomposed retrieval query
  * is for.
  *
- * All four are Smart Router stage 2's composition rules, and all four fire as
- * rules on today's path: `factual` always, `principle` when the question needs a
- * lens, `dalil` when the category is fikih, and `sanad` when it is hadith — see
- * `requiredRoles` in `chat-router-decompose.ts`. No role here waits for a later
- * layer: the corpus and knowledge layers that arrive later add the content a
- * role retrieves, not the role itself.
+ * All three are Smart Router stage 2's composition rules, and all three fire as
+ * rules on today's path: `factual` always, `dalil` when the category is fikih,
+ * and `sanad` when it is hadith — see `requiredRoles` in
+ * `chat-router-decompose.ts`. No role here waits for a later layer: the corpus
+ * and knowledge layers that arrive later add the content a role retrieves, not
+ * the role itself.
  */
-export const SUB_QUERY_ROLES = ["factual", "principle", "dalil", "sanad"] as const;
+export const SUB_QUERY_ROLES = ["factual", "dalil", "sanad"] as const;
 export type SubQueryRole = (typeof SUB_QUERY_ROLES)[number];
 
 /**
@@ -141,9 +125,4 @@ export function isSubjectArea(value: string): value is SubjectArea {
 /** Narrow a free string to an intent. */
 export function isIntent(value: string): value is Intent {
   return oneOf(INTENTS, value);
-}
-
-/** Narrow a free string to a Principle tag. */
-export function isPrincipleTag(value: string): value is PrincipleTag {
-  return oneOf(PRINCIPLE_TAGS, value);
 }
