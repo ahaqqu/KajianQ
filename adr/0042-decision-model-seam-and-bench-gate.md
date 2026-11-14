@@ -47,17 +47,14 @@ bench.
 
 ## Consequences
 
-- Fail-open is exhaustive and is what makes both adoptions safe: every refused
-  read is persisted trace content — the rule that refused it and the item it
-  refused — never a silent reorder or a silent escalation.
+- Fail-open is exhaustive and what makes both adoptions safe: every refused read
+  is persisted trace content — the rule and the item — never a silent reorder.
 - The clean path pays one input-priced batched call instead of the escalation
   tier; the rerank adds one per retrieval with two or more fused candidates.
-- Spend and verdict are trace content — identity, tokens, latency, cost per
+- Spend and verdict are trace content — identity, tokens, latency, and cost per
   call, failed attempts included — totalling exactly its recorded calls.
-- Personal-data eligibility binds at the seam: a personal-data call never
-  reaches a vendor whose config forbids it — refused before the wire, spending
-  nothing.
-- The gate cannot read as passed — it exits non-zero when no keyed candidate
-  passes.
-- **Revisit when** a serving stage beyond citation verification and the
-  retrieval rerank wants the seam.
+- Personal-data eligibility binds at the seam: a personal-data call never reaches
+  a vendor whose config forbids it — refused before the wire, spending nothing.
+- The gate cannot read as passed — it exits non-zero when no keyed candidate passes.
+- **Revisit when** a serving stage beyond citation verification and the retrieval
+  rerank wants the seam.

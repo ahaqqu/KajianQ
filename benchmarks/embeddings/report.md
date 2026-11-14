@@ -1,6 +1,6 @@
 # Embedding benchmark report
 
-Generated offline from the committed samples (`benchmarks/embeddings/samples/`) and run files (`benchmarks/embeddings/runs/`) at 2026-11-14T01:23:24.117Z — never hand-edited. Gate floors (ADR-0013): cross-lingual `secondary→primary` recall@10 ≥ 0.7 AND monolingual `primary→primary` recall@10 ≥ 0.75; an arm that aborts is never a pass.
+Generated offline from the committed samples (`benchmarks/embeddings/samples/`) and run files (`benchmarks/embeddings/runs/`) at 2026-11-14T05:54:06.073Z — never hand-edited. Gate floors (ADR-0013): cross-lingual `secondary→primary` recall@10 ≥ 0.7 AND monolingual `primary→primary` recall@10 ≥ 0.75; an arm that aborts is never a pass.
 
 ## Samples
 

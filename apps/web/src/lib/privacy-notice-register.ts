@@ -196,8 +196,8 @@ export const SUB_PROCESSORS: readonly SubProcessor[] = [
     name: "TypeSafe AI",
     status: "no-serving-role",
     role: {
-      id: "Model keputusan: pratinjau sitasi (pre-gate) sebelum reviewer LLM (adopsi ADR-0042) — dipensiunkan oleh migrasi agregator (ADR-0069); seam keputusan kini melayani keluaran terstruktur skema ketat baris OpenRouter.",
-      en: "Decision model: the citation pre-gate ahead of the LLM reviewer (ADR-0042 adoption) — retired at the aggregator migration (ADR-0069); the decision seam now serves on the OpenRouter row's schema-constrained structured output.",
+      id: "Model keputusan: pratinjau sitasi (pre-gate) sebelum reviewer LLM (adopsi ADR-0042) — dipensiunkan oleh migrasi agregator (ADR-0069); seam keputusan kini melayani wire pertanyaan bertipe milik baris OpenRouter.",
+      en: "Decision model: the citation pre-gate ahead of the LLM reviewer (ADR-0042 adoption) — retired at the aggregator migration (ADR-0069); the decision seam now serves on the OpenRouter row's typed-questions wire.",
     },
     personalData: {
       id: "Tidak ada lagi — sebelumnya: klaim dari jawaban yang disusun dan petikan bukti yang dikutipnya, satu panggilan batch per jawaban.",

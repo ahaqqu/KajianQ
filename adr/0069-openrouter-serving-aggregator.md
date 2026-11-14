@@ -11,8 +11,8 @@ edit and a register row, nothing else. The embedding model ids are unchanged —
 the aggregator serves the same Google models the corpus was embedded with, so
 the stored vectors stay valid and no re-embed happens.
 
-The decision seam rides the aggregator's schema-constrained structured output
-under the rewritten ADR-0042; the embedder's wire carries the configured output
+The decision seam rides the aggregator's chat and typed-questions wires under
+the rewritten ADR-0042; the embedder's wire carries the configured output
 dimensions, and serving starts only after an embed probe against the corpus
 confirms the aggregator forwards them — the store rejects any other vector
 length loudly, so a silent dimension change is impossible.

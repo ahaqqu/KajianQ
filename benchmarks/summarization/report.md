@@ -1,6 +1,6 @@
 # Summarizer benchmark report
 
-Generated offline from the committed samples (`benchmarks/summarization/samples/`) and run files (`benchmarks/summarization/runs/`) at 2026-11-14T00:51:24.542Z — never hand-edited. Gate floors (ADR-0042's, applied per case): overall ≥ 0.85 AND every language ≥ 0.75 (≥ 3 scored cases per language); an arm that aborts is never a pass. The gate scores only what is deterministic — format bounds and faithfulness grounding; theme quality stays the owner's call, made from the summaries printed below.
+Generated offline from the committed samples (`benchmarks/summarization/samples/`) and run files (`benchmarks/summarization/runs/`) at 2026-11-14T05:54:05.294Z — never hand-edited. Gate floors (ADR-0042's, applied per case): overall ≥ 0.85 AND every language ≥ 0.75 (≥ 3 scored cases per language); an arm that aborts is never a pass. The gate scores only what is deterministic — format bounds and faithfulness grounding; theme quality stays the owner's call, made from the summaries printed below.
 
 ## Samples
 
@@ -20,6 +20,8 @@ Generated offline from the committed samples (`benchmarks/summarization/samples/
 | `z-ai/glm-5.3-flash`           | `benchmarks/summarization/runs/z-ai-glm-5-3-flash.json`           | 5/5    | 100.0%   | id 100.0% | **pass** | 299 µUSD total   | 4363 ms     | 2026-11-14T00:50:41.854Z |
 
 Accuracy, per-language accuracy and the gate verdict are recomputed from each run's records; the run's own totals are never trusted. Cost is the sum of per-case `costMicroUsd`; p50 latency covers the records that carry one. A run that aborts keeps its partial records and names the failure — it is evidence, never a gate result.
+
+Every arm clears the deterministic checks at this seal, so the gate did not separate them: no arm here is a quality winner, cost is the only measured difference, and the summaries below are the evidence for the owner's read.
 
 ## Summaries (the evidence for the owner's read)
 
@@ -66,4 +68,4 @@ Accuracy, per-language accuracy and the gate verdict are recomputed from each ru
 
 Gate-passing arms at this seal: `deepseek/deepseek-v4.1-flash`, `google/gemini-3.8-flash`, `openai/gpt-5-nano`, `z-ai/glm-5.3-flash`.
 
-Adoption is a serving-chain config change made by a reviewed PR; this report supplies evidence and never switches a serving row by itself.
+Adoption is a config change made by a reviewed PR; this report supplies evidence and never switches a serving row by itself.

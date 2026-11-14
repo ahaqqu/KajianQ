@@ -6,11 +6,11 @@
     "version": 2,
     "casesSha256": "sha256:bd1eb9aa3543768f1f596bb5f907a3bb5500b2366ee42a75795987135bc30262"
   },
-  "promptsSha256": "sha256:2ec22ca99e375ee0c83c19c2c36c9b168307af0d4fdc8507b848fb0ec1ef32cb",
+  "promptsSha256": "sha256:5823336f3c7403553ec59adb16f1efd81fefa6c8c43111405d4c359375ae85d5",
   "budget": {
     "capMicroUsd": null,
     "plannedCases": 25,
-    "totalMicroUsd": 102719
+    "totalMicroUsd": 27265
   },
   "totals": {
     "cases": 25,

@@ -1,6 +1,6 @@
 # Router benchmark report
 
-Generated offline from the committed samples (`benchmarks/routing/samples/`) and run files (`benchmarks/routing/runs/`) at 2026-11-14T03:17:46.129Z — never hand-edited. Gate floors (ADR-0042's, applied per case): overall ≥ 0.85 AND every language ≥ 0.75 (≥ 3 scored cases per language); an arm that aborts is never a pass.
+Generated offline from the committed samples (`benchmarks/routing/samples/`) and run files (`benchmarks/routing/runs/`) at 2026-11-14T05:54:04.674Z — never hand-edited. Gate floors (ADR-0042's, applied per case): overall ≥ 0.85 AND every language ≥ 0.75 (≥ 3 scored cases per language); an arm that aborts is never a pass.
 
 ## Samples
 
@@ -13,12 +13,12 @@ Generated offline from the committed samples (`benchmarks/routing/samples/`) and
 
 ## Arms
 
-| Model                          | Run file                                                    | Scored | Accuracy | ar        | en       | id        | Gate     | Cost                                         | p50 latency | Finished                 |
-| ------------------------------ | ----------------------------------------------------------- | ------ | -------- | --------- | -------- | --------- | -------- | -------------------------------------------- | ----------- | ------------------------ |
-| `deepseek/deepseek-v4.1-flash` | `benchmarks/routing/runs/deepseek-deepseek-v4-1-flash.json` | 25/25  | 84.0%    | ar 87.5%  | en 75.0% | id 88.9%  | **fail** | 18222 µUSD total (budget bookkeeping 73819)  | 2099 ms     | 2026-11-14T03:04:13.549Z |
-| `google/gemini-3.8-flash`      | `benchmarks/routing/runs/google-gemini-3-8-flash.json`      | 25/25  | 96.0%    | ar 100.0% | en 87.5% | id 100.0% | **pass** | 55597 µUSD total                             | 4457 ms     | 2026-11-14T03:03:10.691Z |
-| `openai/gpt-5-nano`            | `benchmarks/routing/runs/openai-gpt-5-nano.json`            | 25/25  | 80.0%    | ar 87.5%  | en 75.0% | id 77.8%  | **fail** | 27265 µUSD total (budget bookkeeping 102719) | 25941 ms    | 2026-11-14T03:17:46.127Z |
-| `z-ai/glm-5.3-flash`           | `benchmarks/routing/runs/z-ai-glm-5-3-flash.json`           | 25/25  | 80.0%    | ar 75.0%  | en 75.0% | id 88.9%  | **fail** | 1635 µUSD total (budget bookkeeping 75454)   | 4467 ms     | 2026-11-14T03:06:20.694Z |
+| Model                          | Run file                                                    | Scored | Accuracy | ar        | en       | id        | Gate     | Cost             | p50 latency | Finished                 |
+| ------------------------------ | ----------------------------------------------------------- | ------ | -------- | --------- | -------- | --------- | -------- | ---------------- | ----------- | ------------------------ |
+| `deepseek/deepseek-v4.1-flash` | `benchmarks/routing/runs/deepseek-deepseek-v4-1-flash.json` | 25/25  | 84.0%    | ar 87.5%  | en 75.0% | id 88.9%  | **fail** | 18222 µUSD total | 2099 ms     | 2026-11-14T03:04:13.549Z |
+| `google/gemini-3.8-flash`      | `benchmarks/routing/runs/google-gemini-3-8-flash.json`      | 25/25  | 96.0%    | ar 100.0% | en 87.5% | id 100.0% | **pass** | 55597 µUSD total | 4457 ms     | 2026-11-14T03:03:10.691Z |
+| `openai/gpt-5-nano`            | `benchmarks/routing/runs/openai-gpt-5-nano.json`            | 25/25  | 80.0%    | ar 87.5%  | en 75.0% | id 77.8%  | **fail** | 27265 µUSD total | 25941 ms    | 2026-11-14T03:17:46.127Z |
+| `z-ai/glm-5.3-flash`           | `benchmarks/routing/runs/z-ai-glm-5-3-flash.json`           | 25/25  | 80.0%    | ar 75.0%  | en 75.0% | id 88.9%  | **fail** | 1635 µUSD total  | 4467 ms     | 2026-11-14T03:06:20.694Z |
 
 Accuracy, per-language accuracy and the gate verdict are recomputed from each run's records; the run's own totals are never trusted. Cost is the sum of per-case `costMicroUsd`; p50 latency covers the records that carry one. A run that aborts keeps its partial records and names the failure — it is evidence, never a gate result.
 

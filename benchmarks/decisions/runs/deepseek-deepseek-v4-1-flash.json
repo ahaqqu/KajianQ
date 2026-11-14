@@ -6,7 +6,7 @@
     "version": 1,
     "casesSha256": "sha256:830df54ff7e62b1d56e9ae07d47f2bab04606a6fa9b8ce33a08f30870e954394"
   },
-  "promptsSha256": "sha256:ae1a4b358cb9d69a4be46bdc128646548c86f9cb1d7b8c2c1ed2e62ddd284153",
+  "promptsSha256": "sha256:271760602e7a5b07fcbf03528e9cd59ca89dd39f55a39420cad619ea3e063828",
   "budget": {
     "capMicroUsd": 1000000,
     "plannedCases": 21,
