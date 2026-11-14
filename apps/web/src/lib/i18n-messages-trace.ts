@@ -60,7 +60,7 @@ export const traceMessages = {
     traceRoleGenerator: "Generator",
     traceRoleEmbedding: "Embedding",
     traceRoleReranker: "Reranker",
-    traceRoleCitationCheck: "Citation pre-gate",
+    traceRoleCitationCheck: "Penyaring sitasi",
     traceRoleReviewer: "Reviewer",
     traceReviewerLabel: "Saringan awal reviewer",
     traceReviewerOutcomeSkip: "Lolos — reviewer dilewati",
