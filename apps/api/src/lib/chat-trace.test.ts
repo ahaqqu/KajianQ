@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 import * as v from "valibot";
-import { ChatTraceFrameSchema, type Trace } from "@app/contracts";
+import { ChatTraceFrameSchema, type ChatTraceChunk, type Trace } from "@app/contracts";
 import type { DocChildById } from "@app/infra";
 import {
   chunkFetcher,
@@ -56,8 +56,13 @@ function chunkRow(id: string, parentTitle: string): DocChildById {
   };
 }
 
-const derive = (trace: Trace, rows: readonly DocChildById[]) =>
-  deriveTraceFrame({ trace, messageId: "m1", chunksById: new Map(rows.map((r) => [r.id, r])) });
+const derive = (trace: Trace, rows: readonly DocChildById[], citedSources: ChatTraceChunk[] = []) =>
+  deriveTraceFrame({
+    trace,
+    messageId: "m1",
+    chunksById: new Map(rows.map((r) => [r.id, r])),
+    citedSources,
+  });
 
 const INTENT = {
   stage: "router" as const,
@@ -109,20 +114,29 @@ describe("traceChunkIds / traceChunkRefs", () => {
 });
 
 describe("deriveTraceFrame — the top layer", () => {
-  it("lists sources in retrieval order with their display titles, no scores", () => {
-    const frame = derive(traceOf([{ id: "c2" }, { id: "c1" }]), [
-      chunkRow("c1", "Al-Baqarah"),
-      chunkRow("c2", "Al-Muwatta"),
-    ]);
-    expect(frame.sources).toEqual([
-      { id: "c2", source: "Al-Muwatta" },
-      { id: "c1", source: "Al-Baqarah" },
-    ]);
+  it("lists the cited sources it is given, in citation order, verbatim", () => {
+    const cited: ChatTraceChunk[] = [
+      { id: "c1", label: "QS. 2:255", source: "Al-Baqarah" },
+      { id: "c2", label: "HR. Malik no. 18", source: "Al-Muwatta" },
+    ];
+    const frame = derive(
+      traceOf([{ id: "c2" }, { id: "c1" }]),
+      [chunkRow("c1", "Al-Baqarah"), chunkRow("c2", "Al-Muwatta")],
+      cited,
+    );
+    expect(frame.sources).toEqual(cited);
   });
 
-  it("omits the title of a chunk whose row (or title) is missing — id-only, never fabricated", () => {
-    const frame = derive(traceOf([{ id: "c1" }, { id: "ghost" }]), [chunkRow("c1", "Al-Baqarah")]);
-    expect(frame.sources).toEqual([{ id: "c1", source: "Al-Baqarah" }, { id: "ghost" }]);
+  it("never lists a consulted passage the answer did not cite", () => {
+    // The consulted set stays in the technical layer; the top layer is the
+    // answer's final references only.
+    const frame = derive(
+      traceOf([{ id: "c1" }, { id: "ghost" }]),
+      [chunkRow("c1", "Al-Baqarah")],
+      [{ id: "c1", label: "QS. 2:255", source: "Al-Baqarah" }],
+    );
+    expect(frame.sources.map((source) => source.id)).toEqual(["c1"]);
+    expect(frame.technical.chunks.map((chunk) => chunk.id)).toEqual(["c1", "ghost"]);
   });
 
   it("a pure refusal's trace has no retrieval events, so the panel is legitimately empty", () => {
@@ -275,11 +289,8 @@ describe("deriveTraceFrame — the technical layer", () => {
       { id: "c1", source: "Al-Muwatta", score: 0.5, rankDense: 1 },
       { id: "c7", source: "QS. 1", origin: "scope_expansion" },
     ]);
-    // The top layer stays plain language: a source consulted, no machinery.
-    expect(frame.sources).toEqual([
-      { id: "c1", source: "Al-Muwatta" },
-      { id: "c7", source: "QS. 1" },
-    ]);
+    // The top layer stays plain language: the cited source, no machinery.
+    expect(frame.sources).toEqual([]);
   });
 
   it("projects a chunk ref's rerankScore beside the fused score (A5)", () => {
@@ -296,8 +307,9 @@ describe("deriveTraceFrame — the technical layer", () => {
       { id: "c2", source: "Al-Muwatta", score: 0.031, rerankScore: 0.71 },
       { id: "c1", source: "Al-Baqarah", score: 0.03, rerankScore: 0.08 },
     ]);
-    // The top layer stays plain language: no score, no rerank probability.
-    expect(frame.sources.map((source) => source.id)).toEqual(["c2", "c1"]);
+    // The top layer stays plain language: this derivation is given no cited
+    // sources, so it lists nothing with a score or a rerank probability.
+    expect(frame.sources).toEqual([]);
     expect(v.safeParse(ChatTraceFrameSchema, frame).success).toBe(true);
   });
 
@@ -308,7 +320,6 @@ describe("deriveTraceFrame — the technical layer", () => {
       chunkRow("c1", "Al-Baqarah"),
     ]);
     expect("origin" in (frame.technical.chunks[0] ?? {})).toBe(false);
-    expect("origin" in (frame.sources[0] ?? {})).toBe(false);
     const parsed = v.safeParse(ChatTraceFrameSchema, frame);
     expect(parsed.success).toBe(true);
     expect(parsed.success && parsed.output.technical.chunks[0]?.origin).toBeUndefined();
@@ -366,6 +377,7 @@ describe("the routing decision in the technical layer", () => {
       ),
       messageId: "m1",
       chunksById: new Map<string, DocChildById>(),
+      citedSources: [],
     });
     expect(frame.technical.routing).toEqual({
       sources: ["src_a", "src_b"],
@@ -379,6 +391,7 @@ describe("the routing decision in the technical layer", () => {
       trace: traceOf([{ id: "c1" }], [routingEvent([], {})]),
       messageId: "m1",
       chunksById: new Map<string, DocChildById>(),
+      citedSources: [],
     });
     expect(frame.technical.routing).toEqual({ sources: [], filters: {} });
   });
@@ -390,6 +403,7 @@ describe("the routing decision in the technical layer", () => {
       trace: traceOf([{ id: "c1" }]),
       messageId: "m1",
       chunksById: new Map<string, DocChildById>(),
+      citedSources: [],
     });
     expect(frame.technical).not.toHaveProperty("routing");
     expect(() => v.parse(ChatTraceFrameSchema, frame)).not.toThrow();
@@ -424,6 +438,7 @@ describe("the routing decision in the technical layer", () => {
       ),
       messageId: "m1",
       chunksById: new Map<string, DocChildById>(),
+      citedSources: [],
     });
     expect(frame.technical.routing?.relaxed).toEqual([
       { key: "dim_c", values: ["v4"] },
@@ -439,6 +454,7 @@ describe("the routing decision in the technical layer", () => {
       trace: traceOf([{ id: "c1" }], [routingEvent(["src_a"], { dim_a: ["v1"] })]),
       messageId: "m1",
       chunksById: new Map<string, DocChildById>(),
+      citedSources: [],
     });
     expect(frame.technical.routing).toEqual({ sources: ["src_a"], filters: { dim_a: ["v1"] } });
   });
@@ -486,6 +502,7 @@ describe("the reviewer pre-gate verdict in the technical layer", () => {
       ),
       messageId: "m1",
       chunksById: new Map<string, DocChildById>(),
+      citedSources: [],
     });
     expect(frame.technical.reviewer).toEqual({
       outcome: "skip",
@@ -513,6 +530,7 @@ describe("the reviewer pre-gate verdict in the technical layer", () => {
       ),
       messageId: "m1",
       chunksById: new Map<string, DocChildById>(),
+      citedSources: [],
     });
     expect(frame.technical.reviewer).toEqual({
       outcome: "escalate",
@@ -530,6 +548,7 @@ describe("the reviewer pre-gate verdict in the technical layer", () => {
       trace: traceOf([{ id: "c1" }]),
       messageId: "m1",
       chunksById: new Map<string, DocChildById>(),
+      citedSources: [],
     });
     expect(frame.technical).not.toHaveProperty("reviewer");
     expect(() => v.parse(ChatTraceFrameSchema, frame)).not.toThrow();
@@ -563,6 +582,7 @@ describe("the reviewer pre-gate verdict in the technical layer", () => {
       ),
       messageId: "m1",
       chunksById: new Map<string, DocChildById>(),
+      citedSources: [],
     });
     expect(frame.technical.reviewer).toEqual({ outcome: "skip", threshold: 0.5, items: [] });
   });
@@ -589,6 +609,7 @@ describe("the reviewer pre-gate verdict in the technical layer", () => {
       ),
       messageId: "m1",
       chunksById: new Map<string, DocChildById>(),
+      citedSources: [],
     });
     expect(frame.technical.reviewer).toEqual({
       outcome: "escalate",
@@ -609,6 +630,7 @@ describe("the reviewer pre-gate verdict in the technical layer", () => {
       ),
       messageId: "m1",
       chunksById: new Map<string, DocChildById>(),
+      citedSources: [],
     });
     expect(frame.technical.reviewer).toEqual({
       outcome: "escalate",

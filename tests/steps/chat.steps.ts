@@ -24,7 +24,7 @@ const ANSWER_FIXTURE = [
   'event: citations\ndata: {"messageId":"m-live","refusal":false,"dhaifWarning":false,"citations":[{"label":"QS. 2:255","arabic":"اللَّهُ لَا إِلَٰهَ إِلَّا هُوَ","translation":"Allah, tidak ada tuhan selain Dia.","machineTranslated":true,"source":"Al-Baqarah"}]}\n\n',
   // The route selected quran + hadith and then gave the source dimension up, so
   // its row names the route's SELECTION, not a restriction the search dropped.
-  'event: trace\ndata: {"messageId":"m-live","sources":[{"id":"chunk-1","source":"Al-Baqarah"}],"technical":{"intent":"ruling","routing":{"sources":["quran","hadith"],"filters":{"grade":["sahih"],"textLayer":["sharh"],"sourceType":["quran","hadith"]},"relaxed":[{"key":"textLayer","values":["sharh"]},{"key":"sourceType","values":["quran","hadith"]}]},"subQueries":["apa itu ayat kursi","QS 2:255 makna"],"chunks":[{"id":"chunk-1","source":"Al-Baqarah","score":0.03125}],"models":[{"id":"router-stub","roles":["router"]},{"id":"generator-stub","roles":["generator"]}],"reviewer":{"outcome":"skip","threshold":0.5,"items":[{"index":0,"key":"QS. 2:255","score":0.93},{"index":1,"key":"HR. Malik no. 18","score":0.61}]}}}\n\n',
+  'event: trace\ndata: {"messageId":"m-live","sources":[{"id":"chunk-1","label":"QS. 2:255","source":"Al-Baqarah"}],"technical":{"intent":"ruling","routing":{"sources":["quran","hadith"],"filters":{"grade":["sahih"],"textLayer":["sharh"],"sourceType":["quran","hadith"]},"relaxed":[{"key":"textLayer","values":["sharh"]},{"key":"sourceType","values":["quran","hadith"]}]},"subQueries":["apa itu ayat kursi","QS 2:255 makna"],"chunks":[{"id":"chunk-1","source":"Al-Baqarah","score":0.03125}],"models":[{"id":"router-stub","roles":["router"]},{"id":"generator-stub","roles":["generator"]}],"reviewer":{"outcome":"skip","threshold":0.5,"items":[{"index":0,"key":"QS. 2:255","score":0.93},{"index":1,"key":"HR. Malik no. 18","score":0.61}]}}}\n\n',
   "event: done\ndata: {}\n\n",
 ].join("");
 
@@ -219,7 +219,7 @@ const TRANSCRIPT_FIXTURE = {
       },
       trace: {
         messageId: "m1",
-        sources: [{ id: "chunk-1", source: "Al-Baqarah" }],
+        sources: [{ id: "chunk-1", label: "QS. 2:255", source: "Al-Baqarah" }],
         technical: {
           intent: "ruling",
           subQueries: ["apa itu ayat kursi"],
@@ -506,21 +506,6 @@ Then("the sheet names the corpus edition its hadith numbers follow", async ({ pa
   await expect(caption).toContainText("sunnah.com");
   await expect(caption).toContainText("edisi cetak lain");
   await expect(caption).toContainText("nomor yang berbeda");
-});
-
-Then("the Trace lists the chains consulted with their sanads", async ({ page }) => {
-  // The sheet is modal: the trace steps start from a closed sheet.
-  await page.keyboard.press("Escape");
-  await expect(page.getByTestId("citation-sheet")).toHaveCount(0);
-  // The panel is the message's sibling, not its descendant: the toggle sits below
-  // the feedback row.
-  await page.getByTestId("trace-toggle").last().click();
-  await page.getByTestId("trace-tech-toggle").last().click();
-  const chains = page.getByTestId("trace-chains");
-  await expect(chains).toBeVisible();
-  await expect(chains.getByTestId("trace-chain-row")).toHaveCount(2);
-  await expect(chains.getByTestId("trace-chain-row").first()).toContainText("al-bukhari");
-  await expect(chains.getByTestId("trace-chain-row").last()).toContainText("dhaif");
 });
 
 When("I ask a question whose dhaif answer wraps the canonical line in markup", async ({ page }) => {
@@ -938,10 +923,11 @@ When("I open the Trace's technical details", async ({ page }) => {
   await page.getByTestId("trace-tech-toggle").last().click();
 });
 
-Then("I see the sources consulted with no technical detail", async ({ page }) => {
+Then("I see the sources cited with no technical detail", async ({ page }) => {
   // The top layer is readable by a non-technical user: the source works, no
   // scores, no machinery.
   const panel = page.getByTestId("trace-body");
+  await expect(panel.getByTestId("trace-sources")).toContainText("QS. 2:255");
   await expect(panel.getByTestId("trace-sources")).toContainText("Al-Baqarah");
   await expect(panel.getByTestId("trace-score")).toHaveCount(0);
   await expect(panel.getByTestId("trace-technical")).toHaveCount(0);

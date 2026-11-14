@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import type { ChatTraceChain, ChatTraceChunk, ChatTraceReviewer } from "@app/contracts";
+import type { ChatTraceChunk, ChatTraceReviewer } from "@app/contracts";
 import { t, type Locale, type MessageKey } from "../../lib/i18n";
 import { MonoLabel } from "../ui";
 import { FlagButton } from "./FeedbackControls";
@@ -12,27 +12,13 @@ import { FlagButton } from "./FeedbackControls";
  */
 
 /**
- * One source on record: its ordinal, its display title (or id), its fused score
- * when the trace recorded one, and the anchor for an "irrelevant passage"
- * report. The number is the consultation order the frame preserved.
+ * One cited source: its ordinal, the citation label the answer wrote (the exact
+ * reference a reader checks), and the passage's display title beside it. The
+ * number is the citation order the frame preserved. No flag: the answer's
+ * citations are the sheet's to flag as wrong; the irrelevant-passage report
+ * belongs to the consulted passages in the technical layer.
  */
-export function SourceRow({
-  chunk,
-  index,
-  locale,
-  score,
-  messageId,
-  persisted,
-  feedback = true,
-}: {
-  chunk: ChatTraceChunk;
-  index: number;
-  locale: Locale;
-  score: Intl.NumberFormat;
-  messageId: string;
-  persisted: boolean;
-  feedback?: boolean;
-}) {
+export function SourceRow({ chunk, index }: { chunk: ChatTraceChunk; index: number }) {
   return (
     <li
       data-testid="trace-source"
@@ -42,37 +28,34 @@ export function SourceRow({
         <span className="mr-2 font-mono text-[11px] text-muted-foreground">
           {String(index + 1).padStart(2, "0")}
         </span>
-        {chunk.source ?? <span className="font-mono text-xs">{chunk.id}</span>}
-      </span>
-      <span className="flex shrink-0 items-center gap-2">
-        {chunk.score !== undefined && (
-          <span data-testid="trace-score" className="font-mono text-[11px] text-muted-foreground">
-            {t(locale, "traceScoreLabel")} {score.format(chunk.score)}
-          </span>
-        )}
-        {feedback && (
-          <FlagButton
-            messageId={messageId}
-            persisted={persisted}
-            anchor={{ type: "chunk", category: "irrelevant_chunk", id: chunk.id }}
-            labelKey="flagIrrelevantChunk"
-            testId={`trace-flag-${chunk.id}`}
-          />
+        {chunk.label ?? chunk.source ?? <span className="font-mono text-xs">{chunk.id}</span>}
+        {chunk.label !== undefined && chunk.source !== undefined && (
+          <span className="ml-2 text-xs text-muted-foreground">{chunk.source}</span>
         )}
       </span>
     </li>
   );
 }
 
-/** One technical-layer passage: display title (or id) plus its scores. */
+/**
+ * One technical-layer passage: display title (or id), its scores, and the anchor
+ * for an "irrelevant passage" report — the consulted set is what retrieval
+ * tuning reads, so the report lives here, on the chunk the answer did not use.
+ */
 export function ChunkRow({
   chunk,
   locale,
   score,
+  messageId,
+  persisted,
+  feedback = true,
 }: {
   chunk: ChatTraceChunk;
   locale: Locale;
   score: Intl.NumberFormat;
+  messageId: string;
+  persisted: boolean;
+  feedback?: boolean;
 }) {
   return (
     <li className="text-sm text-card-foreground">
@@ -93,88 +76,16 @@ export function ChunkRow({
           {t(locale, "traceRerankScoreLabel")} {score.format(chunk.rerankScore)}
         </span>
       )}
-    </li>
-  );
-}
-
-/**
- * The chains consulted: one row per child the run read transmission rows for,
- * each naming the passage and every row it holds with that row's grade, grader and
- * Arabic sanad. Rendered from the server-derived frame, in the record's order — the
- * panel reports what was consulted, never a selected best chain. Chain-bearing
- * passages the read did not cover are listed separately as unread: the panel must
- * not let them look like passages that hold no row.
- */
-export function ChainsSection({
-  chains,
-  notConsulted,
-  locale,
-}: {
-  chains: readonly ChatTraceChain[];
-  notConsulted: readonly string[];
-  locale: Locale;
-}) {
-  return (
-    <div data-testid="trace-chains">
-      <MonoLabel>{t(locale, "traceChainsLabel")}</MonoLabel>
-      {chains.length === 0 && notConsulted.length === 0 ? (
-        <p data-testid="trace-no-chains" className="mt-1 text-sm text-muted-foreground">
-          {t(locale, "traceNoChains")}
-        </p>
-      ) : (
-        <>
-          {chains.length > 0 && (
-            <ul className="mt-1 space-y-1">
-              {chains.map((child) => (
-                <li key={child.childId} data-testid="trace-chain-child" className="text-sm">
-                  <span className="font-mono text-xs text-muted-foreground">
-                    {t(locale, "traceChainChildLabel")}: {child.childId}
-                  </span>
-                  <ul className="mt-0.5 space-y-0.5">
-                    {child.chains.map((chain, index) => (
-                      <li
-                        key={`${chain.grade ?? "ungraded"}-${index}`}
-                        data-testid="trace-chain-row"
-                      >
-                        <span className="mr-2 font-mono text-[11px] uppercase tracking-wide text-card-foreground">
-                          {chain.grade ?? t(locale, "traceChainUngraded")}
-                        </span>
-                        {chain.grader !== undefined && (
-                          <span className="mr-2 text-xs text-muted-foreground">
-                            {t(locale, "traceChainGraderLabel")}: {chain.grader}
-                          </span>
-                        )}
-                        <span dir="rtl" lang="ar" className="font-arabic text-base">
-                          {chain.narrators
-                            .map((narrator) => narrator.nameAr ?? narrator.id)
-                            .join(" < ")}
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-                </li>
-              ))}
-            </ul>
-          )}
-          {notConsulted.length > 0 && (
-            <div data-testid="trace-chains-unread" className="mt-1">
-              <p className="text-sm text-muted-foreground">{t(locale, "citationChainUnread")}</p>
-              <ul className="mt-0.5 space-y-0.5">
-                {notConsulted.map((childId) => (
-                  <li
-                    key={childId}
-                    data-testid="trace-chain-unread"
-                    className="font-mono text-xs text-muted-foreground"
-                  >
-                    {childId}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-        </>
+      {feedback && (
+        <FlagButton
+          messageId={messageId}
+          persisted={persisted}
+          anchor={{ type: "chunk", category: "irrelevant_chunk", id: chunk.id }}
+          labelKey="flagIrrelevantChunk"
+          testId={`trace-chunk-flag-${chunk.id}`}
+        />
       )}
-    </div>
+    </li>
   );
 }
 

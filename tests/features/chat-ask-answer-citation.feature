@@ -75,14 +75,12 @@ Feature: Chat — ask, answer, citations, warnings, disclaimer
     When I ask a question whose dhaif answer puts the label in the canonical line's paragraph
     Then the dhaif warning renders exactly once beside the shared label
 
-  # #30: a hadith whose stored chains disagree keeps BOTH chains visible end to
-  # end — the citation sheet renders each sanad with its own grade and grader, and
-  # the Trace panel lists the chains the run consulted. Collapsing to one grade
-  # would hide the weak row entirely.
+  # #30: a hadith whose stored chains disagree keeps BOTH chains visible in the
+  # citation sheet, each sanad with its own grade and grader. Collapsing to one
+  # grade would hide the weak row entirely.
   Scenario: A multi-chain hadith shows each sanad with its own grade
     When I ask about a hadith whose chains disagree
     Then the citation sheet shows every sanad with its own grade and grader
-    And the Trace lists the chains consulted with their sanads
 
   # A hadith number is only checkable when the reader knows which edition
   # produced it, so the sheet names the corpus edition and says printed editions
@@ -157,11 +155,11 @@ Feature: Chat — ask, answer, citations, warnings, disclaimer
     When I open the chat with a stored session and ask about ayat kursi, then leave and come back
     Then the completed answer is still in the transcript
 
-  Scenario: Expanding the Trace lists the sources consulted in plain language
+  Scenario: Expanding the Trace lists the sources cited in plain language
     When I open the chat and ask about ayat kursi
     And the answer renders with a citation chip
     And I expand the answer's Trace
-    Then I see the sources consulted with no technical detail
+    Then I see the sources cited with no technical detail
 
   Scenario: The Trace's deeper layer shows intent, the routing decision, sub-queries, scores, model identity, and the reviewer pre-gate verdict
     When I open the chat and ask about ayat kursi

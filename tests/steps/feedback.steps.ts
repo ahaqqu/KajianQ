@@ -102,7 +102,9 @@ When("I expand the answer's Trace for feedback", async ({ page }) => {
 });
 
 When("I flag the consulted source as irrelevant", async ({ page }) => {
-  await page.getByTestId("trace-flag-chunk-1").click();
+  // The report lives on the consulted-passage row inside the technical details —
+  // the top layer lists the answer's cited sources, which the citation sheet flags.
+  await page.getByTestId("trace-chunk-flag-chunk-1").click();
 });
 
 When("I flag the citation as wrong", async ({ page }) => {
@@ -133,7 +135,7 @@ Then("the flag carries the chunk reference and the reason category", async () =>
 });
 
 Then("the flag button confirms the report", async ({ page }) => {
-  await expect(page.getByTestId("trace-flag-chunk-1-sent")).toBeVisible();
+  await expect(page.getByTestId("trace-chunk-flag-chunk-1-sent")).toBeVisible();
 });
 
 Then("the flag carries the citation label and the reason category", async () => {

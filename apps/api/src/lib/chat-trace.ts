@@ -7,25 +7,19 @@ import {
 } from "@app/contracts";
 import type { DocChildById, RagStore } from "@app/infra";
 import { CITATION_SUPPORT_PURPOSE, type StoreBridge } from "@app/kajianq-domain";
-import {
-  recordedEvidence,
-  traceChainsNotConsultedOf,
-  traceChainsOf,
-  type NarratorNames,
-} from "./chat-chain-frame";
 import { traceModelsOf } from "./chat-trace-models";
 export {
   citationEvidenceFor,
+  citedSourcesOf,
   narratorFetcher,
   narratorNamesOrEmpty,
   recordedEvidence,
-  traceChainsNotConsultedOf,
-  traceChainsOf,
+  type CitedRow,
   type CitationEvidence,
   type NarratorNames,
   type NarratorSource,
   type RecordedEvidence,
-} from "./chat-chain-frame";
+} from "./chat-frame-evidence";
 
 /**
  * The user-facing Trace frame (ADR-0007) — the invariant this module owns:
@@ -106,11 +100,6 @@ function sourceTitleOf(row: DocChildById | undefined): string | undefined {
   return typeof title === "string" && title.trim() !== "" ? title : undefined;
 }
 
-function toSource(ref: ChunkRef, chunksById: ReadonlyMap<string, DocChildById>): ChatTraceChunk {
-  const source = sourceTitleOf(chunksById.get(ref.id));
-  return { id: ref.id, ...(source !== undefined ? { source } : {}) };
-}
-
 function toTechnicalChunk(
   ref: ChunkRef,
   chunksById: ReadonlyMap<string, DocChildById>,
@@ -148,13 +137,13 @@ function isReviewerDecision(event: TraceEvent): event is ReviewerDecision {
 }
 
 /**
- * Pure core: derive the two-layer Trace frame from a persisted trace and the
- * display rows of the trace's chunks. A PURE refusal's trace carries no
- * retrieval events, so its frame is legitimately empty (the UI says "no
- * sources consulted" — honest, not an error). A HYBRID refusal is a refusal
- * recorded over a partial answer, so it carries the retrieval refs that answer
- * was built from and its panel is populated — the panel reports what was
- * consulted, never whether the run decided to refuse. Parsed against the
+ * Pure core: derive the two-layer Trace frame from a persisted trace, the display
+ * rows of the trace's chunks, and the answer's cited sources. A PURE refusal's
+ * trace carries no retrieval events, so its frame is legitimately empty (the UI
+ * says "no sources were recorded" — honest, not an error). A HYBRID refusal is a
+ * refusal recorded over a partial answer, so it carries the retrieval refs that
+ * answer was built from and its panel is populated — the panel reports what the
+ * answer used, never whether the run decided to refuse. Parsed against the
  * contract by the callers, exactly as the citations derivation is. The live
  * route's combined entry (one shared store read for both frames) is
  * `answerFramesFor` in `chat-citations.ts` — this module stays below it in the
@@ -164,11 +153,14 @@ export function deriveTraceFrame(input: {
   trace: Trace;
   messageId: string;
   chunksById: ReadonlyMap<string, DocChildById>;
-  /** The display join for the narrators the trace's evidence names; absent = ids only. */
-  narratorNames?: NarratorNames;
+  /**
+   * The answer's cited sources, in citation order — the frame's top layer. They
+   * are derived beside the citations frame (`citedSourcesOf`, once per answer), so
+   * the panel can never list a source the answer did not cite.
+   */
+  citedSources: readonly ChatTraceChunk[];
 }): ChatTraceFrame {
   const { trace, messageId, chunksById } = input;
-  const names: NarratorNames = input.narratorNames ?? new Map();
   const refs = traceChunkRefs(trace);
   const intentEvent = trace.events.find((event) => event.kind === "intent");
   const subQueries = trace.events
@@ -210,15 +202,9 @@ export function deriveTraceFrame(input: {
   // threshold. Absent when the run never reached the pre-gate (a refusal, a
   // validator failure, an unwired decider) — absence is never "cleared".
   const reviewerEvent = trace.events.findLast(isReviewerDecision);
-  // The chains consulted, from the trace's own `chain_evidence` record: absent when
-  // the run recorded none, present-and-empty when it read and found no row. The
-  // unread list is the same record's own fact, never inferred from a missing row.
-  const evidence = recordedEvidence(trace);
-  const chains = traceChainsOf(evidence, names);
-  const chainsNotConsulted = traceChainsNotConsultedOf(evidence);
   return {
     messageId,
-    sources: refs.map((ref) => toSource(ref, chunksById)),
+    sources: [...input.citedSources],
     technical: {
       ...(intentEvent !== undefined
         ? {
@@ -239,8 +225,6 @@ export function deriveTraceFrame(input: {
       subQueries,
       chunks: refs.map((ref) => toTechnicalChunk(ref, chunksById)),
       models,
-      ...(chains !== undefined ? { chains } : {}),
-      ...(chainsNotConsulted !== undefined ? { chainsNotConsulted: [...chainsNotConsulted] } : {}),
       ...(reviewerEvent !== undefined
         ? {
             reviewer: {

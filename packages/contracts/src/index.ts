@@ -41,13 +41,11 @@ export {
   type ChatChainNarrator,
 } from "./chat-chain";
 export {
-  ChatTraceChainSchema,
   ChatTraceChunkSchema,
   ChatTraceFrameSchema,
   ChatTraceModelSchema,
   ChatTraceReviewerItemSchema,
   ChatTraceReviewerSchema,
-  type ChatTraceChain,
   type ChatTraceChunk,
   type ChatTraceFrame,
   type ChatTraceModel,

@@ -213,8 +213,9 @@ describe("admin browser", () => {
     expect(raw.getAttribute("href")).toBe(`/v1/admin/traces/${TRACE_ID}/raw`);
     // The panel is the chat's own Trace panel over the derived frame…
     expect(within(detail).getByTestId("trace-body")).toBeTruthy();
-    // …in its read-only mode: no feedback flags.
-    expect(within(detail).queryByTestId("trace-flag-chunk-1")).toBeNull();
+    // …in its read-only mode: no feedback flags, the technical layer included.
+    fireEvent.click(within(detail).getByTestId("trace-tech-toggle"));
+    expect(within(detail).queryByTestId("trace-chunk-flag-chunk-1")).toBeNull();
     // The page is the SPA's `/admin` route; every data call goes to the API's
     // `/v1/admin` namespace, never to the old top-level path.
     expect(fetchFn.mock.calls.every(([url]) => !String(url).includes("/admin/v1"))).toBe(true);

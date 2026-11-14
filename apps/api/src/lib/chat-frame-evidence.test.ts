@@ -1,14 +1,9 @@
 import { describe, expect, it } from "vite-plus/test";
 import * as v from "valibot";
-import {
-  ChatCitationsFrameSchema,
-  ChatTraceFrameSchema,
-  type ChainEvidenceDetail,
-  type Trace,
-} from "@app/contracts";
+import { ChatCitationsFrameSchema, type ChainEvidenceDetail, type Trace } from "@app/contracts";
 import type { DocChildById, NarratorIdsLookup } from "@app/infra";
 import { deriveCitationsFrame } from "./chat-citations";
-import { deriveTraceFrame, narratorFetcher, narratorNamesOrEmpty } from "./chat-trace";
+import { narratorFetcher, narratorNamesOrEmpty } from "./chat-trace";
 
 /**
  * The frame derivation over the per-chain record (spec §9.5).
@@ -161,65 +156,6 @@ describe("deriveCitationsFrame — the per-chain evidence a citation carries", (
     expect(byLabel.get(labels[0]!)?.chains?.[0]?.grade).toBe("sahih");
     expect(byLabel.get(labels[1]!)?.chains).toHaveLength(1);
     expect(byLabel.get(labels[1]!)?.chains?.[0]?.grade).toBe("dhaif");
-  });
-});
-
-describe("deriveTraceFrame — the chains-consulted block", () => {
-  const derive = (trace: Trace, narratorNames?: ReadonlyMap<string, string>) =>
-    deriveTraceFrame({
-      trace,
-      messageId: "m1",
-      chunksById: new Map([["h1", hadithRow("h1")]]),
-      ...(narratorNames !== undefined ? { narratorNames } : {}),
-    });
-
-  it("projects the recorded children with their rows", () => {
-    const frame = derive(traceOf(detail), names);
-    expect(v.safeParse(ChatTraceFrameSchema, frame).success).toBe(true);
-    expect(frame.technical.chains).toEqual([
-      {
-        childId: "h1",
-        chains: [
-          {
-            narrators: [{ id: NARRATOR_ONE, nameAr: "نافع" }, { id: "n-unknown" }],
-            grade: "sahih",
-            grader: "al-bukhari",
-          },
-          {
-            narrators: [{ id: NARRATOR_ONE, nameAr: "نافع" }],
-            grade: "dhaif",
-            grader: "al-daraqutni",
-          },
-        ],
-      },
-    ]);
-  });
-
-  it("distinguishes a read that found nothing from no read at all", () => {
-    const emptyRead: ChainEvidenceDetail = { ...detail, children: [] };
-    expect(derive(traceOf(emptyRead)).technical.chains).toEqual([]);
-    expect(derive(traceOf(null)).technical.chains).toBeUndefined();
-  });
-
-  it("flags a bounded list so the panel never presents a prefix as the whole", () => {
-    const bounded: ChainEvidenceDetail = {
-      ...detail,
-      children: [{ ...detail.children[0]!, moreMayExist: true }],
-    };
-    expect(derive(traceOf(bounded)).technical.chains?.[0]?.moreMayExist).toBe(true);
-  });
-
-  it("carries the unread children separately from the rows it read", () => {
-    const unread: ChainEvidenceDetail = {
-      ...detail,
-      consulted: 0,
-      children: [],
-      notConsulted: ["h1", "h2"],
-    };
-    const frame = derive(traceOf(unread));
-    expect(v.safeParse(ChatTraceFrameSchema, frame).success).toBe(true);
-    expect(frame.technical.chains).toEqual([]);
-    expect(frame.technical.chainsNotConsulted).toEqual(["h1", "h2"]);
   });
 });
 
