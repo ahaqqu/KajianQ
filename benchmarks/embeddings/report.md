@@ -1,6 +1,6 @@
 # Embedding benchmark report
 
-Generated offline from the committed samples (`benchmarks/embeddings/samples/`) and run files (`benchmarks/embeddings/runs/`) at 2026-11-14T00:55:46.248Z — never hand-edited. Gate floors (ADR-0013): cross-lingual `secondary→primary` recall@10 ≥ 0.7 AND monolingual `primary→primary` recall@10 ≥ 0.75; an arm that aborts is never a pass.
+Generated offline from the committed samples (`benchmarks/embeddings/samples/`) and run files (`benchmarks/embeddings/runs/`) at 2026-11-14T01:23:24.117Z — never hand-edited. Gate floors (ADR-0013): cross-lingual `secondary→primary` recall@10 ≥ 0.7 AND monolingual `primary→primary` recall@10 ≥ 0.75; an arm that aborts is never a pass.
 
 ## Samples
 
@@ -18,6 +18,7 @@ Generated offline from the committed samples (`benchmarks/embeddings/samples/`) 
 | ----------------------------- | ------------------------------------------------------------- | ----------------- | --------------- | --------- | -------- | ----------- | ------------------------ |
 | `google/gemini-embedding-001` | `benchmarks/embeddings/runs/google-gemini-embedding-001.json` | 100.0% (1.000)    | 100.0% (1.000)  | 41.7%     | **pass** | 113737 µUSD | 2026-11-14T00:41:08.992Z |
 | `google/gemini-embedding-2`   | `benchmarks/embeddings/runs/google-gemini-embedding-2.json`   | 100.0% (0.998)    | 100.0% (1.000)  | 50.0%     | **pass** | 150297 µUSD | 2026-11-14T00:46:40.955Z |
+| `perplexity/pplx-embed-v1-4b` | `benchmarks/embeddings/runs/perplexity-pplx-embed-v1-4b.json` | 100.0% (0.982)    | 100.0% (1.000)  | 50.0%     | **pass** | 32258 µUSD  | 2026-11-14T01:23:24.046Z |
 | `qwen/qwen3-embedding-8b`     | `benchmarks/embeddings/runs/qwen-qwen3-embedding-8b.json`     | 100.0% (0.993)    | 100.0% (1.000)  | 41.7%     | **pass** | 15231 µUSD  | 2026-11-14T00:55:46.237Z |
 
 Direction cells show recall@10 with MRR in parentheses, recomputed from each run's records; the run's own totals are never trusted. The expansion cell is the mean pass rate over the run's expansion records. Cost is the run's budget bookkeeping (its total metered spend); per-call cost records cover the expansion calls. A run that aborts keeps its partial records and names the failure — it is evidence, never a gate result.
@@ -39,6 +40,13 @@ Direction cells show recall@10 with MRR in parentheses, recomputed from each run
   - `expansion/exp-009`: expected `الحَجّ`, got `الحَجّ, الإِحْرَام`
   - `expansion/exp-010`: expected `الرِّزْق`, got `الرِّزْق, الحَلَال`
   - `expansion/exp-011`: expected `الطَّلَاق`, got `الطَّلَاق, النِّكَاح`
+- `perplexity/pplx-embed-v1-4b` (6):
+  - `expansion/exp-001`: expected `الوُضُوء`, got `الوُضُوء, التَّيَمُّم`
+  - `expansion/exp-003`: expected `الفِرْدَوْس`, got `الفِرْدَوْس, الجَنَّة`
+  - `expansion/exp-006`: expected `الفِدْيَة`, got `الصِّيَام, القَضَاء`
+  - `expansion/exp-009`: expected `الحَجّ`, got `الحَجّ, الإِحْرَام`
+  - `expansion/exp-010`: expected `الرِّزْق`, got `الرِّزْق, الحَلَال`
+  - `expansion/exp-011`: expected `الطَّلَاق`, got `الطَّلَاق, النِّكَاح`
 - `qwen/qwen3-embedding-8b` (7):
   - `expansion/exp-001`: expected `الوُضُوء`, got `الوُضُوء, التَّيَمُّم`
   - `expansion/exp-003`: expected `الفِرْدَوْس`, got `الفِرْدَوْس, الجَنَّة`
@@ -50,7 +58,7 @@ Direction cells show recall@10 with MRR in parentheses, recomputed from each run
 
 ## Selection
 
-Gate-passing arms at this seal: `google/gemini-embedding-001`, `google/gemini-embedding-2`, `qwen/qwen3-embedding-8b`.
+Gate-passing arms at this seal: `google/gemini-embedding-001`, `google/gemini-embedding-2`, `perplexity/pplx-embed-v1-4b`, `qwen/qwen3-embedding-8b`.
 
 Adoption is an `embedder` role change made by a reviewed PR; this report supplies evidence and never switches a serving row by itself.
 
