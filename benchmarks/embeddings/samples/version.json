@@ -1,0 +1,35 @@
+{
+  "schema": 1,
+  "task": "embed-bench",
+  "version": 1,
+  "created": "2026-11-14T07:05:00Z",
+  "fixtures": {
+    "probes": {
+      "id": "embed-bench-probes-v0",
+      "status": "canonical"
+    },
+    "expansion": {
+      "id": "expansion-cases-v0",
+      "status": "canonical"
+    }
+  },
+  "counts": {
+    "crossLingual": 200,
+    "monolingual": 200,
+    "expansion": 12
+  },
+  "hashes": {
+    "probes": "sha256:826bfc0dfb9d8f1ebea4841909808e68003d8432be3c356957569a66e8a18bff",
+    "expansion": "sha256:98efedc5a432c9574ebd03ed5544fbffc9c461293259e7f54a381b7a66e13c19"
+  },
+  "fingerprints": {
+    "corpus": "fnv1a64:478dc7ce1bae2d30:1500"
+  },
+  "notes": [
+    "The corpus fingerprint is the probe fixture's own pin: the probes were authored against a deterministic stratified subset of the real sources (1500 docs), and the loader refuses a probe fixture whose fingerprint disagrees with the corpus a run builds — so a run here measures the same bytes the seal pins.",
+    "The result under superseded/pre-store/ (2026-09-10, free-tier era, two embedding arms + the expansion micro-task) predates the store: it was measured at this same corpus fingerprint but pins no sample hashes, so it is frozen history and the report never scores it.",
+    "A re-seal (any byte of probes.json or expansion-cases.json changed) bumps version and archives runs/ to superseded/v<n>/ — the store refuses a run whose sample hashes or corpus fingerprint do not match the committed seal, so staleness is loud, never silent.",
+    "Run files pin the sample hashes and the corpus fingerprint but not the expansion prompt wording (no wording identity exists yet); a prompt-wording change is a re-seal signal for the expansion arm of the gate.",
+    "Embedding spend is metered per batch into the run's budget total; only the expansion records carry per-call cost records (one call = one case there)."
+  ]
+}

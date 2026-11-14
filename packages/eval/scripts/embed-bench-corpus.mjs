@@ -149,10 +149,10 @@ export function readFixtureJson(path, source) {
   return JSON.parse(readFileSync(path, "utf8"));
 }
 
-/** Write the JSON report, creating the parent dir (the CLI's only write). */
-export function writeReportFile(path, report) {
+/** Write a text report, creating the parent dir (the CLI's only report write). */
+export function writeTextFile(path, text) {
   mkdirSync(dirname(path), { recursive: true });
-  writeFileSync(path, JSON.stringify(report, null, 2));
+  writeFileSync(path, text);
 }
 
 /** cwd-resolved absolute path (the CLI has no other path need). */

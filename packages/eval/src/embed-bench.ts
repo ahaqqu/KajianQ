@@ -1,3 +1,4 @@
+import { EMBED_BENCH_TOP_K } from "@app/contracts";
 import type { CostRecordLike } from "./harness-types";
 
 // Expansion micro-task machinery split out (thermo B3/C2) to keep both modules
@@ -52,6 +53,19 @@ export type BenchQuery = {
  */
 export type BenchDirection = "primary→primary" | "secondary→primary" | "secondary→secondary";
 
+/**
+ * One probe's scored outcome inside a direction cell — the evidence a run
+ * file's per-probe record is built from: the ground truth, the ranked top-k
+ * ids actually retrieved (rank = position in `rankedTopK`), and whether every
+ * relevant id landed inside the top k.
+ */
+export type BenchProbeOutcome = {
+  queryId: string;
+  expectedIds: readonly string[];
+  rankedTopK: readonly string[];
+  passed: boolean;
+};
+
 /** The metrics for one (model, direction) cell. */
 export type BenchCell = {
   direction: BenchDirection;
@@ -60,6 +74,8 @@ export type BenchCell = {
   recallAtK: number | null;
   /** Mean reciprocal rank (0..1; null when none ran). */
   mrr: number | null;
+  /** Per-probe evidence, in probe order (empty when none ran). */
+  probeOutcomes: BenchProbeOutcome[];
 };
 
 /** One candidate model's full benchmark result, including its spend. */
@@ -73,8 +89,8 @@ export type BenchCandidateResult = {
   elapsedMs: number;
 };
 
-/** The k of recall@k (spec §7 gate: recall@10). */
-export const BENCH_K = 10;
+/** The k of recall@k (spec §7 gate: recall@10) — also a record's ranked top-k width. */
+export const BENCH_K = EMBED_BENCH_TOP_K;
 
 /** Cosine similarity between two unit-normalizable vectors. */
 export function cosineSimilarity(a: readonly number[], b: readonly number[]): number {
@@ -146,20 +162,29 @@ export function scoreDirection(
   docVectors: readonly { id: string; vector: readonly number[] }[],
 ): BenchCell {
   if (queryVectors.length === 0) {
-    return { direction, queries: 0, recallAtK: null, mrr: null };
+    return { direction, queries: 0, recallAtK: null, mrr: null, probeOutcomes: [] };
   }
   let recallSum = 0;
   let mrrSum = 0;
+  const probeOutcomes: BenchProbeOutcome[] = [];
   for (const { query, vector } of queryVectors) {
     const ranked = rankDocs(vector, docVectors);
-    recallSum += recallAtK(query.relevantIds, ranked);
+    const recall = recallAtK(query.relevantIds, ranked);
+    recallSum += recall;
     mrrSum += reciprocalRank(query.relevantIds, ranked);
+    probeOutcomes.push({
+      queryId: query.id,
+      expectedIds: query.relevantIds,
+      rankedTopK: ranked.slice(0, BENCH_K).map((r) => r.id),
+      passed: recall === 1,
+    });
   }
   return {
     direction,
     queries: queryVectors.length,
     recallAtK: recallSum / queryVectors.length,
     mrr: mrrSum / queryVectors.length,
+    probeOutcomes,
   };
 }
 

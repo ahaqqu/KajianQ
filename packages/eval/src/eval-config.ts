@@ -65,14 +65,24 @@ function resolveGoldenSetPath(raw: string | undefined): string {
 }
 
 /**
- * The default fixtures the benchmark CLI reads (overridable so a re-run can
- * point at a new versioned set): the embedding-benchmark probe/expansion pairs
- * the domain pack authored against the real corpus.
+ * The embedding-benchmark store (issue #9): the sealed samples, the
+ * append-only run files, and the generated report live at repo root under
+ * `benchmarks/embeddings/` — measurements are versioned repo content, not a
+ * file one run overwrites. Same shape as the decision-bench store
+ * (`DECISION_BENCH_DEFAULT_DIR`).
  */
-export const EMBED_BENCH_DEFAULT_PROBE_PATH =
-  "packages/kajianq-domain/fixtures/embed-bench-probes-v0.json";
-export const EMBED_BENCH_DEFAULT_EXPANSION_PATH =
-  "packages/kajianq-domain/fixtures/expansion-cases-v0.json";
+export const EMBED_BENCH_DEFAULT_DIR = "benchmarks/embeddings";
+
+/** Default sealed samples: the versioned probe/expansion fixtures. */
+export const EMBED_BENCH_DEFAULT_PROBE_PATH = `${EMBED_BENCH_DEFAULT_DIR}/samples/probes.json`;
+export const EMBED_BENCH_DEFAULT_EXPANSION_PATH = `${EMBED_BENCH_DEFAULT_DIR}/samples/expansion-cases.json`;
+
+export const EMBED_BENCH_DEFAULT_SEAL_PATH = `${EMBED_BENCH_DEFAULT_DIR}/samples/version.json`;
+
+export const EMBED_BENCH_DEFAULT_RUNS_DIR = `${EMBED_BENCH_DEFAULT_DIR}/runs`;
+
+/** The generated report (offline from the committed files; never hand-edited). */
+export const EMBED_BENCH_DEFAULT_REPORT_PATH = `${EMBED_BENCH_DEFAULT_DIR}/report.md`;
 
 /** Validated, typed configuration for one `eval:embed-bench` invocation. */
 export type EmbedBenchConfig = {
@@ -97,11 +107,17 @@ export type EmbedBenchConfig = {
   docBudget: number | undefined;
   /** Embedding batch size (default 96; lower it under tight item quotas). */
   batchSize: number | undefined;
+  /** Store root (samples, runs, report). */
+  dir: string;
   /** Probe fixture path. */
   probePath: string;
   /** Expansion fixture path. */
   expansionPath: string;
-  /** Output report path (JSON, defaults next to the fixtures). */
+  /** The samples seal. */
+  sealPath: string;
+  /** Append-only run files, one per candidate arm. */
+  runsDir: string;
+  /** Output report path (markdown, derived offline). */
   reportPath: string;
 };
 
@@ -137,6 +153,7 @@ export function loadEmbedBenchConfig(env: Record<string, string | undefined>): E
     }
     return n;
   };
+  const dir = env.EMBED_BENCH_DIR?.trim() || EMBED_BENCH_DEFAULT_DIR;
   return {
     databaseUrl,
     budgetCapMicroUsd,
@@ -144,10 +161,12 @@ export function loadEmbedBenchConfig(env: Record<string, string | undefined>): E
     groupBCap: intOrUndefined("BENCH_GROUP_B", env.BENCH_GROUP_B),
     docBudget: intOrUndefined("BENCH_DOC_BUDGET", env.BENCH_DOC_BUDGET),
     batchSize: intOrUndefined("BENCH_BATCH_SIZE", env.BENCH_BATCH_SIZE),
-    probePath: env.BENCH_PROBE_PATH?.trim() || EMBED_BENCH_DEFAULT_PROBE_PATH,
-    expansionPath: env.BENCH_EXPANSION_PATH?.trim() || EMBED_BENCH_DEFAULT_EXPANSION_PATH,
-    reportPath:
-      env.BENCH_REPORT_PATH?.trim() || "packages/kajianq-domain/fixtures/embed-bench-results.json",
+    dir,
+    probePath: env.BENCH_PROBE_PATH?.trim() || `${dir}/samples/probes.json`,
+    expansionPath: env.BENCH_EXPANSION_PATH?.trim() || `${dir}/samples/expansion-cases.json`,
+    sealPath: `${dir}/samples/version.json`,
+    runsDir: `${dir}/runs`,
+    reportPath: env.BENCH_REPORT_PATH?.trim() || `${dir}/report.md`,
   };
 }
 
