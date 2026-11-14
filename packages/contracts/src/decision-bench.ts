@@ -1,4 +1,5 @@
 import * as v from "valibot";
+import { CostRecordSchema } from "./trace-primitives";
 
 /**
  * Decision-bench contracts (ADR-0042): the fixture shape for the multilingual
@@ -96,4 +97,108 @@ export function parseDecisionBenchFixture(raw: unknown): DecisionBenchFixture {
     }
   });
   return fixture;
+}
+
+/**
+ * One scored case inside a committed run file: the judgment it recorded and
+ * the metered spend of the call that produced it (verbatim CostRecord, so
+ * the report derives cost and latency from evidence, never from a summary).
+ */
+export const DecisionBenchRunRecordSchema = v.object({
+  caseId: v.pipe(v.string(), v.minLength(1)),
+  task: DecisionTaskSchema,
+  language: v.pipe(v.string(), v.minLength(1)),
+  expected: v.union([v.string(), v.number(), v.boolean()]),
+  got: v.union([v.string(), v.number(), v.boolean()]),
+  passed: v.boolean(),
+  cost: v.optional(CostRecordSchema),
+});
+
+export type DecisionBenchRunRecord = v.InferOutput<typeof DecisionBenchRunRecordSchema>;
+
+/**
+ * The committed run file (ADR-0042 bench store): one append-only record per
+ * candidate arm. A run pins what it measured — the samples seal version and
+ * cases hash, the prompt-wording hash, the gate floors it was judged against
+ * — so the report derives every number from the records and refuses a run
+ * measured against different bytes than the committed samples.
+ */
+export const DecisionBenchRunSchema = v.object({
+  schema: v.literal(1),
+  task: v.literal("decision-bench"),
+  /** The config row id the run was requested with, as requested. */
+  model: v.pipe(v.string(), v.minLength(1)),
+  samples: v.object({
+    version: v.pipe(v.number(), v.integer(), v.minValue(1)),
+    casesSha256: v.pipe(v.string(), v.minLength(1)),
+  }),
+  promptsSha256: v.pipe(v.string(), v.minLength(1)),
+  budget: v.object({
+    capMicroUsd: v.nullable(v.number()),
+    plannedCases: v.pipe(v.number(), v.integer(), v.minValue(1)),
+    totalMicroUsd: v.pipe(v.number(), v.minValue(0)),
+  }),
+  totals: v.object({
+    cases: v.pipe(v.number(), v.integer(), v.minValue(1)),
+    scored: v.pipe(v.number(), v.integer(), v.minValue(0)),
+    passed: v.pipe(v.number(), v.integer(), v.minValue(0)),
+    accuracy: v.nullable(v.number()),
+  }),
+  gate: v.object({
+    gatePass: v.boolean(),
+    overallAccuracy: v.nullable(v.number()),
+    failedLanguages: v.array(v.pipe(v.string(), v.minLength(1))),
+    floors: v.object({
+      overall: v.number(),
+      perLanguage: v.number(),
+      minCasesPerLanguage: v.pipe(v.number(), v.integer(), v.minValue(1)),
+    }),
+  }),
+  /** An aborted run keeps its partial records and names the failure. */
+  aborted: v.optional(v.boolean()),
+  error: v.optional(v.pipe(v.string(), v.minLength(1))),
+  startedAt: v.pipe(v.string(), v.isoTimestamp()),
+  finishedAt: v.pipe(v.string(), v.isoTimestamp()),
+  records: v.array(DecisionBenchRunRecordSchema),
+});
+
+export type DecisionBenchRun = v.InferOutput<typeof DecisionBenchRunSchema>;
+
+/**
+ * Parse an untrusted run-file payload with the consistency checks the schema
+ * cannot express: the totals must be derivable from the records (a summary
+ * that disagrees with its own evidence is a corrupted run), an aborted run
+ * must name its failure, and a complete one must not carry one.
+ */
+export function parseDecisionBenchRun(raw: unknown): DecisionBenchRun {
+  const run = v.parse(DecisionBenchRunSchema, raw);
+  if (run.totals.scored > run.totals.cases) {
+    throw new Error(
+      `decision-bench run "${run.model}": scored ${run.totals.scored} cases exceeds the fixture's ${run.totals.cases}`,
+    );
+  }
+  if (run.totals.scored !== run.records.length) {
+    throw new Error(
+      `decision-bench run "${run.model}": totals.scored ${run.totals.scored} does not match its ${run.records.length} records`,
+    );
+  }
+  const passed = run.records.filter((r) => r.passed).length;
+  if (run.totals.passed !== passed) {
+    throw new Error(
+      `decision-bench run "${run.model}": totals.passed ${run.totals.passed} does not match the ${passed} passing records`,
+    );
+  }
+  const accuracy = run.totals.scored === 0 ? null : passed / run.totals.scored;
+  if (run.totals.accuracy !== null && Math.abs(run.totals.accuracy - (accuracy ?? 0)) > 1e-9) {
+    throw new Error(
+      `decision-bench run "${run.model}": totals.accuracy ${run.totals.accuracy} does not match ${passed}/${run.totals.scored}`,
+    );
+  }
+  if (run.aborted === true && (run.error === undefined || run.error.length === 0)) {
+    throw new Error(`decision-bench run "${run.model}": aborted without an error message`);
+  }
+  if (run.aborted !== true && run.error !== undefined) {
+    throw new Error(`decision-bench run "${run.model}": carries an error but is not aborted`);
+  }
+  return run;
 }

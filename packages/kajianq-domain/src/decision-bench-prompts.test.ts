@@ -1,17 +1,24 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vite-plus/test";
 import { parseDecisionBenchFixture, type DecisionBenchPrompts } from "@app/contracts";
-import { DECISION_BENCH_PROMPTS } from "./decision-bench-prompts";
+import {
+  DECISION_BENCH_PROMPTS,
+  DECISION_BENCH_PROMPTS_IDENTITY,
+  CITATION_INSTRUCTIONS,
+  RERANK_INSTRUCTIONS,
+  RELEVANCE_CRITERIA,
+  RELEVANCE_INSTRUCTIONS,
+} from "./decision-bench-prompts";
 
 /**
- * The checked-in fixture must stay valid against the shared contract — a
- * fixture that drifts from the schema fails here, not at bench time after
- * spend. The prompt templates are typed by the shared contracts type
- * (DecisionBenchPrompts), so a drift from the engine's expected shape is a
- * compile error here, not a bench-time surprise.
+ * The bench store's sealed case set must stay valid against the shared
+ * contract — a fixture that drifts from the schema fails here, not at bench
+ * time after spend. The prompt templates are typed by the shared contracts
+ * type (DecisionBenchPrompts), so a drift from the engine's expected shape
+ * is a compile error here, not a bench-time surprise.
  */
 
-const FIXTURE_PATH = new URL("../fixtures/decision-bench-v0.json", import.meta.url);
+const FIXTURE_PATH = new URL("../../../benchmarks/decisions/samples/cases.json", import.meta.url);
 
 function loadFixture() {
   return parseDecisionBenchFixture(JSON.parse(readFileSync(FIXTURE_PATH, "utf8")));
@@ -57,5 +64,20 @@ describe("decision-bench fixture", () => {
         bestIndex: 0,
       }),
     ).toEqual({});
+  });
+
+  it("the wording identity carries every template's canonical text", () => {
+    const identity = JSON.parse(DECISION_BENCH_PROMPTS_IDENTITY) as {
+      relevance: { instructions: string };
+      rerank: { instructions: string };
+      citation: { instructions: string };
+    };
+    expect(identity.relevance.instructions).toBe(RELEVANCE_INSTRUCTIONS);
+    expect(identity.rerank.instructions).toBe(RERANK_INSTRUCTIONS);
+    expect(identity.citation.instructions).toBe(CITATION_INSTRUCTIONS);
+    // A wording change must move the pin every run file carries — if the
+    // identity ever stopped depending on a constant, runs would silently
+    // share a stale pin.
+    expect(DECISION_BENCH_PROMPTS_IDENTITY).toContain(RELEVANCE_CRITERIA.true);
   });
 });

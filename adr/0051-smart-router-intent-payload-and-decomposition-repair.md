@@ -2,7 +2,7 @@
 
 ## Decision
 
-The first two stages are **one** cheap-tier call returning **one payload**: the intent, the subject category, the madzhab, grade and text-layer hints, the principle decision with its tags, a confidence and rationale, and role-tagged sub-queries. The domain reads it into **closed vocabularies** — a value outside them is dropped, never force-matched — and a reply whose intent is unusable lands on a deterministic fallback the trace marks as one, never on an invented classification.
+The first two stages are **one** cheap-tier call returning **one payload**: the intent, the subject category, the madzhab, grade and text-layer hints, a confidence and rationale, and role-tagged sub-queries. The domain reads it into **closed vocabularies** — a value outside them is dropped, never force-matched — and a reply whose intent is unusable lands on a deterministic fallback the trace marks as one, never on an invented classification.
 
 The route is **gated on the caller's question, before the model call**: a text carrying no letter and no digit in any script is not a query, so no classification is asked for, no composition rule fires, and the fan-out is **empty** — nothing embedded, nothing searched — with the deterministic fallback returned and marked content-free beside the fallback on the intent event.
 
@@ -22,4 +22,4 @@ Rejected: a second cheap-tier call for decomposition, which doubles router laten
 - The stage returns its reading, not the run's query: the runner stamps the caller's verbatim text and prior turns, so a router cannot omit or forge the fields later stages read (ADR-0018).
 - A route the model did not decide is recorded with its fallback, and the unusable reply's cost with it, never dropped.
 - Answer behaviour is untouched, so router quality is measurable against a recorded Golden Set baseline without a prompt confound.
-- Principle retrieval proper — an index the router's tags select, and Arabic expansion candidates from the terminology graph — lands behind the same payload; until then a rule-derived principle or evidence sub-query is an ordinary retrieval query over the corpus.
+- The payload carries no principle fields: whether a question needs the lens behind an answer is not a classification the route acts on, so it is not asked for — when a seeded knowledge layer wants a router-provided selection again, the payload grows the field with the layer that consumes it, never before.

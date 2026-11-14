@@ -12,8 +12,12 @@ describe("loadEmbedBenchConfig", () => {
     expect(config.budgetCapMicroUsd).toBeUndefined();
     expect(config.groupACap).toBeUndefined();
     expect(config.groupBCap).toBeUndefined();
-    expect(config.probePath).toContain("embed-bench-probes-v0.json");
-    expect(config.expansionPath).toContain("expansion-cases-v0.json");
+    expect(config.dir).toBe("benchmarks/embeddings");
+    expect(config.probePath).toBe("benchmarks/embeddings/samples/probes.json");
+    expect(config.expansionPath).toBe("benchmarks/embeddings/samples/expansion-cases.json");
+    expect(config.sealPath).toBe("benchmarks/embeddings/samples/version.json");
+    expect(config.runsDir).toBe("benchmarks/embeddings/runs");
+    expect(config.reportPath).toBe("benchmarks/embeddings/report.md");
   });
 
   // Thermo B5: the benchmark is DB-free — the URL is optional; a supplied
@@ -44,15 +48,24 @@ describe("loadEmbedBenchConfig", () => {
     expect(() => loadEmbedBenchConfig({ ...base, BENCH_GROUP_B: "-2" })).toThrow(EvalConfigError);
   });
 
-  it("honors fixture/report path overrides", () => {
+  it("re-roots the store paths when EMBED_BENCH_DIR is set", () => {
+    const config = loadEmbedBenchConfig({ ...base, EMBED_BENCH_DIR: "tmp/store" });
+    expect(config.dir).toBe("tmp/store");
+    expect(config.probePath).toBe("tmp/store/samples/probes.json");
+    expect(config.sealPath).toBe("tmp/store/samples/version.json");
+    expect(config.runsDir).toBe("tmp/store/runs");
+    expect(config.reportPath).toBe("tmp/store/report.md");
+  });
+
+  it("honors sample and report path overrides", () => {
     const config = loadEmbedBenchConfig({
       ...base,
       BENCH_PROBE_PATH: "custom/probes.json",
-      BENCH_EXPANSION_PATH: "custom/exp.json",
-      BENCH_REPORT_PATH: "custom/report.json",
+      BENCH_EXPANSION_PATH: "custom/expansion.json",
+      BENCH_REPORT_PATH: "custom/report.md",
     });
     expect(config.probePath).toBe("custom/probes.json");
-    expect(config.expansionPath).toBe("custom/exp.json");
-    expect(config.reportPath).toBe("custom/report.json");
+    expect(config.expansionPath).toBe("custom/expansion.json");
+    expect(config.reportPath).toBe("custom/report.md");
   });
 });

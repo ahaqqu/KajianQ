@@ -1,0 +1,371 @@
+{
+  "schema": 1,
+  "task": "decision-bench",
+  "model": "~typesafe/jev-latest",
+  "samples": {
+    "version": 1,
+    "casesSha256": "sha256:830df54ff7e62b1d56e9ae07d47f2bab04606a6fa9b8ce33a08f30870e954394"
+  },
+  "promptsSha256": "sha256:271760602e7a5b07fcbf03528e9cd59ca89dd39f55a39420cad619ea3e063828",
+  "budget": {
+    "capMicroUsd": 1000000,
+    "plannedCases": 21,
+    "totalMicroUsd": 432
+  },
+  "totals": {
+    "cases": 21,
+    "scored": 21,
+    "passed": 21,
+    "accuracy": 1
+  },
+  "gate": {
+    "gatePass": true,
+    "overallAccuracy": 1,
+    "failedLanguages": [],
+    "floors": {
+      "overall": 0.85,
+      "perLanguage": 0.75,
+      "minCasesPerLanguage": 3
+    }
+  },
+  "startedAt": "2026-11-14T00:02:08.812Z",
+  "finishedAt": "2026-11-14T00:02:18.328Z",
+  "records": [
+    {
+      "caseId": "rel-ar-01",
+      "task": "relevance",
+      "language": "ar",
+      "expected": true,
+      "got": 0.93,
+      "passed": true,
+      "cost": {
+        "modelId": "~typesafe/jev-latest",
+        "tokensIn": 654,
+        "tokensOut": 22,
+        "latencyMs": 473,
+        "costMicroUsd": 28,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "rel-ar-02",
+      "task": "relevance",
+      "language": "ar",
+      "expected": false,
+      "got": 0.03,
+      "passed": true,
+      "cost": {
+        "modelId": "~typesafe/jev-latest",
+        "tokensIn": 653,
+        "tokensOut": 22,
+        "latencyMs": 447,
+        "costMicroUsd": 28,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "rel-ar-03",
+      "task": "relevance",
+      "language": "ar",
+      "expected": true,
+      "got": 0.98,
+      "passed": true,
+      "cost": {
+        "modelId": "~typesafe/jev-latest",
+        "tokensIn": 745,
+        "tokensOut": 22,
+        "latencyMs": 459,
+        "costMicroUsd": 32,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "rel-ar-04",
+      "task": "relevance",
+      "language": "ar",
+      "expected": false,
+      "got": 0.05,
+      "passed": true,
+      "cost": {
+        "modelId": "~typesafe/jev-latest",
+        "tokensIn": 392,
+        "tokensOut": 22,
+        "latencyMs": 469,
+        "costMicroUsd": 17,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "rel-id-01",
+      "task": "relevance",
+      "language": "id",
+      "expected": true,
+      "got": 0.94,
+      "passed": true,
+      "cost": {
+        "modelId": "~typesafe/jev-latest",
+        "tokensIn": 444,
+        "tokensOut": 22,
+        "latencyMs": 396,
+        "costMicroUsd": 19,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "rel-id-02",
+      "task": "relevance",
+      "language": "id",
+      "expected": false,
+      "got": 0.03,
+      "passed": true,
+      "cost": {
+        "modelId": "~typesafe/jev-latest",
+        "tokensIn": 443,
+        "tokensOut": 22,
+        "latencyMs": 430,
+        "costMicroUsd": 19,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "rel-id-03",
+      "task": "relevance",
+      "language": "id",
+      "expected": true,
+      "got": 0.98,
+      "passed": true,
+      "cost": {
+        "modelId": "~typesafe/jev-latest",
+        "tokensIn": 462,
+        "tokensOut": 22,
+        "latencyMs": 448,
+        "costMicroUsd": 20,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "rel-id-04",
+      "task": "relevance",
+      "language": "id",
+      "expected": false,
+      "got": 0.03,
+      "passed": true,
+      "cost": {
+        "modelId": "~typesafe/jev-latest",
+        "tokensIn": 355,
+        "tokensOut": 22,
+        "latencyMs": 421,
+        "costMicroUsd": 15,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "rel-en-01",
+      "task": "relevance",
+      "language": "en",
+      "expected": true,
+      "got": 0.98,
+      "passed": true,
+      "cost": {
+        "modelId": "~typesafe/jev-latest",
+        "tokensIn": 403,
+        "tokensOut": 22,
+        "latencyMs": 402,
+        "costMicroUsd": 17,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "rel-en-02",
+      "task": "relevance",
+      "language": "en",
+      "expected": false,
+      "got": 0.02,
+      "passed": true,
+      "cost": {
+        "modelId": "~typesafe/jev-latest",
+        "tokensIn": 400,
+        "tokensOut": 22,
+        "latencyMs": 426,
+        "costMicroUsd": 17,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "rel-en-03",
+      "task": "relevance",
+      "language": "en",
+      "expected": true,
+      "got": 0.98,
+      "passed": true,
+      "cost": {
+        "modelId": "~typesafe/jev-latest",
+        "tokensIn": 427,
+        "tokensOut": 22,
+        "latencyMs": 394,
+        "costMicroUsd": 18,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "rel-en-04",
+      "task": "relevance",
+      "language": "en",
+      "expected": false,
+      "got": 0.02,
+      "passed": true,
+      "cost": {
+        "modelId": "~typesafe/jev-latest",
+        "tokensIn": 349,
+        "tokensOut": 22,
+        "latencyMs": 488,
+        "costMicroUsd": 15,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "rr-ar-01",
+      "task": "rerank",
+      "language": "ar",
+      "expected": "c1",
+      "got": "c1",
+      "passed": true,
+      "cost": {
+        "modelId": "~typesafe/jev-latest",
+        "tokensIn": 832,
+        "tokensOut": 42,
+        "latencyMs": 492,
+        "costMicroUsd": 35,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "rr-id-01",
+      "task": "rerank",
+      "language": "id",
+      "expected": "c2",
+      "got": "c2",
+      "passed": true,
+      "cost": {
+        "modelId": "~typesafe/jev-latest",
+        "tokensIn": 461,
+        "tokensOut": 42,
+        "latencyMs": 524,
+        "costMicroUsd": 20,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "rr-en-01",
+      "task": "rerank",
+      "language": "en",
+      "expected": "c0",
+      "got": "c0",
+      "passed": true,
+      "cost": {
+        "modelId": "~typesafe/jev-latest",
+        "tokensIn": 438,
+        "tokensOut": 42,
+        "latencyMs": 421,
+        "costMicroUsd": 19,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "cit-ar-01",
+      "task": "citation",
+      "language": "ar",
+      "expected": true,
+      "got": 0.98,
+      "passed": true,
+      "cost": {
+        "modelId": "~typesafe/jev-latest",
+        "tokensIn": 604,
+        "tokensOut": 20,
+        "latencyMs": 638,
+        "costMicroUsd": 26,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "cit-ar-02",
+      "task": "citation",
+      "language": "ar",
+      "expected": false,
+      "got": 0.04,
+      "passed": true,
+      "cost": {
+        "modelId": "~typesafe/jev-latest",
+        "tokensIn": 489,
+        "tokensOut": 20,
+        "latencyMs": 528,
+        "costMicroUsd": 21,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "cit-id-01",
+      "task": "citation",
+      "language": "id",
+      "expected": true,
+      "got": 0.97,
+      "passed": true,
+      "cost": {
+        "modelId": "~typesafe/jev-latest",
+        "tokensIn": 445,
+        "tokensOut": 20,
+        "latencyMs": 388,
+        "costMicroUsd": 19,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "cit-id-02",
+      "task": "citation",
+      "language": "id",
+      "expected": false,
+      "got": 0.01,
+      "passed": true,
+      "cost": {
+        "modelId": "~typesafe/jev-latest",
+        "tokensIn": 379,
+        "tokensOut": 20,
+        "latencyMs": 450,
+        "costMicroUsd": 16,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "cit-en-01",
+      "task": "citation",
+      "language": "en",
+      "expected": true,
+      "got": 0.98,
+      "passed": true,
+      "cost": {
+        "modelId": "~typesafe/jev-latest",
+        "tokensIn": 380,
+        "tokensOut": 20,
+        "latencyMs": 417,
+        "costMicroUsd": 16,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "cit-en-02",
+      "task": "citation",
+      "language": "en",
+      "expected": false,
+      "got": 0.01,
+      "passed": true,
+      "cost": {
+        "modelId": "~typesafe/jev-latest",
+        "tokensIn": 356,
+        "tokensOut": 20,
+        "latencyMs": 397,
+        "costMicroUsd": 15,
+        "estimated": false
+      }
+    }
+  ]
+}

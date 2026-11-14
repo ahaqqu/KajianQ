@@ -1,0 +1,262 @@
+{
+  "id": "router-bench-v0",
+  "status": "v0-draft",
+  "$comment": "Router-bench fixture: hand-authored routing cases for the cheap-role classification the Smart Router stage 1-2 makes (SPECS §3.3). Every case asserts only fields the router's own vocabulary decides — intent (required), and where the answer is unambiguous the subject-area category. Follow-up cases carry a bounded prior-turn window and assert the resolved classification, not sub-query text (the deterministic decomposition layer owns that). Ground truths are hand-authored from the same vocabulary the domain pack narrows replies with (INTENTS, SUBJECT_AREAS); the fixture stays v0-draft until the owner signs the content off. All question and turn text is original fixture prose — no corpus excerpt.",
+  "cases": [
+    {
+      "id": "rt-id-01",
+      "language": "id",
+      "question": "Apa hukum shalat orang sakit?",
+      "expected": {
+        "intent": "ruling",
+        "category": "fikih"
+      }
+    },
+    {
+      "id": "rt-id-02",
+      "language": "id",
+      "question": "Mengapa Islam melarang riba?",
+      "expected": {
+        "intent": "ruling",
+        "category": "fikih"
+      }
+    },
+    {
+      "id": "rt-id-03",
+      "language": "id",
+      "question": "Apa perbedaan antara wudhu dan tayammum?",
+      "expected": {
+        "intent": "comparison",
+        "category": "fikih"
+      }
+    },
+    {
+      "id": "rt-id-04",
+      "language": "id",
+      "question": "Bagaimana kondisi umat Islam pada masa Khalifah Umar bin Khattab?",
+      "expected": {
+        "intent": "history",
+        "category": "sejarah"
+      }
+    },
+    {
+      "id": "rt-id-05",
+      "language": "id",
+      "question": "Apa itu tauhid?",
+      "expected": {
+        "intent": "aqidah",
+        "category": "aqidah"
+      }
+    },
+    {
+      "id": "rt-id-06",
+      "language": "id",
+      "priorTurns": [
+        {
+          "role": "user",
+          "content": "Jelaskan tentang hadits niat amal."
+        },
+        {
+          "role": "assistant",
+          "content": "Hadits niat amal menyatakan bahwa setiap amal bergantung pada niatnya, dan setiap orang hanya mendapatkan sesuai apa yang ia niatkan."
+        }
+      ],
+      "question": "Apa dalilnya?",
+      "expected": {
+        "intent": "factual",
+        "category": "hadith"
+      }
+    },
+    {
+      "id": "rt-id-07",
+      "language": "id",
+      "question": "Jika seseorang sakit dan tidak bisa berdiri, apakah boleh shalat sambil duduk seperti bolehnya tayammum menggantikan wudhu?",
+      "expected": {
+        "intent": "analogy",
+        "category": "fikih"
+      }
+    },
+    {
+      "id": "rt-id-08",
+      "language": "id",
+      "question": "Sebutkan surah pertama dalam Al-Quran.",
+      "expected": {
+        "intent": "factual",
+        "category": "quran"
+      }
+    },
+    {
+      "id": "rt-id-09",
+      "language": "id",
+      "question": "Bolehkah menggabungkan shalat maghrib dan isya karena hujan lebat?",
+      "expected": {
+        "intent": "ruling",
+        "category": "fikih"
+      }
+    },
+    {
+      "id": "rt-en-01",
+      "language": "en",
+      "question": "What is the ruling on praying while sick?",
+      "expected": {
+        "intent": "ruling",
+        "category": "fikih"
+      }
+    },
+    {
+      "id": "rt-en-02",
+      "language": "en",
+      "question": "Why does Islam prohibit riba?",
+      "expected": {
+        "intent": "ruling",
+        "category": "fikih"
+      }
+    },
+    {
+      "id": "rt-en-03",
+      "language": "en",
+      "question": "What is the difference between wudhu and tayammum?",
+      "expected": {
+        "intent": "comparison",
+        "category": "fikih"
+      }
+    },
+    {
+      "id": "rt-en-04",
+      "language": "en",
+      "question": "What was the condition of the Muslim community during the caliphate of Umar ibn al-Khattab?",
+      "expected": {
+        "intent": "history",
+        "category": "sejarah"
+      }
+    },
+    {
+      "id": "rt-en-05",
+      "language": "en",
+      "question": "What is tawhid?",
+      "expected": {
+        "intent": "aqidah",
+        "category": "aqidah"
+      }
+    },
+    {
+      "id": "rt-en-06",
+      "language": "en",
+      "priorTurns": [
+        {
+          "role": "user",
+          "content": "Explain the hadith about intentions."
+        },
+        {
+          "role": "assistant",
+          "content": "The hadith on intentions states that every deed depends on its intention, and each person only attains what they intended."
+        }
+      ],
+      "question": "What is its dalil (evidence)?",
+      "expected": {
+        "intent": "factual",
+        "category": "hadith"
+      }
+    },
+    {
+      "id": "rt-en-07",
+      "language": "en",
+      "question": "Which surah comes first in the Quran?",
+      "expected": {
+        "intent": "factual",
+        "category": "quran"
+      }
+    },
+    {
+      "id": "rt-en-08",
+      "language": "en",
+      "question": "Is it permissible to combine the maghrib and isha prayers during heavy rain, the way combining is allowed during travel?",
+      "expected": {
+        "intent": "analogy",
+        "category": "fikih"
+      }
+    },
+    {
+      "id": "rt-ar-01",
+      "language": "ar",
+      "question": "ما حكم صلاة المريض؟",
+      "expected": {
+        "intent": "ruling",
+        "category": "fikih"
+      }
+    },
+    {
+      "id": "rt-ar-02",
+      "language": "ar",
+      "question": "لماذا حرّم الإسلام الربا؟",
+      "expected": {
+        "intent": "ruling",
+        "category": "fikih"
+      }
+    },
+    {
+      "id": "rt-ar-03",
+      "language": "ar",
+      "question": "ما الفرق بين الوضوء والتيمم؟",
+      "expected": {
+        "intent": "comparison",
+        "category": "fikih"
+      }
+    },
+    {
+      "id": "rt-ar-04",
+      "language": "ar",
+      "question": "كيف كانت حالة المسلمين في عهد الخليفة عمر بن الخطاب؟",
+      "expected": {
+        "intent": "history",
+        "category": "sejarah"
+      }
+    },
+    {
+      "id": "rt-ar-05",
+      "language": "ar",
+      "question": "ما هو التوحيد؟",
+      "expected": {
+        "intent": "aqidah",
+        "category": "aqidah"
+      }
+    },
+    {
+      "id": "rt-ar-06",
+      "language": "ar",
+      "priorTurns": [
+        {
+          "role": "user",
+          "content": "اشرح حديث النيات."
+        },
+        {
+          "role": "assistant",
+          "content": "حديث النيات يبيّن أن كل عمل يعتمد على نيته، وأن لكل امرئ ما نوى."
+        }
+      ],
+      "question": "ما دليله؟",
+      "expected": {
+        "intent": "factual",
+        "category": "hadith"
+      }
+    },
+    {
+      "id": "rt-ar-07",
+      "language": "ar",
+      "question": "ما أول سورة في القرآن الكريم؟",
+      "expected": {
+        "intent": "factual",
+        "category": "quran"
+      }
+    },
+    {
+      "id": "rt-ar-08",
+      "language": "ar",
+      "question": "متى كان فتح مكة؟",
+      "expected": {
+        "intent": "history",
+        "category": "sejarah"
+      }
+    }
+  ]
+}

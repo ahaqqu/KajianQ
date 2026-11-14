@@ -1,11 +1,6 @@
 import type { SubQuery } from "@app/rag-core";
 import { admitSubQueryText } from "./chat-subquery-admission";
-import {
-  SUB_QUERY_ROLES,
-  type PrincipleTag,
-  type SubjectArea,
-  type SubQueryRole,
-} from "./taxonomy";
+import { SUB_QUERY_ROLES, type SubjectArea, type SubQueryRole } from "./taxonomy";
 
 // Re-exported where its other caller reads it: the agentic import cap holds
 // `chat-router.ts` at five imports, while the doc and the test stay at their
@@ -30,8 +25,8 @@ export { admitSubQueryText };
  *      the reply's own, keeps the rule's origin rather than the model's, and
  *      passes the same duplicate filter, so an echo adds no second entry;
  *   2. every composition rule that fired has a sub-query with its role (the
- *      `factual` one is the entry above; `principle` when the question needs a
- *      lens; `dalil` for fikih; `sanad` for hadith) — a missing one is added
+ *      `factual` one is the entry above; `dalil` for fikih; `sanad` for
+ *      hadith) — a missing one is added
  *      from a template, and when that rule's text is already in the set under
  *      no role of its own (the model echoed a template, or labelled it outside
  *      the vocabulary) the rule's role is stamped onto that entry instead of a
@@ -46,7 +41,7 @@ export { admitSubQueryText };
  *      It cannot retrieve, and it would spend an embed slot and a pair of
  *      searches inside the ceiling's window where a real angle belongs. The
  *      `factual` rule's text *is* the caller's question, so the `factual` rule
- *      adds nothing for a content-free question, while the principle/dalil/sanad
+ *      adds nothing for a content-free question, while the dalil/sanad
  *      templates carry words of their own and would keep their entry. That is
  *      why the route declines such a question before this stage (`chat-router.ts`
  *      gates on the caller's question ahead of the model call): what reaches this
@@ -104,8 +99,6 @@ export type ModelSubQuery = { text: string; role?: string };
 export type DecompositionInput = {
   /** The verbatim caller question — the factual sub-query's text. */
   question: string;
-  needsPrinciple: boolean;
-  principleTags: readonly PrincipleTag[];
   category?: SubjectArea;
   /** The model's own sub-queries, in its order. */
   modelSubQueries: readonly ModelSubQuery[];
@@ -218,7 +211,7 @@ export function decomposeQuery(input: DecompositionInput): SubQuery[] {
   );
 
   // The ceiling. A plain truncation would let a reply that labelled five
-  // sub-queries "factual" push the rule-derived principle one out, so the
+  // sub-queries "factual" push the rule-derived dalil one out, so the
   // budget is spent on ONE sub-query per distinct role first — the sub-queries
   // the composition rules are about — and only then on the model's extra
   // angles, in its own order. The caller's entry is the first `factual` entry,
@@ -254,7 +247,6 @@ export function decomposeQuery(input: DecompositionInput): SubQuery[] {
 /** The composition rules that fired for this question, in priority order. */
 function requiredRoles(input: DecompositionInput): SubQueryRole[] {
   const roles: SubQueryRole[] = ["factual"];
-  if (input.needsPrinciple) roles.push("principle");
   if (input.category === "fikih") roles.push("dalil");
   if (input.category === "hadith") roles.push("sanad");
   return roles;
@@ -267,10 +259,6 @@ function requiredRoles(input: DecompositionInput): SubQueryRole[] {
  * the rule's topic in general.
  */ function ruleText(role: SubQueryRole, input: DecompositionInput): string {
   const question = input.question.trim();
-  if (role === "principle") {
-    const lens = input.principleTags.length > 0 ? input.principleTags.join(", ") : "syariat";
-    return `prinsip ${lens} dalam menjawab: ${question}`;
-  }
   if (role === "dalil") return `dalil Al-Quran tentang: ${question}`;
   if (role === "sanad") return `sanad dan derajat hadis tentang: ${question}`;
   return question;

@@ -147,6 +147,7 @@ export async function runExpansionCases({
       ),
       picked,
       expectedTerm: c.expectedTerm,
+      cost: reply.cost,
     });
   }
   return results;

@@ -27,7 +27,7 @@ const HISTORY = [
  * case instead of moving the expectation with it.
  */
 const SINGLE_TURN_PROMPT_SHA256 =
-  "46449e9dbcedb6d0cc957eb7423828e7369e0b4df27f4ea748c292c511d44a0c";
+  "915add1f470504b7689463d7acbc00040a67c4d9e47ff68b4719afc800f20cd5";
 
 describe("routerCallFor", () => {
   it("pins the base system prompt to its recorded identity", () => {

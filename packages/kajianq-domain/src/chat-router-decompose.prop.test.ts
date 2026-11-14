@@ -6,13 +6,7 @@ import {
   MIN_SUB_QUERIES,
   type DecompositionInput,
 } from "./chat-router-decompose";
-import {
-  PRINCIPLE_TAGS,
-  SUBJECT_AREAS,
-  SUB_QUERY_ROLES,
-  type SubjectArea,
-  type SubQueryRole,
-} from "./taxonomy";
+import { SUBJECT_AREAS, SUB_QUERY_ROLES, type SubjectArea, type SubQueryRole } from "./taxonomy";
 
 /**
  * Reply texts that carry a letter or a digit in some script: one ASCII
@@ -112,10 +106,10 @@ const CONTENT_FREE_QUESTION_UNITS = [
  *
  * One `fcTest.prop` case per law, in this order:
  *   1. the ceiling holds: never more than `MAX_SUB_QUERIES`;
- *   2. every rule that fired is covered: a factual sub-query always exists, a
- *      principle one whenever the question needs a lens, and the dalil/sanad
- *      ones for fikih/hadith — either the rule added its own entry, or it
- *      stamped its role onto the role-less entry already carrying its text.
+ *   2. every rule that fired is covered: a factual sub-query always exists, and
+ *      the dalil/sanad ones for fikih/hadith — either the rule added its own
+ *      entry, or it stamped its role onto the role-less entry already carrying
+ *      its text.
  *      The one coincidence it cannot cover is the model having labelled that
  *      entry with a different declared role: that label is never overwritten,
  *      so the law accepts exactly that case as the exception the header states.
@@ -177,16 +171,14 @@ const subQueryArb: fc.Arbitrary<{ text: string; role?: string }> = fc
         fc.constantFrom(
           "hukum riba",
           "hukum riba?",
-          "prinsip yusr",
           "dalil Al-Quran",
           "  spaced   text  ",
-          // The three non-factual rule templates, whole, for the fixed question the
+          // The two non-factual rule templates, whole, for the fixed question the
           // rules are built on: an echo of one of these under another declared role is
           // the coincidence law 2's exception is written for, at every fired role rather
-          // than `factual` alone. They match only when the question, tags and category
-          // line up, which is what makes the reach real but rare — the law's own comment
+          // than `factual` alone. They match only when the question and category line
+          // up, which is what makes the reach real but rare — the law's own comment
           // says so.
-          "prinsip yusr dalam menjawab: hukum riba?",
           "dalil Al-Quran tentang: hukum riba?",
           "sanad dan derajat hadis tentang: hukum riba?",
         ),
@@ -222,12 +214,10 @@ const inputArb: fc.Arbitrary<DecompositionInput> = fc
           maxLength: 8,
         }),
       ),
-      needsPrinciple: fc.boolean(),
-      principleTags: fc.array(fc.constantFrom(...PRINCIPLE_TAGS), { maxLength: 4 }),
       category: fc.option(fc.constantFrom(...SUBJECT_AREAS), { nil: undefined }),
       modelSubQueries: fc.array(subQueryArb, { maxLength: 8 }),
     },
-    { requiredKeys: ["question", "needsPrinciple", "principleTags", "modelSubQueries"] },
+    { requiredKeys: ["question", "modelSubQueries"] },
   )
   // `exactOptionalPropertyTypes`: an absent category is an absent key, never a
   // present one holding undefined.
@@ -265,8 +255,6 @@ const collisionArb: fc.Arbitrary<DecompositionInput> = fc
       // exception and the ceiling both reason about, and its content must
       // survive in either script.
       question: fc.constantFrom("hukum riba?", "q", "حكم الربا"),
-      needsPrinciple: fc.boolean(),
-      principleTags: fc.array(fc.constantFrom(...PRINCIPLE_TAGS), { maxLength: 2 }),
       category: fc.option(fc.constantFrom(...SUBJECT_AREAS), { nil: undefined }),
       roles: fc.array(fc.constantFrom(...SUB_QUERY_ROLES, "tafsir"), {
         minLength: 5,
@@ -285,14 +273,13 @@ const collisionArb: fc.Arbitrary<DecompositionInput> = fc
           // fan-out without disturbing the rule coverage the ceiling is reasoning
           // about, which is what law 10 keeps checking.
           "\u200b\u200d\u200b",
-          "prinsip yusr dalam menjawab: hukum riba?",
           "dalil Al-Quran tentang: hukum riba?",
           "sanad dan derajat hadis tentang: hukum riba?",
         ),
         { minLength: 5, maxLength: 8 },
       ),
     },
-    { requiredKeys: ["question", "needsPrinciple", "principleTags", "roles", "texts"] },
+    { requiredKeys: ["question", "roles", "texts"] },
   )
   .map(({ question, roles, texts, category, ...rest }) => ({
     ...rest,
@@ -308,9 +295,8 @@ const collisionArb: fc.Arbitrary<DecompositionInput> = fc
   }));
 
 /** The composition rules that fire for a question, restated from the module. */
-const firedRoles = (needsPrinciple: boolean, category: SubjectArea | undefined): SubQueryRole[] => {
+const firedRoles = (category: SubjectArea | undefined): SubQueryRole[] => {
   const roles: SubQueryRole[] = ["factual"];
-  if (needsPrinciple) roles.push("principle");
   if (category === "fikih") roles.push("dalil");
   if (category === "hadith") roles.push("sanad");
   return roles;
@@ -323,15 +309,8 @@ const firedRoles = (needsPrinciple: boolean, category: SubjectArea | undefined):
  * template — which is how the exception stops being written for the `factual` rule
  * alone.
  */
-const ruleTextOf = (
-  role: SubQueryRole,
-  input: Pick<DecompositionInput, "question" | "principleTags">,
-): string => {
+const ruleTextOf = (role: SubQueryRole, input: Pick<DecompositionInput, "question">): string => {
   const question = input.question.trim();
-  if (role === "principle") {
-    const lens = input.principleTags.length > 0 ? input.principleTags.join(", ") : "syariat";
-    return `prinsip ${lens} dalam menjawab: ${question}`;
-  }
   if (role === "dalil") return `dalil Al-Quran tentang: ${question}`;
   if (role === "sanad") return `sanad dan derajat hadis tentang: ${question}`;
   return question;
@@ -366,14 +345,12 @@ const contentInputArb: fc.Arbitrary<DecompositionInput> = fc
   .record(
     {
       question: fc.constantFrom("hukum riba?", "q", "حكم الربا"),
-      needsPrinciple: fc.boolean(),
-      principleTags: fc.array(fc.constantFrom(...PRINCIPLE_TAGS), { maxLength: 2 }),
       category: fc.option(fc.constantFrom(...SUBJECT_AREAS), { nil: undefined }),
     },
-    { requiredKeys: ["question", "needsPrinciple", "principleTags"] },
+    { requiredKeys: ["question"] },
   )
   .chain(({ category, ...core }) =>
-    contentReplyArb(firedRoles(core.needsPrinciple, category)).map((modelSubQueries) => ({
+    contentReplyArb(firedRoles(category)).map((modelSubQueries) => ({
       ...core,
       ...(category === undefined ? {} : { category }),
       modelSubQueries,
@@ -410,7 +387,7 @@ describe("decomposeQuery laws", () => {
       // and the role-less echo too; without that reach this law would pass over the class
       // it exists to guard. The block below pins those three coincidences directly rather
       // than leaving them to the draw.
-      for (const role of firedRoles(input.needsPrinciple, input.category)) {
+      for (const role of firedRoles(input.category)) {
         if (roles.includes(role)) continue;
         expect(
           input.modelSubQueries.some(
@@ -435,17 +412,6 @@ describe("decomposeQuery laws", () => {
       {
         input: {
           question: "q",
-          needsPrinciple: true,
-          principleTags: ["yusr"],
-          modelSubQueries: [{ text: "prinsip yusr dalam menjawab: q", role: "sanad" }],
-        },
-        role: "principle",
-      },
-      {
-        input: {
-          question: "q",
-          needsPrinciple: false,
-          principleTags: [],
           category: "fikih",
           modelSubQueries: [{ text: "dalil Al-Quran tentang: q", role: "factual" }],
         },
@@ -454,8 +420,6 @@ describe("decomposeQuery laws", () => {
       {
         input: {
           question: "q",
-          needsPrinciple: false,
-          principleTags: [],
           category: "hadith",
           modelSubQueries: [{ text: "sanad dan derajat hadis tentang: q", role: "factual" }],
         },
@@ -504,7 +468,7 @@ describe("decomposeQuery laws", () => {
     (input) => {
       // The texts named: the question, every text the reply offered, and — for each
       // composition rule that fired — that rule's own text, which for `factual` *is*
-      // the question and for the principle/dalil/sanad templates carries words of its
+      // the question and for the dalil/sanad templates carries words of its
       // own whatever the question holds. The biconditional is deliberate: the
       // one-sided form — an empty result means nothing it was handed was searchable
       // — passes vacuously the moment the range stops containing 0, because a
@@ -516,7 +480,7 @@ describe("decomposeQuery laws", () => {
       const searchable = [
         input.question,
         ...input.modelSubQueries.map((entry) => entry.text),
-        ...firedRoles(input.needsPrinciple, input.category).map((role) => ruleTextOf(role, input)),
+        ...firedRoles(input.category).map((role) => ruleTextOf(role, input)),
       ].some((text) => hasContent(text));
       expect(decomposeQuery(input).length === 0).toBe(!searchable);
     },
@@ -605,7 +569,7 @@ describe("decomposeQuery laws", () => {
     (input) => {
       const subs = decomposeQuery(input);
       const roles = subs.flatMap((sub) => (sub.role === undefined ? [] : [sub.role]));
-      for (const role of firedRoles(input.needsPrinciple, input.category)) {
+      for (const role of firedRoles(input.category)) {
         if (roles.includes(role)) continue;
         if (!hasContent(ruleTextOf(role, input))) continue;
         expect(subs.some((sub) => norm(sub.text) === norm(ruleTextOf(role, input)))).toBe(true);

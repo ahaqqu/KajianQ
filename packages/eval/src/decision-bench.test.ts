@@ -11,10 +11,14 @@ import {
   type CaseOutcome,
 } from "./decision-bench";
 import {
+  DECISION_BENCH_DEFAULT_DIR,
+  DECISION_BENCH_DEFAULT_FIXTURE_PATH,
+  DECISION_BENCH_DEFAULT_REPORT_PATH,
+  DECISION_BENCH_DEFAULT_RUNS_DIR,
+  DECISION_BENCH_DEFAULT_SEAL_PATH,
   loadDecisionBenchConfig,
   loadDecisionBenchFixtureJson,
   parseDecisionBenchFixture,
-  DECISION_BENCH_DEFAULT_FIXTURE_PATH,
 } from "./decision-bench-config";
 
 const outcome = (caseId: string, language: string, passed: boolean): CaseOutcome => ({
@@ -138,7 +142,10 @@ describe("decision-bench fixture loading", () => {
     const cfg = loadDecisionBenchConfig({});
     expect(cfg.budgetCapMicroUsd).toBeUndefined();
     expect(cfg.fixturePath).toBe(DECISION_BENCH_DEFAULT_FIXTURE_PATH);
-    expect(cfg.reportPath).toContain("decision-bench-results.json");
+    expect(cfg.dir).toBe(DECISION_BENCH_DEFAULT_DIR);
+    expect(cfg.sealPath).toBe(DECISION_BENCH_DEFAULT_SEAL_PATH);
+    expect(cfg.runsDir).toBe(DECISION_BENCH_DEFAULT_RUNS_DIR);
+    expect(cfg.reportPath).toBe(DECISION_BENCH_DEFAULT_REPORT_PATH);
     expect(() => loadDecisionBenchConfig({ EVAL_BUDGET_MICRO_USD: "abc" })).toThrow(
       /non-negative integer/,
     );
@@ -149,5 +156,9 @@ describe("decision-bench fixture loading", () => {
     expect(
       loadDecisionBenchConfig({ DECISION_BENCH_FIXTURE_PATH: "custom.json" }).fixturePath,
     ).toBe("custom.json");
+    const redirected = loadDecisionBenchConfig({ DECISION_BENCH_DIR: "tmp-store" });
+    expect(redirected.runsDir).toBe("tmp-store/runs");
+    expect(redirected.sealPath).toBe("tmp-store/samples/version.json");
+    expect(redirected.reportPath).toBe("tmp-store/report.md");
   });
 });

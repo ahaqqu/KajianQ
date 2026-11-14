@@ -5,11 +5,16 @@ import { routerCallFor } from "./chat-router-prompt";
 import { fallbackRouting, recordRouting, routingOf } from "./chat-router-routing";
 
 export { extractJsonObject } from "./chat-router-output";
-export { ROUTER_SYSTEM_PROMPT } from "./chat-router-prompt";
+export {
+  ROUTER_BENCH_PROMPTS_IDENTITY,
+  ROUTER_FOLLOW_UP_RULE,
+  ROUTER_SYSTEM_PROMPT,
+  routerCallFor,
+} from "./chat-router-prompt";
 
 /**
  * KajianQRouter — Smart Router stages 1–3 (spec §3.3, CONTEXT.md "Smart
- * Router"): intent & Principle detection, query decomposition, and source
+ * Router"): intent detection, query decomposition, and source
  * routing with metadata filters. Model choice comes from the wiring's
  * injected Provider (config, never here); the call's cost is recorded to the
  * run's trace sink (ADR-0021).

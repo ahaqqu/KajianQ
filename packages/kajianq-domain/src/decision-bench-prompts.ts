@@ -44,3 +44,16 @@ export const DECISION_BENCH_PROMPTS: DecisionBenchPrompts = {
     criteria: { ...CITATION_CRITERIA },
   },
 };
+
+/**
+ * The canonical wording this fixture's bench runs measure, serialized for
+ * pinning: a run file's `promptsSha256` is the sha256 of this string, so a
+ * wording change after a run is visible per run without re-sealing the
+ * case data. Changing any RELEVANCE/RERANK/CITATION constant changes this
+ * identity, and every run measured before the change keeps its own pin.
+ */
+export const DECISION_BENCH_PROMPTS_IDENTITY = JSON.stringify({
+  relevance: { instructions: RELEVANCE_INSTRUCTIONS, criteria: RELEVANCE_CRITERIA },
+  rerank: { instructions: RERANK_INSTRUCTIONS },
+  citation: { instructions: CITATION_INSTRUCTIONS, criteria: CITATION_CRITERIA },
+});

@@ -1,0 +1,371 @@
+{
+  "schema": 1,
+  "task": "decision-bench",
+  "model": "google/gemini-3.8-flash",
+  "samples": {
+    "version": 1,
+    "casesSha256": "sha256:830df54ff7e62b1d56e9ae07d47f2bab04606a6fa9b8ce33a08f30870e954394"
+  },
+  "promptsSha256": "sha256:271760602e7a5b07fcbf03528e9cd59ca89dd39f55a39420cad619ea3e063828",
+  "budget": {
+    "capMicroUsd": 1000000,
+    "plannedCases": 21,
+    "totalMicroUsd": 22509
+  },
+  "totals": {
+    "cases": 21,
+    "scored": 21,
+    "passed": 21,
+    "accuracy": 1
+  },
+  "gate": {
+    "gatePass": true,
+    "overallAccuracy": 1,
+    "failedLanguages": [],
+    "floors": {
+      "overall": 0.85,
+      "perLanguage": 0.75,
+      "minCasesPerLanguage": 3
+    }
+  },
+  "startedAt": "2026-11-14T00:00:24.042Z",
+  "finishedAt": "2026-11-14T00:01:23.013Z",
+  "records": [
+    {
+      "caseId": "rel-ar-01",
+      "task": "relevance",
+      "language": "ar",
+      "expected": true,
+      "got": 0.85,
+      "passed": true,
+      "cost": {
+        "modelId": "google/gemini-3.8-flash",
+        "tokensIn": 516,
+        "tokensOut": 196,
+        "latencyMs": 4304,
+        "costMicroUsd": 1235,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "rel-ar-02",
+      "task": "relevance",
+      "language": "ar",
+      "expected": false,
+      "got": 0,
+      "passed": true,
+      "cost": {
+        "modelId": "google/gemini-3.8-flash",
+        "tokensIn": 515,
+        "tokensOut": 142,
+        "latencyMs": 2540,
+        "costMicroUsd": 1011,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "rel-ar-03",
+      "task": "relevance",
+      "language": "ar",
+      "expected": true,
+      "got": 1,
+      "passed": true,
+      "cost": {
+        "modelId": "google/gemini-3.8-flash",
+        "tokensIn": 592,
+        "tokensOut": 111,
+        "latencyMs": 2177,
+        "costMicroUsd": 947,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "rel-ar-04",
+      "task": "relevance",
+      "language": "ar",
+      "expected": false,
+      "got": 0,
+      "passed": true,
+      "cost": {
+        "modelId": "google/gemini-3.8-flash",
+        "tokensIn": 379,
+        "tokensOut": 184,
+        "latencyMs": 3507,
+        "costMicroUsd": 1072,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "rel-id-01",
+      "task": "relevance",
+      "language": "id",
+      "expected": true,
+      "got": 0.95,
+      "passed": true,
+      "cost": {
+        "modelId": "google/gemini-3.8-flash",
+        "tokensIn": 441,
+        "tokensOut": 256,
+        "latencyMs": 2810,
+        "costMicroUsd": 1420,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "rel-id-02",
+      "task": "relevance",
+      "language": "id",
+      "expected": false,
+      "got": 0,
+      "passed": true,
+      "cost": {
+        "modelId": "google/gemini-3.8-flash",
+        "tokensIn": 441,
+        "tokensOut": 107,
+        "latencyMs": 1825,
+        "costMicroUsd": 806,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "rel-id-03",
+      "task": "relevance",
+      "language": "id",
+      "expected": true,
+      "got": 1,
+      "passed": true,
+      "cost": {
+        "modelId": "google/gemini-3.8-flash",
+        "tokensIn": 453,
+        "tokensOut": 125,
+        "latencyMs": 2555,
+        "costMicroUsd": 890,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "rel-id-04",
+      "task": "relevance",
+      "language": "id",
+      "expected": false,
+      "got": 0,
+      "passed": true,
+      "cost": {
+        "modelId": "google/gemini-3.8-flash",
+        "tokensIn": 365,
+        "tokensOut": 123,
+        "latencyMs": 2534,
+        "costMicroUsd": 809,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "rel-en-01",
+      "task": "relevance",
+      "language": "en",
+      "expected": true,
+      "got": 1,
+      "passed": true,
+      "cost": {
+        "modelId": "google/gemini-3.8-flash",
+        "tokensIn": 409,
+        "tokensOut": 123,
+        "latencyMs": 3081,
+        "costMicroUsd": 845,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "rel-en-02",
+      "task": "relevance",
+      "language": "en",
+      "expected": false,
+      "got": 0,
+      "passed": true,
+      "cost": {
+        "modelId": "google/gemini-3.8-flash",
+        "tokensIn": 406,
+        "tokensOut": 250,
+        "latencyMs": 2808,
+        "costMicroUsd": 1367,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "rel-en-03",
+      "task": "relevance",
+      "language": "en",
+      "expected": true,
+      "got": 1,
+      "passed": true,
+      "cost": {
+        "modelId": "google/gemini-3.8-flash",
+        "tokensIn": 439,
+        "tokensOut": 222,
+        "latencyMs": 3583,
+        "costMicroUsd": 1278,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "rel-en-04",
+      "task": "relevance",
+      "language": "en",
+      "expected": false,
+      "got": 0,
+      "passed": true,
+      "cost": {
+        "modelId": "google/gemini-3.8-flash",
+        "tokensIn": 360,
+        "tokensOut": 107,
+        "latencyMs": 2437,
+        "costMicroUsd": 739,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "rr-ar-01",
+      "task": "rerank",
+      "language": "ar",
+      "expected": "c1",
+      "got": "c1",
+      "passed": true,
+      "cost": {
+        "modelId": "google/gemini-3.8-flash",
+        "tokensIn": 686,
+        "tokensOut": 171,
+        "latencyMs": 2659,
+        "costMicroUsd": 1272,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "rr-id-01",
+      "task": "rerank",
+      "language": "id",
+      "expected": "c2",
+      "got": "c2",
+      "passed": true,
+      "cost": {
+        "modelId": "google/gemini-3.8-flash",
+        "tokensIn": 515,
+        "tokensOut": 323,
+        "latencyMs": 4079,
+        "costMicroUsd": 1758,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "rr-en-01",
+      "task": "rerank",
+      "language": "en",
+      "expected": "c0",
+      "got": "c0",
+      "passed": true,
+      "cost": {
+        "modelId": "google/gemini-3.8-flash",
+        "tokensIn": 507,
+        "tokensOut": 162,
+        "latencyMs": 2892,
+        "costMicroUsd": 1087,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "cit-ar-01",
+      "task": "citation",
+      "language": "ar",
+      "expected": true,
+      "got": 1,
+      "passed": true,
+      "cost": {
+        "modelId": "google/gemini-3.8-flash",
+        "tokensIn": 492,
+        "tokensOut": 282,
+        "latencyMs": 2831,
+        "costMicroUsd": 1570,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "cit-ar-02",
+      "task": "citation",
+      "language": "ar",
+      "expected": false,
+      "got": 0,
+      "passed": true,
+      "cost": {
+        "modelId": "google/gemini-3.8-flash",
+        "tokensIn": 442,
+        "tokensOut": 126,
+        "latencyMs": 3034,
+        "costMicroUsd": 885,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "cit-id-01",
+      "task": "citation",
+      "language": "id",
+      "expected": true,
+      "got": 1,
+      "passed": true,
+      "cost": {
+        "modelId": "google/gemini-3.8-flash",
+        "tokensIn": 442,
+        "tokensOut": 150,
+        "latencyMs": 2711,
+        "costMicroUsd": 984,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "cit-id-02",
+      "task": "citation",
+      "language": "id",
+      "expected": false,
+      "got": 0,
+      "passed": true,
+      "cost": {
+        "modelId": "google/gemini-3.8-flash",
+        "tokensIn": 389,
+        "tokensOut": 114,
+        "latencyMs": 2176,
+        "costMicroUsd": 792,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "cit-en-01",
+      "task": "citation",
+      "language": "en",
+      "expected": true,
+      "got": 1,
+      "passed": true,
+      "cost": {
+        "modelId": "google/gemini-3.8-flash",
+        "tokensIn": 392,
+        "tokensOut": 168,
+        "latencyMs": 2145,
+        "costMicroUsd": 1017,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "cit-en-02",
+      "task": "citation",
+      "language": "en",
+      "expected": false,
+      "got": 0,
+      "passed": true,
+      "cost": {
+        "modelId": "google/gemini-3.8-flash",
+        "tokensIn": 368,
+        "tokensOut": 102,
+        "latencyMs": 2275,
+        "costMicroUsd": 725,
+        "estimated": false
+      }
+    }
+  ]
+}

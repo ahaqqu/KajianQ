@@ -1,0 +1,110 @@
+{
+  "schema": 1,
+  "task": "summarizer-bench",
+  "model": "deepseek/deepseek-v4.1-flash",
+  "samples": {
+    "version": 1,
+    "casesSha256": "sha256:dcc936e8451f1fbc835639ea406baa06266c035e5dfeb125e4d58d1082f06db4"
+  },
+  "promptsSha256": "sha256:0a82f273c1437f50efd997ab2bf35f84d60f35229973b4b54c6c761c16474386",
+  "budget": {
+    "capMicroUsd": 1000000,
+    "plannedCases": 5,
+    "totalMicroUsd": 12556
+  },
+  "totals": {
+    "cases": 5,
+    "scored": 5,
+    "passed": 5,
+    "accuracy": 1
+  },
+  "gate": {
+    "gatePass": true,
+    "overallAccuracy": 1,
+    "failedLanguages": [],
+    "floors": {
+      "overall": 0.85,
+      "perLanguage": 0.75,
+      "minCasesPerLanguage": 3
+    }
+  },
+  "startedAt": "2026-11-14T00:49:29.893Z",
+  "finishedAt": "2026-11-14T00:50:09.612Z",
+  "records": [
+    {
+      "caseId": "sm-q-01",
+      "language": "id",
+      "expected": "{\"minSentences\":1,\"maxSentences\":3}",
+      "got": "Surah Al-Fatihah merupakan pembuka Al-Qur'an yang memuat pujian kepada Allah sebagai Tuhan semesta alam, Yang Maha Pengasih dan Penyayang, serta Penguasa hari pembalasan. Surah ini juga menegaskan ibadah dan permohonan pertolongan hanya kepada Allah, serta doa agar diberi petunjuk ke jalan yang lurus.",
+      "passed": true,
+      "cost": {
+        "modelId": "deepseek/deepseek-v4.1-flash",
+        "tokensIn": 302,
+        "tokensOut": 234,
+        "latencyMs": 1782,
+        "costMicroUsd": 372,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "sm-q-02",
+      "language": "id",
+      "expected": "{\"minSentences\":1,\"maxSentences\":3}",
+      "got": "Surah Al-Ma'un menegaskan bahwa mendustakan agama tampak dalam sikap menghardik anak yatim, tidak peduli pada orang miskin, serta enggan memberi pertolongan. Surah ini juga mengecam orang yang salatnya lalai dan dilakukan hanya untuk pamer, karena ibadah semacam itu tidak disertai kepedulian sosial yang tulus.",
+      "passed": true,
+      "cost": {
+        "modelId": "deepseek/deepseek-v4.1-flash",
+        "tokensIn": 261,
+        "tokensOut": 219,
+        "latencyMs": 1882,
+        "costMicroUsd": 342,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "sm-q-03",
+      "language": "id",
+      "expected": "{\"minSentences\":1,\"maxSentences\":3}",
+      "got": "Surah Al-Ikhlas menegaskan tauhid, yaitu kemurnian keesaan Allah yang Maha Esa dan menjadi tempat bergantung segala sesuatu. Allah tidak beranak dan tidak diperanakkan, serta tidak ada sesuatu pun yang setara dengan-Nya.",
+      "passed": true,
+      "cost": {
+        "modelId": "deepseek/deepseek-v4.1-flash",
+        "tokensIn": 180,
+        "tokensOut": 145,
+        "latencyMs": 1290,
+        "costMicroUsd": 228,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "sm-h-01",
+      "language": "id",
+      "expected": "{\"minSentences\":1,\"maxSentences\":3}",
+      "got": "Bab ini membahas awal turunnya wahyu kepada Nabi Muhammad SAW dan menegaskan pentingnya niat dalam setiap amal, sebagaimana hadis tentang hijrah yang bergantung pada niat pelakunya.",
+      "passed": true,
+      "cost": {
+        "modelId": "deepseek/deepseek-v4.1-flash",
+        "tokensIn": 450,
+        "tokensOut": 867,
+        "latencyMs": 3615,
+        "costMicroUsd": 1176,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "sm-h-02",
+      "language": "id",
+      "expected": "{\"minSentences\":1,\"maxSentences\":3}",
+      "got": "Kitab al-Taharah dalam Sunan Abu Dawud membahas hukum-hukum bersuci, meliputi wudu, mandi wajib, tayammum, serta hal-hal yang berkaitan dengan najis dan kebersihan diri. Hadis-hadisnya menjadi pedoman tentang tata cara bersuci sebagai syarat sahnya ibadah.",
+      "passed": true,
+      "cost": {
+        "modelId": "deepseek/deepseek-v4.1-flash",
+        "tokensIn": 195,
+        "tokensOut": 8649,
+        "latencyMs": 31145,
+        "costMicroUsd": 10438,
+        "estimated": false
+      }
+    }
+  ]
+}

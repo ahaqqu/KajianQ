@@ -2,7 +2,7 @@
   "$comment": "Provider config \u2014 the single source of truth for the ADR-0009 vendor allowlist: endpoints, model ids, api-key env names, prices per MTok, per-role fallback chains (ADR-0022), and the named role-chain profiles selected by PROVIDER_PROFILE (ADR-0059). The default profile is the base `roles` block and is deliberately NOT declared here: a non-empty `default` entry is a load-time config fault, since the loader returns the base roles before consulting it. Vendor data lives ONLY here (and the model_configs DB mirror); no .ts file in the engine may name a vendor \u2014 the boundary gate enforces it by scanning .ts and not .json. Prices are micro-USD per MTok (1 USD = 1e6 micro-USD, so a $0.50/MTok input price is 500000), PR-reviewed like any model decision. Defaults from SPECS.md \u00a73.4 (2026-08).",
   "vendors": {
     "openrouter": {
-      "$comment": "ADR-0069: OpenAI-compatible aggregator at /v1 \u2014 chat completions, embeddings, and (via schema-constrained structured output, the response_format json_schema strict beta) the decision seam of ADR-0042 all ride one key. Paid prepaid-credit terms under the aggregator's published DPA, accepted by the owner 2026-11-14 with zero-retention enabled (dated record: docs/GDPR-ARTICLE-30-RECORD.md \u00a78). Listed prices below are the adopted listings at migration; the aggregator routes per request across upstream endpoints, so some models carry a listing spread \u2014 the recorded price names the adopted listing, and an off-listing answer over- or under-records visibly on the trace.",
+      "$comment": "ADR-0069: OpenAI-compatible aggregator at /v1 \u2014 chat completions, embeddings, and the decision seam of ADR-0042 (both transports: the chat wire's response_format json_schema strict beta and the typed decisions wire) all ride one key. Paid prepaid-credit terms under the aggregator's published DPA, accepted by the owner 2026-11-14 with zero-retention enabled (dated record: docs/GDPR-ARTICLE-30-RECORD.md \u00a78). Listed prices below are the adopted listings at migration; the aggregator routes per request across upstream endpoints, so some models carry a listing spread \u2014 the recorded price names the adopted listing, and an off-listing answer over- or under-records visibly on the trace.",
       "baseUrl": "https://openrouter.ai/api/v1",
       "apiKeyEnv": "OPENROUTER_API_KEY",
       "protocol": "chat-completions",
@@ -27,20 +27,80 @@
             "out": 0
           }
         },
-        "google/gemini-3-flash-preview": {
-          "$comment": "Mid-tier listing ($0.50 in / $3.00 out per MTok) matching the retired direct row's price; endpoint listings range $0.25\u2013$0.90 in / $1.50\u2013$5.40 out. Also the provisional `decision` head pending the ADR-0042 bench re-pass \u2014 serving flips to the bench's winner by config alone.",
-          "capabilities": ["generate", "stream", "decide"],
+        "qwen/qwen3-embedding-8b": {
+          "$comment": "Benchmark challenger for the embedder-candidates role (RumaQ's gate measured 98.8% recall@1 at a fraction of embedding-001's cost): served on the embeddings wire (Nebius, one-call probe under benchmarks/embeddings/probes/). Embedding-space-incompatible with embedding-001 \u2014 native 4096 dims (MRL-adjustable) \u2014 so adopting it is a clean-slate re-embed, never an upgrade. Input-priced only.",
+          "capabilities": ["embed"],
+          "dimensions": 4096,
           "priceMicroUsdPerMTok": {
-            "in": 500000,
-            "out": 3000000
+            "in": 10000,
+            "out": 0
           }
         },
-        "deepseek/deepseek-v4-flash": {
-          "$comment": "Priced at the DeepInfra listing ($0.09 in / $0.18 out per MTok), inside the aggregator's $0.05\u2013$0.21 in / $0.10\u2013$0.56 out endpoint spread; routing is per request unless pinned by a provider preference. The `decide` capability marks this row a decision-bench candidate (ADR-0042): under the rewritten seam the typing rides schema-constrained chat output, so the capability list \u2014 not a vendor protocol \u2014 decides what the decider may construct.",
+        "perplexity/pplx-embed-v1-4b": {
+          "$comment": "Benchmark challenger for the embedder-candidates role: Perplexity's Embed V1 4B served on the embeddings wire (one-call probe under benchmarks/embeddings/probes/), 2560 native dims, $0.03 in per MTok \u2014 the probe's own cost verification. Embedding-space-incompatible with embedding-001, so adopting it is a clean-slate re-embed, never an upgrade. Input-priced only.",
+          "capabilities": ["embed"],
+          "dimensions": 2560,
+          "priceMicroUsdPerMTok": {
+            "in": 30000,
+            "out": 0
+          }
+        },
+        "google/gemini-3.8-flash": {
+          "$comment": "Mid-tier listing ($0.825 in / $4.125 out per MTok). The cheap-role challenger tail and the provisional `decision` head pending the ADR-0042 bench re-pass \u2014 serving flips to the bench's winner by config alone.",
           "capabilities": ["generate", "stream", "decide"],
           "priceMicroUsdPerMTok": {
-            "in": 90000,
-            "out": 180000
+            "in": 825000,
+            "out": 4125000
+          }
+        },
+        "deepseek/deepseek-v4.1-flash": {
+          "$comment": "Priced at the vendor's published peak rate ($0.30 in / $1.20 out per MTok), the same listing the ollama-cloud row records for this model. Serves the generator, reviewer and cheap heads and rides the decision bench: the `decide` capability marks the row a candidate the multilingual gate compares \u2014 under the rewritten seam the typing rides schema-constrained chat output, so the capability list \u2014 not a vendor protocol \u2014 decides what the decider may construct.",
+          "capabilities": ["generate", "stream", "decide"],
+          "priceMicroUsdPerMTok": {
+            "in": 300000,
+            "out": 1200000
+          }
+        },
+        "z-ai/glm-5.3-flash": {
+          "$comment": "Benchmark candidate for the cheap-candidates and generator-candidates roles (aggregator listing, fetched 2026-11-13): the cheapest chat-capable row in the catalog ($0.0399 in / $0.0784 out per MTok). Not for serving until a bench pass adopts it.",
+          "capabilities": ["generate", "stream"],
+          "priceMicroUsdPerMTok": {
+            "in": 39900,
+            "out": 78400
+          }
+        },
+        "openai/gpt-5-nano": {
+          "$comment": "Benchmark candidate for the cheap-candidates and generator-candidates roles (aggregator listing, fetched 2026-11-13: $0.05 in / $0.40 out per MTok). Not for serving until a bench pass adopts it.",
+          "capabilities": ["generate", "stream"],
+          "priceMicroUsdPerMTok": {
+            "in": 50000,
+            "out": 400000
+          }
+        }
+      }
+    },
+    "openrouter-decisions": {
+      "$comment": "ADR-0042: the aggregator's typed decisions wire (alpha) \u2014 the same account, key and DPA as the openrouter row; the wire the decision models the chat wire rejects serve on. The question objects pass through verbatim (the wire's primitives are the seam's noul/choice/score types) and the state rides as a one-element array of strings. Priced on input tokens only (output free); the input rate below is the adopted listing. Backs both the bench-only `decision-candidates` role and the serving `decision` role, on the same paid, DPA-covered account: the serving calls carry personal data, so this row is never a free tier (ADR-0043).",
+      "baseUrl": "https://openrouter.ai/api/alpha",
+      "apiKeyEnv": "OPENROUTER_API_KEY",
+      "protocol": "decisions",
+      "freeTier": false,
+      "personalDataAllowed": true,
+      "models": {
+        "~typesafe/jev-latest": {
+          "$comment": "The newest Jev release alias \u2014 resolves server-side to a dated build, named in the reply's model field. $0.042 per input MTok, output free.",
+          "capabilities": ["decide"],
+          "priceMicroUsdPerMTok": {
+            "in": 42000,
+            "out": 0
+          }
+        },
+        "perplexity/pplx-decider-v1.2-20261016": {
+          "$comment": "Pinned to the DATED v1.2 listing (v1.2-20261016): the v1.3 listing (plain and dated) has no serving endpoints on the decisions wire yet \u2014 404 'No endpoints found' probed 2026-11-14, evidence under benchmarks/decisions/probes/. Re-pin to v1.3 when the wire serves it. Input-priced only.",
+          "capabilities": ["decide"],
+          "priceMicroUsdPerMTok": {
+            "in": 20000,
+            "out": 0
           }
         }
       }
@@ -83,20 +143,22 @@
   },
   "roles": {
     "generator": {
-      "$comment": "Cost posture decided 2026-09-12 (ADR-0009): the answer generator runs on the cheap tier \u2014 DeepSeek V4-Flash through the aggregator at $0.09/$0.18 per MTok vs Qwen3.7-Max's $2.50/$7.50 \u2014 because the trust invariant is carried by the deterministic citation gate and the reviewer gate, not by generator price. The Qwen3.7-Max tail was REMOVED 2026-09-12 (owner decision): DashScope is not provisioned and will not be, and resolveRole silently filters candidates whose apiKeyEnv is unset \u2014 so the chain advertised a failover that could never be wired. Single candidate, accepted single point of failure: a generator failure costs one <=$1 smoke re-run, not data. Re-adding a fallback means adding a candidate whose key is actually bound.",
-      "chain": ["openrouter:deepseek/deepseek-v4-flash"]
+      "$comment": "Adopted 2026-11-14 (owner, on PR evidence): Gemini 3.8 Flash heads on the 21-question Golden Set sweep \u2014 20/21 passed, quote fidelity 0.816, citation validity 0.952, ~$0.04 per answer \u2014 beating the DeepSeek head it replaces on every measure (19/21, fidelity 0.666, ~$0.018 per answer). The trust invariant is still carried by the deterministic citation gate and the reviewer gate, not by generator price. GLM 5.3 Flash rides as the fallback tail: the sweep measured it 19/21 at fidelity 0.746 for ~$0.005 per answer, and its key (the aggregator's) is actually bound \u2014 the 2026-09-12 invariant that a chain may only advertise failover it can wire. Re-adding a fallback means adding a candidate whose key is actually bound.",
+      "chain": ["openrouter:google/gemini-3.8-flash", "openrouter:z-ai/glm-5.3-flash"],
+      "benchAdoption": "committed"
     },
     "reviewer": {
-      "$comment": "Personal-data posture (ADR-0043 decision 3, #181; reviewer re-headed 2026-09-21 per owner): the serving reviewer's prompt embeds the user's question and the drafted answer, so with PromptSpec.personalData required on every serving call only a paid candidate may serve. The designed head was kimi:kimi-k2.6 (cross-vendor, ADR-0009/ADR-0015), but the owner holds no Moonshot key and elected (issue #181 thread) to head the reviewer with the generator model instead. This accepts same-vendor review \u2014 the property ADR-0015 named 'anti-self-review' is relaxed for the current key set, recorded as a deliberate trade-off rather than drifted into. Revisit when a second paid vendor key (kimi, qwen) is provisioned.",
-      "chain": ["openrouter:deepseek/deepseek-v4-flash"]
+      "$comment": "Personal-data posture (ADR-0043 decision 3, #181; reviewer re-headed 2026-09-21 per owner): the serving reviewer's prompt embeds the user's question and the drafted answer, so with PromptSpec.personalData required on every serving call only a paid candidate may serve. The designed head was kimi:kimi-k2.6 (cross-vendor, ADR-0009/ADR-0015), but the owner holds no Moonshot key and elected (issue #181 thread) to head the reviewer with the generator model instead. The 2026-11-14 generator re-head to Gemini 3.8 Flash restored cross-vendor review (DeepSeek reviews Gemini's draft) without moving this chain \u2014 the ADR-0015 'anti-self-review' property holds again, and this chain stays pending its own bench.",
+      "chain": ["openrouter:deepseek/deepseek-v4.1-flash"]
     },
     "reviewer-live": {
       "$comment": "Same head as the reviewer chain.",
-      "chain": ["openrouter:deepseek/deepseek-v4-flash"]
+      "chain": ["openrouter:deepseek/deepseek-v4.1-flash"]
     },
     "cheap": {
-      "$comment": "Router stages 1-3, tagging, cleaning. Both candidates ride the aggregator row (ADR-0069): the DeepSeek head answers the personal-data calls, the Gemini Flash tail is the cheap challenger. The retired free-tier tail was the personal-data filter's wired trap case; the filter's correctness is carried by its synthetic unit tests, and no serving chain holds a free-tier candidate anymore (ADR-0009's free-tier policy stays policy, not config).",
-      "chain": ["openrouter:deepseek/deepseek-v4-flash", "openrouter:google/gemini-3-flash-preview"]
+      "$comment": "Router stages 1-3, tagging, cleaning. Both candidates ride the aggregator row (ADR-0069): the Gemini 3.8 Flash head serves \u2014 adopted 2026-11-14 (owner) on the router bench's v2 seal, the only arm above the gate floors (96% overall, every language >= 87.5%; benchmarks/routing/report.md) \u2014 and the DeepSeek tail is the fast challenger (84%, under the 85% floor, so never the head while that gate stands). No serving chain holds a free-tier candidate (ADR-0009's free-tier policy stays policy, not config).",
+      "chain": ["openrouter:google/gemini-3.8-flash", "openrouter:deepseek/deepseek-v4.1-flash"],
+      "benchAdoption": "committed"
     },
     "translation": {
       "chain": ["qwen:qwen3.7-max"]
@@ -107,16 +169,48 @@
     },
     "embedder-candidates": {
       "$comment": "#9 gate benchmark role: every candidate the benchmark compares, in one chain. Not for serving \u2014 the benchmark resolves each candidate directly from this chain (ADR-0022). The benchmark embeds gate-fixture text, never personal data.",
-      "chain": ["openrouter:google/gemini-embedding-001", "openrouter:google/gemini-embedding-2"]
+      "chain": [
+        "openrouter:google/gemini-embedding-001",
+        "openrouter:google/gemini-embedding-2",
+        "openrouter:qwen/qwen3-embedding-8b",
+        "openrouter:perplexity/pplx-embed-v1-4b"
+      ]
     },
     "decision-candidates": {
-      "$comment": "ADR-0042 decision-bench role (mirrors embedder-candidates): every decision-model candidate the multilingual gate compares \u2014 schema-constrained chat candidates through the aggregator's structured output since the ADR-0042 rewrite. Not for serving \u2014 the bench resolves each candidate directly. Absent key = the bench reports NOT RUN and exits 0 (CI has no OPENROUTER_API_KEY).",
-      "chain": ["openrouter:google/gemini-3-flash-preview", "openrouter:deepseek/deepseek-v4-flash"]
+      "$comment": "ADR-0042 decision-bench role (mirrors embedder-candidates): every decision-model candidate the multilingual gate compares \u2014 chat candidates through the aggregator's structured output and typed-questions candidates through the decisions wire. Not for serving \u2014 the bench resolves each candidate directly. Absent key = the bench reports NOT RUN and exits 0 (CI has no OPENROUTER_API_KEY).",
+      "chain": [
+        "openrouter:google/gemini-3.8-flash",
+        "openrouter:deepseek/deepseek-v4.1-flash",
+        "openrouter-decisions:~typesafe/jev-latest",
+        "openrouter-decisions:perplexity/pplx-decider-v1.2-20261016"
+      ]
     },
     "decision": {
-      "$comment": "The decision-model SERVING role (ADR-0042 adoption): the candidate behind the reviewer pre-gate and the retrieval rerank \u2014 the model a committed multilingual gate report adopted. Separate from the bench-only `decision-candidates` role so a re-bench can add challengers without changing what serves. The head is PROVISIONAL at the aggregator migration (ADR-0069): the ADR-0042 re-pass bench is the owner's hand-run gate, and its committed report is what flips `benchAdoption` to \"committed\". Until then the boot posture report names the gate provisional at every boot. Always active wherever OPENROUTER_API_KEY is bound; absent key = neither adoption is wired and the reviewer and retrieval behave as they did before adoption \u2014 no enable/disable flag exists. Batched: one call per answer for the pre-gate, one per retrieval whose fused set has two or more candidates for the rerank, input-priced.",
-      "chain": ["openrouter:google/gemini-3-flash-preview"],
-      "benchAdoption": "provisional"
+      "$comment": "The decision-model SERVING role (ADR-0042 adoption): the candidate behind the reviewer pre-gate and the retrieval rerank \u2014 the model a committed multilingual gate report adopted. Separate from the bench-only `decision-candidates` role so a re-bench can add challengers without changing what serves. The head is the committed gate winner: Perplexity's dated Decider v1.2 listing on the decisions wire, 21/21 and the cheapest passing arm at its seal (benchmarks/decisions/report.md), input-priced. Always active wherever OPENROUTER_API_KEY is bound; absent key = neither adoption is wired and the reviewer and retrieval behave as they did before adoption \u2014 no enable/disable flag exists. Batched: one call per answer for the pre-gate, one per retrieval whose fused set has two or more candidates for the rerank.",
+      "chain": ["openrouter-decisions:perplexity/pplx-decider-v1.2-20261016"],
+      "benchAdoption": "committed"
+    },
+    "cheap-candidates": {
+      "$comment": "Bench-only role for the cheap tier's tasks (router classification, ingest summarizers): every chat candidate the router and summarizer benches compare, resolved candidate-by-candidate like decision-candidates. Not for serving \u2014 the serving `cheap` head flips only through a bench-passed adoption.",
+      "chain": [
+        "openrouter:google/gemini-3.8-flash",
+        "openrouter:deepseek/deepseek-v4.1-flash",
+        "openrouter:z-ai/glm-5.3-flash",
+        "openrouter:openai/gpt-5-nano"
+      ]
+    },
+    "summarizer": {
+      "$comment": "The ingest parent summarizer role (surah and hadith-section theme summaries in scripts/ingest-quran.mjs and scripts/ingest-hadith.mjs): GLM 5.3 Flash, adopted on cost \u2014 the deterministic gate tied every arm at 5/5, so it measured format and grounding compliance, not a quality margin (benchmarks/summarization/report.md; theme quality is the owner's read of the printed summaries). Kept separate from the cheap role so the router stages keep their own serving head. The role carries corpus text only, never personal data (ADR-0043).",
+      "chain": ["openrouter:z-ai/glm-5.3-flash"]
+    },
+    "generator-candidates": {
+      "$comment": "Bench-only role for the Golden Set generator sweep: the candidates the end-to-end bench compares against the incumbent. Not for serving \u2014 the serving `generator` head flips only through a bench-passed adoption.",
+      "chain": [
+        "openrouter:google/gemini-3.8-flash",
+        "openrouter:deepseek/deepseek-v4.1-flash",
+        "openrouter:z-ai/glm-5.3-flash",
+        "openrouter:openai/gpt-5-nano"
+      ]
     }
   },
   "profiles": {
@@ -124,7 +218,19 @@
       "generator": ["ollama-cloud:deepseek-v4.1-flash"],
       "reviewer": ["ollama-cloud:deepseek-v4.1-flash"],
       "reviewer-live": ["ollama-cloud:deepseek-v4.1-flash"],
-      "cheap": ["ollama-cloud:deepseek-v4.1-flash", "openrouter:google/gemini-3-flash-preview"]
+      "cheap": ["ollama-cloud:deepseek-v4.1-flash", "openrouter:google/gemini-3.8-flash"]
+    },
+    "bench-generator-deepseek-v4-1-flash": {
+      "generator": ["openrouter:deepseek/deepseek-v4.1-flash"]
+    },
+    "bench-generator-gemini-3-8-flash": {
+      "generator": ["openrouter:google/gemini-3.8-flash"]
+    },
+    "bench-generator-glm-5-3-flash": {
+      "generator": ["openrouter:z-ai/glm-5.3-flash"]
+    },
+    "bench-generator-gpt-5-nano": {
+      "generator": ["openrouter:openai/gpt-5-nano"]
     }
   }
 }

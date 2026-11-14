@@ -1,0 +1,36 @@
+{
+  "schema": 1,
+  "task": "decision-bench",
+  "model": "perplexity/pplx-decider-v1.3-20261112",
+  "samples": {
+    "version": 1,
+    "casesSha256": "sha256:830df54ff7e62b1d56e9ae07d47f2bab04606a6fa9b8ce33a08f30870e954394"
+  },
+  "promptsSha256": "sha256:ae1a4b358cb9d69a4be46bdc128646548c86f9cb1d7b8c2c1ed2e62ddd284153",
+  "budget": {
+    "capMicroUsd": 1000000,
+    "plannedCases": 21,
+    "totalMicroUsd": 0
+  },
+  "totals": {
+    "cases": 21,
+    "scored": 0,
+    "passed": 0,
+    "accuracy": null
+  },
+  "gate": {
+    "gatePass": false,
+    "overallAccuracy": null,
+    "failedLanguages": [],
+    "floors": {
+      "overall": 0.85,
+      "perLanguage": 0.75,
+      "minCasesPerLanguage": 3
+    }
+  },
+  "aborted": true,
+  "error": "decisions call failed (404): {\"error\":{\"message\":\"No endpoints found for perplexity/pplx-decider-v1.3.\",\"code\":404},\"user_id\":\"<redacted>\"}",
+  "startedAt": "2026-11-14T00:04:43.201Z",
+  "finishedAt": "2026-11-14T00:04:43.552Z",
+  "records": []
+}

@@ -102,6 +102,20 @@ describe("scoreDirection", () => {
     expect(cell.queries).toBe(2);
     expect(cell.recallAtK).toBeCloseTo(1);
     expect(cell.mrr).toBeCloseTo(0.75);
+    // The per-probe evidence a run file's records are built from.
+    expect(cell.probeOutcomes.map((p) => p.queryId)).toEqual(["q1", "q2"]);
+    expect(cell.probeOutcomes[0]).toEqual({
+      queryId: "q1",
+      expectedIds: ["a", "b"],
+      rankedTopK: ["a", "b"],
+      passed: true,
+    });
+    expect(cell.probeOutcomes[1]).toEqual({
+      queryId: "q2",
+      expectedIds: ["a"],
+      rankedTopK: ["b", "a"],
+      passed: true,
+    });
   });
 
   it("returns nulls when no probes ran (not a fake 0 or 1)", () => {
@@ -109,6 +123,7 @@ describe("scoreDirection", () => {
     expect(cell.queries).toBe(0);
     expect(cell.recallAtK).toBeNull();
     expect(cell.mrr).toBeNull();
+    expect(cell.probeOutcomes).toEqual([]);
   });
 });
 
@@ -120,12 +135,14 @@ describe("evaluateGate", () => {
         queries: 10,
         recallAtK: GATE_FLOORS.crossLingual,
         mrr: 1,
+        probeOutcomes: [],
       },
       {
         direction: "primary→primary" as const,
         queries: 10,
         recallAtK: GATE_FLOORS.monolingual,
         mrr: 1,
+        probeOutcomes: [],
       },
     ];
     expect(evaluateGate({ cells })).toEqual({
@@ -143,12 +160,14 @@ describe("evaluateGate", () => {
         queries: 10,
         recallAtK: below(GATE_FLOORS.crossLingual),
         mrr: 1,
+        probeOutcomes: [],
       },
       {
         direction: "primary→primary" as const,
         queries: 10,
         recallAtK: GATE_FLOORS.monolingual,
         mrr: 1,
+        probeOutcomes: [],
       },
     ];
     const verdict = evaluateGate({ cells });

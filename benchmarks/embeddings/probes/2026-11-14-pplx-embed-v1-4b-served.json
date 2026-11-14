@@ -1,0 +1,27 @@
+{
+  "schema": 1,
+  "probedAt": "2026-11-14T01:05:00Z",
+  "endpoint": "POST https://openrouter.ai/api/v1/embeddings + GET /api/v1/models/perplexity/pplx-embed-v1-4b/endpoints",
+  "purpose": "The owner-nominated embed challenger: is Perplexity's Embed V1 4B served on the embeddings wire, at what native dimensionality and price?",
+  "results": [
+    {
+      "model": "perplexity/pplx-embed-v1-4b",
+      "endpointsListing": {
+        "provider": "Perplexity (direct endpoint, tag perplexity/int8)",
+        "contextLength": 32000,
+        "pricing": {
+          "prompt": "0.00000003",
+          "completion": "0"
+        }
+      },
+      "status": 200,
+      "nativeDimensions": 2560,
+      "usage": {
+        "prompt_tokens": 1,
+        "total_tokens": 1,
+        "cost": 3e-8
+      },
+      "note": "cost 3e-8 USD for 1 prompt token verifies the 0.03 USD/MTok input price the config row pins; not excluded by the account's ZDR guardrail settings (unlike the qwen flash models)"
+    }
+  ]
+}

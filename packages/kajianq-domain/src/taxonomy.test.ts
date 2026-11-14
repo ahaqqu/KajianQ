@@ -6,9 +6,7 @@ import {
   GOLDEN_SET_TAG_VOCABULARY,
   INTENTS,
   isIntent,
-  isPrincipleTag,
   isSubjectArea,
-  PRINCIPLE_TAGS,
   SMOKE_COVERAGE_TAGS,
   SUBJECT_AREAS,
   SUB_QUERY_ORIGINS,
@@ -37,7 +35,6 @@ describe("classification vocabularies", () => {
   const lists: Record<string, readonly string[]> = {
     SUBJECT_AREAS,
     INTENTS,
-    PRINCIPLE_TAGS,
     SUB_QUERY_ROLES,
     SUB_QUERY_ORIGINS,
     GOLDEN_SET_LABELS,
@@ -62,8 +59,6 @@ describe("classification vocabularies", () => {
     expect(isSubjectArea("fiqh")).toBe(false);
     expect(isIntent("ruling")).toBe(true);
     expect(isIntent("dalil_umum")).toBe(false);
-    expect(isPrincipleTag("yusr")).toBe(true);
-    expect(isPrincipleTag("ease")).toBe(false);
   });
 
   it("names the dhaif trap inside the eval labels", () => {

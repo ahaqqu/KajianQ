@@ -1,0 +1,110 @@
+{
+  "schema": 1,
+  "task": "summarizer-bench",
+  "model": "z-ai/glm-5.3-flash",
+  "samples": {
+    "version": 1,
+    "casesSha256": "sha256:dcc936e8451f1fbc835639ea406baa06266c035e5dfeb125e4d58d1082f06db4"
+  },
+  "promptsSha256": "sha256:0a82f273c1437f50efd997ab2bf35f84d60f35229973b4b54c6c761c16474386",
+  "budget": {
+    "capMicroUsd": 1000000,
+    "plannedCases": 5,
+    "totalMicroUsd": 299
+  },
+  "totals": {
+    "cases": 5,
+    "scored": 5,
+    "passed": 5,
+    "accuracy": 1
+  },
+  "gate": {
+    "gatePass": true,
+    "overallAccuracy": 1,
+    "failedLanguages": [],
+    "floors": {
+      "overall": 0.85,
+      "perLanguage": 0.75,
+      "minCasesPerLanguage": 3
+    }
+  },
+  "startedAt": "2026-11-14T00:50:09.973Z",
+  "finishedAt": "2026-11-14T00:50:41.854Z",
+  "records": [
+    {
+      "caseId": "sm-q-01",
+      "language": "id",
+      "expected": "{\"minSentences\":1,\"maxSentences\":3}",
+      "got": "Surah Al-Fatihah merupakan pembukaan Al-Qur'an yang berisi pujian dan syukur kepada Allah sebagai Tuhan semesta alam, Yang Maha Pengasih lagi Maha Penyayang, serta Pemilik hari pembalasan. Surat ini menegaskan bahwa manusia hanya menyembah dan memohon pertolongan kepada Allah semata, sekaligus menjadi doa memohon petunjuk menuju jalan yang lurus, yaitu jalan orang-orang yang diberi nikmat, bukan jalan mereka yang dimurkai ataupun yang sesat.",
+      "passed": true,
+      "cost": {
+        "modelId": "z-ai/glm-5.3-flash",
+        "tokensIn": 351,
+        "tokensOut": 384,
+        "latencyMs": 3452,
+        "costMicroUsd": 45,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "sm-q-02",
+      "language": "id",
+      "expected": "{\"minSentences\":1,\"maxSentences\":3}",
+      "got": "Surah Al-Ma'un mengutuk orang-orang yang mendustakan agama melalui sikap mereka yang menindas anak yatim, tidak mendorong pemberian makanan kepada kaum miskin, dan menolak bantuan. Surah ini juga mengkritik orang-orang yang shalat namun lalai, hanya ingin dilihat orang (riya'), serta bakhil dalam berbuat kebaikan, menegaskan bahwa iman yang sejati harus dibuktikan dengan ketulusan ibadah dan kepedulian terhadap sesama.",
+      "passed": true,
+      "cost": {
+        "modelId": "z-ai/glm-5.3-flash",
+        "tokensIn": 310,
+        "tokensOut": 265,
+        "latencyMs": 3141,
+        "costMicroUsd": 34,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "sm-q-03",
+      "language": "id",
+      "expected": "{\"minSentences\":1,\"maxSentences\":3}",
+      "got": "Surah Al-Ikhlas menegaskan keesaan Allah dengan menyatakan bahwa Allah adalah Yang Maha Esa, tempat bergantung segala sesuatu, tidak beranak dan tidak diperanakkan, serta tidak ada sesuatu pun yang setara dengan-Nya. Surah ini merupakan inti ajaran tauhid yang menentukan kemurnian iman kepada Allah.",
+      "passed": true,
+      "cost": {
+        "modelId": "z-ai/glm-5.3-flash",
+        "tokensIn": 184,
+        "tokensOut": 294,
+        "latencyMs": 4363,
+        "costMicroUsd": 31,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "sm-h-01",
+      "language": "id",
+      "expected": "{\"minSentences\":1,\"maxSentences\":3}",
+      "got": "Bab ini merupakan pembuka Sahih al-Bukhari yang membahas awal turunnya wahyu kepada Nabi Muhammad ﷺ. Hadits pertama yang disampaikan Umar bin al-Khattab menegaskan prinsip fundamental bahwa setiap amal dihitung berdasarkan niatnya, sehingga hijrah seseorang bergantung pada tujuan yang dicita-citakannya, baik untuk dunia maupun untuk wanita yang akan dinikahi.",
+      "passed": true,
+      "cost": {
+        "modelId": "z-ai/glm-5.3-flash",
+        "tokensIn": 587,
+        "tokensOut": 326,
+        "latencyMs": 5866,
+        "costMicroUsd": 49,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "sm-h-02",
+      "language": "id",
+      "expected": "{\"minSentences\":1,\"maxSentences\":3}",
+      "got": "Bab Kitab ath-Thaharah (كتاب الطهار) dalam Sunan Abu Dawud membahas ketentuan-ketentuan kesucian, seperti wudhu, mandi, dan hal-hal yang berkaitan dengannya. Bab ini dibuka dengan hadits Aisyah yang menceritakan turunnya wahyu kepada Nabi ﷺ pada hari yang sangat dingin hingga dahi baginda berkeringat, yang dipahami para ulama sebagai penekanan betapa besarnya kedudukan kesucian dan pentingnya menyempurnakan wudhu.",
+      "passed": true,
+      "cost": {
+        "modelId": "z-ai/glm-5.3-flash",
+        "tokensIn": 223,
+        "tokensOut": 1668,
+        "latencyMs": 15051,
+        "costMicroUsd": 140,
+        "estimated": false
+      }
+    }
+  ]
+}

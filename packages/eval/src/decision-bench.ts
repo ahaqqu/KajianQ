@@ -24,6 +24,8 @@ export type CaseOutcome = {
   expected: string | number | boolean;
   got: string | number | boolean;
   passed: boolean;
+  /** The call's metered spend — a run file carries it verbatim per record. */
+  cost?: CostRecord;
 };
 
 /** The gate floors (ADR-0042): overall ≥ 0.85 AND every language ≥ 0.75. */
@@ -34,6 +36,13 @@ export const DECISION_GATE_FLOORS = {
   minCasesPerLanguage: 3,
 } as const;
 
+/**
+ * The minimal outcome the gate math reads. Every bench that reuses the
+ * floors (decision, router, summarizer) maps its records onto this shape
+ * rather than fabricating a task label it does not have.
+ */
+export type GateOutcome = { language: string; passed: boolean };
+
 export type DecisionGate = {
   overallPass: boolean;
   failedLanguages: string[];
@@ -41,14 +50,14 @@ export type DecisionGate = {
 };
 
 /** Mean accuracy over outcomes (null when the list is empty). */
-export function meanAccuracy(outcomes: readonly CaseOutcome[]): number | null {
+export function meanAccuracy(outcomes: readonly GateOutcome[]): number | null {
   if (outcomes.length === 0) return null;
   return outcomes.filter((o) => o.passed).length / outcomes.length;
 }
 
 /** Group accuracy per language label, for the per-language floor. */
 export function accuracyByLanguage(
-  outcomes: readonly CaseOutcome[],
+  outcomes: readonly GateOutcome[],
 ): Record<string, { cases: number; accuracy: number }> {
   const byLang = new Map<string, { passed: number; total: number }>();
   for (const o of outcomes) {
@@ -88,7 +97,7 @@ export function accuracyByTask(
  * language would make the floor a coin flip) — but they are reported, so a
  * fixture that silently drops a language is visible in the report.
  */
-export function evaluateDecisionGate(outcomes: readonly CaseOutcome[]): DecisionGate {
+export function evaluateDecisionGate(outcomes: readonly GateOutcome[]): DecisionGate {
   const overall = meanAccuracy(outcomes);
   const perLanguage = accuracyByLanguage(outcomes);
   const failedLanguages = Object.entries(perLanguage)
@@ -125,6 +134,7 @@ export async function runDecisionBench({
   fixture,
   prompts,
   onCost,
+  onOutcome,
   wouldExceed,
   log,
 }: {
@@ -132,10 +142,16 @@ export async function runDecisionBench({
   fixture: DecisionBenchFixture;
   prompts: DecisionBenchPrompts;
   onCost: (cost: CostRecord) => void;
+  /** Surfaced per scored case so a caller can preserve partial evidence. */
+  onOutcome?: (outcome: CaseOutcome) => void;
   wouldExceed: () => boolean;
   log?: { warn: (msg: string, fields?: Record<string, unknown>) => void };
 }): Promise<CaseOutcome[]> {
   const outcomes: CaseOutcome[] = [];
+  const record = (outcome: CaseOutcome) => {
+    outcomes.push(outcome);
+    onOutcome?.(outcome);
+  };
 
   // One Noul question per case; the answer is read through the seam's typed
   // union — no re-cast of the wire shape.
@@ -167,13 +183,14 @@ export async function runDecisionBench({
     onCost(result.cost);
     const answer = result.answers[key];
     const noul = answer?.type === "noul" ? answer.noul : undefined;
-    outcomes.push({
+    record({
       caseId: c.id,
       task,
       language: c.language,
       expected,
       got: noul ?? "n/a",
       passed: score(noul),
+      cost: result.cost,
     });
   };
 
@@ -215,13 +232,14 @@ export async function runDecisionBench({
     onCost(result.cost);
     const answer = result.answers.best;
     const choice = answer?.type === "choice" ? answer.choice : undefined;
-    outcomes.push({
+    record({
       caseId: c.id,
       task: "rerank",
       language: c.language,
       expected: `c${c.bestIndex}`,
       got: choice ?? "n/a",
       passed: scoreRerankAnswer(choice, c.bestIndex),
+      cost: result.cost,
     });
   }
 

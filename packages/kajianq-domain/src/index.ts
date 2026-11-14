@@ -11,10 +11,8 @@
  * The filter dimensions (Madzhab / Grade / Matn-Sharh) and their types are
  * owned by `./filters` — one list each, and the router narrows the model's
  * hints against the same ones retrieval is filtered by. Re-exported here so
- * the pack has one public surface; nothing in this barrel declares a second
- * copy.
+ * the pack has one public surface.
  */
-// The filter vocabulary and its exhaustive dimension map.
 export {
   FILTER_DIMENSIONS,
   GRADES,
@@ -67,6 +65,7 @@ export {
   archiveFingerprint,
   quranPairSink,
   surahSummarizer,
+  surahSummaryPrompt,
   type SummarizerProvider,
 } from "./quran-llm";
 export {
@@ -108,6 +107,7 @@ export {
   hadithPairKeyFor,
   hadithPairSink,
   hadithSectionSummarizer,
+  hadithSectionSummaryPrompt,
   type HadithSummarizerProvider,
 } from "./hadith-llm";
 
@@ -125,22 +125,23 @@ export {
   type DomainBenchDoc,
 } from "./embed-bench-corpus";
 export { EXPANSION_SYSTEM_PROMPT, expansionUserPrompt } from "./embed-bench-prompts";
-export { DECISION_BENCH_PROMPTS } from "./decision-bench-prompts";
+export { DECISION_BENCH_PROMPTS, DECISION_BENCH_PROMPTS_IDENTITY } from "./decision-bench-prompts";
+export { ungroundedArabicTokens } from "./summarizer-bench-grounding";
 
 // -- Chat pipeline: Smart Router stages over the DARS seams ----------------
-// (Filter vocabulary (Madzhab/Grade/TextLayer/KajianQFilters) stays exported
-// from the top of this barrel — chat stages import it via ./filters.)
-//
-// Smart Router stages 1–2 split across modules for the agentic caps: this
-// barrel is still the one public surface. `taxonomy` owns the classification
-// vocabularies, `chat-router-output` the reply reader, `chat-router-prompt` the
-// prompt and prior-turn window, `chat-router-routing` how a reading becomes a
-// route, `chat-subquery-admission` the one admission, and
-// `chat-router-decompose` the deterministic sub-query repair.
+// (Filter vocabulary stays exported from the top of this barrel — chat stages
+// import it via ./filters.) The stages 1–2 split across modules for the agentic
+// caps: this barrel is the one public surface — `taxonomy` the vocabularies,
+// `chat-router-output` the reply reader, `chat-router-prompt` the prompt and
+// prior-turn window, `chat-router-routing` the route, `chat-subquery-admission`
+// the one admission, `chat-router-decompose` the deterministic repair.
 export {
   createKajianQRouter,
   extractJsonObject,
+  ROUTER_BENCH_PROMPTS_IDENTITY,
+  ROUTER_FOLLOW_UP_RULE,
   ROUTER_SYSTEM_PROMPT,
+  routerCallFor,
   type RouterProvider,
 } from "./chat-router";
 export {
@@ -163,9 +164,7 @@ export {
   GOLDEN_SET_TAG_VOCABULARY,
   INTENTS,
   isIntent,
-  isPrincipleTag,
   isSubjectArea,
-  PRINCIPLE_TAGS,
   SMOKE_COVERAGE_TAGS,
   SMOKE_HELD_OUT_IDS,
   SUB_QUERY_ORIGINS,
@@ -173,7 +172,6 @@ export {
   SUBJECT_AREAS,
   type GoldenSetLabel,
   type Intent,
-  type PrincipleTag,
   type SubjectArea,
   type SubQueryOrigin,
   type SubQueryRole,

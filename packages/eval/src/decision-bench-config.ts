@@ -13,6 +13,10 @@ import { budgetCapFromEnv } from "./budget";
  * One validation pass: the contract's `parseDecisionBenchFixture` does the
  * schema parse AND the cross-field ground-truth check (rerank bestIndex in
  * range); this module only wraps failures with the fixture's source label.
+ *
+ * The bench store lives at repo root under `benchmarks/decisions/` — the
+ * sealed samples, the append-only run files, and the generated report — so
+ * measurements are versioned repo content, not a file one run overwrites.
  */
 
 export class DecisionBenchLoadError extends Error {
@@ -47,17 +51,32 @@ export function loadDecisionBenchFixtureJson(
   return parseDecisionBenchFixture(raw, source);
 }
 
-/** Default fixture: the domain pack's versioned multilingual case set. */
-export const DECISION_BENCH_DEFAULT_FIXTURE_PATH =
-  "packages/kajianq-domain/fixtures/decision-bench-v0.json";
+/** The bench store root: sealed samples, append-only runs, generated report. */
+export const DECISION_BENCH_DEFAULT_DIR = "benchmarks/decisions";
+
+/** Default fixture: the sealed, versioned multilingual case set. */
+export const DECISION_BENCH_DEFAULT_FIXTURE_PATH = `${DECISION_BENCH_DEFAULT_DIR}/samples/cases.json`;
+
+export const DECISION_BENCH_DEFAULT_SEAL_PATH = `${DECISION_BENCH_DEFAULT_DIR}/samples/version.json`;
+
+export const DECISION_BENCH_DEFAULT_RUNS_DIR = `${DECISION_BENCH_DEFAULT_DIR}/runs`;
+
+/** The generated report (offline from the committed files; never hand-edited). */
+export const DECISION_BENCH_DEFAULT_REPORT_PATH = `${DECISION_BENCH_DEFAULT_DIR}/report.md`;
 
 /** Validated, typed configuration for one `eval:decision-bench` invocation. */
 export type DecisionBenchConfig = {
   /** Hard spend cap in micro-USD (unset/0 = explicit opt-out). */
   budgetCapMicroUsd: number | undefined;
+  /** Store root (samples, runs, report). */
+  dir: string;
   /** Fixture path. */
   fixturePath: string;
-  /** Output report path (JSON, defaults next to the fixture). */
+  /** The samples seal. */
+  sealPath: string;
+  /** Append-only run files, one per candidate arm. */
+  runsDir: string;
+  /** Output report path (markdown). */
   reportPath: string;
 };
 
@@ -71,11 +90,13 @@ export function loadDecisionBenchConfig(
   } catch (cause) {
     throw new EvalConfigError(String(cause instanceof Error ? cause.message : cause));
   }
+  const dir = env.DECISION_BENCH_DIR?.trim() || DECISION_BENCH_DEFAULT_DIR;
   return {
     budgetCapMicroUsd,
-    fixturePath: env.DECISION_BENCH_FIXTURE_PATH?.trim() || DECISION_BENCH_DEFAULT_FIXTURE_PATH,
-    reportPath:
-      env.DECISION_BENCH_REPORT_PATH?.trim() ||
-      "packages/kajianq-domain/fixtures/decision-bench-results.json",
+    dir,
+    fixturePath: env.DECISION_BENCH_FIXTURE_PATH?.trim() || `${dir}/samples/cases.json`,
+    sealPath: `${dir}/samples/version.json`,
+    runsDir: `${dir}/runs`,
+    reportPath: env.DECISION_BENCH_REPORT_PATH?.trim() || `${dir}/report.md`,
   };
 }

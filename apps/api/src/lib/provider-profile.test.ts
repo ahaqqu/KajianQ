@@ -3,6 +3,7 @@ import {
   loadProviderConfig,
   ProviderConfigError,
   resolveChain,
+  resolveDecider,
   resolveRole,
   type ProviderConfig,
 } from "@app/infra";
@@ -23,21 +24,38 @@ import { createProvidersFromEnv } from "./chat-wiring";
 
 /** The chains the checked-in config ships with no profile selected. */
 const DEFAULT_CHAINS = {
-  generator: ["openrouter:deepseek/deepseek-v4-flash"],
-  reviewer: ["openrouter:deepseek/deepseek-v4-flash"],
-  "reviewer-live": ["openrouter:deepseek/deepseek-v4-flash"],
-  cheap: ["openrouter:deepseek/deepseek-v4-flash", "openrouter:google/gemini-3-flash-preview"],
+  generator: ["openrouter:google/gemini-3.8-flash", "openrouter:z-ai/glm-5.3-flash"],
+  reviewer: ["openrouter:deepseek/deepseek-v4.1-flash"],
+  "reviewer-live": ["openrouter:deepseek/deepseek-v4.1-flash"],
+  cheap: ["openrouter:google/gemini-3.8-flash", "openrouter:deepseek/deepseek-v4.1-flash"],
+  summarizer: ["openrouter:z-ai/glm-5.3-flash"],
   translation: ["qwen:qwen3.7-max"],
   embedder: ["openrouter:google/gemini-embedding-001"],
   "embedder-candidates": [
     "openrouter:google/gemini-embedding-001",
     "openrouter:google/gemini-embedding-2",
+    "openrouter:qwen/qwen3-embedding-8b",
+    "openrouter:perplexity/pplx-embed-v1-4b",
+  ],
+  "cheap-candidates": [
+    "openrouter:google/gemini-3.8-flash",
+    "openrouter:deepseek/deepseek-v4.1-flash",
+    "openrouter:z-ai/glm-5.3-flash",
+    "openrouter:openai/gpt-5-nano",
+  ],
+  "generator-candidates": [
+    "openrouter:google/gemini-3.8-flash",
+    "openrouter:deepseek/deepseek-v4.1-flash",
+    "openrouter:z-ai/glm-5.3-flash",
+    "openrouter:openai/gpt-5-nano",
   ],
   "decision-candidates": [
-    "openrouter:google/gemini-3-flash-preview",
-    "openrouter:deepseek/deepseek-v4-flash",
+    "openrouter:google/gemini-3.8-flash",
+    "openrouter:deepseek/deepseek-v4.1-flash",
+    "openrouter-decisions:~typesafe/jev-latest",
+    "openrouter-decisions:perplexity/pplx-decider-v1.2-20261016",
   ],
-  decision: ["openrouter:google/gemini-3-flash-preview"],
+  decision: ["openrouter-decisions:perplexity/pplx-decider-v1.2-20261016"],
 } as const;
 
 /** The four serving roles the `ollama` profile re-heads, and their replacement chains. */
@@ -45,7 +63,7 @@ const OLLAMA_CHAINS = {
   generator: ["ollama-cloud:deepseek-v4.1-flash"],
   reviewer: ["ollama-cloud:deepseek-v4.1-flash"],
   "reviewer-live": ["ollama-cloud:deepseek-v4.1-flash"],
-  cheap: ["ollama-cloud:deepseek-v4.1-flash", "openrouter:google/gemini-3-flash-preview"],
+  cheap: ["ollama-cloud:deepseek-v4.1-flash", "openrouter:google/gemini-3.8-flash"],
 } as const;
 
 const PROMPT = { turns: [{ role: "user", content: "hi" }] };
@@ -86,8 +104,8 @@ describe("provider profile — `ollama` re-heads exactly the serving roles", () 
     expect(switched.router.modelId).toBe("deepseek-v4.1-flash");
 
     const rolledBack = createProvidersFromEnv({ OPENROUTER_API_KEY: "sk-openrouter" });
-    expect(rolledBack.generator.modelId).toBe("deepseek/deepseek-v4-flash");
-    expect(rolledBack.reviewer?.modelId).toBe("deepseek/deepseek-v4-flash");
+    expect(rolledBack.generator.modelId).toBe("google/gemini-3.8-flash");
+    expect(rolledBack.reviewer?.modelId).toBe("deepseek/deepseek-v4.1-flash");
   });
 });
 
@@ -164,6 +182,27 @@ describe("provider profile — rollback", () => {
     expect(chains(loadProviderConfig(undefined))).toEqual(DEFAULT_CHAINS);
     // An empty env value is "unset" too (a systemd `PROVIDER_PROFILE=` line).
     expect(chains(loadProviderConfig(""))).toEqual(DEFAULT_CHAINS);
+  });
+
+  it("resolves the bench chain across both decision wires with one shared key", () => {
+    // The bench field rides two transports: the chat wire's structured output
+    // and the typed-questions wire. Both vendor rows key OPENROUTER_API_KEY,
+    // so an absent key is reported once, and a bound key wires all four
+    // candidates in chain order.
+    const missing = resolveDecider(loadProviderConfig(), "decision-candidates", { env: {} });
+    expect(missing.deciders).toEqual([]);
+    expect(missing.missingKeys).toEqual(["OPENROUTER_API_KEY"]);
+    expect(missing.ineligibleKeys).toEqual([]);
+
+    const resolved = resolveDecider(loadProviderConfig(), "decision-candidates", {
+      env: { OPENROUTER_API_KEY: "sk-openrouter" },
+    });
+    expect(resolved.deciders.map((entry) => entry.modelId)).toEqual([
+      "google/gemini-3.8-flash",
+      "deepseek/deepseek-v4.1-flash",
+      "~typesafe/jev-latest",
+      "perplexity/pplx-decider-v1.2-20261016",
+    ]);
   });
 
   it("reports a missing key once even when a chain keys two candidates to it", () => {

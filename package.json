@@ -46,6 +46,8 @@
     "eval:probes": "bun packages/eval/scripts/eval-probes.mjs",
     "eval:embed-bench": "bun packages/eval/scripts/embed-bench.mjs",
     "eval:decision-bench": "bun packages/eval/scripts/decision-bench.mjs",
+    "eval:router-bench": "bun packages/eval/scripts/router-bench.mjs",
+    "eval:summarizer-bench": "bun packages/eval/scripts/summarizer-bench.mjs",
     "ingest:quran": "bun packages/kajianq-domain/scripts/ingest-quran.mjs",
     "ingest:hadith": "bun packages/kajianq-domain/scripts/ingest-hadith.mjs",
     "study:sanadset": "bun packages/kajianq-domain/scripts/sanadset-study.mjs",

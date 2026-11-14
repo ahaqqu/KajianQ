@@ -211,7 +211,7 @@ describe("the retriever records every sub-query × track search", () => {
       store,
       (event) => recorded.push(event as Recorded),
       [{ text: "apa keutamaan menuntut ilmu", role: "factual", origin: "rule" }],
-      { sourceType: ["principle"] },
+      { sourceType: ["kitab"] },
     );
 
     // Probes are `filter_relaxed` events, not per-search records: the record is
@@ -322,7 +322,7 @@ describe("the per-search record does not change retrieval", () => {
 const SAHIH = { sourceType: "hadith", collection: "bukhari", grade: "sahih" } as const;
 const QURAN = { sourceType: "quran", surah: 1 } as const;
 const KITAB = { sourceType: "kitab", collection: "adab" } as const;
-const PRINCIPLE = { sourceType: "principle" } as const;
+const PRINCIPLE = { sourceType: "kitab" } as const;
 
 /** A row with metadata of its own, so the hierarchy bonus is exercised. */
 const rankedRow = (id: string, metadata: Record<string, unknown> = HADITH): ChildRow => ({
@@ -467,7 +467,7 @@ describe("the fused set is the pure fusion of the searches it recorded", () => {
       chosen.flatMap((event) =>
         event.detail.topHits.map((hit) => [{ chunk: chunkOf(hit.id), rank: hit.rankDense }]),
       );
-    const expected = rrfFuse(listsOf(events), (chunk) => hierarchyBonus(chunk, ORACLE_INTENT));
+    const expected = rrfFuse(listsOf(events), (chunk) => hierarchyBonus(chunk));
     const guaranteed = ["a1", "a2", "b1"];
     const byId = (rows: readonly Chunk[]) =>
       [...rows]
@@ -493,7 +493,7 @@ describe("the fused set is the pure fusion of the searches it recorded", () => {
       const own = events.slice(sub * 2, sub * 2 + 2);
       expect(own.map((event) => event.detail.track)).toEqual(["primary", "fallback"]);
       const dropped = rrfFuse(listsOf(events.filter((event) => !own.includes(event))), (chunk) =>
-        hierarchyBonus(chunk, ORACLE_INTENT),
+        hierarchyBonus(chunk),
       );
       expect(dropped.map((chunk) => [chunk.id, chunk.score])).not.toEqual(
         expected.map((chunk) => [chunk.id, chunk.score]),

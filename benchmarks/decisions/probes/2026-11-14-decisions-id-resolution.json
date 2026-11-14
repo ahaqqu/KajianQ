@@ -1,0 +1,111 @@
+{
+  "probedAt": "2026-11-14T00:05:29.125Z",
+  "endpoint": "https://openrouter.ai/api/alpha/decisions",
+  "probes": [
+    {
+      "model": "perplexity/pplx-decider-v1.2",
+      "probedAt": "2026-11-14T00:05:27.921Z",
+      "status": 200,
+      "accepted": true,
+      "error": null,
+      "resolvedModel": "perplexity/pplx-decider-v1.2-20261016",
+      "body": {
+        "model": "perplexity/pplx-decider-v1.2-20261016",
+        "answers": {
+          "probe": {
+            "type": "noul",
+            "noul": 0.9876196615549543
+          }
+        },
+        "usage": {
+          "input_tokens": 82,
+          "output_tokens": 1,
+          "cost": 0.00000164,
+          "is_byok": false,
+          "cost_details": {
+            "upstream_inference_cost": 0.00000164,
+            "upstream_inference_prompt_cost": 0.00000164,
+            "upstream_inference_completions_cost": 0
+          }
+        },
+        "id": "gen-dec-1794614727-rJweD2mAEBwrgNkR7WW5",
+        "provider": "Perplexity"
+      }
+    },
+    {
+      "model": "perplexity/pplx-decider-v1.2-20261016",
+      "probedAt": "2026-11-14T00:05:28.475Z",
+      "status": 200,
+      "accepted": true,
+      "error": null,
+      "resolvedModel": "perplexity/pplx-decider-v1.2-20261016",
+      "body": {
+        "model": "perplexity/pplx-decider-v1.2-20261016",
+        "answers": {
+          "probe": {
+            "type": "noul",
+            "noul": 0.9874606070846232
+          }
+        },
+        "usage": {
+          "input_tokens": 82,
+          "output_tokens": 1,
+          "cost": 0.00000164,
+          "is_byok": false,
+          "cost_details": {
+            "upstream_inference_cost": 0.00000164,
+            "upstream_inference_prompt_cost": 0.00000164,
+            "upstream_inference_completions_cost": 0
+          }
+        },
+        "id": "gen-dec-1794614727-6ZnAVy0u5DuatNtp1He5",
+        "provider": "Perplexity"
+      }
+    },
+    {
+      "model": "~perplexity/pplx-decider-latest",
+      "probedAt": "2026-11-14T00:05:29.054Z",
+      "status": 200,
+      "accepted": true,
+      "error": null,
+      "resolvedModel": "perplexity/pplx-decider-v1.2-20261016",
+      "body": {
+        "model": "perplexity/pplx-decider-v1.2-20261016",
+        "answers": {
+          "probe": {
+            "type": "noul",
+            "noul": 0.9876196615549543
+          }
+        },
+        "usage": {
+          "input_tokens": 82,
+          "output_tokens": 1,
+          "cost": 0.00000164,
+          "is_byok": false,
+          "cost_details": {
+            "upstream_inference_cost": 0.00000164,
+            "upstream_inference_prompt_cost": 0.00000164,
+            "upstream_inference_completions_cost": 0
+          }
+        },
+        "id": "gen-dec-1794614728-YLAqF3NBEtYa97sOqzSp",
+        "provider": "Perplexity"
+      }
+    },
+    {
+      "model": "perplexity/pplx-decider-v1.3-20261112",
+      "probedAt": "2026-11-14T00:05:29.090Z",
+      "status": 404,
+      "accepted": false,
+      "error": "No endpoints found for perplexity/pplx-decider-v1.3.",
+      "resolvedModel": null,
+      "body": {
+        "error": {
+          "message": "No endpoints found for perplexity/pplx-decider-v1.3.",
+          "code": 404
+        },
+        "user_id": "<redacted>"
+      }
+    }
+  ]
+}

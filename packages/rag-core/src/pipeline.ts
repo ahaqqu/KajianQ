@@ -112,12 +112,13 @@ export type RoutedQuery<TFilters extends Record<string, unknown> = DefaultFilter
 
 /**
  * The turns handed to the Generator. The Assembler owns context *selection
- * and ordering* (Principles first, then evidence); the Generator owns the
- * final prompt to the Provider, so the context carries a structured turn
- * list, not a frozen string. Keeping `Turn` minimal (role + content) lets the
- * Generator re-template, stream a preamble, or apply reviewer-driven
- * reformatting without re-parsing (ADR-0018). `role` is opaque to the engine
- * — the domain pack names the roles its prompt templates use.
+ * and ordering* (the presentation order the domain pack declares); the
+ * Generator owns the final prompt to the Provider, so the context carries a
+ * structured turn list, not a frozen string. Keeping `Turn` minimal (role +
+ * content) lets the Generator re-template, stream a preamble, or apply
+ * reviewer-driven reformatting without re-parsing (ADR-0018). `role` is
+ * opaque to the engine — the domain pack names the roles its prompt
+ * templates use.
  */
 export type Turn = {
   role: string;
@@ -156,7 +157,7 @@ export type Answer = {
 export type StageEffect<A> = Effect.Effect<A, StageError, RunContext | Scope.Scope>;
 
 /**
- * Router: intent & principle detection, query decomposition, source routing.
+ * Router: intent classification, query decomposition, source routing.
  * Not a mere classifier. Implementations hold an injected Provider; they never
  * name a vendor. Accesses the run through the `RunContext` Tag so it can
  * record `llm_call` cost and register per-run finalizers via `Effect.addFinalizer`.

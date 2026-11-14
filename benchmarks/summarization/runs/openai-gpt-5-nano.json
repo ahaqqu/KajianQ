@@ -1,0 +1,110 @@
+{
+  "schema": 1,
+  "task": "summarizer-bench",
+  "model": "openai/gpt-5-nano",
+  "samples": {
+    "version": 1,
+    "casesSha256": "sha256:dcc936e8451f1fbc835639ea406baa06266c035e5dfeb125e4d58d1082f06db4"
+  },
+  "promptsSha256": "sha256:0a82f273c1437f50efd997ab2bf35f84d60f35229973b4b54c6c761c16474386",
+  "budget": {
+    "capMicroUsd": 1000000,
+    "plannedCases": 5,
+    "totalMicroUsd": 2367
+  },
+  "totals": {
+    "cases": 5,
+    "scored": 5,
+    "passed": 5,
+    "accuracy": 1
+  },
+  "gate": {
+    "gatePass": true,
+    "overallAccuracy": 1,
+    "failedLanguages": [],
+    "floors": {
+      "overall": 0.85,
+      "perLanguage": 0.75,
+      "minCasesPerLanguage": 3
+    }
+  },
+  "startedAt": "2026-11-14T00:50:42.375Z",
+  "finishedAt": "2026-11-14T00:51:24.541Z",
+  "records": [
+    {
+      "caseId": "sm-q-01",
+      "language": "id",
+      "expected": "{\"minSentences\":1,\"maxSentences\":3}",
+      "got": "Al-Fatihah adalah surat pembuka Al-Qur’an yang memuja Allah sebagai Tuhan seluruh alam, Yang Maha Pengasih lagi Maha Penyayang, serta Penguasa Hari Pembalasan. Surat ini menegaskan bahwa manusia hanya menyembah kepada-Nya dan hanya kepada-Nya meminta pertolongan. Inti doanya adalah memohon petunjuk ke jalan yang lurus, yaitu jalan orang-orang yang diberi nikmat, bukan jalan orang-orang yang dimurkai atau sesat.",
+      "passed": true,
+      "cost": {
+        "modelId": "openai/gpt-5-nano",
+        "tokensIn": 290,
+        "tokensOut": 677,
+        "latencyMs": 4790,
+        "costMicroUsd": 286,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "sm-q-02",
+      "language": "id",
+      "expected": "{\"minSentences\":1,\"maxSentences\":3}",
+      "got": "Surah Al-Ma’un menyoroti kemunafikan iman yang terlihat pada orang yang menolak hari pembalasan, mengusir anak yatim, dan tidak mendorong pemberian bagi fakir miskin. Ayat-ayatnya juga mengutuk mereka yang shalat tetapi lalai, riya, dan menahan kebaikan-kebaikan kecil, menegaskan bahwa ibadah tanpa empati adalah kesalehan palsu.",
+      "passed": true,
+      "cost": {
+        "modelId": "openai/gpt-5-nano",
+        "tokensIn": 260,
+        "tokensOut": 1628,
+        "latencyMs": 8896,
+        "costMicroUsd": 665,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "sm-q-03",
+      "language": "id",
+      "expected": "{\"minSentences\":1,\"maxSentences\":3}",
+      "got": "Surah Al-Ikhlas menegaskan tauhid murni: Allah itu Esa, Yang Maha Tunggal (As-Samad). Ia tidak lahir maupun diperanakkan, dan tidak ada yang serupa dengan-Nya.",
+      "passed": true,
+      "cost": {
+        "modelId": "openai/gpt-5-nano",
+        "tokensIn": 164,
+        "tokensOut": 837,
+        "latencyMs": 5145,
+        "costMicroUsd": 343,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "sm-h-01",
+      "language": "id",
+      "expected": "{\"minSentences\":1,\"maxSentences\":3}",
+      "got": "Bab ini menekankan bahwa amal-amal dinilai berdasarkan niatnya, dan setiap orang memperoleh balasan sesuai dengan niat yang ia tunaikan. Melalui contoh hijrah, ditunjukkan bahwa tujuan di balik perbuatanlah yang menentukan hasilnya. Dengan demikian, niat yang benar menjadi inti penilaian atas tindakan manusia.",
+      "passed": true,
+      "cost": {
+        "modelId": "openai/gpt-5-nano",
+        "tokensIn": 470,
+        "tokensOut": 1082,
+        "latencyMs": 7541,
+        "costMicroUsd": 457,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "sm-h-02",
+      "language": "id",
+      "expected": "{\"minSentences\":1,\"maxSentences\":3}",
+      "got": "Bab ini membahas taharah (bersuci) sebagai persiapan ibadah, mencakup tata cara wudu, tayamum, serta syarat dan pembatal najis. Riwayat terkait menggambarkan Nabi saat wahyu turun yang tetap menjaga kekudusan meski cuaca dingin, menegaskan pentingnya kesucian lahir dan batin bagi umat Islam.",
+      "passed": true,
+      "cost": {
+        "modelId": "openai/gpt-5-nano",
+        "tokensIn": 184,
+        "tokensOut": 1516,
+        "latencyMs": 15785,
+        "costMicroUsd": 616,
+        "estimated": false
+      }
+    }
+  ]
+}

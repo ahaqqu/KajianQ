@@ -1,0 +1,410 @@
+{
+  "schema": 1,
+  "task": "router-bench",
+  "model": "openai/gpt-5-nano",
+  "samples": {
+    "version": 1,
+    "casesSha256": "sha256:e06d9a040a7bc2eecbb58fdfd523d9a95e4e142f44e0f80e2886bbb64378316e"
+  },
+  "promptsSha256": "sha256:71e8931466bb00d275cdd4466351f821e66ccbd23439e32d05abfc2e1fb82bdf",
+  "budget": {
+    "capMicroUsd": 1000000,
+    "plannedCases": 25,
+    "totalMicroUsd": 28202
+  },
+  "totals": {
+    "cases": 25,
+    "scored": 25,
+    "passed": 12,
+    "accuracy": 0.48
+  },
+  "gate": {
+    "gatePass": false,
+    "overallAccuracy": 0.48,
+    "failedLanguages": ["id", "en", "ar"],
+    "floors": {
+      "overall": 0.85,
+      "perLanguage": 0.75,
+      "minCasesPerLanguage": 3
+    }
+  },
+  "startedAt": "2026-11-14T00:40:25.381Z",
+  "finishedAt": "2026-11-14T00:47:48.480Z",
+  "records": [
+    {
+      "caseId": "rt-id-01",
+      "language": "id",
+      "expected": "{\"intent\":\"ruling\",\"category\":\"fikih\",\"needsPrinciple\":false}",
+      "got": "{\"intent\":\"ruling\",\"category\":\"fikih\",\"needsPrinciple\":true,\"principleTags\":[\"yusr\",\"rahmah\",\"masyaqqah\"]}",
+      "passed": false,
+      "cost": {
+        "modelId": "openai/gpt-5-nano",
+        "tokensIn": 365,
+        "tokensOut": 2248,
+        "latencyMs": 13396,
+        "costMicroUsd": 918,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "rt-id-02",
+      "language": "id",
+      "expected": "{\"intent\":\"ruling\",\"category\":\"fikih\",\"needsPrinciple\":true}",
+      "got": "{\"intent\":\"ruling\",\"category\":\"fikih\",\"needsPrinciple\":true,\"principleTags\":[\"dharar\",\"rahmah\",\"masyaqqah\"]}",
+      "passed": true,
+      "cost": {
+        "modelId": "openai/gpt-5-nano",
+        "tokensIn": 366,
+        "tokensOut": 2283,
+        "latencyMs": 24480,
+        "costMicroUsd": 932,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "rt-id-03",
+      "language": "id",
+      "expected": "{\"intent\":\"comparison\",\"category\":\"fikih\",\"needsPrinciple\":false}",
+      "got": "{\"intent\":\"comparison\",\"category\":\"fikih\",\"needsPrinciple\":true,\"principleTags\":[\"yusr\",\"rahmah\",\"masyaqqah\"]}",
+      "passed": false,
+      "cost": {
+        "modelId": "openai/gpt-5-nano",
+        "tokensIn": 371,
+        "tokensOut": 3398,
+        "latencyMs": 23227,
+        "costMicroUsd": 1378,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "rt-id-04",
+      "language": "id",
+      "expected": "{\"intent\":\"history\",\"category\":\"sejarah\"}",
+      "got": "{\"intent\":\"history\",\"category\":\"sejarah\",\"needsPrinciple\":false,\"principleTags\":[]}",
+      "passed": true,
+      "cost": {
+        "modelId": "openai/gpt-5-nano",
+        "tokensIn": 373,
+        "tokensOut": 2872,
+        "latencyMs": 14566,
+        "costMicroUsd": 1168,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "rt-id-05",
+      "language": "id",
+      "expected": "{\"intent\":\"aqidah\",\"category\":\"aqidah\",\"needsPrinciple\":false}",
+      "got": "{\"intent\":\"factual\",\"category\":\"aqidah\",\"needsPrinciple\":true,\"principleTags\":[\"rahmah\",\"yusr\"]}",
+      "passed": false,
+      "cost": {
+        "modelId": "openai/gpt-5-nano",
+        "tokensIn": 363,
+        "tokensOut": 2442,
+        "latencyMs": 15581,
+        "costMicroUsd": 995,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "rt-id-06",
+      "language": "id",
+      "expected": "{\"intent\":\"factual\",\"category\":\"hadith\",\"needsPrinciple\":false}",
+      "got": "{\"intent\":\"factual\",\"category\":\"hadith\",\"needsPrinciple\":false,\"principleTags\":[]}",
+      "passed": true,
+      "cost": {
+        "modelId": "openai/gpt-5-nano",
+        "tokensIn": 499,
+        "tokensOut": 1583,
+        "latencyMs": 17231,
+        "costMicroUsd": 659,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "rt-id-07",
+      "language": "id",
+      "expected": "{\"intent\":\"analogy\",\"category\":\"fikih\",\"needsPrinciple\":true}",
+      "got": "{\"intent\":\"ruling\",\"category\":\"fikih\",\"needsPrinciple\":true,\"principleTags\":[\"yusr\",\"rahmah\",\"masyaqqah\"]}",
+      "passed": false,
+      "cost": {
+        "modelId": "openai/gpt-5-nano",
+        "tokensIn": 388,
+        "tokensOut": 3165,
+        "latencyMs": 21209,
+        "costMicroUsd": 1286,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "rt-id-08",
+      "language": "id",
+      "expected": "{\"intent\":\"factual\",\"category\":\"quran\",\"needsPrinciple\":false}",
+      "got": "{\"intent\":\"factual\",\"category\":\"quran\",\"needsPrinciple\":false,\"principleTags\":[]}",
+      "passed": true,
+      "cost": {
+        "modelId": "openai/gpt-5-nano",
+        "tokensIn": 369,
+        "tokensOut": 2151,
+        "latencyMs": 13198,
+        "costMicroUsd": 879,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "rt-id-09",
+      "language": "id",
+      "expected": "{\"intent\":\"ruling\",\"category\":\"fikih\",\"needsPrinciple\":true}",
+      "got": "{\"intent\":\"ruling\",\"category\":\"fikih\",\"needsPrinciple\":true,\"principleTags\":[\"yusr\",\"rahmah\",\"masyaqqah\"]}",
+      "passed": true,
+      "cost": {
+        "modelId": "openai/gpt-5-nano",
+        "tokensIn": 379,
+        "tokensOut": 3323,
+        "latencyMs": 19204,
+        "costMicroUsd": 1349,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "rt-en-01",
+      "language": "en",
+      "expected": "{\"intent\":\"ruling\",\"category\":\"fikih\",\"needsPrinciple\":false}",
+      "got": "{\"intent\":\"ruling\",\"category\":\"fikih\",\"needsPrinciple\":true,\"principleTags\":[\"yusr\",\"rahmah\",\"masyaqqah\"]}",
+      "passed": false,
+      "cost": {
+        "modelId": "openai/gpt-5-nano",
+        "tokensIn": 367,
+        "tokensOut": 3343,
+        "latencyMs": 23692,
+        "costMicroUsd": 1356,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "rt-en-02",
+      "language": "en",
+      "expected": "{\"intent\":\"ruling\",\"category\":\"fikih\",\"needsPrinciple\":true}",
+      "got": "{\"intent\":\"ruling\",\"category\":\"fikih\",\"needsPrinciple\":true,\"principleTags\":[\"dharar\",\"rahmah\",\"yusr\"]}",
+      "passed": true,
+      "cost": {
+        "modelId": "openai/gpt-5-nano",
+        "tokensIn": 365,
+        "tokensOut": 3432,
+        "latencyMs": 29654,
+        "costMicroUsd": 1392,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "rt-en-03",
+      "language": "en",
+      "expected": "{\"intent\":\"comparison\",\"category\":\"fikih\",\"needsPrinciple\":false}",
+      "got": "{\"intent\":\"comparison\",\"category\":\"fikih\",\"needsPrinciple\":true,\"principleTags\":[\"yusr\",\"masyaqqah\",\"dharar\"]}",
+      "passed": false,
+      "cost": {
+        "modelId": "openai/gpt-5-nano",
+        "tokensIn": 371,
+        "tokensOut": 2610,
+        "latencyMs": 17730,
+        "costMicroUsd": 1063,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "rt-en-04",
+      "language": "en",
+      "expected": "{\"intent\":\"history\",\"category\":\"sejarah\"}",
+      "got": "{\"intent\":\"factual\",\"category\":\"sejarah\",\"needsPrinciple\":false,\"principleTags\":[]}",
+      "passed": false,
+      "cost": {
+        "modelId": "openai/gpt-5-nano",
+        "tokensIn": 380,
+        "tokensOut": 2274,
+        "latencyMs": 15989,
+        "costMicroUsd": 929,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "rt-en-05",
+      "language": "en",
+      "expected": "{\"intent\":\"aqidah\",\"category\":\"aqidah\",\"needsPrinciple\":false}",
+      "got": "{\"intent\":\"aqidah\",\"category\":\"aqidah\",\"needsPrinciple\":true,\"principleTags\":[\"rahmah\",\"yusr\"]}",
+      "passed": false,
+      "cost": {
+        "modelId": "openai/gpt-5-nano",
+        "tokensIn": 363,
+        "tokensOut": 2666,
+        "latencyMs": 11951,
+        "costMicroUsd": 1085,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "rt-en-06",
+      "language": "en",
+      "expected": "{\"intent\":\"factual\",\"category\":\"hadith\",\"needsPrinciple\":false}",
+      "got": "{\"intent\":\"factual\",\"category\":\"hadith\",\"needsPrinciple\":true,\"principleTags\":[]}",
+      "passed": false,
+      "cost": {
+        "modelId": "openai/gpt-5-nano",
+        "tokensIn": 495,
+        "tokensOut": 3239,
+        "latencyMs": 16497,
+        "costMicroUsd": 1321,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "rt-en-07",
+      "language": "en",
+      "expected": "{\"intent\":\"factual\",\"category\":\"quran\",\"needsPrinciple\":false}",
+      "got": "{\"intent\":\"factual\",\"category\":\"quran\",\"needsPrinciple\":false,\"principleTags\":[]}",
+      "passed": true,
+      "cost": {
+        "modelId": "openai/gpt-5-nano",
+        "tokensIn": 367,
+        "tokensOut": 2111,
+        "latencyMs": 14032,
+        "costMicroUsd": 863,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "rt-en-08",
+      "language": "en",
+      "expected": "{\"intent\":\"analogy\",\"category\":\"fikih\",\"needsPrinciple\":true}",
+      "got": "{\"intent\":\"ruling\",\"category\":\"fikih\",\"needsPrinciple\":true,\"principleTags\":[\"yusr\",\"rahmah\",\"masyaqqah\"]}",
+      "passed": false,
+      "cost": {
+        "modelId": "openai/gpt-5-nano",
+        "tokensIn": 383,
+        "tokensOut": 3254,
+        "latencyMs": 19411,
+        "costMicroUsd": 1321,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "rt-ar-01",
+      "language": "ar",
+      "expected": "{\"intent\":\"ruling\",\"category\":\"fikih\",\"needsPrinciple\":false}",
+      "got": "{\"intent\":\"ruling\",\"category\":\"fikih\",\"needsPrinciple\":true,\"principleTags\":[\"yusr\",\"rahmah\",\"dharar\"]}",
+      "passed": false,
+      "cost": {
+        "modelId": "openai/gpt-5-nano",
+        "tokensIn": 364,
+        "tokensOut": 3643,
+        "latencyMs": 24886,
+        "costMicroUsd": 1476,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "rt-ar-02",
+      "language": "ar",
+      "expected": "{\"intent\":\"ruling\",\"category\":\"fikih\",\"needsPrinciple\":true}",
+      "got": "{\"intent\":\"ruling\",\"category\":\"fikih\",\"needsPrinciple\":true,\"principleTags\":[\"rahmah\",\"dharar\",\"umum_balwa\"]}",
+      "passed": true,
+      "cost": {
+        "modelId": "openai/gpt-5-nano",
+        "tokensIn": 366,
+        "tokensOut": 2302,
+        "latencyMs": 12500,
+        "costMicroUsd": 940,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "rt-ar-03",
+      "language": "ar",
+      "expected": "{\"intent\":\"comparison\",\"category\":\"fikih\",\"needsPrinciple\":false}",
+      "got": "{\"intent\":\"comparison\",\"category\":\"fikih\",\"needsPrinciple\":true,\"principleTags\":[\"yusr\",\"rahmah\",\"masyaqqah\"]}",
+      "passed": false,
+      "cost": {
+        "modelId": "openai/gpt-5-nano",
+        "tokensIn": 368,
+        "tokensOut": 3747,
+        "latencyMs": 18396,
+        "costMicroUsd": 1518,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "rt-ar-04",
+      "language": "ar",
+      "expected": "{\"intent\":\"history\",\"category\":\"sejarah\"}",
+      "got": "{\"intent\":\"history\",\"category\":\"sejarah\",\"needsPrinciple\":false,\"principleTags\":[]}",
+      "passed": true,
+      "cost": {
+        "modelId": "openai/gpt-5-nano",
+        "tokensIn": 371,
+        "tokensOut": 2313,
+        "latencyMs": 12751,
+        "costMicroUsd": 944,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "rt-ar-05",
+      "language": "ar",
+      "expected": "{\"intent\":\"aqidah\",\"category\":\"aqidah\",\"needsPrinciple\":false}",
+      "got": "{\"intent\":\"factual\",\"category\":\"aqidah\",\"needsPrinciple\":true,\"principleTags\":[\"rahmah\",\"yusr\",\"dharar\"]}",
+      "passed": false,
+      "cost": {
+        "modelId": "openai/gpt-5-nano",
+        "tokensIn": 364,
+        "tokensOut": 2914,
+        "latencyMs": 14980,
+        "costMicroUsd": 1184,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "rt-ar-06",
+      "language": "ar",
+      "expected": "{\"intent\":\"factual\",\"category\":\"hadith\",\"needsPrinciple\":false}",
+      "got": "{\"intent\":\"factual\",\"category\":\"hadith\",\"needsPrinciple\":false,\"principleTags\":[]}",
+      "passed": true,
+      "cost": {
+        "modelId": "openai/gpt-5-nano",
+        "tokensIn": 488,
+        "tokensOut": 3076,
+        "latencyMs": 16590,
+        "costMicroUsd": 1255,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "rt-ar-07",
+      "language": "ar",
+      "expected": "{\"intent\":\"factual\",\"category\":\"quran\",\"needsPrinciple\":false}",
+      "got": "{\"intent\":\"factual\",\"category\":\"quran\",\"needsPrinciple\":false,\"principleTags\":[]}",
+      "passed": true,
+      "cost": {
+        "modelId": "openai/gpt-5-nano",
+        "tokensIn": 365,
+        "tokensOut": 2420,
+        "latencyMs": 17831,
+        "costMicroUsd": 987,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "rt-ar-08",
+      "language": "ar",
+      "expected": "{\"intent\":\"history\",\"category\":\"sejarah\"}",
+      "got": "{\"intent\":\"history\",\"category\":\"sejarah\",\"needsPrinciple\":false,\"principleTags\":[]}",
+      "passed": true,
+      "cost": {
+        "modelId": "openai/gpt-5-nano",
+        "tokensIn": 364,
+        "tokensOut": 2463,
+        "latencyMs": 14089,
+        "costMicroUsd": 1004,
+        "estimated": false
+      }
+    }
+  ]
+}

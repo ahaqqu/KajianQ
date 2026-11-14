@@ -3,7 +3,6 @@ import { admitSubQueryText } from "./chat-subquery-admission";
 import { GRADES, MADZHABS, TEXT_LAYERS } from "./filters";
 import {
   INTENTS,
-  PRINCIPLE_TAGS,
   SUBJECT_AREAS,
   SUB_QUERY_ROLES,
   type SubjectArea,
@@ -179,13 +178,22 @@ export const ROUTER_SYSTEM_PROMPT = [
   ` "grade": "" | "${alternatives(GRADES)}",`,
   ` "chainGrade": "" | "${alternatives(GRADES)}",`,
   ` "textLayer": "" | "${alternatives(TEXT_LAYERS)}",`,
-  ' "needsPrinciple": true | false,',
-  ` "principleTags": [] | ["${alternatives(PRINCIPLE_TAGS)}"],`,
   ' "confidence": 0.0-1.0,',
   ' "reasoning": "one short sentence",',
   ` "subQueries": [{"text": "a focused retrieval query", "role": "${alternatives(SUB_QUERY_ROLES)}"}]}`,
   "Rules for subQueries — 2 to 4 of them, each phrased as a retrieval query:",
-  `always one "${role("factual")}"; one "${role("principle")}" when needsPrinciple; one "${role("dalil")}" when category is ${area("fikih")}; one "${role("sanad")}" when category is ${area("hadith")}.`,
+  `always one "${role("factual")}"; one "${role("dalil")}" when category is ${area("fikih")}; one "${role("sanad")}" when category is ${area("hadith")}.`,
   "Mix the question's language with its classical terms, and use different angles rather than repeating the question.",
   'Use "" or [] for filters the question does not constrain. No prose outside the JSON.',
 ].join("\n");
+
+/**
+ * The full wording a routing-bench run measures, serialized for pinning: the
+ * base system prompt plus the follow-up rule the sealed multi-turn cases ride
+ * — the two pieces `routerCallFor` composes, so a wording change in either is
+ * visible per run without re-sealing the case data.
+ */
+export const ROUTER_BENCH_PROMPTS_IDENTITY = JSON.stringify({
+  system: ROUTER_SYSTEM_PROMPT,
+  followUpRule: ROUTER_FOLLOW_UP_RULE,
+});
