@@ -1,0 +1,410 @@
+{
+  "schema": 1,
+  "task": "router-bench",
+  "model": "google/gemini-3.8-flash",
+  "samples": {
+    "version": 2,
+    "casesSha256": "sha256:bd1eb9aa3543768f1f596bb5f907a3bb5500b2366ee42a75795987135bc30262"
+  },
+  "promptsSha256": "sha256:2ec22ca99e375ee0c83c19c2c36c9b168307af0d4fdc8507b848fb0ec1ef32cb",
+  "budget": {
+    "capMicroUsd": null,
+    "plannedCases": 25,
+    "totalMicroUsd": 55597
+  },
+  "totals": {
+    "cases": 25,
+    "scored": 25,
+    "passed": 24,
+    "accuracy": 0.96
+  },
+  "gate": {
+    "gatePass": true,
+    "overallAccuracy": 0.96,
+    "failedLanguages": [],
+    "floors": {
+      "overall": 0.85,
+      "perLanguage": 0.75,
+      "minCasesPerLanguage": 3
+    }
+  },
+  "startedAt": "2026-11-14T03:01:12.546Z",
+  "finishedAt": "2026-11-14T03:03:10.691Z",
+  "records": [
+    {
+      "caseId": "rt-id-01",
+      "language": "id",
+      "expected": "{\"intent\":\"ruling\",\"category\":\"fikih\"}",
+      "got": "{\"intent\":\"ruling\",\"category\":\"fikih\"}",
+      "passed": true,
+      "cost": {
+        "modelId": "google/gemini-3.8-flash",
+        "tokensIn": 307,
+        "tokensOut": 487,
+        "latencyMs": 5404,
+        "costMicroUsd": 2263,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "rt-id-02",
+      "language": "id",
+      "expected": "{\"intent\":\"ruling\",\"category\":\"fikih\"}",
+      "got": "{\"intent\":\"ruling\",\"category\":\"fikih\"}",
+      "passed": true,
+      "cost": {
+        "modelId": "google/gemini-3.8-flash",
+        "tokensIn": 307,
+        "tokensOut": 750,
+        "latencyMs": 6394,
+        "costMicroUsd": 3348,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "rt-id-03",
+      "language": "id",
+      "expected": "{\"intent\":\"comparison\",\"category\":\"fikih\"}",
+      "got": "{\"intent\":\"comparison\",\"category\":\"fikih\"}",
+      "passed": true,
+      "cost": {
+        "modelId": "google/gemini-3.8-flash",
+        "tokensIn": 311,
+        "tokensOut": 461,
+        "latencyMs": 5219,
+        "costMicroUsd": 2159,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "rt-id-04",
+      "language": "id",
+      "expected": "{\"intent\":\"history\",\"category\":\"sejarah\"}",
+      "got": "{\"intent\":\"history\",\"category\":\"sejarah\"}",
+      "passed": true,
+      "cost": {
+        "modelId": "google/gemini-3.8-flash",
+        "tokensIn": 314,
+        "tokensOut": 281,
+        "latencyMs": 3331,
+        "costMicroUsd": 1419,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "rt-id-05",
+      "language": "id",
+      "expected": "{\"intent\":\"aqidah\",\"category\":\"aqidah\"}",
+      "got": "{\"intent\":\"aqidah\",\"category\":\"aqidah\"}",
+      "passed": true,
+      "cost": {
+        "modelId": "google/gemini-3.8-flash",
+        "tokensIn": 305,
+        "tokensOut": 386,
+        "latencyMs": 4514,
+        "costMicroUsd": 1844,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "rt-id-06",
+      "language": "id",
+      "expected": "{\"intent\":\"factual\",\"category\":\"hadith\"}",
+      "got": "{\"intent\":\"factual\",\"category\":\"hadith\"}",
+      "passed": true,
+      "cost": {
+        "modelId": "google/gemini-3.8-flash",
+        "tokensIn": 438,
+        "tokensOut": 574,
+        "latencyMs": 5973,
+        "costMicroUsd": 2730,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "rt-id-07",
+      "language": "id",
+      "expected": "{\"intent\":\"analogy\",\"category\":\"fikih\"}",
+      "got": "{\"intent\":\"analogy\",\"category\":\"fikih\"}",
+      "passed": true,
+      "cost": {
+        "modelId": "google/gemini-3.8-flash",
+        "tokensIn": 326,
+        "tokensOut": 457,
+        "latencyMs": 5018,
+        "costMicroUsd": 2155,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "rt-id-08",
+      "language": "id",
+      "expected": "{\"intent\":\"factual\",\"category\":\"quran\"}",
+      "got": "{\"intent\":\"factual\",\"category\":\"quran\"}",
+      "passed": true,
+      "cost": {
+        "modelId": "google/gemini-3.8-flash",
+        "tokensIn": 311,
+        "tokensOut": 393,
+        "latencyMs": 4326,
+        "costMicroUsd": 1878,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "rt-id-09",
+      "language": "id",
+      "expected": "{\"intent\":\"ruling\",\"category\":\"fikih\"}",
+      "got": "{\"intent\":\"ruling\",\"category\":\"fikih\"}",
+      "passed": true,
+      "cost": {
+        "modelId": "google/gemini-3.8-flash",
+        "tokensIn": 320,
+        "tokensOut": 397,
+        "latencyMs": 4352,
+        "costMicroUsd": 1902,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "rt-en-01",
+      "language": "en",
+      "expected": "{\"intent\":\"ruling\",\"category\":\"fikih\"}",
+      "got": "{\"intent\":\"ruling\",\"category\":\"fikih\"}",
+      "passed": true,
+      "cost": {
+        "modelId": "google/gemini-3.8-flash",
+        "tokensIn": 309,
+        "tokensOut": 276,
+        "latencyMs": 3610,
+        "costMicroUsd": 1394,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "rt-en-02",
+      "language": "en",
+      "expected": "{\"intent\":\"ruling\",\"category\":\"fikih\"}",
+      "got": "{\"intent\":\"ruling\",\"category\":\"fikih\"}",
+      "passed": true,
+      "cost": {
+        "modelId": "google/gemini-3.8-flash",
+        "tokensIn": 306,
+        "tokensOut": 438,
+        "latencyMs": 4457,
+        "costMicroUsd": 2060,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "rt-en-03",
+      "language": "en",
+      "expected": "{\"intent\":\"comparison\",\"category\":\"fikih\"}",
+      "got": "{\"intent\":\"comparison\",\"category\":\"fikih\"}",
+      "passed": true,
+      "cost": {
+        "modelId": "google/gemini-3.8-flash",
+        "tokensIn": 313,
+        "tokensOut": 397,
+        "latencyMs": 3510,
+        "costMicroUsd": 1896,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "rt-en-04",
+      "language": "en",
+      "expected": "{\"intent\":\"history\",\"category\":\"sejarah\"}",
+      "got": "{\"intent\":\"history\",\"category\":\"sejarah\"}",
+      "passed": true,
+      "cost": {
+        "modelId": "google/gemini-3.8-flash",
+        "tokensIn": 322,
+        "tokensOut": 249,
+        "latencyMs": 3968,
+        "costMicroUsd": 1293,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "rt-en-05",
+      "language": "en",
+      "expected": "{\"intent\":\"aqidah\",\"category\":\"aqidah\"}",
+      "got": "{\"intent\":\"aqidah\",\"category\":\"aqidah\"}",
+      "passed": true,
+      "cost": {
+        "modelId": "google/gemini-3.8-flash",
+        "tokensIn": 305,
+        "tokensOut": 814,
+        "latencyMs": 5760,
+        "costMicroUsd": 3610,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "rt-en-06",
+      "language": "en",
+      "expected": "{\"intent\":\"factual\",\"category\":\"hadith\"}",
+      "got": "{\"intent\":\"factual\",\"category\":\"hadith\"}",
+      "passed": true,
+      "cost": {
+        "modelId": "google/gemini-3.8-flash",
+        "tokensIn": 434,
+        "tokensOut": 773,
+        "latencyMs": 6349,
+        "costMicroUsd": 3547,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "rt-en-07",
+      "language": "en",
+      "expected": "{\"intent\":\"factual\",\"category\":\"quran\"}",
+      "got": "{\"intent\":\"factual\",\"category\":\"quran\"}",
+      "passed": true,
+      "cost": {
+        "modelId": "google/gemini-3.8-flash",
+        "tokensIn": 309,
+        "tokensOut": 560,
+        "latencyMs": 4671,
+        "costMicroUsd": 2565,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "rt-en-08",
+      "language": "en",
+      "expected": "{\"intent\":\"analogy\",\"category\":\"fikih\"}",
+      "got": "{\"intent\":\"ruling\",\"category\":\"fikih\"}",
+      "passed": false,
+      "cost": {
+        "modelId": "google/gemini-3.8-flash",
+        "tokensIn": 325,
+        "tokensOut": 401,
+        "latencyMs": 3798,
+        "costMicroUsd": 1923,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "rt-ar-01",
+      "language": "ar",
+      "expected": "{\"intent\":\"ruling\",\"category\":\"fikih\"}",
+      "got": "{\"intent\":\"ruling\",\"category\":\"fikih\"}",
+      "passed": true,
+      "cost": {
+        "modelId": "google/gemini-3.8-flash",
+        "tokensIn": 307,
+        "tokensOut": 319,
+        "latencyMs": 3470,
+        "costMicroUsd": 1570,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "rt-ar-02",
+      "language": "ar",
+      "expected": "{\"intent\":\"ruling\",\"category\":\"fikih\"}",
+      "got": "{\"intent\":\"ruling\",\"category\":\"fikih\"}",
+      "passed": true,
+      "cost": {
+        "modelId": "google/gemini-3.8-flash",
+        "tokensIn": 308,
+        "tokensOut": 390,
+        "latencyMs": 4448,
+        "costMicroUsd": 1863,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "rt-ar-03",
+      "language": "ar",
+      "expected": "{\"intent\":\"comparison\",\"category\":\"fikih\"}",
+      "got": "{\"intent\":\"comparison\",\"category\":\"fikih\"}",
+      "passed": true,
+      "cost": {
+        "modelId": "google/gemini-3.8-flash",
+        "tokensIn": 310,
+        "tokensOut": 342,
+        "latencyMs": 3013,
+        "costMicroUsd": 1667,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "rt-ar-04",
+      "language": "ar",
+      "expected": "{\"intent\":\"history\",\"category\":\"sejarah\"}",
+      "got": "{\"intent\":\"history\",\"category\":\"sejarah\"}",
+      "passed": true,
+      "cost": {
+        "modelId": "google/gemini-3.8-flash",
+        "tokensIn": 315,
+        "tokensOut": 458,
+        "latencyMs": 4429,
+        "costMicroUsd": 2150,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "rt-ar-05",
+      "language": "ar",
+      "expected": "{\"intent\":\"aqidah\",\"category\":\"aqidah\"}",
+      "got": "{\"intent\":\"aqidah\",\"category\":\"aqidah\"}",
+      "passed": true,
+      "cost": {
+        "modelId": "google/gemini-3.8-flash",
+        "tokensIn": 306,
+        "tokensOut": 530,
+        "latencyMs": 6304,
+        "costMicroUsd": 2439,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "rt-ar-06",
+      "language": "ar",
+      "expected": "{\"intent\":\"factual\",\"category\":\"hadith\"}",
+      "got": "{\"intent\":\"factual\",\"category\":\"hadith\"}",
+      "passed": true,
+      "cost": {
+        "modelId": "google/gemini-3.8-flash",
+        "tokensIn": 431,
+        "tokensOut": 1046,
+        "latencyMs": 8429,
+        "costMicroUsd": 4671,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "rt-ar-07",
+      "language": "ar",
+      "expected": "{\"intent\":\"factual\",\"category\":\"quran\"}",
+      "got": "{\"intent\":\"factual\",\"category\":\"quran\"}",
+      "passed": true,
+      "cost": {
+        "modelId": "google/gemini-3.8-flash",
+        "tokensIn": 308,
+        "tokensOut": 431,
+        "latencyMs": 4787,
+        "costMicroUsd": 2032,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "rt-ar-08",
+      "language": "ar",
+      "expected": "{\"intent\":\"history\",\"category\":\"sejarah\"}",
+      "got": "{\"intent\":\"history\",\"category\":\"sejarah\"}",
+      "passed": true,
+      "cost": {
+        "modelId": "google/gemini-3.8-flash",
+        "tokensIn": 307,
+        "tokensOut": 234,
+        "latencyMs": 2594,
+        "costMicroUsd": 1219,
+        "estimated": false
+      }
+    }
+  ]
+}

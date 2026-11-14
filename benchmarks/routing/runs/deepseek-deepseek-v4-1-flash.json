@@ -1,0 +1,410 @@
+{
+  "schema": 1,
+  "task": "router-bench",
+  "model": "deepseek/deepseek-v4.1-flash",
+  "samples": {
+    "version": 2,
+    "casesSha256": "sha256:bd1eb9aa3543768f1f596bb5f907a3bb5500b2366ee42a75795987135bc30262"
+  },
+  "promptsSha256": "sha256:2ec22ca99e375ee0c83c19c2c36c9b168307af0d4fdc8507b848fb0ec1ef32cb",
+  "budget": {
+    "capMicroUsd": null,
+    "plannedCases": 25,
+    "totalMicroUsd": 73819
+  },
+  "totals": {
+    "cases": 25,
+    "scored": 25,
+    "passed": 21,
+    "accuracy": 0.84
+  },
+  "gate": {
+    "gatePass": false,
+    "overallAccuracy": 0.84,
+    "failedLanguages": [],
+    "floors": {
+      "overall": 0.85,
+      "perLanguage": 0.75,
+      "minCasesPerLanguage": 3
+    }
+  },
+  "startedAt": "2026-11-14T03:03:10.692Z",
+  "finishedAt": "2026-11-14T03:04:13.549Z",
+  "records": [
+    {
+      "caseId": "rt-id-01",
+      "language": "id",
+      "expected": "{\"intent\":\"ruling\",\"category\":\"fikih\"}",
+      "got": "{\"intent\":\"ruling\",\"category\":\"fikih\"}",
+      "passed": true,
+      "cost": {
+        "modelId": "deepseek/deepseek-v4.1-flash",
+        "tokensIn": 339,
+        "tokensOut": 737,
+        "latencyMs": 3447,
+        "costMicroUsd": 987,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "rt-id-02",
+      "language": "id",
+      "expected": "{\"intent\":\"ruling\",\"category\":\"fikih\"}",
+      "got": "{\"intent\":\"ruling\",\"category\":\"fikih\"}",
+      "passed": true,
+      "cost": {
+        "modelId": "deepseek/deepseek-v4.1-flash",
+        "tokensIn": 340,
+        "tokensOut": 364,
+        "latencyMs": 973,
+        "costMicroUsd": 539,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "rt-id-03",
+      "language": "id",
+      "expected": "{\"intent\":\"comparison\",\"category\":\"fikih\"}",
+      "got": "{\"intent\":\"comparison\",\"category\":\"fikih\"}",
+      "passed": true,
+      "cost": {
+        "modelId": "deepseek/deepseek-v4.1-flash",
+        "tokensIn": 345,
+        "tokensOut": 400,
+        "latencyMs": 1901,
+        "costMicroUsd": 584,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "rt-id-04",
+      "language": "id",
+      "expected": "{\"intent\":\"history\",\"category\":\"sejarah\"}",
+      "got": "{\"intent\":\"history\",\"category\":\"sejarah\"}",
+      "passed": true,
+      "cost": {
+        "modelId": "deepseek/deepseek-v4.1-flash",
+        "tokensIn": 348,
+        "tokensOut": 461,
+        "latencyMs": 2007,
+        "costMicroUsd": 658,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "rt-id-05",
+      "language": "id",
+      "expected": "{\"intent\":\"aqidah\",\"category\":\"aqidah\"}",
+      "got": "{\"intent\":\"aqidah\",\"category\":\"aqidah\"}",
+      "passed": true,
+      "cost": {
+        "modelId": "deepseek/deepseek-v4.1-flash",
+        "tokensIn": 337,
+        "tokensOut": 310,
+        "latencyMs": 1218,
+        "costMicroUsd": 474,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "rt-id-06",
+      "language": "id",
+      "expected": "{\"intent\":\"factual\",\"category\":\"hadith\"}",
+      "got": "{\"intent\":\"factual\",\"category\":\"hadith\"}",
+      "passed": true,
+      "cost": {
+        "modelId": "deepseek/deepseek-v4.1-flash",
+        "tokensIn": 474,
+        "tokensOut": 585,
+        "latencyMs": 3262,
+        "costMicroUsd": 845,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "rt-id-07",
+      "language": "id",
+      "expected": "{\"intent\":\"analogy\",\"category\":\"fikih\"}",
+      "got": "{\"intent\":\"ruling\",\"category\":\"fikih\"}",
+      "passed": false,
+      "cost": {
+        "modelId": "deepseek/deepseek-v4.1-flash",
+        "tokensIn": 362,
+        "tokensOut": 635,
+        "latencyMs": 2565,
+        "costMicroUsd": 871,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "rt-id-08",
+      "language": "id",
+      "expected": "{\"intent\":\"factual\",\"category\":\"quran\"}",
+      "got": "{\"intent\":\"factual\",\"category\":\"quran\"}",
+      "passed": true,
+      "cost": {
+        "modelId": "deepseek/deepseek-v4.1-flash",
+        "tokensIn": 342,
+        "tokensOut": 519,
+        "latencyMs": 2619,
+        "costMicroUsd": 726,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "rt-id-09",
+      "language": "id",
+      "expected": "{\"intent\":\"ruling\",\"category\":\"fikih\"}",
+      "got": "{\"intent\":\"ruling\",\"category\":\"fikih\"}",
+      "passed": true,
+      "cost": {
+        "modelId": "deepseek/deepseek-v4.1-flash",
+        "tokensIn": 351,
+        "tokensOut": 567,
+        "latencyMs": 3279,
+        "costMicroUsd": 786,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "rt-en-01",
+      "language": "en",
+      "expected": "{\"intent\":\"ruling\",\"category\":\"fikih\"}",
+      "got": "{\"intent\":\"ruling\",\"category\":\"fikih\"}",
+      "passed": true,
+      "cost": {
+        "modelId": "deepseek/deepseek-v4.1-flash",
+        "tokensIn": 340,
+        "tokensOut": 698,
+        "latencyMs": 2099,
+        "costMicroUsd": 940,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "rt-en-02",
+      "language": "en",
+      "expected": "{\"intent\":\"ruling\",\"category\":\"fikih\"}",
+      "got": "{\"intent\":\"ruling\",\"category\":\"fikih\"}",
+      "passed": true,
+      "cost": {
+        "modelId": "deepseek/deepseek-v4.1-flash",
+        "tokensIn": 338,
+        "tokensOut": 559,
+        "latencyMs": 1580,
+        "costMicroUsd": 773,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "rt-en-03",
+      "language": "en",
+      "expected": "{\"intent\":\"comparison\",\"category\":\"fikih\"}",
+      "got": "{\"intent\":\"comparison\",\"category\":\"fikih\"}",
+      "passed": true,
+      "cost": {
+        "modelId": "deepseek/deepseek-v4.1-flash",
+        "tokensIn": 345,
+        "tokensOut": 374,
+        "latencyMs": 7230,
+        "costMicroUsd": 553,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "rt-en-04",
+      "language": "en",
+      "expected": "{\"intent\":\"history\",\"category\":\"sejarah\"}",
+      "got": "{\"intent\":\"history\",\"category\":\"sejarah\"}",
+      "passed": true,
+      "cost": {
+        "modelId": "deepseek/deepseek-v4.1-flash",
+        "tokensIn": 353,
+        "tokensOut": 356,
+        "latencyMs": 1439,
+        "costMicroUsd": 534,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "rt-en-05",
+      "language": "en",
+      "expected": "{\"intent\":\"aqidah\",\"category\":\"aqidah\"}",
+      "got": "{\"intent\":\"factual\",\"category\":\"aqidah\"}",
+      "passed": false,
+      "cost": {
+        "modelId": "deepseek/deepseek-v4.1-flash",
+        "tokensIn": 337,
+        "tokensOut": 305,
+        "latencyMs": 794,
+        "costMicroUsd": 468,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "rt-en-06",
+      "language": "en",
+      "expected": "{\"intent\":\"factual\",\"category\":\"hadith\"}",
+      "got": "{\"intent\":\"factual\",\"category\":\"hadith\"}",
+      "passed": true,
+      "cost": {
+        "modelId": "deepseek/deepseek-v4.1-flash",
+        "tokensIn": 464,
+        "tokensOut": 1789,
+        "latencyMs": 6009,
+        "costMicroUsd": 2286,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "rt-en-07",
+      "language": "en",
+      "expected": "{\"intent\":\"factual\",\"category\":\"quran\"}",
+      "got": "{\"intent\":\"factual\",\"category\":\"quran\"}",
+      "passed": true,
+      "cost": {
+        "modelId": "deepseek/deepseek-v4.1-flash",
+        "tokensIn": 340,
+        "tokensOut": 334,
+        "latencyMs": 3206,
+        "costMicroUsd": 503,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "rt-en-08",
+      "language": "en",
+      "expected": "{\"intent\":\"analogy\",\"category\":\"fikih\"}",
+      "got": "{\"intent\":\"ruling\",\"category\":\"fikih\"}",
+      "passed": false,
+      "cost": {
+        "modelId": "deepseek/deepseek-v4.1-flash",
+        "tokensIn": 356,
+        "tokensOut": 875,
+        "latencyMs": 2351,
+        "costMicroUsd": 1157,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "rt-ar-01",
+      "language": "ar",
+      "expected": "{\"intent\":\"ruling\",\"category\":\"fikih\"}",
+      "got": "{\"intent\":\"ruling\",\"category\":\"fikih\"}",
+      "passed": true,
+      "cost": {
+        "modelId": "deepseek/deepseek-v4.1-flash",
+        "tokensIn": 339,
+        "tokensOut": 314,
+        "latencyMs": 2232,
+        "costMicroUsd": 479,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "rt-ar-02",
+      "language": "ar",
+      "expected": "{\"intent\":\"ruling\",\"category\":\"fikih\"}",
+      "got": "{\"intent\":\"ruling\",\"category\":\"fikih\"}",
+      "passed": true,
+      "cost": {
+        "modelId": "deepseek/deepseek-v4.1-flash",
+        "tokensIn": 339,
+        "tokensOut": 444,
+        "latencyMs": 1446,
+        "costMicroUsd": 635,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "rt-ar-03",
+      "language": "ar",
+      "expected": "{\"intent\":\"comparison\",\"category\":\"fikih\"}",
+      "got": "{\"intent\":\"comparison\",\"category\":\"fikih\"}",
+      "passed": true,
+      "cost": {
+        "modelId": "deepseek/deepseek-v4.1-flash",
+        "tokensIn": 342,
+        "tokensOut": 658,
+        "latencyMs": 2352,
+        "costMicroUsd": 893,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "rt-ar-04",
+      "language": "ar",
+      "expected": "{\"intent\":\"history\",\"category\":\"sejarah\"}",
+      "got": "{\"intent\":\"history\",\"category\":\"sejarah\"}",
+      "passed": true,
+      "cost": {
+        "modelId": "deepseek/deepseek-v4.1-flash",
+        "tokensIn": 347,
+        "tokensOut": 441,
+        "latencyMs": 1664,
+        "costMicroUsd": 634,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "rt-ar-05",
+      "language": "ar",
+      "expected": "{\"intent\":\"aqidah\",\"category\":\"aqidah\"}",
+      "got": "{\"intent\":\"factual\",\"category\":\"aqidah\"}",
+      "passed": false,
+      "cost": {
+        "modelId": "deepseek/deepseek-v4.1-flash",
+        "tokensIn": 337,
+        "tokensOut": 287,
+        "latencyMs": 1831,
+        "costMicroUsd": 446,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "rt-ar-06",
+      "language": "ar",
+      "expected": "{\"intent\":\"factual\",\"category\":\"hadith\"}",
+      "got": "{\"intent\":\"factual\",\"category\":\"hadith\"}",
+      "passed": true,
+      "cost": {
+        "modelId": "deepseek/deepseek-v4.1-flash",
+        "tokensIn": 461,
+        "tokensOut": 430,
+        "latencyMs": 4547,
+        "costMicroUsd": 655,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "rt-ar-07",
+      "language": "ar",
+      "expected": "{\"intent\":\"factual\",\"category\":\"quran\"}",
+      "got": "{\"intent\":\"factual\",\"category\":\"quran\"}",
+      "passed": true,
+      "cost": {
+        "modelId": "deepseek/deepseek-v4.1-flash",
+        "tokensIn": 339,
+        "tokensOut": 208,
+        "latencyMs": 858,
+        "costMicroUsd": 352,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "rt-ar-08",
+      "language": "ar",
+      "expected": "{\"intent\":\"history\",\"category\":\"sejarah\"}",
+      "got": "{\"intent\":\"history\",\"category\":\"sejarah\"}",
+      "passed": true,
+      "cost": {
+        "modelId": "deepseek/deepseek-v4.1-flash",
+        "tokensIn": 339,
+        "tokensOut": 285,
+        "latencyMs": 1943,
+        "costMicroUsd": 444,
+        "estimated": false
+      }
+    }
+  ]
+}
