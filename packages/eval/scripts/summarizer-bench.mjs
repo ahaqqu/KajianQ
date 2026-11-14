@@ -110,14 +110,16 @@ if (reportOnly) {
 
 // The prompts pin: hash the two production system prompts verbatim, read
 // from the builders themselves so a wording change moves the pin without
-// any duplicated wording here.
-const promptByKind = (kind) =>
-  kind === "surah"
-    ? domain.surahSummaryPrompt({ sourceKey: "pin", title: "pin", childTexts: ["pin"] })
-    : domain.hadithSectionSummaryPrompt({ sourceKey: "pin", title: "pin", childTexts: ["pin"] });
+// any duplicated wording here. The kind vocabulary is the composition
+// root's — an unknown kind fails loudly, never silently mis-prompted.
+const buildSpec = (kind, input) => {
+  if (kind === "surah") return domain.surahSummaryPrompt(input);
+  if (kind === "hadith-section") return domain.hadithSectionSummaryPrompt(input);
+  return fail(`fixture case kind "${kind}" names no production summarizer prompt`);
+};
 const systemPromptOf = (kind) => {
-  const prompt = promptByKind(kind);
-  return prompt.turns[0]?.content ?? fail(`the ${kind} prompt builder produced no system turn`);
+  const spec = buildSpec(kind, { sourceKey: "pin", title: "pin", childTexts: ["pin"] });
+  return spec.turns[0]?.content ?? fail(`the ${kind} prompt builder produced no system turn`);
 };
 const promptsSha256 = evalpkg.summarizerBenchPromptsPin(
   JSON.stringify({
@@ -235,11 +237,10 @@ const buildRun = (modelId, startedAt, outcomes, failure) => {
 
 // The production prompt builder, selected by the case's kind.
 const adapters = {
-  buildPrompt: (c) => {
-    const prompt = promptByKind(c.kind);
-    const spec = prompt({ sourceKey: c.sourceKey, title: c.title, childTexts: c.excerpt });
-    return { turns: spec.turns };
-  },
+  buildPrompt: (c) => ({
+    turns: buildSpec(c.kind, { sourceKey: c.sourceKey, title: c.title, childTexts: c.excerpt })
+      .turns,
+  }),
 };
 
 const gateResults = [];

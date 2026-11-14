@@ -1,0 +1,110 @@
+{
+  "schema": 1,
+  "task": "summarizer-bench",
+  "model": "google/gemini-3.8-flash",
+  "samples": {
+    "version": 1,
+    "casesSha256": "sha256:dcc936e8451f1fbc835639ea406baa06266c035e5dfeb125e4d58d1082f06db4"
+  },
+  "promptsSha256": "sha256:0a82f273c1437f50efd997ab2bf35f84d60f35229973b4b54c6c761c16474386",
+  "budget": {
+    "capMicroUsd": 1000000,
+    "plannedCases": 5,
+    "totalMicroUsd": 11085
+  },
+  "totals": {
+    "cases": 5,
+    "scored": 5,
+    "passed": 5,
+    "accuracy": 1
+  },
+  "gate": {
+    "gatePass": true,
+    "overallAccuracy": 1,
+    "failedLanguages": [],
+    "floors": {
+      "overall": 0.85,
+      "perLanguage": 0.75,
+      "minCasesPerLanguage": 3
+    }
+  },
+  "startedAt": "2026-11-14T00:49:00.824Z",
+  "finishedAt": "2026-11-14T00:49:29.530Z",
+  "records": [
+    {
+      "caseId": "sm-q-01",
+      "language": "id",
+      "expected": "{\"minSentences\":1,\"maxSentences\":3}",
+      "got": "Surah Al-Fatihah bertemakan pujian dan pengagungan kepada Allah sebagai Tuhan semesta alam yang Maha Pengasih serta Penguasa hari pembalasan. Surah ini menegaskan ikrar tauhid untuk menyembah dan memohon pertolongan hanya kepada-Nya, sekaligus memuat doa permohonan agar senantiasa dibimbing menuju jalan yang lurus.",
+      "passed": true,
+      "cost": {
+        "modelId": "google/gemini-3.8-flash",
+        "tokensIn": 253,
+        "tokensOut": 415,
+        "latencyMs": 5362,
+        "costMicroUsd": 1921,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "sm-q-02",
+      "language": "id",
+      "expected": "{\"minSentences\":1,\"maxSentences\":3}",
+      "got": "Surah Al-Ma'un menegaskan ciri-ciri pendusta agama, yaitu mereka yang memperlakukan anak yatim dengan buruk dan enggan memberi makan orang miskin. Surah ini juga memberikan peringatan keras kepada orang-orang yang lalai dalam salatnya, berbuat riya, serta enggan memberikan bantuan barang berguna kepada sesama.",
+      "passed": true,
+      "cost": {
+        "modelId": "google/gemini-3.8-flash",
+        "tokensIn": 229,
+        "tokensOut": 510,
+        "latencyMs": 4560,
+        "costMicroUsd": 2293,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "sm-q-03",
+      "language": "id",
+      "expected": "{\"minSentences\":1,\"maxSentences\":3}",
+      "got": "Surah Al-Ikhlas menegaskan konsep tauhid murni tentang keesaan Allah yang mutlak dan kesempurnaan sifat-sifat-Nya. Surah ini menyatakan bahwa Allah adalah tempat bergantung segala makhluk, tidak beranak maupun diperanakkan, serta tidak ada satu pun yang setara dengan-Nya.",
+      "passed": true,
+      "cost": {
+        "modelId": "google/gemini-3.8-flash",
+        "tokensIn": 147,
+        "tokensOut": 477,
+        "latencyMs": 8732,
+        "costMicroUsd": 2089,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "sm-h-01",
+      "language": "id",
+      "expected": "{\"minSentences\":1,\"maxSentences\":3}",
+      "got": "Kitab ini membahas tentang permulaan turunnya wahyu Ilahi kepada Nabi Muhammad shallallahu 'alaihi wasallam serta bentuk dan keadaan beliau saat menerimanya. Bab ini juga diawali dengan penegasan pentingnya keikhlasan niat dalam setiap perbuatan sebagai landasan utama dalam beramal dan menuntut ilmu.",
+      "passed": true,
+      "cost": {
+        "modelId": "google/gemini-3.8-flash",
+        "tokensIn": 394,
+        "tokensOut": 454,
+        "latencyMs": 4703,
+        "costMicroUsd": 2198,
+        "estimated": false
+      }
+    },
+    {
+      "caseId": "sm-h-02",
+      "language": "id",
+      "expected": "{\"minSentences\":1,\"maxSentences\":3}",
+      "got": "Kitab Thaharah dalam Sunan Abu Dawud membahas berbagai hukum, tata cara, dan adab bersuci dalam Islam sebagai syarat keabsahan ibadah. Pembahasannya mencakup tata cara berwudu, tayamum, mandi wajib, adab buang hajat, pembersihan najis, serta ketentuan terkait haid dan istihadhah.",
+      "passed": true,
+      "cost": {
+        "modelId": "google/gemini-3.8-flash",
+        "tokensIn": 161,
+        "tokensOut": 594,
+        "latencyMs": 5342,
+        "costMicroUsd": 2584,
+        "estimated": false
+      }
+    }
+  ]
+}

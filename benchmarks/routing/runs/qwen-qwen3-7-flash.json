@@ -1,0 +1,36 @@
+{
+  "schema": 1,
+  "task": "router-bench",
+  "model": "qwen/qwen3.7-flash",
+  "samples": {
+    "version": 1,
+    "casesSha256": "sha256:e06d9a040a7bc2eecbb58fdfd523d9a95e4e142f44e0f80e2886bbb64378316e"
+  },
+  "promptsSha256": "sha256:71e8931466bb00d275cdd4466351f821e66ccbd23439e32d05abfc2e1fb82bdf",
+  "budget": {
+    "capMicroUsd": 1000000,
+    "plannedCases": 25,
+    "totalMicroUsd": 91479
+  },
+  "totals": {
+    "cases": 25,
+    "scored": 0,
+    "passed": 0,
+    "accuracy": null
+  },
+  "gate": {
+    "gatePass": false,
+    "overallAccuracy": null,
+    "failedLanguages": [],
+    "floors": {
+      "overall": 0.85,
+      "perLanguage": 0.75,
+      "minCasesPerLanguage": 3
+    }
+  },
+  "aborted": true,
+  "error": "/chat/completions failed: HTTP 404: {\"error\":{\"message\":\"0 endpoints out of 1 requested are available matching your guardrail restrictions and data policy. We removed them for the following reasons (an endpoint may have matched multiple reasons):\\nZDR violation (account settings): 1 endpoint excluded; configurable at https://openroute",
+  "startedAt": "2026-11-14T00:40:06.566Z",
+  "finishedAt": "2026-11-14T00:40:06.630Z",
+  "records": []
+}
