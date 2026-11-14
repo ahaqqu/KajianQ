@@ -235,8 +235,8 @@ describe("deriveTraceFrame — the technical layer", () => {
           { stage: "generator", kind: "llm_call", cost: COST("generator-model"), at: 4 },
           {
             stage: "reviewer",
-            kind: "decision",
-            detail: { purpose: "citation_support", outcome: "skip", items: [] },
+            kind: "llm_call",
+            detail: { purpose: "citation_support" },
             cost: COST("decider-model"),
             at: 5,
           },
