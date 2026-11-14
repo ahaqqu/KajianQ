@@ -1,17 +1,25 @@
-import type { ChatChain, ChatTraceChain, Trace, TraceEvent } from "@app/contracts";
-import type { NarratorIdsLookup, RagStore } from "@app/infra";
-import type { StoreBridge } from "@app/kajianq-domain";
+import type { ChatChain, ChatTraceChunk, Trace, TraceEvent } from "@app/contracts";
+import type { DocChildById, NarratorIdsLookup, RagStore } from "@app/infra";
+import {
+  citationCandidatesIn,
+  citationLabelsOf,
+  groundingLabelsFor,
+  normalizeCitationLabel,
+  type StoreBridge,
+} from "@app/kajianq-domain";
 import type { Warn } from "./chat-trace";
 
 /**
- * The per-chain half of the two user-facing frames: everything the citation sheet
- * and the Trace panel know about a passage's transmission rows.
+ * The evidence joins the two user-facing frames need: the per-chain record the
+ * citation sheet renders, and which of the retrieved passages the answer
+ * actually cited (the Trace panel's top layer).
  *
- * **The record is the persisted trace, not a fresh read.** Rows come from the
- * answer's own `chain_evidence` event, projected in the event's order and never
- * re-read from the store — the same posture the citations and trace frames take
- * for chunks (ADR-0007). The one store join is the narrator's display spelling,
- * resolved by the ids the event recorded, exactly as a chunk's title is.
+ * **The chain record is the persisted trace, not a fresh read.** Rows come from
+ * the answer's own `chain_evidence` event, projected in the event's order and
+ * never re-read from the store — the same posture the citations and trace frames
+ * take for chunks (ADR-0007). The one store join is the narrator's display
+ * spelling, resolved by the ids the event recorded, exactly as a chunk's title
+ * is.
  *
  * **Degradation is honest by omission.** A narrator the catalogue cannot resolve
  * loses only its `nameAr`; the chain keeps the id, because dropping the narrator
@@ -147,26 +155,66 @@ export function citationEvidenceFor(
   return evidence?.notConsulted.includes(childId) === true ? { unread: true } : undefined;
 }
 
+/** One cited span the gate grounded, and the chunk that grounds it. */
+export type CitedRow = { label: string; chunk: DocChildById };
+
 /**
- * The Trace panel's chains-consulted block, or `undefined` when the run recorded no
- * read. An EMPTY list is a recorded read that found no row, which the panel says
- * in its own words rather than showing nothing.
+ * The answer's cited-and-grounded spans, each with the chunk that grounds it:
+ * the citation sheet's rows and, one per chunk, the Trace panel's cited
+ * sources. The grounding decision is the gate's (`groundingLabelsFor`), so the
+ * panel and the gate cannot disagree; the chunk ids are the trace's own
+ * retrieval refs, so a chunk the run never retrieved can never appear.
+ *
+ * A span keeps the form the answer wrote (`QS. 3:1-2`) while the chunk that
+ * backs it is the first retrieved address the gate grounded (the range's head):
+ * the same split the citation chips use.
  */
-export function traceChainsOf(
-  evidence: RecordedEvidence | null,
-  names: NarratorNames,
-): ChatTraceChain[] | undefined {
-  if (evidence === null) return undefined;
-  return [...evidence.byChild.values()].map((child) => ({
-    childId: child.childId,
-    chains: child.chains.map((chain) => toCitationChain(chain, names)),
-    ...(child.moreMayExist === true ? { moreMayExist: true } : {}),
-  }));
+export function citedSourcesOf(input: {
+  chunkIds: readonly string[];
+  answerText: string;
+  chunksById: ReadonlyMap<string, DocChildById>;
+}): { rows: CitedRow[]; sources: ChatTraceChunk[] } {
+  const grounded = new Map<string, DocChildById>();
+  for (const id of input.chunkIds) {
+    const chunk = input.chunksById.get(id);
+    // A gone chunk row resolves to nothing: the invariant is enforced by omission.
+    if (!chunk || chunk.textAr.trim() === "") continue;
+    for (const label of citationLabelsOf({
+      id: chunk.id,
+      text: chunk.textAr,
+      metadata: chunk.metadata,
+    }).map(normalizeCitationLabel)) {
+      if (label !== "" && !grounded.has(label)) grounded.set(label, chunk);
+    }
+  }
+  const known = new Set(grounded.keys());
+  const rows: CitedRow[] = [];
+  for (const span of citationCandidatesIn(input.answerText)) {
+    const labels = groundingLabelsFor(span, known);
+    if (labels === null) continue;
+    // The citation keeps the span as the answer wrote it, backed by the first
+    // address that grounds it — for a range, its head verse.
+    const chunk = labels
+      .map((label) => grounded.get(label))
+      .find((candidate): candidate is DocChildById => candidate !== undefined);
+    if (chunk === undefined || rows.some((row) => row.label === span)) continue;
+    rows.push({ label: span, chunk });
+  }
+  return { rows, sources: sourcesOf(rows) };
 }
 
-/** The chain-bearing passages the panel must mark unread; absent when there are none. */
-export function traceChainsNotConsultedOf(
-  evidence: RecordedEvidence | null,
-): readonly string[] | undefined {
-  return evidence !== null && evidence.notConsulted.length > 0 ? evidence.notConsulted : undefined;
+/** The cited sources' display rows: one per chunk in citation order, carrying the
+ * label the answer wrote and the chunk's title. */
+function sourcesOf(rows: readonly CitedRow[]): ChatTraceChunk[] {
+  const sources: ChatTraceChunk[] = [];
+  for (const row of rows) {
+    if (sources.some((source) => source.id === row.chunk.id)) continue;
+    const title = row.chunk.parentTitle;
+    sources.push({
+      id: row.chunk.id,
+      label: row.label,
+      ...(typeof title === "string" && title.trim() !== "" ? { source: title } : {}),
+    });
+  }
+  return sources;
 }

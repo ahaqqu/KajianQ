@@ -14,10 +14,11 @@ Feature: Feedback — anonymous thumbs and trace-anchored flags
     Then the thumbs carry my rating and anchor the answer
     And the feedback bar thanks me
 
-  Scenario: Flagging a source from the Trace panel anchors the chunk
+  Scenario: Flagging a consulted passage from the Trace's technical details anchors the chunk
     When I ask about ayat kursi with feedback capture
     And the answer renders with a citation chip
     And I expand the answer's Trace for feedback
+    And I open the Trace's technical details
     And I flag the consulted source as irrelevant
     Then the flag carries the chunk reference and the reason category
     And the flag button confirms the report

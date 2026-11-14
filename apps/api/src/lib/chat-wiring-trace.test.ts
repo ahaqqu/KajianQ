@@ -185,6 +185,7 @@ describe("buildChatWiring — the embed call's cost rides the answer trace", () 
       trace: answer.trace,
       messageId: "message-1",
       chunksById: new Map(),
+      citedSources: [],
     });
     expect(frame.technical.models).toContainEqual({ id: "stub-embedder", roles: ["embedding"] });
   });

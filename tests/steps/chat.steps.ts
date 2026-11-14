@@ -508,21 +508,6 @@ Then("the sheet names the corpus edition its hadith numbers follow", async ({ pa
   await expect(caption).toContainText("nomor yang berbeda");
 });
 
-Then("the Trace lists the chains consulted with their sanads", async ({ page }) => {
-  // The sheet is modal: the trace steps start from a closed sheet.
-  await page.keyboard.press("Escape");
-  await expect(page.getByTestId("citation-sheet")).toHaveCount(0);
-  // The panel is the message's sibling, not its descendant: the toggle sits below
-  // the feedback row.
-  await page.getByTestId("trace-toggle").last().click();
-  await page.getByTestId("trace-tech-toggle").last().click();
-  const chains = page.getByTestId("trace-chains");
-  await expect(chains).toBeVisible();
-  await expect(chains.getByTestId("trace-chain-row")).toHaveCount(2);
-  await expect(chains.getByTestId("trace-chain-row").first()).toContainText("al-bukhari");
-  await expect(chains.getByTestId("trace-chain-row").last()).toContainText("dhaif");
-});
-
 When("I ask a question whose dhaif answer wraps the canonical line in markup", async ({ page }) => {
   await openChatWithFixtures(page, { answerFixture: DHAIF_WRAPPED_FIXTURE });
   await page.getByTestId("composer").fill("Hadits tentang amalan tertentu?");
@@ -938,7 +923,7 @@ When("I open the Trace's technical details", async ({ page }) => {
   await page.getByTestId("trace-tech-toggle").last().click();
 });
 
-Then("I see the sources consulted with no technical detail", async ({ page }) => {
+Then("I see the sources cited with no technical detail", async ({ page }) => {
   // The top layer is readable by a non-technical user: the source works, no
   // scores, no machinery.
   const panel = page.getByTestId("trace-body");

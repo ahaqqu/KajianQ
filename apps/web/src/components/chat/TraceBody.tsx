@@ -1,8 +1,8 @@
 import { useState } from "react";
 import type { ChatTraceFrame } from "@app/contracts";
-import { t, useLocale, type Locale, type MessageKey } from "../../lib/i18n";
+import { formatMessage, t, useLocale, type Locale, type MessageKey } from "../../lib/i18n";
 import { MonoLabel } from "../ui";
-import { ChainsSection, ChunkRow, ReviewerSection, SourceRow, Step } from "./TraceSections";
+import { ChunkRow, ReviewerSection, SourceRow, Step } from "./TraceSections";
 
 /** The role labels the panel localizes; an unknown role (a stage this map does
  * not name yet) renders verbatim rather than disappearing. */
@@ -22,9 +22,10 @@ function roleLabel(locale: Locale, role: string): string {
 
 /**
  * The user-facing Trace panel (ADR-0007): every answer expands to show how it
- * was built, in two layers. The default view lists the sources consulted in
- * plain language — readable by a non-technical user. One tap deeper, the
- * technical layer shows the router intent, sub-queries, the retrieved passages
+ * was built, in two layers. The default view lists the sources the answer cited
+ * (its final references) in plain language — readable by a non-technical user.
+ * One tap deeper, the technical layer shows the router intent, sub-queries, the
+ * retrieved passages
  * with their scores, the models and the roles they served, and the reviewer pre-gate's verdict
  * when the trace recorded one — all server-derived from the persisted answer
  * trace and rendered as-is; the client never reconstructs pipeline machinery. ADR-0007's warning stands: this panel is the feedback
@@ -64,23 +65,24 @@ export function TraceBody({
         <MonoLabel>{t(locale, "traceSourcesLabel")}</MonoLabel>
         {trace.sources.length === 0 ? (
           <p data-testid="trace-no-sources" className="mt-2 text-sm text-muted-foreground">
-            {t(locale, "traceNoSources")}
+            {technical.chunks.length === 0
+              ? t(locale, "traceNoSources")
+              : t(locale, "traceNoCitedSources")}
           </p>
         ) : (
           <ol data-testid="trace-sources" className="mt-2">
             {trace.sources.map((chunk, index) => (
-              <SourceRow
-                key={chunk.id}
-                chunk={chunk}
-                index={index}
-                locale={locale}
-                score={score}
-                messageId={messageId}
-                persisted={persisted}
-                feedback={feedback}
-              />
+              <SourceRow key={chunk.id} chunk={chunk} index={index} />
             ))}
           </ol>
+        )}
+        {technical.chunks.length > trace.sources.length && (
+          <p
+            data-testid="trace-considered"
+            className="mt-2 font-mono text-[11px] text-muted-foreground"
+          >
+            {formatMessage(locale, "traceConsideredCount", { count: technical.chunks.length })}
+          </p>
         )}
       </section>
 
@@ -177,22 +179,21 @@ export function TraceBody({
                 </div>
               </Step>
             )}
-            {(technical.chains !== undefined || technical.chainsNotConsulted !== undefined) && (
-              <Step>
-                <ChainsSection
-                  chains={technical.chains ?? []}
-                  notConsulted={technical.chainsNotConsulted ?? []}
-                  locale={locale}
-                />
-              </Step>
-            )}
             {technical.chunks.length > 0 && (
               <Step>
                 <div data-testid="trace-chunks">
                   <MonoLabel>{t(locale, "traceChunksLabel")}</MonoLabel>
                   <ul className="mt-1 space-y-0.5">
                     {technical.chunks.map((chunk) => (
-                      <ChunkRow key={chunk.id} chunk={chunk} locale={locale} score={score} />
+                      <ChunkRow
+                        key={chunk.id}
+                        chunk={chunk}
+                        locale={locale}
+                        score={score}
+                        messageId={messageId}
+                        persisted={persisted}
+                        feedback={feedback}
+                      />
                     ))}
                   </ul>
                 </div>

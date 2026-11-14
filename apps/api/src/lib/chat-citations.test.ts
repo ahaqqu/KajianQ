@@ -16,7 +16,12 @@ import {
 import { createMemoryRagStore } from "@app/kajianq-domain/test-utils/memory-rag-store";
 import { routedQuery } from "@app/kajianq-domain/test-utils/routed-query";
 import { chunkFetcher, traceChunkIds } from "./chat-trace";
-import { answerFramesFor, deriveCitationsFrame, rehydrateTranscript } from "./chat-citations";
+import {
+  answerFramesFor,
+  deriveCitationsFrame,
+  deriveCitationsWithSources,
+  rehydrateTranscript,
+} from "./chat-citations";
 
 /**
  * The invariant under test: **a citation may never reach the UI without a matching
@@ -194,6 +199,53 @@ describe("deriveCitationsFrame — a grounded range gets its chip (#274 A1)", ()
     expect(
       frameOf(traceWithChunks(full.map((c) => c.id)), answer, full).citations.map((c) => c.label),
     ).toEqual(["QS. 2:255-257"]);
+  });
+});
+
+describe("deriveCitationsWithSources — the panel's cited sources", () => {
+  const withSources = (trace: Trace, text: string, chunks: readonly DocChildById[]) =>
+    deriveCitationsWithSources({
+      trace,
+      messageId: "m1",
+      answerText: text,
+      chunksById: new Map(chunks.map((c) => [c.id, c])),
+    });
+
+  it("lists one row per cited chunk, in citation order, with the answer's label and the title", () => {
+    const chunks = [chunk("c1", "QS. 3:1"), chunk("c2", "QS. 3:2"), chunk("c3", "QS. 3:3")];
+    const { frame, sources } = withSources(
+      traceWithChunks(["c1", "c2", "c3"]),
+      "Dalilnya QS. 3:2 dan QS. 3:1.",
+      chunks,
+    );
+    expect(frame.citations.map((c) => c.label)).toEqual(["QS. 3:2", "QS. 3:1"]);
+    expect(sources).toEqual([
+      { id: "c2", label: "QS. 3:2", source: "Sumber Tampilan" },
+      { id: "c1", label: "QS. 3:1", source: "Sumber Tampilan" },
+    ]);
+  });
+
+  it("omits a consulted chunk the answer did not cite", () => {
+    const chunks = [chunk("c1", "QS. 3:1"), chunk("c2", "QS. 3:2")];
+    const { sources } = withSources(traceWithChunks(["c1", "c2"]), "Dalilnya QS. 3:1.", chunks);
+    expect(sources.map((source) => source.id)).toEqual(["c1"]);
+  });
+
+  it("keeps one row when two spans ground the same chunk, labelled by the first", () => {
+    const chunks = [chunk("c1", "QS. 1:1"), chunk("c2", "QS. 1:2")];
+    const { frame, sources } = withSources(
+      traceWithChunks(["c1", "c2"]),
+      "QS. 1:1-2 lalu QS. 1:1.",
+      chunks,
+    );
+    expect(frame.citations.map((c) => c.label)).toEqual(["QS. 1:1-2", "QS. 1:1"]);
+    expect(sources).toEqual([{ id: "c1", label: "QS. 1:1-2", source: "Sumber Tampilan" }]);
+  });
+
+  it("carries no title when the display row has none — never fabricated", () => {
+    const chunks = [chunk("c1", "QS. 3:1", { parentTitle: null })];
+    const { sources } = withSources(traceWithChunks(["c1"]), "Dalilnya QS. 3:1.", chunks);
+    expect(sources).toEqual([{ id: "c1", label: "QS. 3:1" }]);
   });
 });
 
@@ -508,7 +560,8 @@ describe("answerFramesFor — the live route's entry (one shared store read, the
     expect(fetchChunks).toHaveBeenCalledTimes(1);
     expect(fetchChunks).toHaveBeenCalledWith(["c1", "c2"]);
     expect(citations.citations).toHaveLength(1);
-    expect(trace.sources.map((s) => s.id)).toEqual(["c1", "c2"]);
+    // The panel's top layer is the CITED source; c2 was consulted but not cited.
+    expect(trace.sources).toEqual([{ id: "c1", label: "QS. 2:255", source: "Sumber Tampilan" }]);
   });
 
   it("degrades BOTH frames honestly (never fabricated) when the store read fails", async () => {
@@ -524,8 +577,10 @@ describe("answerFramesFor — the live route's entry (one shared store read, the
     });
     expect(citations.citations).toEqual([]);
     expect(citations.refusal).toBe(false);
-    // The panel keeps the chunk row as an id — a lost title, not a made-up one.
-    expect(trace.sources).toEqual([{ id: "c1" }]);
+    // No display row grounds the citation, so the top layer lists nothing; the
+    // technical layer keeps the consulted chunk as an id — a lost title, not a
+    // made-up one.
+    expect(trace.sources).toEqual([]);
     expect(trace.technical.chunks).toEqual([{ id: "c1", score: 0.1 }]);
     expect(warn).toHaveBeenCalledWith("chat.answer.chunk_lookup_failed", expect.anything());
   });
@@ -541,9 +596,9 @@ describe("answerFramesFor — the live route's entry (one shared store read, the
     });
     expect(citations.refusal).toBe(true);
     expect(citations.citations.map((c) => c.label)).toEqual(HYBRID_SPANS);
-    // The panel is independent of the refusal: the sources consulted stay visible.
+    // The panel is independent of the refusal: the cited sources stay visible.
     expect(fetchChunks).toHaveBeenCalledTimes(1);
-    expect(traceFrame.sources.map((s) => s.id)).toEqual(HYBRID_TRACE_IDS);
+    expect(traceFrame.sources.map((s) => s.id)).toEqual(HYBRID_TRACE_IDS.slice(0, 8));
   });
 
   it("a trace with no retrieval events needs no store read at all", async () => {

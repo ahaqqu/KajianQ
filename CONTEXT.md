@@ -110,7 +110,7 @@ What the router routes to when no model reading routes the query: one factual Su
 _Avoid_: default route, degraded mode (implies a configuration state rather than a per-reply failure)
 
 **Trace**:
-The per-answer record of how it was built — router intent and Query category, Sub-queries with their roles, retrieved chunks with scores, the models that served it with what each did, tokens, cost. User-visible in expanded form per ADR-0007; a fuller version lives in admin.
+The per-answer record of how it was built — router intent and Query category, Sub-queries with their roles, the sources the answer cited, the retrieved chunks with scores, the models that served it with what each did, tokens, cost. User-visible in expanded form per ADR-0007, cited sources first and the consulted passages one tap deeper; a fuller version lives in admin.
 _Avoid_: log, debug info
 
 **Admin access log**:
@@ -194,7 +194,7 @@ The hadith critic or source whose verdict a chain's Grade is: the name that acco
 _Avoid_: source (that is the cited work), authority (vague)
 
 **Chain evidence**:
-The Isnads stored for a passage that reached retrieval context, read together with their narrator rows and recorded on the Trace: their stored order, each row's Grade and Grader, and the narrator spellings resolved by id. The citation sheet, the downloaded conversation and the Trace panel render that recorded evidence — never a fresh read, and never a selected best row — so a passage whose chains disagree reads as disagreement; a list the read bounded is a prefix and says so, and a chain-bearing passage the read did not reach is marked unread rather than given a flattened headline grade.
+The Isnads stored for a passage that reached retrieval context, read together with their narrator rows and recorded on the Trace: their stored order, each row's Grade and Grader, and the narrator spellings resolved by id. The citation sheet and the downloaded conversation render that recorded evidence — never a fresh read, and never a selected best row — so a passage whose chains disagree reads as disagreement; a list the read bounded is a prefix and says so, and a chain-bearing passage the read did not reach is marked unread rather than given a flattened headline grade.
 _Avoid_: chain metadata (implies a summary), sanad list (unqualified — a bounded list is a prefix)
 
 **Takhrij**:

@@ -256,7 +256,7 @@ async function seedAnswer(
       textRaw: CHUNK_TEXT,
       textAr: CHUNK_TEXT,
       textId: "Allah, tidak ada tuhan selain Dia.",
-      metadata: { sourceType: "quran" },
+      metadata: { sourceType: "quran", citation: "QS. 2:255" },
       ordinal: 0,
     }),
   );
@@ -1360,9 +1360,10 @@ describe("admin detail: the chat panel's derivation, every provider call", () =>
     expect(detail.messageId).toBe(messageId);
     expect(detail.question).toBe("Apa itu ayat kursi?");
     expect(detail.frame.messageId).toBe(messageId);
-    // The chunk title resolved through the store join, as in the chat panel.
+    // The panel's top layer is the answer's cited source: the seeded answer
+    // cites QS. 2:255, and the chunk supplies its display title.
     expect(detail.frame.sources).toHaveLength(1);
-    expect(detail.frame.sources[0]?.source).toBe("Al-Baqarah");
+    expect(detail.frame.sources[0]).toMatchObject({ label: "QS. 2:255", source: "Al-Baqarah" });
     // Every provider call is represented — the embedding one included.
     expect(detail.calls.map((call) => `${call.stage}:${call.purpose ?? ""}`)).toEqual([
       "retriever:embed",

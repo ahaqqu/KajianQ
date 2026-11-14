@@ -19,13 +19,10 @@ import * as v from "valibot";
 import {
   chunkFetcher,
   chunksByIdOrEmpty,
+  citedSourcesOf,
   deriveTraceFrame,
-  narratorFetcher,
-  narratorNamesOrEmpty,
-  recordedEvidence,
   traceChunkIds,
   type CitationChunkSource,
-  type NarratorSource,
   type Warn,
 } from "./chat-trace";
 
@@ -190,8 +187,6 @@ export async function adminTraceDetail(input: {
   /** The mirror rows the caller verified against the config — never a stale set. */
   modelConfigs: readonly ModelConfigRecord[];
   fetchChunks: CitationChunkSource;
-  /** The narrator display join; absent renders catalogue ids in place of names. */
-  fetchNarrators?: NarratorSource;
   warn: Warn;
 }): Promise<AdminTraceDetail> {
   const { row, trace } = input;
@@ -202,16 +197,21 @@ export async function adminTraceDetail(input: {
     warnKey: "admin.trace_chunks_unresolved",
     warnFields: { traceId: row.traceId },
   });
-  const narratorNames = await narratorNamesOrEmpty({
-    ids: recordedEvidence(trace)?.narratorIds ?? [],
-    fetchNarrators: input.fetchNarrators,
-    warn: input.warn,
-    warnKey: "admin.trace_narrators_unresolved",
-    warnFields: { traceId: row.traceId },
+  // The panel's top layer is the answer's cited sources, so the admin view derives
+  // them from the same answer text the chat route reads.
+  const { sources } = citedSourcesOf({
+    chunkIds: traceChunkIds(trace),
+    answerText: row.answer,
+    chunksById,
   });
   const frame: ChatTraceFrame = v.parse(
     ChatTraceFrameSchema,
-    deriveTraceFrame({ trace, messageId: row.messageId, chunksById, narratorNames }),
+    deriveTraceFrame({
+      trace,
+      messageId: row.messageId,
+      chunksById,
+      citedSources: sources,
+    }),
   );
   return {
     ...adminTraceItemOf(row),
@@ -257,7 +257,6 @@ export async function adminTracePayload(input: {
       trace: record.trace,
       modelConfigs: input.modelConfigs,
       fetchChunks: chunkFetcher(input.store.fullStore, input.store.runStore),
-      fetchNarrators: narratorFetcher(input.store.fullStore, input.store.runStore),
       warn: input.warn,
     });
     return { kind: "found", detail, trace: record.trace };

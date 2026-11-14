@@ -6,21 +6,17 @@ import {
   type ChatCitationsFrame,
   type ChatSessionMessage,
   type ChatSessionMessages,
+  type ChatTraceChunk,
   type ChatTraceFrame,
   type Trace,
 } from "@app/contracts";
 import type { ChatMessage, DocChildById } from "@app/infra";
-import {
-  citationCandidatesIn,
-  citationLabelsOf,
-  groundingLabelsFor,
-  hasWeakWarning,
-  normalizeCitationLabel,
-} from "@app/kajianq-domain";
+import { hasWeakWarning } from "@app/kajianq-domain";
 // The trace-frame module owns the shared chunk-ref + display-fetch plumbing.
 import {
   citationEvidenceFor,
   chunksByIdOrEmpty,
+  citedSourcesOf,
   deriveTraceFrame,
   narratorNamesOrEmpty,
   recordedEvidence,
@@ -48,12 +44,6 @@ import * as v from "valibot";
  */
 
 /** The chunk's citation labels, normalized exactly as the gate normalizes. */
-function labelsOf(chunk: DocChildById): string[] {
-  return citationLabelsOf({ id: chunk.id, text: chunk.textAr, metadata: chunk.metadata }).map(
-    normalizeCitationLabel,
-  );
-}
-
 function toCitation(
   label: string,
   chunk: DocChildById,
@@ -85,56 +75,57 @@ function toCitation(
   };
 }
 
-/**
- * Pure core: derive the citations frame from a persisted trace, the answer text, and
- * the trace chunks' display rows (text_ar is the canonical evidence layer — a chunk
- * without it backs no citation sheet). **The list is the pure intersection, with no
- * refusal case**: a `refusal` event sets the flag below and NOTHING else.
- */
-export function deriveCitationsFrame(input: {
+type CitationsInput = {
   trace: Trace;
   messageId: string;
   answerText: string;
   chunksById: ReadonlyMap<string, DocChildById>;
   /** The display join for the narrators the trace's evidence names; absent = ids only. */
   narratorNames?: NarratorNames;
-}): ChatCitationsFrame {
+};
+
+/**
+ * Pure core: derive the citations frame and the Trace panel's cited sources in
+ * one pass from a persisted trace, the answer text, and the trace chunks'
+ * display rows (text_ar is the canonical evidence layer — a chunk without it
+ * backs no citation sheet). **The list is the pure intersection, with no refusal
+ * case**: a `refusal` event sets the flag and NOTHING else.
+ *
+ * Both outputs come from the same grounded rows (`citedSourcesOf`), so the chip
+ * list and the panel's source list cannot disagree about what the answer cited.
+ */
+export function deriveCitationsWithSources(input: CitationsInput): {
+  frame: ChatCitationsFrame;
+  sources: ChatTraceChunk[];
+} {
   const { trace, messageId, answerText, chunksById } = input;
   const names: NarratorNames = input.narratorNames ?? new Map();
   const evidence = recordedEvidence(trace);
-  const grounded = new Map<string, DocChildById>();
-  for (const id of traceChunkIds(trace)) {
-    const chunk = chunksById.get(id);
-    // A gone chunk row resolves to nothing: the invariant is enforced by omission.
-    if (!chunk || chunk.textAr.trim() === "") continue;
-    for (const label of labelsOf(chunk)) {
-      if (label !== "" && !grounded.has(label)) grounded.set(label, chunk);
-    }
-  }
-  const citations: ChatCitation[] = [];
-  // The grounding decision is the gate's, so frame and gate cannot disagree.
-  const known = new Set(grounded.keys());
-  for (const span of citationCandidatesIn(answerText)) {
-    const labels = groundingLabelsFor(span, known);
-    if (labels === null) continue;
-    // The citation keeps the span as the draft wrote it — the display form is the
-    // range — backed by the first address that grounds it: for a range, its head verse.
-    const chunk = labels
-      .map((label) => grounded.get(label))
-      .find((candidate): candidate is DocChildById => candidate !== undefined);
-    if (chunk === undefined || citations.some((c) => c.label === span)) continue;
-    citations.push(toCitation(span, chunk, citationEvidenceFor(chunk.id, evidence, names)));
-  }
+  const { rows, sources } = citedSourcesOf({
+    chunkIds: traceChunkIds(trace),
+    answerText,
+    chunksById,
+  });
   return {
-    messageId,
-    citations,
-    // The refusal flag is the trace's own decision, projected verbatim: a hybrid
-    // answer carries it AND its chips. `traceRefused` (chat-trace.ts) is its reader.
-    refusal: traceRefused(trace),
-    // The frame's flag and the postprocess's check are the SAME predicate, so "the
-    // warning is on the answer" cannot mean two things on the two sides of the wire.
-    dhaifWarning: hasWeakWarning(answerText),
+    frame: {
+      messageId,
+      citations: rows.map((row) =>
+        toCitation(row.label, row.chunk, citationEvidenceFor(row.chunk.id, evidence, names)),
+      ),
+      // The refusal flag is the trace's own decision, projected verbatim: a hybrid
+      // answer carries it AND its chips. `traceRefused` (chat-trace.ts) is its reader.
+      refusal: traceRefused(trace),
+      // The frame's flag and the postprocess's check are the SAME predicate, so "the
+      // warning is on the answer" cannot mean two things on the two sides of the wire.
+      dhaifWarning: hasWeakWarning(answerText),
+    },
+    sources,
   };
+}
+
+/** The citations frame alone, for a reader with no use for the source rows. */
+export function deriveCitationsFrame(input: CitationsInput): ChatCitationsFrame {
+  return deriveCitationsWithSources(input).frame;
 }
 
 /**
@@ -174,14 +165,23 @@ export async function answerFramesFor(input: {
     warnKey: "chat.answer.narrator_lookup_failed",
     warnFields: { messageId },
   });
+  const derived = deriveCitationsWithSources({
+    trace,
+    messageId,
+    answerText,
+    chunksById,
+    narratorNames,
+  });
   return {
-    citations: v.parse(
-      ChatCitationsFrameSchema,
-      deriveCitationsFrame({ trace, messageId, answerText, chunksById, narratorNames }),
-    ),
+    citations: v.parse(ChatCitationsFrameSchema, derived.frame),
     trace: v.parse(
       ChatTraceFrameSchema,
-      deriveTraceFrame({ trace, messageId, chunksById, narratorNames }),
+      deriveTraceFrame({
+        trace,
+        messageId,
+        chunksById,
+        citedSources: derived.sources,
+      }),
     ),
   };
 }
@@ -259,22 +259,27 @@ export async function rehydrateTranscript(input: {
     if (trace === undefined) return base;
     // Both frames derive independently from the SAME trace and display rows, so a
     // degraded frame stays absent, never invented.
-    const parsed = v.safeParse(
-      ChatCitationsFrameSchema,
-      deriveCitationsFrame({
-        trace,
-        messageId: row.id,
-        answerText: row.content,
-        chunksById,
-        narratorNames,
-      }),
-    );
+    // One derivation feeds both frames, so the cited sources the panel lists are
+    // exactly the citations the answer carries.
+    const derived = deriveCitationsWithSources({
+      trace,
+      messageId: row.id,
+      answerText: row.content,
+      chunksById,
+      narratorNames,
+    });
+    const parsed = v.safeParse(ChatCitationsFrameSchema, derived.frame);
     if (!parsed.success) {
       warn("chat.rehydration.invalid_frame", { messageId: row.id });
     }
     const traceParsed = v.safeParse(
       ChatTraceFrameSchema,
-      deriveTraceFrame({ trace, messageId: row.id, chunksById, narratorNames }),
+      deriveTraceFrame({
+        trace,
+        messageId: row.id,
+        chunksById,
+        citedSources: derived.sources,
+      }),
     );
     if (!traceParsed.success) {
       warn("chat.rehydration.invalid_trace_frame", { messageId: row.id });

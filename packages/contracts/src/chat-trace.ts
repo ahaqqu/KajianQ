@@ -1,13 +1,13 @@
 import * as v from "valibot";
-import { ChatChainSchema } from "./chat-chain";
 import { sourceRoutingDetailSchema } from "./trace-source-routing";
 
 /**
  * One chunk reference in the user-facing Trace frame: the persisted
  * `retrieval` event's provenance (fused score, both channel ranks, the
  * reranker's score, the opaque `origin` label) plus the server-joined display
- * title. The top "sources consulted" layer reuses the shape with those fields
- * absent.
+ * title. The top "sources cited" layer reuses the shape with the provenance
+ * fields absent and the citation label set: it lists the sources the answer
+ * actually used, not every passage retrieval put in context.
  *
  * `source` is joined by chunk id — a missing row renders by id, never a
  * fabricated title. `rerankScore` sits beside `score` because the panel lists
@@ -15,6 +15,13 @@ import { sourceRoutingDetailSchema } from "./trace-source-routing";
  */
 export const ChatTraceChunkSchema = v.object({
   id: v.pipe(v.string(), v.minLength(1)),
+  /**
+   * The citation label the answer wrote for this source (`QS. 2:255`,
+   * `HR. Bukhari no. 573`), set on a cited-source row only. A technical-layer
+   * row is a consulted passage and carries no label, even when the answer
+   * cited it: that list explains retrieval, not the answer's references.
+   */
+  label: v.optional(v.pipe(v.string(), v.minLength(1))),
   source: v.optional(v.pipe(v.string(), v.minLength(1))),
   score: v.optional(v.number()),
   rankDense: v.optional(v.number()),
@@ -64,24 +71,6 @@ export const ChatTraceReviewerSchema = v.object({
 export type ChatTraceReviewer = v.InferOutput<typeof ChatTraceReviewerSchema>;
 
 /**
- * One consulted child's transmission rows, projected from the persisted
- * `chain_evidence` event: the child the rows transmit, the rows themselves (every
- * one the read returned, in its order), and whether the read bounded the list.
- *
- * The panel lists the chains **consulted**, not a selection: a child with no row
- * is absent here rather than shown with an invented one, and the event's
- * `consulted` count stays on the trace for a reader that needs to know the read
- * covered more children than hold rows.
- */
-export const ChatTraceChainSchema = v.object({
-  childId: v.pipe(v.string(), v.minLength(1)),
-  chains: v.array(ChatChainSchema),
-  moreMayExist: v.optional(v.boolean()),
-});
-
-export type ChatTraceChain = v.InferOutput<typeof ChatTraceChainSchema>;
-
-/**
  * One model that served the answer, with the short roles its calls served.
  * `id` is the opaque `model_configs` identity; `roles` are product vocabulary
  * (the API assigns them from the call's stage and purpose), so the panel can
@@ -102,8 +91,9 @@ export type ChatTraceModel = v.InferOutput<typeof ChatTraceModelSchema>;
  * The user-facing Trace payload: how an answer was built, in two layers, both
  * derived SERVER-SIDE from the answer's persisted trace (`answer_traces`) — the
  * client renders the frame, never reconstructing pipeline machinery. The top
- * `sources` layer lists the sources consulted in plain language (retrieval
- * order, deduplicated); `technical` carries the router intent, the sub-queries,
+ * `sources` layer lists the sources the answer cited in plain language
+ * (citation order, deduplicated) — the final references a reader can check
+ * against the answer; `technical` carries the router intent, the sub-queries,
  * the scored chunks, the models that served the answer (opaque `modelId`
  * strings from `model_configs`, each with the short roles it served), and the
  * reviewer pre-gate's verdict when the trace recorded one. Emitted live as the
@@ -113,6 +103,7 @@ export type ChatTraceModel = v.InferOutput<typeof ChatTraceModelSchema>;
  */
 export const ChatTraceFrameSchema = v.object({
   messageId: v.pipe(v.string(), v.minLength(1)),
+  /** The sources the answer cited, in citation order, deduplicated. */
   sources: v.array(ChatTraceChunkSchema),
   technical: v.object({
     intent: v.optional(v.pipe(v.string(), v.minLength(1))),
@@ -148,20 +139,6 @@ export const ChatTraceFrameSchema = v.object({
     models: v.array(ChatTraceModelSchema),
     /** The reviewer pre-gate's verdict, when the persisted trace recorded one. */
     reviewer: v.optional(ChatTraceReviewerSchema),
-    /**
-     * The transmission rows retrieval consulted, grouped by child, from the
-     * trace's own `chain_evidence` event. Absent means the run recorded no such
-     * read; an empty list means the read ran and found no row — two different
-     * facts the panel distinguishes.
-     */
-    chains: v.optional(v.array(ChatTraceChainSchema)),
-    /**
-     * Chain-bearing passages in context the read did not cover, in retrieval
-     * order. Their rows were never read, so the panel names them as unread
-     * rather than letting a citation fall back to a flattened grade. Absent
-     * means every chain-bearing passage was read.
-     */
-    chainsNotConsulted: v.optional(v.array(v.pipe(v.string(), v.minLength(1)))),
   }),
 });
 
