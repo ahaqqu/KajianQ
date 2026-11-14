@@ -24,7 +24,7 @@ const ANSWER_FIXTURE = [
   'event: citations\ndata: {"messageId":"m-live","refusal":false,"dhaifWarning":false,"citations":[{"label":"QS. 2:255","arabic":"اللَّهُ لَا إِلَٰهَ إِلَّا هُوَ","translation":"Allah, tidak ada tuhan selain Dia.","machineTranslated":true,"source":"Al-Baqarah"}]}\n\n',
   // The route selected quran + hadith and then gave the source dimension up, so
   // its row names the route's SELECTION, not a restriction the search dropped.
-  'event: trace\ndata: {"messageId":"m-live","sources":[{"id":"chunk-1","source":"Al-Baqarah"}],"technical":{"intent":"ruling","routing":{"sources":["quran","hadith"],"filters":{"grade":["sahih"],"textLayer":["sharh"],"sourceType":["quran","hadith"]},"relaxed":[{"key":"textLayer","values":["sharh"]},{"key":"sourceType","values":["quran","hadith"]}]},"subQueries":["apa itu ayat kursi","QS 2:255 makna"],"chunks":[{"id":"chunk-1","source":"Al-Baqarah","score":0.03125}],"models":["router-stub","generator-stub"],"reviewer":{"outcome":"skip","threshold":0.5,"items":[{"index":0,"key":"QS. 2:255","score":0.93},{"index":1,"key":"HR. Malik no. 18","score":0.61}]}}}\n\n',
+  'event: trace\ndata: {"messageId":"m-live","sources":[{"id":"chunk-1","source":"Al-Baqarah"}],"technical":{"intent":"ruling","routing":{"sources":["quran","hadith"],"filters":{"grade":["sahih"],"textLayer":["sharh"],"sourceType":["quran","hadith"]},"relaxed":[{"key":"textLayer","values":["sharh"]},{"key":"sourceType","values":["quran","hadith"]}]},"subQueries":["apa itu ayat kursi","QS 2:255 makna"],"chunks":[{"id":"chunk-1","source":"Al-Baqarah","score":0.03125}],"models":[{"id":"router-stub","roles":["router"]},{"id":"generator-stub","roles":["generator"]}],"reviewer":{"outcome":"skip","threshold":0.5,"items":[{"index":0,"key":"QS. 2:255","score":0.93},{"index":1,"key":"HR. Malik no. 18","score":0.61}]}}}\n\n',
   "event: done\ndata: {}\n\n",
 ].join("");
 
@@ -37,7 +37,7 @@ const FOLLOW_UP_ANSWER_FIXTURE = [
   "event: delta\ndata: Dalilnya adalah ayat kursi, ",
   "event: delta\ndata: [QS. 2:255].\n\n",
   'event: citations\ndata: {"messageId":"m-follow-up","refusal":false,"dhaifWarning":false,"citations":[{"label":"QS. 2:255","arabic":"اللَّهُ لَا إِلَٰهَ إِلَّا هُوَ","translation":"Allah, tidak ada tuhan selain Dia.","machineTranslated":true,"source":"Al-Baqarah"}]}\n\n',
-  'event: trace\ndata: {"messageId":"m-follow-up","sources":[{"id":"chunk-1","source":"Al-Baqarah"}],"technical":{"intent":"factual","subQueries":["Apa dalilnya?","dalil ayat kursi"],"chunks":[{"id":"chunk-1","source":"Al-Baqarah","score":0.03125}],"models":["router-stub","generator-stub"]}}\n\n',
+  'event: trace\ndata: {"messageId":"m-follow-up","sources":[{"id":"chunk-1","source":"Al-Baqarah"}],"technical":{"intent":"factual","subQueries":["Apa dalilnya?","dalil ayat kursi"],"chunks":[{"id":"chunk-1","source":"Al-Baqarah","score":0.03125}],"models":[{"id":"router-stub","roles":["router"]},{"id":"generator-stub","roles":["generator"]}]}}\n\n',
   "event: done\ndata: {}\n\n",
 ].join("");
 
@@ -81,7 +81,7 @@ const CHAIN_FIXTURE = [
   'event: meta\ndata: {"sessionId":"sess-e2e","messageId":"m-chain","traceId":"tr-chain"}\n\n',
   `event: delta\ndata: ${CHAIN_ANSWER}\n\n`,
   'event: citations\ndata: {"messageId":"m-chain","refusal":false,"dhaifWarning":false,"citations":[{"label":"HR. Bukhari no. 1","arabic":"حدثنا","machineTranslated":false,"grade":"sahih","source":"HR. Bukhari","chains":[{"narrators":[{"id":"n1","nameAr":"نافع"},{"id":"n2","nameAr":"ابن عمر"}],"grade":"sahih","grader":"al-bukhari"},{"narrators":[{"id":"n1","nameAr":"نافع"}],"grade":"dhaif","grader":"al-daraqutni"}]}]}\n\n',
-  'event: trace\ndata: {"messageId":"m-chain","sources":[{"id":"chunk-h1","source":"HR. Bukhari"}],"technical":{"intent":"factual","subQueries":["q"],"chunks":[{"id":"chunk-h1","source":"HR. Bukhari","score":0.03}],"models":["router-stub","generator-stub"],"chains":[{"childId":"chunk-h1","chains":[{"narrators":[{"id":"n1","nameAr":"نافع"},{"id":"n2","nameAr":"ابن عمر"}],"grade":"sahih","grader":"al-bukhari"},{"narrators":[{"id":"n1","nameAr":"نافع"}],"grade":"dhaif","grader":"al-daraqutni"}]}]}}\n\n',
+  'event: trace\ndata: {"messageId":"m-chain","sources":[{"id":"chunk-h1","source":"HR. Bukhari"}],"technical":{"intent":"factual","subQueries":["q"],"chunks":[{"id":"chunk-h1","source":"HR. Bukhari","score":0.03}],"models":[{"id":"router-stub","roles":["router"]},{"id":"generator-stub","roles":["generator"]}],"chains":[{"childId":"chunk-h1","chains":[{"narrators":[{"id":"n1","nameAr":"نافع"},{"id":"n2","nameAr":"ابن عمر"}],"grade":"sahih","grader":"al-bukhari"},{"narrators":[{"id":"n1","nameAr":"نافع"}],"grade":"dhaif","grader":"al-daraqutni"}]}]}}\n\n',
   "event: done\ndata: {}\n\n",
 ].join("");
 
@@ -224,7 +224,10 @@ const TRANSCRIPT_FIXTURE = {
           intent: "ruling",
           subQueries: ["apa itu ayat kursi"],
           chunks: [{ id: "chunk-1", source: "Al-Baqarah", score: 0.03125 }],
-          models: ["router-stub", "generator-stub"],
+          models: [
+            { id: "router-stub", roles: ["router"] },
+            { id: "generator-stub", roles: ["generator"] },
+          ],
         },
       },
     },
@@ -954,7 +957,7 @@ Then(
     await expect(tech.getByTestId("trace-subqueries")).toContainText("ayat kursi");
     // Scores format through Intl, so assert the rounded digits, not the separator.
     await expect(tech.getByTestId("trace-score").first()).toContainText(/0[.,]0313/);
-    await expect(tech.getByTestId("trace-models")).toContainText("router-stub");
+    await expect(tech.getByTestId("trace-models")).toContainText("Router: router-stub");
     // The row is labelled for the route's DECISION, not for a search that ran:
     // this run gave `sourceType` up (asserted below), so every source was
     // searched, and a "sources searched" row would have been false.

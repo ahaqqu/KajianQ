@@ -31,6 +31,10 @@ import {
   type TrackHit,
 } from "./chat-retriever-parts";
 import { withTextLayers } from "./chunk-text-layers";
+/** The purpose the retriever records on the embedding call's `llm_call` event;
+ * the trace frame reads it to name the embedder's role. */
+export const EMBED_PURPOSE = "embed";
+
 /**
  * KajianQRetriever — Smart Router stage 4: embed each routed sub-query, search both
  * embedding tracks (ADR-0013 dual-track), and fuse the hits with Reciprocal Rank
@@ -91,7 +95,7 @@ export function createKajianQRetriever(deps: KajianQRetrieverDeps): Retriever<Ka
           run.record({
             stage: "retriever",
             kind: "llm_call",
-            detail: { purpose: "embed" },
+            detail: { purpose: EMBED_PURPOSE },
             cost: embedded.cost,
             at: run.now(),
           });

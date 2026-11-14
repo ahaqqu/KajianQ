@@ -87,7 +87,10 @@ const detailPayload = {
       intent: "ruling",
       subQueries: ["ayat kursi"],
       chunks: [{ id: "chunk-1", source: "Al-Baqarah", score: 0.03125 }],
-      models: ["embedder-stub", "generator-stub"],
+      models: [
+        { id: "embedder-stub", roles: ["embedding"] },
+        { id: "generator-stub", roles: ["generator"] },
+      ],
     },
   },
 };

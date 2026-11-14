@@ -186,7 +186,7 @@ describe("buildChatWiring — the embed call's cost rides the answer trace", () 
       messageId: "message-1",
       chunksById: new Map(),
     });
-    expect(frame.technical.models).toContain("stub-embedder");
+    expect(frame.technical.models).toContainEqual({ id: "stub-embedder", roles: ["embedding"] });
   });
 
   it("holds at zero when the retrieval stage has nothing to embed", async () => {

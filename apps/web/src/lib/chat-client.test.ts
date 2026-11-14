@@ -121,7 +121,7 @@ describe("askChat", () => {
 
   it("hands the trace frame over whole after citations, in wire order (#12)", async () => {
     const TRACE =
-      'event: trace\ndata: {"messageId":"m-1","sources":[{"id":"c1","source":"Al-Baqarah"}],"technical":{"subQueries":["ayat kursi"],"chunks":[{"id":"c1","score":0.03}],"models":["m-a"]}}\n\n';
+      'event: trace\ndata: {"messageId":"m-1","sources":[{"id":"c1","source":"Al-Baqarah"}],"technical":{"subQueries":["ayat kursi"],"chunks":[{"id":"c1","score":0.03}],"models":[{"id":"m-a","roles":["generator"]}]}}\n\n';
     stubFetchSequence([sseResponse([META, CITATIONS, TRACE, "event: done\ndata: {}\n\n"])]);
     const seen: string[] = [];
     await askChat(
