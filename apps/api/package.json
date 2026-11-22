@@ -14,12 +14,12 @@
     "@app/rag-core": "workspace:*",
     "@app/rate": "workspace:*",
     "@hono/standard-validator": "0.4.1",
-    "@sentry/bun": "11.11.0",
-    "@standard-community/standard-json": "0.4.0",
-    "@standard-community/standard-openapi": "0.2.11",
+    "@sentry/bun": "11.12.0",
+    "@standard-community/standard-json": "0.4.1",
+    "@standard-community/standard-openapi": "0.2.12",
     "@valibot/to-json-schema": "1.8.0",
-    "hono": "4.13.17",
-    "hono-openapi": "1.5.0",
+    "hono": "4.13.18",
+    "hono-openapi": "1.6.0",
     "valibot": "1.5.0"
   },
   "devDependencies": {
